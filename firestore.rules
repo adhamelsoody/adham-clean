@@ -1,0 +1,364 @@
+rules_version = '2';
+
+/* =========================================================================
+   قواعد Firestore الإنتاجية — ذات القرآنية
+   مبنيّة على الاستخدام الفعلي للكود، بمبدأ أقلّ صلاحية.
+   -------------------------------------------------------------------------
+   ⚠️  لا تنشر هذا الملف قبل تنفيذ الخطوتين ١ و ٢:
+
+   ١) أنشئ حسابك في Firebase Console ← Authentication، ثم أنشئ يدوياً
+      المستند  users/{uid}  بالحقول:  { role: "admin", active: true, name: "..." }
+      بدون هذه الخطوة لن يوجد أي مدير، ولن تستطيع الدخول إلى لوحة الإدارة.
+
+   ٢) أزل منطق منح admin التلقائي من:
+         auth.js            (السطور ~98-105)
+         admin/shell.js     (السطور ~369-376)
+      كلاهما ينشئ users/{uid} بدور admin لأي حساب بلا ملف. القواعد أدناه
+      تمنع ذلك على مستوى الخادم (إنشاء الملف الذاتي مقيَّد بالأدوار غير
+      الإدارية)، فيبقى الكود يحاول ويفشل، والأنظف إزالته.
+
+   للتراجع: firestore.rules.backup-open يحوي القواعد المفتوحة السابقة.
+   ========================================================================= */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* ---------------- دوال مساعدة ---------------- */
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasProfile() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    /* حساب موقوف (active == false) يفقد كل الصلاحيات فوراً */
+    function isActive() {
+      return hasProfile() && profile().active != false;
+    }
+
+    function role() {
+      return isActive() ? profile().role : "";
+    }
+
+    /* مديرُ النظام. و owner مقبولٌ معه: إن وُجد حسابٌ بهذا الدور فحذفُه
+       من هنا يقفله خارج النظام نهائياً. يُحذف بسطرٍ واحد متى تأكّدتَ
+       أنه لا حساب بدور owner. */
+    function isAdmin()      { return role() in ["admin", "owner"]; }
+
+    /* مديرُ المجمّع ومديرُ المسجد: هما ما كان اسمه «مشرف».
+       و supervisor باقٍ هنا جسراً حتى تُرحَّل الحسابات القديمة — من غيره
+       يُقفل كلُّ حسابٍ لم يُرحَّل بعد خارج النظام. يُحذف بعد الترحيل. */
+    function isManager()    { return role() in ["complexManager", "mosqueManager", "supervisor"]; }
+
+    /* الاسمُ القديم باقٍ لأن 6 مواضع أدناه تستعمله — ومعناه الآن: مدير منشأة */
+    function isSupervisor() { return isManager(); }
+    function isTeacher()    { return role() == "teacher"; }
+
+    /* سقفُ ما يمنحه مديرُ المنشأة من أدوار: لا أحدَ يمنح دوراً أعلى من
+       دوره، وإلّا فتح حساباً بصلاحيةٍ أوسع ودخل به. مطابقٌ لـ GRANTABLE
+       في app.js — إن غيّرتَها هناك فغيّرها هنا. */
+    function grantableRoles() {
+      return role() == "complexManager"
+        ? ['mosqueManager', 'teacher', 'parent', 'student']
+        : ['teacher', 'parent', 'student'];
+    }
+
+    /* من يحقّ له الكتابة في البيانات التشغيلية */
+    function canWrite() { return isAdmin() || isManager(); }
+
+    /* من يحقّ له القراءة: أي حساب فعّال بدور معروف */
+    function canRead() {
+      return isActive() && role() in ['admin', 'owner', 'complexManager',
+        'mosqueManager', 'supervisor', 'teacher', 'parent', 'student'];
+    }
+
+    /* المجموعات التشغيلية التي يقرأها loadAllData() ويكتبها app.js.
+       users و settings و site_messages مستثناة عمداً ولكلٍّ قواعده أدناه. */
+    function operational() {
+      return [
+        'complexes', 'mosques', 'teachers', 'circles', 'students',
+        'programs', 'levels', 'supCats', 'terms', 'plans', 'delays',
+        /* planRules: قواعدُ التعويض لكلّ خطة. كانت خارج القائمة وبلا قاعدةِ
+           مطابقة، فتقع تحت المنع الشامل — يكتبها التطبيق ويردّها الخادم.
+           سجلُّها بلا مسجدٍ ولا مجمّع فيمرّ scopeOk، والكتابةُ لمن يملك
+           canWrite وحده. */
+        'planRules',
+        /* ثمانيةٌ يقرؤها التطبيق ولا قاعدةَ لها، فتقع تحت المنع الشامل
+           وتظهر في الكونسول: Missing or insufficient permissions.
+           كلُّها بياناتٌ تشغيليّة يكتبها من يملك canWrite ويقرؤها من
+           يملك canRead — كسائر ما في القائمة، فلا توسيعَ في الصلاحية:
+             assignments  الواجبات اليومية
+             sysAlerts    تنبيهات النظام
+             procLog      سجلّ الإجراءات
+             pointsLog    سجلّ النقاط
+             storeOrders  طلبات المتجر
+             paySheets    مسيّرات الرواتب
+             msgOutbox    صادر الرسائل
+             admissions   طلبات القبول                                   */
+        'assignments', 'sysAlerts', 'procLog', 'pointsLog',
+        'storeOrders', 'paySheets', 'msgOutbox', 'admissions',
+        'reviews', 'dutyTypes', 'workflow', 'notifications', 'recitations',
+        'mushafMarks', 'site_messages',
+        'attendance', 'exams', 'rewards', 'examPaths', 'rewardRules',
+        'questions', 'questionGroups', 'examSupervisors', 'examCommittees',
+        'examRouting', 'certTemplates', 'moveLog', 'userRequests'
+      ];
+    }
+
+    /* الأدوار المسموح للمستخدم أن ينشئ بها ملفه بنفسه.
+       admin و supervisor غير مدرجين: لا يمنحهما إلا مديرٌ قائم. */
+    function selfRoles() {
+      return ['teacher', 'parent', 'student'];
+    }
+
+    /* الحقول التي يملك المستخدم تعديلها في ملفه الشخصي */
+    function selfEditable() {
+      return ['name', 'phone', 'nationality', 'gender', 'photo'];
+    }
+
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+
+    /* ---------------- مصفوفة صلاحيات المعلم ---------------- */
+    /* الافتراضات هنا مطابقة لـ PERM_DEFAULT في governance.js — إن غيّرتها
+       هناك فغيّرها هنا، وإلا سمح المتصفح ومنع الخادم (أو العكس). */
+    function perms() {
+      return isActive() ? profile().get('perms', {}) : {};
+    }
+
+    function perm(key, byDefault) {
+      return perms().get(key, byDefault) == true;
+    }
+
+    /* معلّم يملك الصلاحية — أو إداريٌّ لا تلزمه */
+    function teacherMay(key, byDefault) {
+      return canWrite() || (isTeacher() && perm(key, byDefault));
+    }
+
+
+    /* ---------------- حصر النطاق عند الكتابة ---------------- */
+    /* المدير العام (بلا نطاق محفوظ) بلا حدّ. ومن له نطاق لا يكتب إلا داخله.
+       ⚠ هذا حصر كتابة لا قراءة: loadAllData يقرأ المجموعات كاملةً، فتقييد
+         القراءة بالنطاق يُفشل الاستعلام كلّه. تقييد القراءة يحتاج تحويل
+         القراءات إلى استعلامات مُصفّاة أولاً — انظر ملف النشر. */
+    function scopeIds() {
+      return profile().get('mosqueIds', [])
+        .concat(profile().get('complexIds', []))
+        .concat([profile().get('mosqueId', ''), profile().get('complexId', '')]);
+    }
+
+    /* حساب بلا أي ارتباط بمنشأة — المدير العام وحده يبقى بلا حدّ */
+    function unscoped() {
+      return profile().get('mosqueIds', []).size() == 0
+             && profile().get('complexIds', []).size() == 0
+             && profile().get('mosqueId', '') == ''
+             && profile().get('complexId', '') == '';
+    }
+
+    function inScope(d) {
+      return d.get('mosqueId', '')  in scopeIds()
+          || d.get('complexId', '') in scopeIds();
+    }
+
+    /* سجل بلا منشأة لا يُحجب — كثير من السجلات القديمة بلا هذين الحقلين */
+    function scopeOk() {
+      return unscoped()
+        || (d0().get('mosqueId', '') == '' && d0().get('complexId', '') == '')
+        || inScope(d0());
+    }
+
+    function d0() { return request.resource.data; }
+
+
+    /* ---------------- ملفات المستخدمين ---------------- */
+    match /users/{uid} {
+
+      /* قراءة مستند واحد: صاحبه أو الإدارة.
+         مطلوبة لـ auth.js و admin/shell.js عند التحقق من الدور. */
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin() || isSupervisor());
+
+      /* سرد المجموعة (استعلامات login.html و admin/users.js و loadAllData):
+         للإدارة فقط. login.html يلتقط الرفض ويكمل بالبريد الاصطناعي
+         {id}@mirath.id، و loadAllData يعزل الرفض ويكمل بباقي المجموعات. */
+      allow list: if isAdmin() || isSupervisor();
+
+      /* إنشاء ذاتي: بدور غير إداري وحساب موقوف بانتظار الاعتماد فقط.
+         هذا ما يسدّ ثغرة منح admin التلقائي على مستوى الخادم. */
+      allow create: if signedIn()
+                    && request.auth.uid == uid
+                    && request.resource.data.role in selfRoles()
+                    && request.resource.data.active == false;
+
+      /* تعديل ذاتي: حقول العرض فقط — لا role ولا active ولا نطاق. */
+      allow update: if signedIn()
+                    && request.auth.uid == uid
+                    && changed().hasOnly(selfEditable());
+
+      /* اعتمادُ طلبات الانضمام: مديرُ المجمّع ومديرُ المسجد يفعّلان الحساب
+         ويرفعان دورَه المطلوب. ثلاثةُ حدودٍ تحرسه:
+           • لا يعدّل ملفَّ نفسه   — فلا يرقّي نفسه
+           • دورُ الحساب قبل التعديل وبعده كلاهما تحت سقفِ منحه
+             — فلا يمسّ مديراً ولا يمنح دوراً أعلى منه
+         والحذفُ والإنشاءُ يبقيان لمدير النظام وحده. */
+      allow update: if isManager()
+                    && request.auth.uid != uid
+                    && resource.data.role in grantableRoles()
+                    && request.resource.data.role in grantableRoles();
+
+      /* المدير وحده يُنشئ الحسابات ويغيّر الأدوار والحالة ويحذف. */
+      allow create, update, delete: if isAdmin();
+    }
+
+
+    /* ---------------- البيانات التشغيلية ---------------- */
+    match /{coll}/{docId} {
+      allow read: if coll in operational() && canRead();
+      allow create, update: if coll in operational() && canWrite() && scopeOk();
+      allow delete: if coll in operational() && canWrite()
+                    && (unscoped() || inScope(resource.data));
+    }
+
+
+    /* ---------------- ما يكتبه المعلّم في عمله اليومي ---------------- */
+    /* القاعدة العامة أعلاه تحصر الكتابة في الإدارة، فكان المعلّم يُمنع من
+       حفظ الخطط والتسميع وتأشير المصحف واعتماد الحلقة — وهي صميم عمله.
+       القواعد تُدمج بـ OR، فهذه البلوكات تضيف المعلّم دون أن تمسّ غيره.
+
+       ⚠ الحصر بالحلقة غير مطبَّق بعد: المعلّم يستطيع تقنياً الكتابة لطالب
+       خارج حلقاته. إغلاقه يحتاج ربط circleIds في ملف المستخدم، وهو ضمن
+       مرحلة تقييد الصلاحيات القادمة. */
+
+    match /plans/{docId} {
+      allow read: if canRead();
+      allow create, update: if teacherMay('plan_edit', true);
+      /* الحذف للإدارة وحدها: إزالة خطة طالب أخطر من تعديلها،
+         والمعلّم يملك التجميد وتعديل المسار وهما يكفيان عمله. */
+      allow delete: if canWrite();
+    }
+
+    match /recitations/{docId} {
+      allow read: if canRead();
+      /* الإنشاء عمل يومي، والتعديل على محفوظ صلاحية خاصة */
+      allow create: if canWrite() || isTeacher();
+      allow update, delete: if teacherMay('recite_edit', true);
+    }
+
+    match /mushafMarks/{docId} {
+      allow read: if canRead();
+      allow create: if canWrite() || isTeacher();
+      /* تأشير اليوم عمل عادي، وتعديل تأشير يوم مضى صلاحية خاصة.
+         resource.data.date هو تاريخ التأشير المحفوظ. */
+      allow update, delete: if canWrite()
+                            || (isTeacher() && resource.data.date == request.resource.data.date)
+                            || (isTeacher() && perm('mushaf_past', false));
+    }
+
+    /* اعتماد جلسة الحلقة */
+    match /workflow/{docId} {
+      allow read: if canRead();
+      allow create, update, delete: if canWrite() || isTeacher();
+    }
+
+    match /delays/{docId} {
+      allow read: if canRead();
+      allow create, update: if teacherMay('delay_manage', true);
+      allow delete: if teacherMay('delay_manage', true);
+    }
+
+
+    /* ---------------- الحضور اليومي ---------------- */
+    /* القاعدة العامة أعلاه تمنح الكتابة للإدارة وحدها، والمعلّم هو من يسجّل
+       الحضور فعلياً. القواعد تُدمج بـ OR، فهذا البلوك يضيف المعلّم دون أن
+       يمسّ صلاحيات غيره، مع التحقق من شكل السجل حتى لا يُكتب ما هبّ ودبّ.
+
+       ⚠ لا يزال الحصر بالحلقة غير مطبَّق هنا: المعلّم يستطيع تقنياً كتابة
+       سجل لطالب خارج حلقاته. إغلاق ذلك يحتاج ربط circleIds في ملف المستخدم
+       وهو ضمن مرحلة تقييد الصلاحيات القادمة. */
+    match /attendance/{docId} {
+      allow read: if canRead();
+      /* التحضير عمل المعلّم اليومي، وتعديل سجل محفوظ يحتاج attend_edit.
+         ⚠ «التحضير بعد انتهاء الوقت» (attend_late) يُفحص في المتصفح فقط:
+           التاريخ محفوظ بصيغة النظام لا بطابع زمني، فلا تستطيع القاعدة
+           مقارنته بوقت الخادم. لإغلاقه على الخادم أضف حقل ts رقمياً
+           إلى سجل الحضور ثم قارنه بـ request.time هنا. */
+      allow create: if (canWrite() || isTeacher())
+                    && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
+                    && request.resource.data.date is string
+                    && request.resource.data.studentId is string;
+      allow update: if teacherMay('attend_edit', true)
+                    && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
+                    && request.resource.data.date is string
+                    && request.resource.data.studentId is string;
+      /* سجل خاطئ يجب أن يُحذف لا أن يُترك — بنفس صلاحية التعديل */
+      allow delete: if teacherMay('attend_edit', true);
+    }
+
+
+    /* ---------------- إعدادات النظام ---------------- */
+    /* مستندا general و exams — يقرأهما الجميع، ويكتبهما المدير وحده. */
+    match /settings/{docId} {
+      allow read:  if canRead();
+      allow write: if isAdmin();
+    }
+
+
+    /* ---------------- الرسائل داخل الموقع ---------------- */
+    match /site_messages/{msgId} {
+
+      /* المرسَل إليه يقرأ رسائله، والإدارة تقرأ الكل.
+         استعلام topbar-dates.js هو where("toEmail","==",بريدي) فيمرّ. */
+      allow read: if isActive() && (
+                       resource.data.toEmail == request.auth.token.email.lower()
+                    || isAdmin() || isSupervisor()
+                  );
+
+      /* الإرسال من الإدارة والمعلمين فقط، ولا يجوز انتحال حالة القراءة. */
+      allow create: if (isAdmin() || isSupervisor() || isTeacher())
+                    && request.resource.data.toEmail is string
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0
+                    && request.resource.data.text.size() <= 4000
+                    && request.resource.data.read == false;
+
+      /* المستلِم لا يملك إلا تعليم الرسالة كمقروءة. */
+      allow update: if isActive()
+                    && resource.data.toEmail == request.auth.token.email.lower()
+                    && changed().hasOnly(['read']);
+
+      allow delete: if isAdmin();
+    }
+
+
+    /* ---------------- سجل العمليات ---------------- */
+    /* إلحاق فقط: يكتبه كل حساب فعّال باسمه هو، ويقرؤه المدير والمشرف،
+       ولا يُعدَّل ولا يُحذف أبداً — ولا حتى من المدير. هذا شرط أن يكون
+       السجل دليلاً: سجلّ يمكن تعديله لا يثبت شيئاً. */
+    match /auditLog/{entryId} {
+
+      allow read: if isAdmin() || isSupervisor();
+
+      allow create: if isActive()
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.action in ['create', 'update', 'delete']
+                    && request.resource.data.coll is string
+                    && request.resource.data.ts is number;
+
+      allow update, delete: if false;
+    }
+
+
+    /* ---------------- المنع الافتراضي ---------------- */
+    /* أي مسار لم يُذكر أعلاه ممنوع تماماً. */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,44 @@
+ذات القرآنية — نسخة المشروع
+════════════════════════════
+
+ما في هذه الحزمة: ٦٢ ملفاً — الكودُ والصفحاتُ والقواعدُ والأيقونات
+والملفاتُ الملحقة (clean-boot · governance · duty-plus · manager-link
+· facilities-plus · exams-plus · kpi-settings · mirath-plus · crud-plus).
+
+ما ليس فيها — عمداً
+────────────────────
+• مجلد quran/    بياناتُ المصحف: ٦٠٧ ملفات عندك ولم تتغيّر. لا تحذفه.
+• .git           تاريخُ المشروع: عندك وحدك.
+• node_modules   يُنزَّل بأمر npm install عند الحاجة.
+
+قبل أن تستبدل — تحقّق
+──────────────────────
+   cd C:\Users\People\Desktop\adham
+   (Get-ChildItem -Recurse -File).Count
+
+الأسلم: افتح الحزمة في مجلدٍ جديد، وقارن، وانقل ما ينقصك.
+
+أحجام الملفات الرئيسية
+───────────────────────
+   app.js             1486278
+   styles.css          360427
+   admin/shell.js       35493
+   firestore.rules      22644
+   sw.js                 5644
+   quran.js              7459
+   manifest.json          1100
+
+النشر
+──────
+   cd C:\Users\People\Desktop\adham
+   node setup.js
+   firebase deploy --only hosting
+   firebase deploy --only firestore:rules
+
+ثمّ Ctrl+Shift+R. وعند تغيير sw.js:
+   F12 ← Application ← Service Workers ← Unregister
+
+للجلسات الجديدة
+────────────────
+ارفع «اقرأني-أولاً.md» مع app.js في أوّل رسالة — فيه تعريفُ المشروع
+وطريقةُ العمل وخمسةُ أخطاءٍ تكرّرت، فلا تُعاد.

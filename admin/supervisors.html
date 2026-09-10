@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="theme-color" content="#004b50" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="manifest" href="../manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ذات القرآنية">
+  <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+  <title>المشرفين / ات — لوحة الإدارة | مجمع ميراث التعليمي</title>
+  <link rel="icon" type="image/svg+xml" href="../logo.svg">
+  <link rel="apple-touch-icon" href="../logo.png" />
+  <link rel="stylesheet" href="../styles.css?v=202609092048" />
+  <link rel="stylesheet" href="../clean-boot.css" />
+  <script>/* يمنع وميض الوضع الفاتح قبل تطبيق الوضع الداكن المحفوظ */
+    (function(){try{var t=localStorage.getItem("mirath_theme")||"light";
+      document.documentElement.setAttribute("data-theme",t);}catch(e){}})();
+  </script>
+</head>
+<body>
+  <!-- Mobile sidebar overlay -->
+  <div class="overlay" id="overlay"></div>
+
+  <div class="app">
+    <!-- ============ SIDEBAR (right, RTL) ============ -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-logo-wrap">
+          <img src="../logo-mark.svg" alt="شعار مجمع ميراث التعليمي" class="brand-logo-img"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <div class="brand-fallback" style="display:none">
+            <svg viewBox="0 0 48 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M24 2C12 2 4 11 4 24v28a2 2 0 0 0 2 2h36a2 2 0 0 0 2-2V24C44 11 36 2 24 2Z" stroke="currentColor" stroke-width="2.2" opacity="0.55"/>
+              <path d="M24 12c-7 0-12 5.5-12 13v23h24V25c0-7.5-5-13-12-13Z" fill="currentColor" opacity="0.14"/>
+              <path d="M24 12c-7 0-12 5.5-12 13v23h24V25c0-7.5-5-13-12-13Z" stroke="currentColor" stroke-width="2"/>
+              <path d="M24 20v18M16 30c0-4 3.5-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/>
+            </svg>
+            <strong>مجمع ميراث التعليمي</strong>
+          </div>
+        </div>
+        <div class="brand-sub">لوحة الإدارة</div>
+      </div>
+
+      <nav class="nav" id="nav"><!-- injected by shell.js --></nav>
+
+      <div class="sidebar-foot">
+        <div id="connBadge" class="conn-badge offline" style="display:none"><span class="conn-dot"></span>جارٍ الاتصال…</div>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN ============ -->
+    <div class="main">
+      <!-- ============ TOPBAR ============ -->
+      <header class="topbar">
+        <div class="topbar-right">
+          <button class="icon-btn menu-toggle" id="menuToggle" aria-label="القائمة">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <div class="org-select">
+            <span class="org-label">المجمع الحالي</span>
+            <select id="orgSelect">
+              <option>مجمع حلقات الفرسان</option>
+              <option>مجمع ميراث التعليمي</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="topbar-filters" id="topFilters">
+          <select class="filter-sel" id="selYear"   title="العام الدراسي"></select>
+          <select class="filter-sel" id="selPeriod" title="الفترة"></select>
+          <select class="filter-sel" id="selMonth"  title="الشهر"></select>
+          <select class="filter-sel" id="selWeek"   title="الأسبوع"></select>
+          <input  class="filter-date" id="filterDate" type="text" title="التاريخ" dir="rtl" readonly />
+        </div>
+
+        <div class="topbar-left">
+          <button class="icon-btn" id="btnNotif" aria-label="الإشعارات">
+            <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn" id="btnMsg" aria-label="الرسائل">
+            <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn" id="btnRefresh" aria-label="تحديث">
+            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="user-chip">
+            <div class="avatar" id="userAvatar"></div>
+            <div class="user-meta">
+              <strong id="userName"></strong>
+              <small id="userRole"></small>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- ============ PAGE CONTENT ============ -->
+      <main class="content" id="pageContent"></main>
+    </div>
+  </div>
+
+  <!-- Containers for overlays -->
+  <div id="modalRoot"></div>
+  <div id="panelRoot"></div>
+  <div class="toast-stack" id="toastRoot"></div>
+
+  <!-- Firebase (compat SDK via CDN) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="../firebase-config.js?v=202609092048"></script>
+  <!-- shell.js هو من يشغّل التطبيق في صفحات الإدارة، فنمنع app.js من
+       تشغيل init() تلقائياً — وإلا رُبطت الأزرار مرتين وتعطّل زر القائمة. -->
+  <script>window.__DEFER_INIT = true;</script>
+  <script src="../quran.js?v=202609092048"></script>
+  <script src="../app.js?v=202609092048"></script>
+  <!-- يمنع ظهور النسخة القديمة من الكاش قبل وصول بيانات السيرفر -->
+  <script src="../clean-boot.js"></script>
+  <script>window.ADMIN_PAGE = "supervisors";</script>
+  <script src="shell.js?v=202609092048"></script>
+  <script src="../topbar-dates.js?v=202609092048"></script>
+  <nav id="tabbar" class="tabbar" aria-label="التنقّل السريع"></nav>
+</body>
+</html>

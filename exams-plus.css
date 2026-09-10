@@ -1,0 +1,37 @@
+/* =========================================================================
+   exams-plus.css — رصد الدرجات والشهادات
+   ========================================================================= */
+.xm-card {
+  background: var(--surface); border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg, 12px); padding: 13px 16px; margin-bottom: 14px;
+}
+.xm-h { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.xm-h strong { display: block; font-size: 14px; }
+.xm-h small { display: block; font-size: 11.5px; color: var(--text-faint, #8a97a1); margin-top: 3px; }
+.xm-tag { font-size: 11px; padding: 3px 9px; border-radius: 20px;
+          background: var(--border-soft); color: var(--text-faint, #8a97a1); }
+
+/* الحساب الحيّ داخل نافذة الرصد */
+.xm-live {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-top: 14px; padding: 12px 15px; border-radius: var(--r-sm, 10px);
+  font-size: 14px;
+}
+.xm-live strong { font-size: 19px; font-weight: 800; }
+.xm-live .xm-res { margin-inline-start: auto; font-weight: 700; padding: 3px 12px;
+                   border-radius: 20px; background: rgba(255,255,255,.65); font-size: 13px; }
+.xm-live.pass { background: #e7f5ec; color: #17673c; }
+.xm-live.fail { background: #fdeeed; color: #a2322a; }
+.xm-live.over { background: #fdf3e0; color: #8a5a12; }
+
+[data-theme="dark"] .xm-live.pass { background: rgba(23,103,60,.24); color: #86d6a6; }
+[data-theme="dark"] .xm-live.fail { background: rgba(162,50,42,.24); color: #f0a49c; }
+[data-theme="dark"] .xm-live.over { background: rgba(138,90,18,.24); color: #e8c07a; }
+[data-theme="dark"] .xm-live .xm-res { background: rgba(0,0,0,.28); }
+
+.xm-meta { margin-top: 10px; font-size: 11.5px; color: var(--text-faint, #8a97a1); }
+
+@media (max-width: 620px) {
+  .xm-live { gap: 8px; }
+  .xm-live .xm-res { margin-inline-start: 0; }
+}

@@ -1,0 +1,61 @@
+/* =========================================================================
+   governance.css — سجل العمليات · مصفوفة الصلاحيات
+   يُحمَّل بعد styles.css ويستعمل متغيّراتها، فيتبع الوضع الداكن تلقائياً
+   ========================================================================= */
+
+/* ---------------- شريط فلاتر السجل ---------------- */
+.aud-bar {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;
+}
+.aud-in {
+  padding: 9px 12px; border: 1px solid var(--border-soft); border-radius: var(--r-sm, 10px);
+  background: var(--surface); color: var(--text-main); font: inherit; font-size: 13px;
+}
+.aud-in:first-child { flex: 1; min-width: 200px; }
+.aud-in:focus {
+  outline: none; border-color: var(--brand-main, #0b7f83);
+  box-shadow: 0 0 0 3px var(--brand-soft, #e8f4f3);
+}
+
+/* ---------------- خلية التغييرات ---------------- */
+.aud-cell { max-width: 380px; }
+.aud-ch {
+  font-size: 12px; line-height: 1.8; padding: 2px 0;
+  border-bottom: 1px dashed var(--border-soft);
+}
+.aud-ch:last-child { border-bottom: 0; }
+.aud-ch b { font-weight: 700; }
+.aud-ch s { opacity: .55; text-decoration-thickness: 1px; }
+
+/* ---------------- مصفوفة الصلاحيات ---------------- */
+.pm-table th.pm-h {
+  /* العناوين طويلة والأعمدة ١٢ — تُمال لتبقى الجدولة مقروءة */
+  height: 132px; padding: 0; white-space: nowrap; vertical-align: bottom;
+}
+.pm-table th.pm-h > span {
+  display: inline-block; transform: rotate(-58deg); transform-origin: bottom center;
+  font-size: 12px; font-weight: 600; width: 20px;
+}
+.pm-table td.pm-c { text-align: center; }
+.pm-table .pm-name { text-align: start; min-width: 170px; }
+
+/* مفتاح تبديل */
+.pm-sw { display: inline-flex; cursor: pointer; }
+.pm-sw input { position: absolute; opacity: 0; width: 0; height: 0; }
+.pm-sw i {
+  display: block; width: 34px; height: 19px; border-radius: 20px;
+  background: var(--border-soft); position: relative; transition: background .18s;
+}
+.pm-sw i::after {
+  content: ""; position: absolute; inset-block-start: 2px; inset-inline-start: 2px;
+  width: 15px; height: 15px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .18s;
+}
+.pm-sw input:checked + i { background: var(--brand-main, #0b7f83); }
+.pm-sw input:checked + i::after { transform: translateX(-15px); }
+.pm-sw input:focus-visible + i { box-shadow: 0 0 0 3px var(--brand-soft, #e8f4f3); }
+
+@media (max-width: 900px) {
+  .pm-table th.pm-h { height: 108px; }
+  .aud-cell { max-width: 220px; }
+}

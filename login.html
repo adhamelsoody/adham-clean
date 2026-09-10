@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تسجيل الدخول — ذات القرآنية</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
+  <!-- هذه الصفحة لا تحمّل styles.css، فتحتاج الخط مستقلاً وإلا سقط على Segoe UI -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 20px; font-family: "Tajawal", "Segoe UI", Tahoma, system-ui, sans-serif;
+      background: #01343a;
+      position: relative; overflow: hidden;
+    }
+
+    /* طبقة 1 — صورة الخلفية
+       ضع ملفاً باسم login-bg.jpg بجانب هذه الصفحة.
+       إن لم يوجد، يظهر التدرّج اللوني تلقائياً. */
+    body::before {
+      content: ""; position: fixed; inset: 0; z-index: 0;
+      background-color: #01282e;
+      background-image: url("login-bg.jpg");
+      background-size: cover;
+      background-position: center center;
+      background-repeat: no-repeat;
+    }
+
+    /* طبقة 2 — تعتيم موضعي خلف البطاقة فقط، والأطراف تبقى واضحة */
+    body::after {
+      content: ""; position: fixed; inset: 0; z-index: 1;
+      background:
+        radial-gradient(ellipse 62% 72% at 50% 50%, rgba(1,40,46,.30) 0%, rgba(1,40,46,.52) 100%);
+      pointer-events: none;
+    }
+
+    .auth-card {
+      position: relative; z-index: 3;
+      width: 100%; max-width: 400px;
+      background: rgba(255,255,255,.97); border-radius: 22px;
+      padding: 36px 30px 28px; text-align: center;
+      box-shadow: 0 30px 90px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.15);
+      backdrop-filter: blur(4px);
+      animation: authIn .45s cubic-bezier(.16,1,.3,1);
+    }
+    @keyframes authIn { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
+
+    /* الرسمة داخل logo-mark.svg بيضاء (fill="#ffffff")، وكانت الخلفية كريمية
+       فصارت أبيض على كريمي = غير مرئية. الخلفية الآن أخضر الهوية الغامق. */
+    .auth-logo { width: 76px; height: 76px; border-radius: 18px; object-fit: contain;
+      background: #013330; padding: 11px; margin: 0 auto 14px; display: block;
+      box-shadow: 0 6px 18px rgba(1,52,58,.28); }
+
+    h1 { font-size: 20px; color: #01343a; margin: 0 0 4px; font-weight: 800; }
+    p.sub { font-size: 12.5px; color: #5d6b74; margin: 0 0 22px; }
+
+    .field { text-align: right; margin-bottom: 14px; }
+    .field label { display: block; font-size: 12.5px; color: #384752; margin-bottom: 6px; font-weight: 700; }
+    .field input {
+      width: 100%; padding: 12px 14px; font-size: 14px; border: 1.5px solid #dde3e3;
+      border-radius: 11px; outline: none; background: #fbfcfc;
+      transition: border-color .18s, box-shadow .18s, background .18s;
+      font-family: inherit;
+    }
+    .field input:focus { border-color: #0b7f83; background: #fff; box-shadow: 0 0 0 3px #e6f3f2; }
+
+    .btn {
+      width: 100%; padding: 13px; font-size: 15px; font-weight: 700; color: #fff; background: #0b7f83;
+      border: 0; border-radius: 11px; cursor: pointer; margin-top: 6px;
+      transition: background .18s, transform .18s, box-shadow .18s; font-family: inherit;
+      box-shadow: 0 4px 14px rgba(11,127,131,.3);
+    }
+    .btn:hover { background: #04525a; transform: translateY(-1px); box-shadow: 0 8px 22px rgba(11,127,131,.36); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: .6; cursor: default; transform: none; }
+
+    .err { background: #fbe7e7; color: #c62f2f; font-size: 12.5px; border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 14px; display: none; text-align: right; }
+    .err.show { display: block; }
+
+    .links { margin-top: 16px; font-size: 13px; color: #8e9aa2; display: flex;
+      align-items: center; justify-content: center; gap: 9px; }
+    .links a { color: #0b7f83; font-weight: 700; text-decoration: none; }
+    .links a:hover { text-decoration: underline; }
+
+    .foot { margin-top: 14px; font-size: 11px; color: #8e9aa2; }
+
+    @media (max-width: 900px) {
+      body { justify-content: center; padding: 20px; }
+      body::after {
+        background:
+          linear-gradient(180deg, rgba(1,40,46,.46) 0%, rgba(1,40,46,.68) 100%);
+      }
+    }
+    
+    .forgot { display:block; text-align:center; margin-top:14px; font-size:13px;
+            color:#0b7f83; text-decoration:none; }
+  .forgot:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+  <form class="auth-card" id="loginForm" autocomplete="on">
+    <img src="logo-mark.svg" alt="شعار المجمع" class="auth-logo" onerror="this.style.display='none'">
+    <h1>ذات القرآنية</h1>
+    <p class="sub">نظام إدارة الحلقات القرآنية — تسجيل الدخول</p>
+    <div class="err" id="loginErr"></div>
+    <div class="field">
+      <label for="email">رقم الهوية / البريد</label>
+      <input type="text" id="email" required dir="ltr" placeholder="رقم الهوية أو البريد الإلكتروني"
+             autocomplete="username" inputmode="text">
+    </div>
+    <div class="field">
+      <label for="pass">كلمة المرور</label>
+      <input type="password" id="pass" required dir="ltr" placeholder="********">
+    </div>
+    <button type="submit" class="btn" id="submitBtn">دخول</button>
+    <div class="links">
+      <a href="#" id="forgot">نسيت كلمة المرور؟</a>
+      <span>·</span>
+      <a href="reset.html">استعادة برمز الجوال</a>
+      <span>·</span>
+      <a href="/signup.html">فتح حساب جديد</a>
+    </div>
+    <div class="foot">نظام إدارة الحلقات القرآنية</div>
+  </form>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+  <script src="firebase-config.js?v=202609092048"></script>
+  <script>
+  (function () {
+    "use strict";
+    const auth = window.__auth, db = window.__db;
+    const errEl = document.getElementById("loginErr");
+    const btn = document.getElementById("submitBtn");
+    let routing = false;
+
+
+    /* حارس التحويل — يكسر دورة إعادة التوجيه بين صفحات الحراسة */
+    function safeGo(url, why) {
+      try {
+        var now = Date.now();
+        var raw = sessionStorage.getItem("__nav") || "";
+        var arr = raw ? raw.split(",").map(Number).filter(function (t) { return now - t < 10000; }) : [];
+        arr.push(now);
+        sessionStorage.setItem("__nav", arr.join(","));
+        if (arr.length > 4) {
+          showErr((why || "تعذّر تحديد صلاحيات حسابك") + " — راجع إدارة النظام.");
+          btn.disabled = false; btn.textContent = "دخول"; routing = false;
+          try { auth.signOut(); } catch (e) {}
+          return;
+        }
+      } catch (e) {}
+      location.href = url;
+    }
+
+    function showErr(msg) { errEl.textContent = msg; errEl.classList.add("show"); }
+    function hideErr() { errEl.classList.remove("show"); }
+
+    function msgFor(err) {
+      const c = (err && err.code) || "";
+      if (c.includes("wrong-password") || c.includes("invalid-credential")) return "البريد أو كلمة المرور غير صحيحة.";
+      if (c.includes("user-not-found")) return "لا يوجد حساب بهذا البريد.";
+      if (c.includes("invalid-email")) return "صيغة البريد غير صحيحة.";
+      if (c.includes("too-many-requests")) return "محاولات كثيرة — انتظر قليلاً.";
+      if (c.includes("network")) return "تعذّر الاتصال بالشبكة.";
+      return "تعذّر تسجيل الدخول. حاول مجدداً.";
+    }
+
+    // التوجيه حسب الدور المخزّن في users/{uid}
+    async function route(user) {
+      if (routing) return; routing = true;
+      try {
+        const snap = db ? await db.collection("users").doc(user.uid).get() : null;
+        let d;
+        if (!snap || !snap.exists) {
+          /* لا يوجد ملف بمعرّف Firebase — نبحث عن المستخدم الذي أنشأته الإدارة
+             عبر بريد الدخول أو رقم الهوية، فيأخذ دوره الصحيح (معلم/مشرف/مدير). */
+          let linked = null;
+          const idFromMail = String(user.email || "").split("@")[0];
+          try {
+            let q = await db.collection("users").where("loginEmail", "==", user.email).limit(1).get();
+            if (q.empty && /^[0-9]{6,15}$/.test(idFromMail))
+              q = await db.collection("users").where("username", "==", idFromMail).limit(1).get();
+            if (q.empty) q = await db.collection("users").where("email", "==", user.email).limit(1).get();
+            if (!q.empty) linked = q.docs[0].data() || null;
+          } catch (e) { console.warn("lookup failed:", e); }
+
+          if (linked) {
+            d = linked;
+            /* ننسخ الملف تحت معرّف Firebase ليُقرأ مباشرة في المرات القادمة */
+            try { await db.collection("users").doc(user.uid).set(
+              Object.assign({}, linked, { uid: user.uid, linkedAt: Date.now() }), { merge: true }); }
+            catch (e) { console.warn("link failed:", e); }
+          } else {
+            /* لا سجل مطابق: يُنشأ ملف موقوف بانتظار اعتماد الإدارة — ولا
+               يُمنح أي دور إداري تلقائياً مهما كان أول حساب أو غيره.
+               كان أول حساب يأخذ admin، وهو باب تصعيد صلاحيات: من يصل إلى
+               مشروع فارغ يصير مالكه. أول مدير يُنشأ يدوياً من
+               Firebase Console (users/{uid} بدور admin) — راجع ملف النشر.
+               القواعد تمنع هذا على الخادم أيضاً، فلا يكفي حذفه من هنا. */
+            d = { role: "teacher", name: user.email, active: false, pending: true };
+            try {
+              await db.collection("users").doc(user.uid).set(
+                Object.assign({}, d, { uid: user.uid, createdAt: Date.now() }),
+                { merge: true });
+            } catch (e) { console.warn("pending profile failed:", e); }
+            showErr("حسابك بانتظار اعتماد الإدارة.");
+            try { await auth.signOut(); } catch (e) {}
+            routing = false; return;
+          }
+        } else {
+          d = snap.data() || {};
+        }
+        if (d.active === false) {
+          showErr("هذا الحساب موقوف. راجع الإدارة.");
+          await auth.signOut(); routing = false;
+          btn.disabled = false; btn.textContent = "دخول"; return;
+        }
+        const role = d.role;
+        /* أدوار الإدارة الأربعة: المدير، ومديرا المجمّع والمسجد، و«مشرف»
+           القديم. كانت البوابة تعرف دورين، فحسابٌ جديدٌ بدور «مدير مجمّع»
+           يُردّ بـ«دور المستخدم غير معرّف» وهو دورٌ صحيحٌ في النظام. */
+        var ADMIN_ROLES = ["admin", "owner", "supervisor", "complexManager", "mosqueManager"];
+        if (ADMIN_ROLES.indexOf(role) > -1) safeGo("/admin/dashboard.html", "تعذّر فتح لوحة الإدارة");
+        else if (role === "teacher" || role === "parent" || role === "student") safeGo("/index.html", "تعذّر فتح واجهتك");
+        else {
+          showErr("دور المستخدم غير معرّف. راجع الإدارة.");
+          await auth.signOut(); routing = false;
+          btn.disabled = false; btn.textContent = "دخول";
+        }
+      } catch (e) {
+        console.error(e); showErr("تعذّر تحميل بيانات الحساب."); routing = false;
+        btn.disabled = false; btn.textContent = "دخول";
+      }
+    }
+
+    /* استعادة كلمة المرور: رابط تعيين يُرسل إلى البريد.
+       ملاحظة: حسابات الدخول برقم الهوية بريدها اصطناعي ({id}@mirath.id)
+       ولا تصلها رسائل، فتُوجَّه إلى الإدارة بدل وعدٍ لا يتحقق. */
+    var forgot = document.getElementById("forgot");
+    if (forgot) forgot.addEventListener("click", async function (e) {
+      e.preventDefault();
+      hideErr();
+      var raw = (document.getElementById("email").value || "").trim();
+
+      /* حسابات رقم الهوية بريدها اصطناعي لا تصله رسائل، فتُستعاد برمز
+         جوال في reset.html بدل الإحالة إلى الإدارة. */
+      if (/^[0-9]{6,15}$/.test(raw)) {
+        location.href = "reset.html?id=" + encodeURIComponent(raw);
+        return;
+      }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(raw)) {
+        showErr("اكتب بريدك الإلكتروني في الخانة أعلاه ثم اضغط «نسيت كلمة المرور؟».");
+        return;
+      }
+      try {
+        await auth.sendPasswordResetEmail(raw);
+        errEl.textContent = "أُرسل رابط تعيين كلمة المرور إلى " + raw + ". تحقق من صندوق الوارد ومجلد الرسائل غير المرغوبة.";
+        errEl.style.background = "#e6f4ec";
+        errEl.style.color = "#136b39";
+        errEl.classList.add("show");
+      } catch (err) {
+        showErr(msgFor(err));
+      }
+    });
+
+    /* فتح صفحة الدخول مباشرةً نقطة بداية نظيفة */
+    try { if (!document.referrer) sessionStorage.removeItem("__nav"); } catch (e) {}
+
+    if (!auth) { showErr("خدمة المصادقة غير مهيّأة."); }
+    else {
+      // لو مسجّل دخول بالفعل، وجّهه مباشرة
+      auth.onAuthStateChanged((user) => { if (user) route(user); });
+
+      document.getElementById("loginForm").addEventListener("submit", async (e) => {
+        e.preventDefault(); hideErr();
+        const raw = document.getElementById("email").value.trim();
+        const pass = document.getElementById("pass").value;
+        btn.disabled = true; btn.textContent = "جارٍ الدخول…";
+        try {
+          /* الدخول برقم الهوية: نبحث عن البريد المرتبط به في users،
+             وإن لم يوجد نستعمل بريد الدخول الاصطناحي {id}@mirath.id */
+          let email = raw;
+          if (/^[0-9]{6,15}$/.test(raw)) {
+            email = raw + "@mirath.id";
+            try {
+              const db = firebase.firestore();
+              const snap = await db.collection("users").where("username", "==", raw).limit(1).get();
+              if (!snap.empty) {
+                const d = snap.docs[0].data() || {};
+                if (d.loginEmail) email = d.loginEmail;
+                else if (d.email && String(d.email).indexOf("@") > 0) email = d.email;
+                if (d.active === false) { showErr("الحساب موقوف. راجع الإدارة."); btn.disabled = false; btn.textContent = "دخول"; return; }
+              }
+            } catch (e) { /* بلا صلاحية قراءة؟ نكمل بالبريد الاصطناحي */ }
+          }
+          await auth.signInWithEmailAndPassword(email, pass);
+          // النجاح يتكفّل به onAuthStateChanged → route
+        } catch (err) {
+          showErr(msgFor(err));
+          btn.disabled = false; btn.textContent = "دخول";
+        }
+      });
+    }
+  })();
+  </script>
+</body>
+</html>

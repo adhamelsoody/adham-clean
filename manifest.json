@@ -1,0 +1,31 @@
+{
+  "name": "ذات القرآنية — نظام إدارة الحلقات",
+  "short_name": "ذات القرآنية",
+  "description": "نظام إدارة الحلقات القرآنية: التحضير والتسميع والخطط والتقارير",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f7f7",
+  "theme_color": "#004b50",
+  "categories": ["education", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "التحضير اليومي",
+      "short_name": "التحضير",
+      "url": "./admin/attendance.html"
+    },
+    {
+      "name": "التسميع",
+      "short_name": "التسميع",
+      "url": "./admin/recite.html"
+    }
+  ]
+}

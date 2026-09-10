@@ -1,0 +1,47 @@
+/* =========================================================================
+   kpi-settings.css — عتبات التقدير
+   ========================================================================= */
+.kpi-card {
+  background: var(--surface); border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg, 12px); padding: 16px; margin-bottom: 18px;
+}
+.kpi-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.kpi-head strong { display: block; font-size: 15px; }
+.kpi-head small { display: block; font-size: 11.5px; color: var(--text-faint, #8a97a1);
+                  margin-top: 3px; line-height: 1.7; max-width: 60ch; }
+.kpi-tag { flex: none; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px;
+           background: var(--brand-soft, #e8f4f3); color: var(--brand-dark, #004b50); }
+.kpi-tag.def { background: var(--border-soft); color: var(--text-faint, #8a97a1); }
+
+.kpi-fields { display: flex; flex-wrap: wrap; gap: 14px; margin: 16px 0 4px; }
+.kpi-f { flex: 1; min-width: 140px; }
+.kpi-f label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 5px; }
+.kpi-f small { display: block; font-size: 11px; color: var(--text-faint, #8a97a1); margin-top: 4px; }
+.kpi-in { display: flex; align-items: center; gap: 6px;
+          border: 1px solid var(--border-soft); border-radius: var(--r-sm, 10px);
+          padding: 0 11px; background: var(--surface); }
+.kpi-in input { flex: 1; border: 0; background: transparent; padding: 10px 0;
+                font: inherit; font-size: 15px; font-weight: 700; color: var(--text-main); }
+.kpi-in input:focus { outline: none; }
+.kpi-in:focus-within { border-color: var(--brand-main, #0b7f83);
+                       box-shadow: 0 0 0 3px var(--brand-soft, #e8f4f3); }
+.kpi-in span { font-size: 12px; color: var(--text-faint, #8a97a1); }
+
+.kpi-prev { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+            margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-soft); }
+.kpi-prev-t { font-size: 12px; color: var(--text-faint, #8a97a1); }
+.kpi-prev > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.kpi-chip { font-size: 11.5px; padding: 4px 10px; border-radius: 20px; white-space: nowrap; }
+.kpi-chip b { font-weight: 800; }
+.k-a { background: #e7f5ec; color: #17673c; }
+.k-b { background: #e8f1fb; color: #17457e; }
+.k-c { background: #fdf3e0; color: #8a5a12; }
+.k-d { background: #fdeeed; color: #a2322a; }
+
+[data-theme="dark"] .k-a { background: rgba(23,103,60,.24); color: #86d6a6; }
+[data-theme="dark"] .k-b { background: rgba(23,69,126,.24); color: #93bdf0; }
+[data-theme="dark"] .k-c { background: rgba(138,90,18,.24); color: #e8c07a; }
+[data-theme="dark"] .k-d { background: rgba(162,50,42,.24); color: #f0a49c; }
+
+.kpi-acts { display: flex; gap: 8px; margin-top: 16px; }
+@media (max-width: 620px) { .kpi-fields { gap: 10px; } .kpi-f { min-width: 100%; } }

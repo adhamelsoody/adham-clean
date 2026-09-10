@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>فتح حساب جديد — ذات القرآنية</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:26px 20px;
+       font-family:"Tajawal","Segoe UI",Tahoma,system-ui,sans-serif;background:#01343a;position:relative;overflow-x:hidden}
+  body::before{content:"";position:fixed;inset:0;z-index:0;background-color:#01282e;
+       background-image:url("login-bg.jpg");background-size:cover;background-position:center}
+  body::after{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;
+       background:radial-gradient(ellipse 62% 72% at 50% 50%,rgba(1,40,46,.34) 0%,rgba(1,40,46,.58) 100%)}
+
+  .card{position:relative;z-index:3;width:100%;max-width:560px;background:rgba(255,255,255,.975);
+        border-radius:22px;padding:34px 30px 28px;
+        box-shadow:0 30px 90px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.15);
+        animation:in .45s cubic-bezier(.16,1,.3,1)}
+  @keyframes in{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
+
+  .logo{width:70px;height:70px;border-radius:18px;object-fit:contain;background:#013330;padding:10px;
+        margin:0 auto 12px;display:block;box-shadow:0 6px 18px rgba(1,52,58,.28)}
+  h1{font-size:21px;color:#01343a;margin:0 0 4px;font-weight:800;text-align:center}
+  p.sub{font-size:12.5px;color:#607171;margin:0 0 22px;text-align:center}
+
+  .roles{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-bottom:20px}
+  .role{padding:13px 6px;border:1.5px solid #dde3e3;border-radius:13px;background:#fbfcfc;cursor:pointer;
+        text-align:center;font-family:inherit;font-size:14px;font-weight:700;color:#3b4e4f;transition:.18s}
+  .role:hover{border-color:#4bdee4}
+  .role.on{border-color:#4bdee4;background:#ecfcfd;color:#2bb7bc;box-shadow:0 0 0 3px #e6f3f2}
+  .role svg{display:block;margin:0 auto 6px;color:#4bdee4}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+  .f{text-align:right;margin-bottom:2px}
+  .f.full{grid-column:1/-1}
+  .f label{display:block;font-size:12.5px;color:#3b4e4f;margin-bottom:6px;font-weight:700}
+  .f label i{color:#c62f2f;font-style:normal}
+  .f input,.f select{width:100%;padding:12px 14px;font-size:14px;border:1.5px solid #dde3e3;border-radius:11px;
+        outline:none;background:#fbfcfc;font-family:inherit;transition:.18s}
+  .f input:focus,.f select:focus{border-color:#4bdee4;background:#fff;box-shadow:0 0 0 3px #e6f3f2}
+  .f input.bad{border-color:#c62f2f;background:#fdf4f4}
+  .hint{font-size:11.5px;color:#909fa0;margin-top:5px}
+
+  .btn{width:100%;padding:14px;font-size:15px;font-weight:700;color:#fff;background:#4bdee4;border:0;
+       border-radius:11px;cursor:pointer;margin-top:18px;font-family:inherit;
+       box-shadow:0 4px 14px rgba(11, 127, 131, 50,.3);transition:.18s}
+  .btn:hover{background:#2bb7bc}
+  .btn:disabled{opacity:.6;cursor:default}
+
+  .msg{font-size:13px;border-radius:11px;padding:12px 14px;margin-bottom:16px;display:none;text-align:right;line-height:1.7}
+  .msg.show{display:block}
+  .msg.err{background:#fbe7e7;color:#c62f2f}
+  .msg.ok{background:#e6f4ec;color:#116a6d}
+
+  .foot{margin-top:18px;font-size:13px;color:#607171;text-align:center}
+  .foot a{color:#4bdee4;font-weight:700;text-decoration:none}
+  .foot a:hover{text-decoration:underline}
+
+  .done{text-align:center;display:none}
+  .done.show{display:block}
+  .done .tick{width:66px;height:66px;border-radius:50%;background:#e6f4ec;color:#168a45;display:grid;
+       place-items:center;margin:0 auto 16px}
+  .done h2{font-size:19px;color:#01343a;margin:0 0 10px}
+  .done p{color:#607171;font-size:14px;margin:0 0 8px;line-height:1.8}
+
+  @media (max-width:560px){ .grid{grid-template-columns:1fr} .roles{grid-template-columns:repeat(2,1fr)} }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <img src="logo-mark.svg" alt="" class="logo" onerror="this.style.display='none'">
+
+  <div id="formWrap">
+    <h1>فتح حساب جديد</h1>
+    <p class="sub">املأ بياناتك، ويُفعَّل حسابك بعد اعتماد إدارة النظام</p>
+
+    <div class="msg" id="msg"></div>
+
+    <label style="display:block;font-size:12.5px;color:#3b4e4f;margin-bottom:8px;font-weight:700">الصفة <i style="color:#c62f2f">*</i></label>
+    <div class="roles" id="roles">
+      <button type="button" class="role on" data-role="student">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/></svg>
+        طالب
+      </button>
+      <button type="button" class="role" data-role="teacher">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2Zm0 0a2 2 0 0 1 2-2h13"/></svg>
+        معلم
+      </button>
+      <button type="button" class="role" data-role="parent">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>
+        ولي أمر
+      </button>
+      <button type="button" class="role" data-role="supervisor">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6Z"/><path d="M9 12l2 2 4-4"/></svg>
+        مشرف
+      </button>
+      <button type="button" class="role" data-role="mosqueManager">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.7 1.7 2.6 3 2.6 4.4S13.4 8.9 12 10c-1.4-1.1-2.6-2.2-2.6-3.6S10.3 3.7 12 2Z"/><path d="M6 21V11.6C6 8.5 8.7 6 12 6s6 2.5 6 5.6V21"/><path d="M3 21V13M21 21v-8M3 21h18M10 21v-3a2 2 0 0 1 4 0v3"/></svg>
+        مدير مسجد
+      </button>
+      <button type="button" class="role" data-role="complexManager">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 5-9 5-9-5 9-5Z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg>
+        مدير مجمع
+      </button>
+    </div>
+
+    <!-- =====================================================================
+         أبناء وليّ الأمر
+         ---------------------------------------------------------------------
+         الحساب لا ينفع بلا ربطٍ بأبنائه: يدخل ولا يجد شيئاً. فيُسألُ عنهم
+         عند التسجيل، ويُعتمد الربطُ من الإدارة قبل الفتح.
+
+         والاسمُ وحدَه يلتبس — كم «محمد أحمد» في مسجد؟ — فيُطلب معه رقمُ
+         الهوية إن عرفه، ويكفي الاسمُ إن لم يعرفه فتُرجّح الإدارة.
+         ===================================================================== -->
+    <div id="kidsBox" style="display:none;margin-bottom:18px">
+      <label style="display:block;font-size:12.5px;color:#3b4e4f;margin-bottom:8px;font-weight:700">
+        أبناؤك في الحلقات <i style="color:#c62f2f">*</i></label>
+
+      <div id="kidsList"></div>
+
+      <button type="button" id="addKid"
+        style="margin-top:8px;padding:9px 16px;border-radius:10px;border:1px dashed #b9c9c9;
+               background:#f6f9f9;color:#0b7f83;font:inherit;font-size:13px;
+               font-weight:700;cursor:pointer">+ إضافة ابن آخر</button>
+
+      <div class="hint" style="margin-top:8px">
+        اكتب اسم ابنك كما هو مسجَّلٌ في الحلقة. ورقمُ الهوية يُسرّع الربط،
+        وإن لم تعرفه فاتركه — تُرجّحه الإدارة بالاسم والحلقة.
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="f full">
+        <label for="name">الاسم بالكامل <i>*</i></label>
+        <input id="name" placeholder="مثال: محمد أحمد السالم" autocomplete="name">
+        <div class="hint">الاسم الأول واسم الأب واسم العائلة على الأقل</div>
+      </div>
+      <div class="f">
+        <label for="phone">رقم الجوال <i>*</i></label>
+        <input id="phone" dir="ltr" placeholder="05XXXXXXXX" inputmode="tel" autocomplete="tel">
+      </div>
+      <div class="f">
+        <label for="email">البريد الإلكتروني <i>*</i></label>
+        <input id="email" type="email" dir="ltr" placeholder="name@example.com" autocomplete="email">
+      </div>
+      <div class="f">
+        <label for="nat">الجنسية <i>*</i></label>
+        <select id="nat">
+          <option>المملكة العربية السعودية</option>
+          <option>مصر</option><option>اليمن</option><option>سوريا</option>
+          <option>الأردن</option><option>فلسطين</option><option>السودان</option>
+          <option>الجزائر</option><option>المغرب</option><option>تونس</option>
+          <option>ليبيا</option><option>العراق</option><option>لبنان</option>
+          <option>الكويت</option><option>الإمارات</option><option>قطر</option>
+          <option>البحرين</option><option>عُمان</option><option>موريتانيا</option>
+          <option>الصومال</option><option>جزر القمر</option><option>جيبوتي</option>
+          <option value="أخرى">أخرى</option>
+        </select>
+      </div>
+      <div class="f">
+        <label for="gender">الجنس <i>*</i></label>
+        <select id="gender">
+          <option value="ذكر">ذكر</option>
+          <option value="أنثى">أنثى</option>
+        </select>
+      </div>
+
+      <div class="f">
+        <label for="pass">كلمة المرور <i>*</i></label>
+        <input id="pass" type="password" dir="ltr" placeholder="********" autocomplete="new-password">
+        <div class="hint">٨ أحرف على الأقل</div>
+      </div>
+      <div class="f">
+        <label for="pass2">تأكيد كلمة المرور <i>*</i></label>
+        <input id="pass2" type="password" dir="ltr" placeholder="********" autocomplete="new-password">
+      </div>
+    </div>
+
+    <button class="btn" id="go">إرسال الطلب</button>
+
+    <div class="foot">لديك حساب بالفعل؟ <a href="/login.html">تسجيل الدخول</a></div>
+    <div class="foot" style="margin-top:6px"><a href="/login.html">العودة لتسجيل الدخول</a></div>
+  </div>
+
+  <div class="done" id="done">
+    <div class="tick"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+    <h2>وصل طلبك بنجاح</h2>
+    <p>حسابك <strong id="doneMail"></strong> أُنشئ وهو الآن <strong>بانتظار اعتماد الإدارة</strong>.</p>
+    <p>ستتمكن من الدخول فور اعتماد الطلب وربط حسابك بمسجدك أو حلقتك.</p>
+    <a class="btn" href="/login.html" style="display:block;text-align:center;text-decoration:none;margin-top:20px">الذهاب لتسجيل الدخول</a>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="firebase-config.js?v=202609092048"></script>
+<script>
+(function () {
+  "use strict";
+  var auth = window.__auth, db = window.__db;
+  var msg = document.getElementById("msg");
+  var btn = document.getElementById("go");
+  var role = "student";
+
+  /* اختيار الصفة */
+  document.querySelectorAll("#roles .role").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll("#roles .role").forEach(function (x) { x.classList.remove("on"); });
+      b.classList.add("on");
+      role = b.dataset.role;
+      toggleKids();
+    });
+  });
+
+  /* ====================================================================
+     صفوف الأبناء
+     -------------------------------------------------------------------- */
+  var kidsBox  = document.getElementById("kidsBox");
+  var kidsList = document.getElementById("kidsList");
+
+  function toggleKids() {
+    kidsBox.style.display = (role === "parent") ? "" : "none";
+    if (role === "parent" && !kidsList.children.length) addKidRow();
+  }
+
+  function addKidRow() {
+    /* خمسةٌ حدٌّ معقول: من زاد راجع الإدارة */
+    if (kidsList.children.length >= 5) return;
+
+    var i = kidsList.children.length;
+    var row = document.createElement("div");
+    row.className = "kid-row";
+    row.style.cssText = "display:grid;grid-template-columns:1fr 150px 40px;gap:8px;" +
+                        "margin-bottom:8px;align-items:start";
+    row.innerHTML =
+      '<input class="kidName" placeholder="اسم الابن كما في الحلقة" ' +
+        'style="width:100%;padding:12px 14px;border:1px solid #dde5e5;border-radius:11px;' +
+        'font:inherit;font-size:14px">' +
+      '<input class="kidId" placeholder="رقم الهوية" inputmode="numeric" maxlength="10" dir="ltr" ' +
+        'style="width:100%;padding:12px 14px;border:1px solid #dde5e5;border-radius:11px;' +
+        'font:inherit;font-size:14px" ' +
+        'oninput="this.value=this.value.replace(/[^0-9]/g,\'\')">' +
+      (i === 0 ? '<span></span>'
+               : '<button type="button" class="rmKid" title="حذف" ' +
+                 'style="width:40px;height:44px;border:1px solid #f0d6d6;border-radius:11px;' +
+                 'background:#fdf3f3;color:#c62f2f;font:inherit;font-size:18px;cursor:pointer">×</button>');
+
+    var rm = row.querySelector(".rmKid");
+    if (rm) rm.addEventListener("click", function () { row.remove(); });
+
+    kidsList.appendChild(row);
+  }
+
+  document.getElementById("addKid").addEventListener("click", addKidRow);
+  toggleKids();
+
+  /* ما أُدخل من أبناء — يُنقّى من الفارغ */
+  function readKids() {
+    var out = [];
+    kidsList.querySelectorAll(".kid-row").forEach(function (r) {
+      var nm = (r.querySelector(".kidName").value || "").trim();
+      var id = (r.querySelector(".kidId").value || "").trim();
+      if (nm) out.push({ name: nm, idNo: id });
+    });
+    return out;
+  }
+
+  function show(text, kind) {
+    msg.innerHTML = text;
+    msg.className = "msg show " + (kind || "err");
+    msg.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function hide() { msg.className = "msg"; }
+  function v(id) { return (document.getElementById(id).value || "").trim(); }
+  function bad(id, on) { document.getElementById(id).classList.toggle("bad", !!on); }
+
+  /* التحقق قبل الإرسال — الرسائل تشير إلى الحقل بعينه لا رسالة عامة */
+  function validate() {
+    ["name","phone","email","nat","gender","pass","pass2"].forEach(function (i) { bad(i, false); });
+
+    var name = v("name");
+    var parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length < 3) { bad("name", 1); return "الاسم بالكامل مطلوب — الاسم الأول واسم الأب واسم العائلة على الأقل."; }
+    if (name.length < 6) { bad("name", 1); return "الاسم قصير جداً — تأكد من كتابته كاملاً."; }
+
+    var phone = v("phone").replace(/[\s-]/g, "");
+    if (!/^\+?[0-9]{9,15}$/.test(phone)) { bad("phone", 1); return "رقم الجوال غير صحيح."; }
+
+    var email = v("email");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) { bad("email", 1); return "صيغة البريد الإلكتروني غير صحيحة."; }
+
+    if (!v("nat")) { bad("nat", 1); return "اختر الجنسية."; }
+
+    /* وليُّ الأمر بلا أبناء: حسابٌ لا يفتح على شيء */
+    if (role === "parent") {
+      var kids = readKids();
+      if (!kids.length) return "اكتب اسم ابنٍ واحدٍ على الأقلّ لنربط حسابك به.";
+      for (var k = 0; k < kids.length; k++) {
+        if (kids[k].name.split(/\s+/).filter(Boolean).length < 2) {
+          return "اسم الابن «" + kids[k].name + "» ناقص — اكتبه ثنائياً على الأقلّ.";
+        }
+        if (kids[k].idNo && kids[k].idNo.length !== 10) {
+          return "رقم هوية «" + kids[k].name + "» يجب أن يكون عشرة أرقام، أو اتركه فارغاً.";
+        }
+      }
+    }
+
+    var p1 = v("pass"), p2 = v("pass2");
+    if (p1.length < 8) { bad("pass", 1); return "كلمة المرور يجب أن تكون ٨ أحرف على الأقل."; }
+    if (p1 !== p2) { bad("pass2", 1); return "كلمتا المرور غير متطابقتين."; }
+    return "";
+  }
+
+  function reason(e) {
+    var c = (e && e.code) || "";
+    if (c.indexOf("email-already-in-use") > -1) return "هذا البريد مسجَّل بالفعل. جرّب تسجيل الدخول أو استعادة كلمة المرور.";
+    if (c.indexOf("invalid-email") > -1) return "صيغة البريد غير صحيحة.";
+    if (c.indexOf("weak-password") > -1) return "كلمة المرور ضعيفة — اجعلها أطول.";
+    if (c.indexOf("network") > -1) return "تعذّر الاتصال بالشبكة. تحقق من اتصالك وحاول مجدداً.";
+    if (c.indexOf("permission-denied") > -1) return "أُنشئ حساب الدخول لكن تعذّر حفظ بياناتك. راجع إدارة النظام.";
+    return "تعذّر إرسال الطلب. حاول مجدداً.";
+  }
+
+  btn.addEventListener("click", async function () {
+    hide();
+    if (!auth || !db) { show("خدمة المصادقة غير مهيّأة. راجع إدارة النظام."); return; }
+
+    var err = validate();
+    if (err) { show(err); return; }
+
+    var name   = v("name");
+    var phone  = v("phone").replace(/[\s-]/g, "");
+    var email  = v("email");
+    var pass   = v("pass");
+    var nat    = v("nat") || "المملكة العربية السعودية";
+    var gender = v("gender") || "ذكر";
+
+    btn.disabled = true; btn.textContent = "جارٍ الإرسال…";
+
+    try {
+      var cred = await auth.createUserWithEmailAndPassword(email, pass);
+      var uid = cred.user.uid;
+
+      /* قواعد Firestore تسمح بالإنشاء الذاتي بشرط active=false ودور غير إداري.
+         لذلك يُكتب دورُ الإدارة كطلبٍ في requestedRole ويبقى الدور الفعلي student
+         حتى تعتمده الإدارة وترفعه — فلا تُمنح صلاحية إشراف بالتسجيل الذاتي. */
+      /* selfRoles في القواعد = teacher · parent · student. أما مديرُ المسجد ومديرُ المجمّع فيُطلبان
+         ولا يُمنح: يُكتب الدور student ويُحفظ الطلب في requestedRole لترفعه
+         الإدارة عند الاعتماد، فلا تُنال صلاحية إشراف بتسجيل ذاتي. */
+      var selfRole = (role === "mosqueManager" || role === "complexManager" || role === "supervisor") ? "student" : role;
+
+      await db.collection("users").doc(uid).set({
+        uid: uid,
+        name: name,
+        phone: phone,
+        email: email,
+        loginEmail: email,
+        nationality: nat,
+        gender: gender,
+        role: selfRole,
+        requestedRole: role,
+        active: false,
+        pending: true,
+        selfSignup: true,
+        createdAt: Date.now()
+      }, { merge: true });
+
+      /* الأبناء المطلوب ربطهم: تُقرأ في شاشة اعتماد المستخدمين، وتُربط
+         الإدارةُ كلَّ اسمٍ بطالبه ثمّ تفتح الحساب. */
+      if (role === "parent") {
+        var kidsReq = readKids();
+        if (kidsReq.length) {
+          await db.collection("users").doc(uid).set({
+            kidsRequested: kidsReq,
+            studentIds: []
+          }, { merge: true });
+        }
+      }
+
+      /* لا يُترك مسجّلاً دخولاً: الحساب موقوف ولا فائدة من الجلسة */
+      try { await auth.signOut(); } catch (e) {}
+
+      document.getElementById("doneMail").textContent = email;
+      document.getElementById("formWrap").style.display = "none";
+      document.getElementById("done").classList.add("show");
+
+    } catch (e) {
+      console.warn("signup:", e);
+      show(reason(e));
+      btn.disabled = false; btn.textContent = "إرسال الطلب";
+    }
+  });
+
+  /* Enter يرسل الطلب */
+  document.querySelectorAll(".f input, .f select").forEach(function (i) {
+    i.addEventListener("keydown", function (e) { if (e.key === "Enter") btn.click(); });
+  });
+})();
+</script>
+</body>
+</html>

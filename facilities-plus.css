@@ -1,0 +1,63 @@
+/* =========================================================================
+   facilities-plus.css — تبويبا المجمعات والمساجد
+   ========================================================================= */
+.fx-tabs {
+  display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 14px;
+}
+.fx-tab {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm, 10px); background: var(--surface);
+  color: var(--text-faint, #8a97a1); font: inherit; font-size: 13.5px;
+  font-weight: 600; cursor: pointer; transition: .16s;
+}
+.fx-tab:hover { border-color: var(--brand-main, #0b7f83); color: var(--text-main); }
+.fx-tab.on {
+  background: linear-gradient(140deg, #0b7f83, #04525a);
+  border-color: transparent; color: #fff;
+}
+.fx-tab b {
+  min-width: 22px; padding: 1px 7px; border-radius: 20px;
+  background: var(--border-soft); color: var(--text-faint, #8a97a1);
+  font-size: 11.5px; font-weight: 800;
+}
+.fx-tab.on b { background: rgba(255, 255, 255, .22); color: #fff; }
+.fx-tab:focus-visible { outline: 2px solid var(--brand-dark, #004b50); outline-offset: 2px; }
+
+@media (max-width: 520px) {
+  .fx-tabs { display: grid; grid-template-columns: 1fr 1fr; }
+  .fx-tab { justify-content: center; }
+}
+
+/* نافذة اختيار نوع المنشأة */
+.fx-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fx-pick-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 22px 14px; border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg, 12px); background: var(--surface);
+  color: var(--text-main); font: inherit; cursor: pointer; text-align: center;
+  transition: .16s;
+}
+.fx-pick-btn:hover {
+  border-color: var(--brand-main, #0b7f83);
+  background: var(--brand-soft, #e8f4f3);
+  transform: translateY(-2px);
+}
+.fx-pick-btn svg { color: var(--brand-main, #0b7f83); }
+.fx-pick-btn strong { font-size: 14.5px; }
+.fx-pick-btn small { font-size: 11.5px; color: var(--text-faint, #8a97a1); line-height: 1.6; }
+.fx-pick-btn:focus-visible { outline: 2px solid var(--brand-dark, #004b50); outline-offset: 2px; }
+
+@media (max-width: 480px) { .fx-pick { grid-template-columns: 1fr; } }
+
+/* لا نتائج للفرز */
+.fx-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 46px 20px; text-align: center;
+  background: var(--surface); border: 1px dashed var(--border-soft);
+  border-radius: var(--r-lg, 12px);
+}
+.fx-empty svg { color: var(--text-faint, #8a97a1); opacity: .55; }
+.fx-empty strong { font-size: 15px; }
+.fx-empty span { font-size: 12.5px; color: var(--text-faint, #8a97a1); }
+.fx-empty .btn { margin-top: 6px; }

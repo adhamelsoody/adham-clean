@@ -1,0 +1,100 @@
+{
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/node_modules/**",
+      "**/.git/**",
+      "**/.firebase/**",
+      "**/.vscode/**",
+      "**/*.rar",
+      "**/*.zip",
+      "firestore.rules",
+      "firestore.rules.recommended",
+      "firestore.rules.backup-open",
+      "firestore.indexes.json",
+      "storage.rules",
+      ".firebaserc",
+      "CLAUDE.md",
+      "README.md",
+      "dev.js",
+      "WORKFLOW.md",
+      "start.sh",
+      "deploy.sh",
+      "verify.js",
+      "bump.js",
+      "update.js",
+      "update.sh",
+      "start.sh",
+      "deploy.sh",
+      "*.bat",
+      "**/*.bat",
+      "ابدأ-هنا.html",
+      "migrate-ids.html",
+      "GAP-ANALYSIS.md"
+    ],
+    "headers": [
+      {
+        "comment": "الصور تُخزَّن سنةً: كانت خمس دقائق فتُحمَّل ٣٦٠ كيلو في كلّ فتحة. وأسماؤها تتغيّر عند تبديلها، فلا يبقى القديم.",
+        "source": "**/*.@(png|svg|ico|jpg|jpeg|webp)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "/quran/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "/version.json",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          }
+        ]
+      },
+      {
+        "comment": "عامل الخدمة لا يُخزَّن: القاعدة العامة للـ js تحفظه سنة، فلا يصل أي تحديث للنظام أبداً. ويسبق تلك القاعدة لأن الأولى مطابقةً تفوز.",
+        "source": "/sw.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "comment": "كان تخزيناً لسنة (immutable)، فكان كلُّ تعديل في app.js أو styles.css يستلزم تغيير ?v= في كلّ صفحة تستدعيه — تسعةَ عشرَ ملفاً لتعديلٍ في ملفٍ واحد. والآن يسأل المتصفحُ الخادمَ عند كلّ فتحة: إن لم يتغيّر الملف ردَّ 304 بلا تحميل، وإن تغيّر نزل الجديد فوراً. الكلفة طلبٌ صغير، والعائد أن التعديل يصل بلا ترقيم.",
+        "source": "**/*.@(js|css)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "**/*.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, must-revalidate"
+          }
+        ]
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

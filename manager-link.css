@@ -1,0 +1,33 @@
+/* =========================================================================
+   manager-link.css — اسم المدير رابط
+   ========================================================================= */
+.mg-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 6px; margin: -2px -6px;
+  border: 0; border-radius: 7px; background: transparent;
+  color: inherit; font: inherit; cursor: pointer;
+  text-align: start; transition: .14s;
+}
+.mg-link svg { opacity: 0; transition: opacity .14s; flex: none; }
+.mg-link:hover {
+  background: var(--brand-soft, #e8f4f3);
+  color: var(--brand-dark, #004b50);
+}
+.mg-link:hover svg { opacity: .75; }
+.mg-link:focus-visible { outline: 2px solid var(--brand-main, #0b7f83); outline-offset: 1px; }
+
+/* اسم بلا سجل مرتبط */
+.mg-link.ghost { color: #8a5a12; }
+.mg-link.ghost:hover { background: #fdf3e0; color: #6d4610; }
+.mg-link.ghost svg { opacity: .6; }
+
+/* لم يُعيَّن مدير */
+.mg-link.empty { color: var(--text-faint, #8a97a1); font-size: 12.5px; }
+.mg-link.empty span {
+  padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 700;
+  background: var(--brand-soft, #e8f4f3); color: var(--brand-dark, #004b50);
+}
+.mg-link.empty:hover { background: transparent; }
+
+[data-theme="dark"] .mg-link.ghost { color: #e8c07a; }
+[data-theme="dark"] .mg-link.ghost:hover { background: rgba(138, 90, 18, .2); color: #f0d5a5; }

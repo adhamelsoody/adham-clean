@@ -1,0 +1,57 @@
+/* =========================================================================
+   duty-plus.css — بطاقة الحضور وتقرير الخصومات
+   ========================================================================= */
+.dp-card {
+  display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between;
+  background: var(--surface); border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg, 12px); padding: 16px 18px; margin-bottom: 18px;
+  position: relative; overflow: hidden;
+}
+.dp-card::before {
+  content: ""; position: absolute; inset-inline-start: 0; inset-block: 0;
+  width: 4px; background: linear-gradient(180deg, #0b7f83, #04525a);
+}
+.dp-l { flex: 1; min-width: 220px; }
+.dp-t strong { font-size: 15px; }
+.dp-t small { display: block; font-size: 11.5px; color: var(--text-faint, #8a97a1); margin-top: 3px; }
+.dp-s { margin-top: 8px; font-size: 13.5px; font-weight: 600; }
+.dp-late { margin-top: 5px; font-size: 12px; color: #b3261e; font-weight: 600; }
+
+.dp-b { display: flex; gap: 8px; }
+.dp-b button {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 11px 20px; border: 0; border-radius: var(--r-sm, 10px);
+  font: inherit; font-size: 14px; font-weight: 700; color: #fff; cursor: pointer;
+  transition: transform .15s, filter .15s;
+}
+.dp-in  { background: linear-gradient(140deg, #1c8a4e, #10633a); }
+.dp-out { background: linear-gradient(140deg, #b8763a, #8a5423); }
+.dp-b button:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.07); }
+.dp-b button:disabled { opacity: .42; cursor: default; }
+.dp-b button:focus-visible { outline: 2px solid var(--brand-dark, #004b50); outline-offset: 2px; }
+
+.dp-tot {
+  font-size: 12.5px; font-weight: 700; color: #b3261e;
+  background: #fdeeed; padding: 6px 12px; border-radius: 20px;
+}
+[data-theme="dark"] .dp-tot { background: rgba(179,38,30,.18); color: #f0a49c; }
+
+@media (max-width: 620px) {
+  .dp-card { flex-direction: column; align-items: stretch; }
+  .dp-b { display: grid; grid-template-columns: 1fr 1fr; }
+  .dp-b button { justify-content: center; }
+}
+
+/* حالات الاستئذان */
+.dp-ex { background: linear-gradient(140deg, #3b6ea8, #26507e); }
+.dp-pend { margin-top: 5px; font-size: 12px; color: #8a5a12; font-weight: 600; }
+.dp-okx  { margin-top: 5px; font-size: 12px; color: #17673c; font-weight: 600; }
+.dp-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: #e0a020; margin-inline-start: 5px; vertical-align: middle;
+}
+[data-theme="dark"] .dp-pend { color: #e8c07a; }
+[data-theme="dark"] .dp-okx  { color: #86d6a6; }
+
+.dp-card.dp-warn::before { background: linear-gradient(180deg, #d9a441, #a8781f); }
+.dp-card.dp-warn .dp-s { font-size: 12.5px; font-weight: 500; color: var(--text-faint, #8a97a1); }
