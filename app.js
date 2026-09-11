@@ -13661,15 +13661,17 @@ function repeatNext(plan, lastAsg) {
   if (!lastAsg.surahEnd) return null;          /* لم يبلغ آخر السورة بعد */
 
   if (cfg.mode === "surah") {
+    /* «عدد المرات» عددُ الإعادات بعد الختمة الأولى: الختمةُ الأولى تُحصى
+       في surahRounds، فكان «مرّة واحدة» يُطابق الحدَّ فوراً ولا يُعاد شيء. */
     const done = surahRounds(plan.studentId, lastAsg.toS);
-    if (done >= cfg.times) return null;        /* أتمّ تكرارها: يتجاوز */
+    if (done > cfg.times) return null;         /* أتمّ تكرارها: يتجاوز */
 
     /* يعود إلى مبتدأ السورة بحسب الاتجاه: التصاعديّ إلى أوّلها، والتنازليّ
        إلى آخرها — والصفر علامةُ أن رقم الآية يُجلب من جدول المصحف. */
     const back = dirOf(plan.direction) === "backward";
     return { s: Number(lastAsg.toS), a: back ? 0 : 1, repeat: true,
-             round: done + 1, of: cfg.times,
-             note: "إعادة " + toArabicDigits(done + 1) + " من " + toArabicDigits(cfg.times) };
+             round: done, of: cfg.times,
+             note: "إعادة " + toArabicDigits(done) + " من " + toArabicDigits(cfg.times) };
   }
 
   if (cfg.mode === "level") {
@@ -13683,7 +13685,7 @@ function repeatNext(plan, lastAsg) {
     if (_end && _end.a && Number(lastAsg.toA) && Number(lastAsg.toA) < _end.a) return null;
 
     const done = levelRounds(plan);
-    if (done >= cfg.times) return null;
+    if (done > cfg.times) return null;         /* الختمةُ الأولى ليست إعادة */
 
     /* مبتدأ المستوى بحسب الاتجاه: التنازليّ يعود من آخر سورةٍ فيه */
     const backLv = dirOf(plan.direction) === "backward";
@@ -13695,8 +13697,8 @@ function repeatNext(plan, lastAsg) {
     const _st = lvStartPos(lv);
     const startA = backLv ? 0 : ((_st && _st.a) || 1);
     return { s: startS, a: startA, repeat: true,
-             round: done + 1, of: cfg.times,
-             note: "إعادة المستوى " + toArabicDigits(done + 1) + " من " + toArabicDigits(cfg.times) };
+             round: done, of: cfg.times,
+             note: "إعادة المستوى " + toArabicDigits(done) + " من " + toArabicDigits(cfg.times) };
   }
 
   return null;
@@ -13712,8 +13714,9 @@ function repeatState(plan) {
                  String(a.kind).indexOf("hifz") === 0 && a.status === "done" && a.toS)
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
 
-  const cur_ = cfg.mode === "level" ? levelRounds(plan)
-             : (last ? surahRounds(plan.studentId, last.toS) : 0);
+  /* الختماتُ تشمل الأولى، والمعروضُ عددُ الإعادات بعدها — كما في repeatNext */
+  const cur_ = Math.max(0, (cfg.mode === "level" ? levelRounds(plan)
+             : (last ? surahRounds(plan.studentId, last.toS) : 0)) - 1);
 
   return {
     mode: cfg.mode, times: cfg.times, done: cur_,
@@ -14013,7 +14016,10 @@ window.asgClose = function (asgIdStr, score, recitationId) {
   }
 
   const cfg = planEngineCfg();
-  const sc = Number(score);
+  /* بلا تقييم (null أو فراغ) لا يُحسب صفراً: Number(null) = 0 كان يُسقط
+     الواجبَ «راسباً» حين يُغلق بجلساتٍ لم يُرصد لها تقييم — والتقييمُ فيها
+     اختياريّ في نموذجها. */
+  const sc = (score == null || score === "") ? NaN : Number(score);
   a.score = isFinite(sc) ? sc : null;
   a.recitationId = recitationId || "";
   a.closedAt = Date.now();
@@ -21462,9 +21468,9 @@ window.tmsgSend = function () {
 };
 
 function teacherDashboard() {
-  const students = cur("students");
+  const students = inWorkCircle(cur("students"));
   const circles  = cur("circles");
-  const map      = attMap(todayISO());
+  const map      = attMap(todayISO(), attCircle());
   const total    = students.length;
 
   const n   = s => students.filter(x => (map[String(x.id)] || {}).status === s).length;
@@ -21572,8 +21578,8 @@ function teacherDashboard() {
 }
 
 function teacherToday() {
-  const map = attMap(todayISO());
-  const cards = cur("students").map(s => {
+  const map = attMap(todayISO(), attCircle());
+  const cards = inWorkCircle(cur("students")).map(s => {
     const rec = map[String(s.id)];
     const badge = rec
       ? `<span class="chip ${ATT_TINT[rec.status] || ""}">${esc(rec.status)}</span>`
@@ -21595,6 +21601,7 @@ function teacherToday() {
   }).join("");
   return `<div class="page">
     ${pageHead("حلقة اليوم", "بطاقات طلاب حلقاتك لجلسة اليوم")}
+    ${workCircleBar(true)}
     ${cards ? `<div class="grid g-3 stagger">${cards}</div>`
             : `<div class="card">${emptyState("لا يوجد طلاب", "راجع الإدارة لإسناد حلقة لحسابك.")}</div>`}
   </div>`;
@@ -21705,12 +21712,7 @@ function teacherAttendance() {
     return [...set.entries()];
   })();
 
-  const circleBar = myCirc.length > 1 ? `<div class="amount-preview" style="margin-bottom:10px">
-    <button class="chip${attCircle() ? "" : " day-on"}"
-      style="border:none" onclick="window.attCircleSet('')">كل الحلقات</button>
-    ${myCirc.map(([cid, nm]) => `<button class="chip${attCircle() === cid ? " day-on" : ""}"
-      style="border:none" onclick="window.attCircleSet('${jsAttr(cid)}')">${esc(nm)}</button>`).join("")}
-  </div>` : "";
+  const circleBar = myCirc.length > 1 ? workCircleBar(true) : "";
 
   /* بحلقةٍ مختارة: طلابُها وحدَهم — ومنهم من له حلقةٌ أخرى */
   if (attCircle()) {
@@ -22188,12 +22190,15 @@ function reciteSave() {
   const nm = id => (QSURAHS ? (QSURAHS.find(x => x.i === Number(id)) || {}).n || "" : "");
   const u = (STATE && STATE.user) || {};
 
+  /* حلقةُ الجلسة: المختارةُ إن كان الطالب فيها — تسميعُ العصر لا يُنسب للفجر */
+  const rCid = recCircleOf(st, attCircle());
+  const rCirc = (cur("circles") || []).find(x => String(x.id) === String(rCid));
   const rec = {
     id: "r" + Date.now(),
     date: attDate(),
     studentId: String(st.id), student: st.name || "",
-    circleId: st.circleId != null ? String(st.circleId) : "",
-    circle: st.circle || "",
+    circleId: rCid,
+    circle: (rCirc && rCirc.name) || st.circle || "",
     complexId: st.complexId != null ? st.complexId : STATE.complexId,
     kind:  val("#r_kind", "حفظ"),
     fromS: fS, fromA: fA, toS: tS, toA: tA,
@@ -22805,10 +22810,73 @@ function toArabicDigits(n) {
   return String(n).replace(/[0-9]/g, c => d[Number(c)]);
 }
 
+/* =========================================================================
+   موضعُ البدء لحظيّاً بين الفترات
+   -------------------------------------------------------------------------
+   المواصفات: «إذا حضر الطالب فترة الفجر وسمّع الوجه الأول، يقرأ النظام هذا
+   الإنجاز فوراً، وعند فتح شاشته في العصر — المعلّمُ نفسُه أو غيرُه — يبدأ
+   من الوجه الثاني مباشرة دون تداخلٍ أو تكرار». كان النموذجُ يبدأ من الفاتحة
+   آية ١ في كلّ مرّة، فيُدخل المعلّمُ الموضعَ بيده ويُحتمل أن يُعاد ما سُمّع.
+   الخطةُ واحدة: يُقرأ تسميعُ اليوم من الحلقات كلّها لا من حلقة الجلسة.
+   ========================================================================= */
+const RECITE_KIND_KEY = { "حفظ": "hifz", "تثبيت": "fix", "مراجعة": "rev", "تلاوة": "tilawah" };
+
+function reciteNorm(pos, dir) {
+  if (!pos || !pos.s) return null;
+  const list = typeof QSURAHS !== "undefined" && QSURAHS ? QSURAHS : null;
+  const cnt = s2 => { const x = list && list.find(q => q.i === Number(s2)); return x ? Number(x.a) : 0; };
+  let s2 = Number(pos.s), a2 = Number(pos.a) || 0;
+  if (dirOf(dir) === "backward") {
+    if (!a2) a2 = cnt(s2) || 1;
+  } else if (cnt(s2) && a2 > cnt(s2)) {
+    if (s2 >= 114) return { s: 114, a: cnt(114) };
+    s2 += 1; a2 = 1;
+  }
+  return { s: s2, a: Math.max(1, a2) };
+}
+
+function reciteNextFrom(sid, kindAr) {
+  if (!sid) return null;
+  const hk = RECITE_KIND_KEY[kindAr] || "";
+  const d = attDate();
+  let asg = hk ? (asgFind(d, sid, hk) || asgFind(d, sid, hk + "_makeup")) : null;
+  /* واجبُ اليوم لم يُحفظ بعد (يُحفظ عند أوّل عرضٍ لبطاقته): يُقرأ من المولّد */
+  if (!asg && hk) {
+    try { asg = (generateAssignments(sid, d) || []).find(x => x && x.kind === hk) || null; } catch (e) { asg = null; }
+  }
+  const plan = (cur("plans") || []).find(p => String(p.studentId) === String(sid));
+  const dir = (asg && asg.direction) || (plan && plan.direction) || "forward";
+  const mine = (cur("recitations") || [])
+    .filter(r => String(r.studentId) === String(sid) && String(r.kind) === String(kindAr) && r.toS)
+    .sort((x, y) => (String(x.date) + String(x.ts || 0)).localeCompare(String(y.date) + String(y.ts || 0)));
+
+  /* سُمّع منه اليوم في فترةٍ سابقة: يبدأ بعده */
+  const today = mine.filter(r => String(r.date) === d);
+  if (today.length) {
+    const l = today[today.length - 1];
+    return reciteNorm(stepFrom(l.toS, l.toA, dir), dir);
+  }
+  /* واجبُ اليوم: من بدايته */
+  if (asg && asg.fromS) return { s: Number(asg.fromS), a: Number(asg.fromA) || 1 };
+  /* وإلا فبعد آخر تسميعٍ من نوعه */
+  if (mine.length) {
+    const l = mine[mine.length - 1];
+    return reciteNorm(stepFrom(l.toS, l.toA, dir), dir);
+  }
+  return null;
+}
+
+window.reciteStudentPick = function (sid) {
+  const f = reciteForm();
+  f.lastStudent = String(sid || "");
+  f.studentId = String(sid || "");
+  mount();
+};
+
 function teacherRecite() {
   reciteLoadSurahs();
 
-  const students = cur("students");
+  const students = inWorkCircle(cur("students"));
   if (!students.length) {
     return `<div class="page">
       ${pageHead("التسميع والتقييم", "تسجيل تسميع الطلاب")}
@@ -22827,11 +22895,16 @@ function teacherRecite() {
   }
 
   const f = reciteForm();
+  /* الطالبُ المعروض ونقطةُ بدئه — السردُ يُملأ من معالجه الخاص */
+  const curSid = students.some(x => String(x.id) === String(f.lastStudent || ""))
+    ? String(f.lastStudent) : String((students[0] || {}).id || "");
+  const nextFrom = (typeof SARD_ID_KIND === "function" && f.kind === SARD_ID_KIND())
+    ? null : reciteNextFrom(curSid, f.kind || "حفظ");
   const surahOpts = sel => QSURAHS.map(s =>
     `<option value="${s.i}" ${String(sel) === String(s.i) ? "selected" : ""}>${s.i}. ${esc(s.n)}</option>`).join("");
 
   const studentOpts = students.map(s =>
-    `<option value="${esc(String(s.id))}" ${String(f.lastStudent || "") === String(s.id) ? "selected" : ""}>${esc(s.name)}</option>`).join("");
+    `<option value="${esc(String(s.id))}" ${curSid === String(s.id) ? "selected" : ""}>${esc(s.name)}</option>`).join("");
 
   /* المطفأُ لا يُعرض، والاسمُ المعروض ما سمّاه المشرف — والمفتاحُ الداخليّ
      في data-kind كما هو، فلا تنكسر السجلاتُ ولا المنطق. */
@@ -22866,18 +22939,18 @@ function teacherRecite() {
     <input type="hidden" id="r_kind" value="${esc(f.kind || "حفظ")}">
     <div class="form-grid">
       <div class="field full"><label>الطالب <span class="req">*</span></label>
-        <select id="r_student">${studentOpts}</select></div>
+        <select id="r_student" onchange="window.reciteStudentPick(this.value)">${studentOpts}</select></div>
 
       <div class="field full"><label>نوع التسميع</label>
         <div class="chip-list">${kindChips}</div></div>
 
       <div class="field"><label>من سورة</label>
-        <select id="r_fromS" onchange="window.reciteSurahChange('from')">${surahOpts(f.fromS || 1)}</select></div>
+        <select id="r_fromS" onchange="window.reciteSurahChange('from')">${surahOpts(nextFrom ? nextFrom.s : (f.fromS || 1))}</select></div>
       <div class="field"><label>من آية</label>
-        <input id="r_fromA" type="number" min="1" dir="ltr" value="1" oninput="window.reciteMeasure()"></div>
+        <input id="r_fromA" type="number" min="1" dir="ltr" value="${nextFrom ? nextFrom.a : 1}" oninput="window.reciteMeasure()"></div>
 
       <div class="field"><label>إلى سورة</label>
-        <select id="r_toS" onchange="window.reciteSurahChange('to')">${surahOpts(f.toS || 1)}</select></div>
+        <select id="r_toS" onchange="window.reciteSurahChange('to')">${surahOpts(nextFrom ? nextFrom.s : (f.toS || 1))}</select></div>
       <div class="field"><label>إلى آية</label>
         <input id="r_toA" type="number" min="1" dir="ltr" oninput="window.reciteMeasure()"></div>
 
@@ -24053,14 +24126,16 @@ function studentSessionLocked(st, dateISO) {
 
 function circleStudentsOf(c) {
   return cur("students").filter(s =>
-    String(s.circleId || "") === String(c.id) ||
+    studentCircleIds(s).indexOf(String(c.id)) > -1 ||
     String(s.circle || "") === String(c.name || ""));
 }
 
 /* حساب جاهزية الحلقة للاعتماد */
 function sessionCheck(c, dateISO) {
   const studs = circleStudentsOf(c);
-  const att = attMap(dateISO);
+  /* جلسةُ هذه الحلقة وحدها: تحضيرُ الفجر لا يُكمل جلسةَ العصر، وتسميعُه
+     لا يُحسب فيها — لكلّ فترةٍ شاشتُها وجلستُها */
+  const att = attMap(dateISO, c.id);
   const marked = studs.filter(s => att[String(s.id)]);
   const present = marked.filter(s => {
     const st = att[String(s.id)].status;
@@ -24068,7 +24143,8 @@ function sessionCheck(c, dateISO) {
   });
 
   const recs = (Array.isArray(DB.recitations) ? DB.recitations : [])
-    .filter(r => String(r.date) === String(dateISO));
+    .filter(r => String(r.date) === String(dateISO) &&
+                 (!r.circleId || String(r.circleId) === String(c.id)));
   const recited = present.filter(s => recs.some(r => String(r.studentId) === String(s.id)));
 
   return {
@@ -29084,8 +29160,105 @@ window.attOf = attOf;
 
 /* سجلات يوم واحد لطلاب النطاق الحالي، على هيئة خريطة studentId -> سجل */
 /* الحلقةُ المعروضة في شاشة التحضير — الفجرُ أو العصر، ولكلٍّ سجلُّه */
-function attCircle() { return String(STATE.attCircle || ""); }
-window.attCircleSet = function (cid) { STATE.attCircle = String(cid || ""); mount(); };
+function attCircle() {
+  if (STATE.attCircle === undefined && typeof workCircleInit === "function") workCircleInit();
+  return String(STATE.attCircle || "");
+}
+window.attCircleSet = function (cid) {
+  /* تحضيرٌ لم يُحفظ يُحفظ في حلقته قبل الانتقال — وإلا كُتب على الأخرى */
+  if (Object.keys(STATE.attDraft || {}).length) {
+    showToast("احفظ التحضير أولاً قبل الانتقال إلى حلقة أخرى", "warn"); return;
+  }
+  STATE.attCircle = String(cid || "");
+  const u = (STATE && STATE.user) || {};
+  try { localStorage.setItem(ATT_CIRCLE_KEY + ":" + (u.uid || u.email || ""), STATE.attCircle || "*"); } catch (e) {}
+  mount();
+};
+/* =========================================================================
+   حلقةُ العمل للمعلّم — يختارها فتتبعها الشاشات كلُّها
+   -------------------------------------------------------------------------
+   المواصفات: «عند تسجيل المعلم دخوله تظهر له قائمة بجميع الحلقات المسندة
+   إليه، وبمجرد اختيار الحلقة تتغير شاشة التحضير وقائمة الطلاب فوراً».
+   كان الاختيارُ في شاشة التحضير وحدها، ويضيع مع كلّ تحميل، والتسميعُ يعرض
+   طلاب الحلقات كلّها ويُسجَّل على الحلقة الأولى للطالب أيّاً كانت الجلسة.
+   ========================================================================= */
+const ATT_CIRCLE_KEY = "mirath_att_circle";
+
+/* حلقاتُ طلاب النطاق (للمعلّم: حلقاتُه) — [معرّف، اسم] */
+function workCircles() {
+  const set = new Map();
+  (cur("students") || []).forEach(s2 => studentCircleIds(s2).forEach(cid => {
+    if (!cid || set.has(cid)) return;
+    const c = (cur("circles") || []).find(x => String(x.id) === cid);
+    set.set(cid, (c && c.name) || s2.circle || cid);
+  }));
+  return [...set.entries()];
+}
+
+/* الحلقةُ الأقربُ وقتاً الآن — اختيارٌ أوّل حين يدخل المعلّم ولم يختر */
+function workCircleByTime(list) {
+  const toMin = t => { const m = String(t || "").match(/^(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null; };
+  const now = toMin(nowHHMM());
+  let best = null, bestGap = Infinity;
+  list.forEach(([cid]) => {
+    const c = (cur("circles") || []).find(x => String(x.id) === cid);
+    const st = c ? toMin(typeof circleStartAt === "function" ? circleStartAt(c, todayISO()) : c.start) : null;
+    if (st == null || now == null) return;
+    const gap = Math.abs(now - st);
+    if (gap < bestGap) { bestGap = gap; best = cid; }
+  });
+  return best || (list[0] ? list[0][0] : "");
+}
+
+/* يُضبط مرّةً عند أوّل رسم: المحفوظُ إن بقي صالحاً، وإلا الأقربُ وقتاً */
+function workCircleInit() {
+  if (STATE.attCircle !== undefined) return;
+  const u = (STATE && STATE.user) || {};
+  const list = workCircles();
+  let saved = "";
+  try { saved = localStorage.getItem(ATT_CIRCLE_KEY + ":" + (u.uid || u.email || "")) || ""; } catch (e) {}
+  if (saved === "*" ) { STATE.attCircle = ""; return; }
+  if (saved && list.some(([cid]) => cid === saved)) { STATE.attCircle = saved; return; }
+  STATE.attCircle = (u.role === "teacher" && list.length > 1) ? workCircleByTime(list) : "";
+}
+
+/* شريطُ الحلقات — واحدٌ تتقاسمه الشاشات */
+function workCircleBar(withAll) {
+  const list = workCircles();
+  if (list.length < 2) return "";
+  return `<div class="amount-preview" style="margin-bottom:10px">
+    ${withAll ? `<button class="chip${attCircle() ? "" : " day-on"}"
+      style="border:none" onclick="window.attCircleSet('')">كل الحلقات</button>` : ""}
+    ${list.map(([cid, nm]) => `<button class="chip${attCircle() === cid ? " day-on" : ""}"
+      style="border:none" onclick="window.attCircleSet('${jsAttr(cid)}')">${esc(nm)}</button>`).join("")}
+  </div>`;
+}
+
+/* طلابُ الحلقة المختارة — ومنهم من له حلقةٌ أخرى */
+function inWorkCircle(list) {
+  const cid = attCircle();
+  if (!cid) return list;
+  return list.filter(s2 => studentCircleIds(s2).indexOf(cid) > -1);
+}
+
+/* معرّفُ سجلّ اليوم إن وُجد — يُعاد استعماله فلا يتكرّر سجلٌّ لليوم نفسه
+   بمفتاحين (قديمٍ بلا حلقة وجديدٍ بها). ذو الحلقة الواحدة سجلٌّ واحدٌ ليومه،
+   وذو الحلقتين سجلٌّ لكلّ حلقة. */
+function attExistingId(dateISO, sid, cid, multi) {
+  const r = (DB.attendance || []).find(x => x && !x.staffId &&
+    String(x.date) === String(dateISO) && String(x.studentId) === String(sid) &&
+    (!multi || String(x.circleId || "") === String(cid)));
+  return r ? String(r.id) : "";
+}
+
+/* حلقةُ السجلّ: المختارةُ إن كان الطالب فيها، وإلا أولى حلقاته */
+function recCircleOf(st, preferred) {
+  const cids = studentCircleIds(st);
+  const p = String(preferred || "");
+  if (p && cids.indexOf(p) > -1) return p;
+  return cids[0] || (st && st.circleId != null ? String(st.circleId) : "");
+}
+
 
 function attMap(dateISO, circleId) {
   const m = {};
@@ -29097,6 +29270,17 @@ function attMap(dateISO, circleId) {
     if (cid) {
       const rc = String(r.circleId || "");
       if (rc && rc !== cid) return;
+      /* سجلٌّ قديمٌ بلا حلقة لطالبٍ في حلقتين لا يُنسب لإحداهما — وإلا
+         سرى غيابُ الفجر على العصر */
+      if (!rc) {
+        const st0 = (DB.students || []).find(x => String(x.id) === String(r.studentId));
+        if (st0 && studentCircleIds(st0).length > 1) return;
+      }
+    } else if (m[String(r.studentId)]) {
+      /* «كل الحلقات»: سجلُّ الحلقة الأولى للطالب يُقدَّم */
+      const st0 = (DB.students || []).find(x => String(x.id) === String(r.studentId));
+      const first = st0 ? studentCircleIds(st0)[0] : "";
+      if (String(m[String(r.studentId)].circleId || "") === String(first)) return;
     }
     m[String(r.studentId)] = r;
   });
@@ -29223,12 +29407,17 @@ function attSaveAll() {
     const st = DB.students.find(x => String(x.id) === String(sid));
     if (!st) return;
     const d = draft[sid];
-    const id = attId(dateISO, sid);
+    /* حلقةُ التحضير المختارة، كما في attSet — كان المفتاحُ بلا حلقة فيمحو
+       حفظُ المسوّدة في العصر تحضيرَ الفجر */
+    const cid = recCircleOf(st, attCircle());
+    const multi = studentCircleIds(st).length > 1;
+    const id = attExistingId(dateISO, sid, cid, multi) || attId(dateISO, sid, multi ? cid : "");
+    const cRec = (cur("circles") || []).find(x => String(x.id) === String(cid));
     const rec = {
       id: id, date: dateISO,
       studentId: String(st.id), student: st.name || "",
-      circleId: st.circleId != null ? String(st.circleId) : "",
-      circle: st.circle || "",
+      circleId: cid,
+      circle: (cRec && cRec.name) || st.circle || "",
       complexId: st.complexId != null ? st.complexId : STATE.complexId,
       status: d.status, reason: d.reason || "",
       /* وقت وصول الطالب لا وقت الحفظ: كان ts وحده، فحالة «متأخر» بلا
@@ -29276,7 +29465,10 @@ function attSaveAll() {
    ليس في الحلقة يبقى في تقاريره أبداً. */
 window.attClear = function (studentId) {
   const dateISO = attDate();
-  const id = attId(dateISO, studentId);
+  const stC = (DB.students || []).find(x => String(x.id) === String(studentId));
+  const multiC = stC && studentCircleIds(stC).length > 1;
+  const cidC = stC ? recCircleOf(stC, attCircle()) : "";
+  const id = attExistingId(dateISO, studentId, cidC, multiC) || attId(dateISO, studentId, multiC ? cidC : "");
   const i = (DB.attendance || []).findIndex(r => String(r.id) === id);
   if (i < 0) { showToast("لا سجل لهذا اليوم", "info"); return; }
 
@@ -29429,8 +29621,9 @@ function attSet(studentId, status, circleId) {
   /* حلقةُ التحضير: المحدَّدةُ في الشاشة، وإلا أولى حلقات الطالب. وبها
      يُبنى المفتاح، فتحضيرُ الفجر لا يمحو تحضيرَ العصر. */
   const cids = studentCircleIds(st);
-  const cid = String(circleId || "") || (cids.length > 1 ? cids[0] : "");
-  const id = attId(dateISO, studentId, cid);
+  const cid = recCircleOf(st, circleId || attCircle());
+  const id = attExistingId(dateISO, studentId, cid, cids.length > 1) ||
+             attId(dateISO, studentId, cids.length > 1 ? cid : "");
   const rec = {
     id: id,
     date: dateISO,
@@ -29466,7 +29659,7 @@ function attSet(studentId, status, circleId) {
 /* تعليم كل من لم يُسجَّل بعد حاضراً — أكثر الحالات شيوعاً */
 function attMarkRest() {
   const saved = attMap(attDate(), attCircle());
-  const rest = cur("students").filter(s => !attCurrent(s.id, saved));
+  const rest = inWorkCircle(cur("students")).filter(s => !attCurrent(s.id, saved));
   if (!rest.length) { showToast("كل الطلاب لهم حالة"); return; }
   rest.forEach(s => { attDraft()[String(s.id)] = { status: "حاضر", reason: "" }; });
   mount();
