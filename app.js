@@ -14857,8 +14857,45 @@ function alertCfg() {
     monthMisses:  Number(s.alMonthMiss) > 0 ? Number(s.alMonthMiss) : 3,
     absRun:       Number(s.alAbsRun)   > 0 ? Number(s.alAbsRun)   : 2,
     absSpread:    Number(s.alAbsSpread) > 0 ? Number(s.alAbsSpread) : 3,
-    spreadDays:   Number(s.alSpreadDays) > 0 ? Number(s.alSpreadDays) : 14
+    spreadDays:   Number(s.alSpreadDays) > 0 ? Number(s.alSpreadDays) : 14,
+    /* مؤقّت المتابعة: المهلةُ بالساعات قبل أن يُعدّ المشرف مقصّراً —
+       المواصفات: «٢٤ أو ٤٨ ساعة» من إعدادات المسجد. كانت ٤٨ محفورةً في
+       ثلاثة مواضع لا تُضبط. */
+    timerHours:   Number(s.alTimerHours) > 0 ? Number(s.alTimerHours) : 48
   };
+}
+
+/* فترةُ إجراءٍ مسجَّل: وسمُه، وإلا فترةُ يوم تسجيله (السجلات القديمة) */
+function procTermOf(x) {
+  if (x && x.termId) return String(x.termId);
+  const d = x && x.ts ? new Date(x.ts).toISOString().slice(0, 10) : "";
+  return typeof termOfDate === "function" ? termOfDate(d) : "";
+}
+
+/* تنبيهاتُ الفترة المعروضة وحدها — لا تختلط بطاقاتُ فصلٍ بفصل */
+function alertInView(a) {
+  const v = typeof viewTermId === "function" ? viewTermId() : "";
+  if (!v || !a || !a.termId) return true;
+  return String(a.termId) === String(v);
+}
+
+/* تنبيهٌ للإدارة العليا في لوحتها: تنبيهاتٌ تجاوزت مؤقّت المتابعة */
+function alertLateBanner() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (["owner", "admin", "complexManager"].indexOf(r) < 0 || STATE.page !== "dashboard") return "";
+  const late = (cur("sysAlerts") || []).filter(a => alertInView(a) && alertLate(a));
+  if (!late.length) return "";
+  return `<div class="trm-viewbar" role="status" style="background:var(--danger-soft);border-color:#f3c9c9;color:#8a2323">
+    ${ic("alert", 16)}
+    <span><strong>${toArabicDigits(late.length)}</strong> تنبيهاً تجاوز مهلة المتابعة (${
+      toArabicDigits(alertCfg().timerHours)} ساعة) دون إجراء.</span>
+    <button type="button" class="btn btn-soft btn-sm" data-action="nav" data-page="proc-report">تقرير الكفاءة</button>
+  </div>`;
+}
+
+/* تجاوز المهلة؟ */
+function alertLate(a) {
+  return a && a.status === "open" && hoursOpen(a) >= alertCfg().timerHours;
 }
 
 function daysAgo(n) {
@@ -14888,6 +14925,8 @@ function scanAlerts() {
   (cur("students") || []).forEach(st => {
     if (!st || st.status === "متوقف") return;
     const sid = String(st.id);
+    /* «تحضير فقط» لا يُسمَّع قصداً: لا تُولَّد له تنبيهاتٌ تعليمية */
+    const eduOn = !st.attOnly;
 
     const att = (cur("attendance") || [])
       .filter(a => !a.staffId && String(a.studentId) === sid);
@@ -14897,17 +14936,23 @@ function scanAlerts() {
     /* ---------- تعليمي: حضر ولم يُسمَّع له ---------- */
     const present = att.filter(a => a.status === "حاضر" || a.status === "متأخر");
 
-    if (runOfDays(present, a => !hasRec(a.date), cfg.noReciteDays)) {
+    if (eduOn && runOfDays(present, a => !hasRec(a.date), cfg.noReciteDays)) {
       out.push({ track: "edu", kind: "noRecite", studentId: sid, student: st.name,
         title: "حضر بلا تسميع",
         text: `${cfg.noReciteDays} أيام حضور متتالية دون تسجيل تسميع.` });
     }
 
-    /* ---------- تعليمي: تسميع غير كامل متتالٍ ---------- */
-    const partial = recs.filter(r =>
-      r.grade === "إعادة" || (r.score != null && Number(r.score) < planEngineCfg().redo) ||
-      Number(r.shortQty) > 0);
-    if (runOfDays(partial, () => true, cfg.partialDays)) {
+    /* ---------- تعليمي: تسميع غير كامل متتالٍ ----------
+       كان يعدّ الجلساتِ الناقصةَ كلَّها على مدى السجلّ ولو فصلت بينها
+       جلساتٌ تامّة، فيُنبَّه على من تحسّن. واليومُ الناقص: تسميعٌ ضعيف،
+       أو واجبٌ أُغلق بعجز (shortQty) أو رسب — «عجز وتراجع». */
+    const redo = planEngineCfg().redo;
+    const asgs = (cur("assignments") || []).filter(x => String(x.studentId) === sid);
+    const recDays = [...new Set(recs.map(r => String(r.date)))].map(d => ({ date: d }));
+    const partialDay = d => recs.some(r => String(r.date) === d.date &&
+        (r.grade === "إعادة" || (r.score != null && Number(r.score) < redo))) ||
+      asgs.some(x => String(x.date) === d.date && (Number(x.shortQty) > 0 || x.status === "failed"));
+    if (eduOn && runOfDays(recDays, partialDay, cfg.partialDays)) {
       out.push({ track: "edu", kind: "partial", studentId: sid, student: st.name,
         title: "تسميع غير كامل",
         text: `${cfg.partialDays} جلسات متتالية بعجزٍ أو تراجع.` });
@@ -14917,7 +14962,7 @@ function scanAlerts() {
     const monthAgo = daysAgo(30);
     const missedMonth = present.filter(a =>
       String(a.date) >= monthAgo && !hasRec(a.date)).length;
-    if (missedMonth >= cfg.monthMisses) {
+    if (eduOn && missedMonth >= cfg.monthMisses) {
       out.push({ track: "edu", kind: "monthMiss", studentId: sid, student: st.name,
         title: "تكرار عدم التسميع",
         text: `${missedMonth} أيام حضورٍ بلا تسميع خلال شهر.` });
@@ -14947,16 +14992,19 @@ function scanAlerts() {
   if (!Array.isArray(DB.sysAlerts)) DB.sysAlerts = [];
   let made = 0;
 
+  const tid = typeof activeTermId === "function" ? activeTermId() : "";
   out.forEach(a => {
     const key = a.track + "|" + a.kind + "|" + a.studentId;
-    const open = DB.sysAlerts.find(x => String(x.key) === key && x.status === "open");
+    /* المفتوحُ في فترةٍ أخرى لا يحجب تنبيهَ هذه الفترة */
+    const open = DB.sysAlerts.find(x => String(x.key) === key && x.status === "open" &&
+      (!x.termId || !tid || String(x.termId) === String(tid)));
     if (open) return;
 
     const rec = Object.assign({}, a, {
       id: "al" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
       key, status: "open", openedAt: Date.now(),
       step: procStepOf(a.studentId, a.track),   /* الخطوة التالية في التدرّج */
-      termId: typeof activeTermId === "function" ? activeTermId() : ""
+      termId: tid
     });
     DB.sysAlerts.push(rec);
     persistSet("sysAlerts", rec);
@@ -14967,9 +15015,14 @@ function scanAlerts() {
 }
 
 /* الخطوة التالية: عدد الإجراءات المتخذة سابقاً + ١ — هذا هو التدرّج */
-function procStepOf(studentId, track) {
+function procStepOf(studentId, track, termId) {
+  /* التدرّجُ داخل الفترة: فصلٌ جديدٌ يبدأ من الإجراء الأول، ولا يُحسب عليه
+     ما اتُّخذ في دورةٍ مؤرشفة */
+  const t = termId != null ? String(termId)
+          : (typeof activeTermId === "function" ? activeTermId() : "");
   const done = (cur("procLog") || []).filter(x =>
-    String(x.studentId) === String(studentId) && x.track === track).length;
+    String(x.studentId) === String(studentId) && x.track === track &&
+    (!t || procTermOf(x) === t)).length;
   return done + 1;
 }
 
@@ -14981,22 +15034,28 @@ window.alertOpen = function (alertId) {
   if (!a) return;
 
   const list = procList(a.track);
-  const step = procStepOf(a.studentId, a.track);
+  const aTerm = a.termId || (typeof activeTermId === "function" ? activeTermId() : "");
+  const step = procStepOf(a.studentId, a.track, aTerm);
   const prev = (cur("procLog") || []).filter(x =>
-    String(x.studentId) === String(a.studentId) && x.track === a.track)
+    String(x.studentId) === String(a.studentId) && x.track === a.track &&
+    (!aTerm || procTermOf(x) === String(aTerm)))
     .sort((x, y) => (y.ts || 0) - (x.ts || 0));
 
-  /* المواصفات: يُمنع اختيار الإجراء المخفَّف إن تكرّرت المخالفة */
+  /* المواصفات: يُمنع اختيار الإجراء المخفَّف إن تكرّرت المخالفة، و«يجبره
+     على اختيار الإجراء رقم ٢» — فالمتاحُ التالي وحده: لا رجوعَ إلى ما اتُّخذ
+     ولا قفزَ فوق ما لم يُتَّخذ. */
   const opts = list.map(p => {
-    const locked = p.n < step;
-    return `<label class="proc-opt${locked ? " locked" : ""}${p.n === step ? " next" : ""}">
+    const locked = p.n < step, ahead = p.n > step;
+    return `<label class="proc-opt${locked ? " locked" : ""}${ahead ? " locked" : ""}${p.n === step ? " next" : ""}">
       <input type="radio" name="procPick" value="${p.n}"${
-        locked ? " disabled" : ""}${p.n === step ? " checked" : ""}>
+        p.n !== step ? " disabled" : ""}${p.n === step ? " checked" : ""}>
       <span class="proc-n">${toArabicDigits(p.n)}</span>
       <span class="proc-h">${esc(p.h)}</span>
       ${locked ? `<span class="proc-lock">اتُّخذ سابقاً</span>` : ""}
+      ${ahead ? `<span class="proc-lock">بعد الإجراء ${toArabicDigits(step)}</span>` : ""}
     </label>`;
   }).join("");
+  const hrs = hoursOpen(a), lim = alertCfg().timerHours;
 
   const hist = prev.length
     ? `<div class="proc-hist"><strong>ما اتُّخذ سابقاً</strong>
@@ -15013,9 +15072,12 @@ window.alertOpen = function (alertId) {
            راجع الإدارة العليا لاتخاذ قرارٍ استثنائي.`)
        : `<div class="proc-list">${opts}</div>`}
      ${hist}
+     <div class="${hrs >= lim ? "proc-warn" : "muted"}" style="margin-top:10px;font-size:12.5px">
+       مفتوح منذ ${hrs < 1 ? "أقل من ساعة" : toArabicDigits(hrs) + " ساعة"} · مهلة المتابعة ${
+       toArabicDigits(lim)} ساعة${hrs >= lim ? " — تجاوزها" : ""}</div>
      <div class="form-grid" style="margin-top:12px">
-       <div class="field full"><label>ملاحظة التنفيذ</label>
-         <input id="al_note" placeholder="ما تمّ فعلاً — يُوثَّق باسمك"></div>
+       <div class="field full"><label>السبب وما تمّ <span class="req">*</span></label>
+         <input id="al_note" placeholder="ما تمّ فعلاً ولماذا — يُوثَّق باسمك ووقتك"></div>
      </div>`,
     (step > list.length ? "" :
       `<button class="btn btn-primary" onclick="window.alertAct()">تسجيل الإجراء</button>`) +
@@ -15032,19 +15094,29 @@ window.alertAct = function () {
   if (!el) { showToast("اختر الإجراء", "warn"); return; }
 
   const n = Number(el.value);
+  const aTerm = a.termId || (typeof activeTermId === "function" ? activeTermId() : "");
+  const step = procStepOf(a.studentId, a.track, aTerm);
+  /* الحارسُ في الدالة لا في الزرّ: تعطيلُ الخيار لا يمنع نداءها */
+  if (n !== step) { showToast("الإجراء المتاح هو رقم " + toArabicDigits(step) + " — لا تخطّي ولا رجوع", "warn"); return; }
+  const note = String(val("#al_note") || "").trim();
+  if (!note) { showToast("اكتب السبب وما تمّ — يُوثَّق مع الإجراء", "warn"); return; }
   const p = procList(a.track).find(x => x.n === n);
   const u = (STATE && STATE.user) || {};
 
-  /* التوثيق باسم المشرف الفعلي ووقته — نصّت عليه المصفوفة */
+  /* التوثيق باسم المشرف الفعلي ووقته وسببه — نصّت عليه المصفوفة */
   const rec = {
     id: "pl" + Date.now(),
     studentId: String(a.studentId), student: a.student || "",
     track: a.track, step: n, title: p ? p.h : "",
     alertId: a.id, alertKind: a.kind,
-    note: val("#al_note") || "",
+    reason: a.text || a.title || "",
+    note: note,
+    openedAt: a.openedAt || null,
+    respHours: hoursOpen(a),
+    late: alertLate(a),
     by: u.name || u.email || "—", byUid: String(u.uid || u.id || ""),
     ts: Date.now(),
-    termId: typeof activeTermId === "function" ? activeTermId() : ""
+    termId: aTerm
   };
 
   if (!Array.isArray(DB.procLog)) DB.procLog = [];
@@ -15066,9 +15138,12 @@ window.alertDismiss = function (alertId) {
   const a = (cur("sysAlerts") || []).find(x => String(x.id) === String(alertId));
   if (!a) return;
   const u = (STATE && STATE.user) || {};
+  const why = String(val("#al_note") || "").trim();
+  if (!why) { showToast("اكتب سبب صرف النظر — يُوثَّق باسمك", "warn"); return; }
   a.status = "dismissed";
   a.closedAt = Date.now();
-  a.closedBy = u.name || "";
+  a.closedBy = u.name || u.email || "";
+  a.closeNote = why;
   persistSet("sysAlerts", a);
   closeModal();
   showToast("صُرف النظر عن التنبيه", "info");
@@ -15080,7 +15155,7 @@ window.alertDismiss = function (alertId) {
    ========================================================================= */
 function alertsOf(track) {
   return (cur("sysAlerts") || [])
-    .filter(a => a.track === track && a.status === "open")
+    .filter(a => a.track === track && a.status === "open" && alertInView(a))
     .sort((a, b) => (a.openedAt || 0) - (b.openedAt || 0));
 }
 
@@ -15098,7 +15173,7 @@ function alertCards(track) {
 
   return `<div class="alert-grid">${list.map(a => {
     const h = hoursOpen(a);
-    const late = h >= 48;      /* المواصفات تضرب المثل بـ٤٨ ساعة */
+    const late = alertLate(a);  /* مؤقّت المتابعة من الإعدادات */
     return `<button type="button" class="alert-card ${track}${late ? " late" : ""}"
       onclick="window.alertOpen('${jsAttr(a.id)}')">
       <div class="alert-card-top">
@@ -15109,7 +15184,7 @@ function alertCards(track) {
       <div class="alert-card-title">${esc(a.title)}</div>
       <div class="alert-card-text">${esc(a.text)}</div>
       <div class="alert-card-step">الإجراء التالي: ${
-        toArabicDigits(procStepOf(a.studentId, a.track))}</div>
+        toArabicDigits(procStepOf(a.studentId, a.track, a.termId))}${late ? " · تجاوز المهلة" : ""}</div>
     </button>`;
   }).join("")}</div>`;
 }
@@ -15132,12 +15207,13 @@ function adminProcAdm() {
    تقرير كفاءة معالجة الإجراءات — رقابة المشرف العام
    ========================================================================= */
 function adminProcReport() {
-  const open = (cur("sysAlerts") || []).filter(a => a.status === "open");
-  const closed = (cur("sysAlerts") || []).filter(a => a.status === "closed");
+  const lim = alertCfg().timerHours;
+  const open = (cur("sysAlerts") || []).filter(a => a.status === "open" && alertInView(a));
+  const closed = (cur("sysAlerts") || []).filter(a => a.status === "closed" && alertInView(a));
 
   const byTrack = t => {
     const o = open.filter(a => a.track === t);
-    const late = o.filter(a => hoursOpen(a) >= 48);
+    const late = o.filter(alertLate);
     const oldest = o.length ? Math.max(...o.map(hoursOpen)) : 0;
     return { open: o.length, late: late.length, oldest };
   };
@@ -15147,6 +15223,7 @@ function adminProcReport() {
   /* من عالج وكم — يُقاس المشرف بما أنجز لا بما وُكّل إليه */
   const byUser = {};
   (cur("procLog") || []).forEach(p => {
+    if (!alertInView({ termId: procTermOf(p) })) return;   /* الفترة المعروضة */
     const k = p.by || "—";
     byUser[k] = (byUser[k] || 0) + 1;
   });
@@ -15156,11 +15233,11 @@ function adminProcReport() {
     <div class="section-head"><h3>${name}</h3></div>
     <div class="proc-nums">
       <div><b>${toArabicDigits(t.open)}</b><span>مفتوحة</span></div>
-      <div class="${t.late ? "bad" : ""}"><b>${toArabicDigits(t.late)}</b><span>تجاوزت ٤٨ ساعة</span></div>
+      <div class="${t.late ? "bad" : ""}"><b>${toArabicDigits(t.late)}</b><span>تجاوزت ${toArabicDigits(lim)} ساعة</span></div>
       <div><b>${t.oldest ? toArabicDigits(t.oldest) + " س" : "—"}</b><span>أقدم تنبيه</span></div>
     </div>
     ${t.late ? `<div class="proc-warn">${toArabicDigits(t.late)} تنبيهاً معلَّقاً
-      منذ أكثر من ٤٨ ساعة لم يُتَّخذ فيها إجراء.</div>` : ""}
+      منذ أكثر من ${toArabicDigits(lim)} ساعة لم يُتَّخذ فيها إجراء.</div>` : ""}
   </div>`;
 
   return `<div class="page">
@@ -15171,6 +15248,31 @@ function adminProcReport() {
       ${card(edu, "الإجراءات التعليمية")}
       ${card(adm, "الإجراءات الإدارية")}
     </div>
+
+    ${(() => {
+      /* التفصيل: من تأخّر وأين — «المشرف الإداري لديه ٥ تنبيهات معلقة منذ ٤٨ ساعة» */
+      const lateList = open.filter(alertLate).sort((x, y) => hoursOpen(y) - hoursOpen(x));
+      if (!lateList.length) return "";
+      const whereOf = a => {
+        const st = (cur("students") || []).find(x => String(x.id) === String(a.studentId)) || {};
+        const m = (cur("mosques") || []).find(x => String(x.id) === String(st.mosqueId || ""));
+        return [st.circle, m && m.name].filter(Boolean).join(" · ") || "—";
+      };
+      return `<div class="card" style="margin-top:18px">
+        <div class="section-head"><h3>التنبيهات المتأخرة</h3>
+          <span class="badge b-red">${toArabicDigits(lateList.length)}</span></div>
+        <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
+          <thead><tr><th>الطالب</th><th>التنبيه</th><th>المسار</th><th>الحلقة · المسجد</th><th>مفتوح منذ</th><th>الإجراء التالي</th></tr></thead>
+          <tbody>${lateList.map(a => `<tr>
+            <td><strong>${esc(a.student || "—")}</strong></td>
+            <td>${esc(a.title || "")}</td>
+            <td>${a.track === "edu" ? "تعليمي" : "إداري"}</td>
+            <td class="muted">${esc(whereOf(a))}</td>
+            <td class="pt-num pay-bad">${toArabicDigits(hoursOpen(a))} س</td>
+            <td class="pt-num">${toArabicDigits(procStepOf(a.studentId, a.track, a.termId))}</td>
+          </tr>`).join("")}</tbody></table></div></div>
+      </div>`;
+    })()}
 
     <div class="card" style="margin-top:18px">
       <div class="section-head"><h3>ما عولج</h3>
@@ -15270,6 +15372,10 @@ function setPanelProcedures() {
           <input id="al_as" type="number" min="1" value="${esc(cfg.absSpread)}"></div>
         <div class="field"><label>خلال كم يوماً</label>
           <input id="al_sd" type="number" min="1" value="${esc(cfg.spreadDays)}"></div>
+        <div class="field"><label>مؤقّت المتابعة (ساعة)</label>
+          <input id="al_tm" type="number" min="1" value="${esc(cfg.timerHours)}">
+          <small style="font-size:11px;color:var(--text-faint)">
+            بعدها يُعدّ التنبيه متأخّراً ويظهر للإدارة العليا</small></div>
       </div>
       <div style="display:flex;gap:8px;padding:0 16px 16px">
         <button class="btn btn-primary btn-sm" onclick="window.procSaveAll()">حفظ الكل</button>
@@ -15288,6 +15394,7 @@ window.procSaveAll = function () {
   s.alAbsRun    = num("#al_ar", c.absRun);
   s.alAbsSpread = num("#al_as", c.absSpread);
   s.alSpreadDays = num("#al_sd", c.spreadDays);
+  s.alTimerHours = num("#al_tm", c.timerHours);
   window.procSave();
 };
 
@@ -26214,7 +26321,8 @@ function mount() {
     if (h) setDocTitle(h.textContent.trim());
   }, 0);
   if (!root) return;
-  root.innerHTML = (typeof trmViewBanner === "function" ? trmViewBanner() : "") + html;
+  root.innerHTML = (typeof trmViewBanner === "function" ? trmViewBanner() : "") +
+    (typeof alertLateBanner === "function" ? alertLateBanner() : "") + html;
   root.scrollTop = 0;
   try { if (typeof window.tbPeriodSync === "function") window.tbPeriodSync(); } catch (e) {}
   runAnimations(root);
