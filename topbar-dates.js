@@ -99,7 +99,7 @@
     const lblEl = pill.querySelector(".tb-lbl");
     let selected = opts.selected || null;
 
-    items.forEach(function (it) {
+    function addItem(it) {
       const o = document.createElement("div");
       o.className = "tb-opt" + (it === selected ? " sel" : "");
       o.setAttribute("role", "option");
@@ -117,9 +117,20 @@
         if (typeof opts.onPick === "function") opts.onPick(it);
       });
       panel.appendChild(o);
-    });
+    }
+    items.forEach(addItem);
 
     if (selected) { lblEl.textContent = selected; pill.classList.add("has-val"); }
+
+    /* إعادة ملء القائمة من خارجها — لقائمة «الفترة» التي تُبنى من فترات قاعدة البيانات */
+    wrap._setItems = function (list, sel, onPick) {
+      panel.innerHTML = "";
+      selected = sel || null;
+      if (typeof onPick === "function") opts.onPick = onPick;
+      list.forEach(addItem);
+      lblEl.textContent = selected || label;
+      pill.classList.toggle("has-val", !!selected);
+    };
 
     const rec = { pill: pill, panel: panel };
     allPanels.push(rec);
@@ -255,6 +266,27 @@
      (7)  البناء الكامل للشريط
         الترتيب (يمين ← يسار): [تحديد تاريخ] [اليوم] [الاسبوع] [الشهر] [الفترة] [السنوات]
      ======================================================================= */
+  /* قائمة «الفترة» تُبنى من فترات النظام الحقيقية متى وُجدت (app.js يوفّر
+     trmViewOptions)، ويعرض اختيارُها النظامَ كلَّه على تلك الفترة. وبلا
+     فترات تبقى القائمة الثابتة كما كانت. */
+  let periodDD = null, periodSig = "";
+  window.tbPeriodSync = function () {
+    if (!periodDD || typeof window.trmViewOptions !== "function") return;
+    let o = null;
+    try { o = window.trmViewOptions(); } catch (e) { return; }
+    if (!o || !o.items || !o.items.length) return;
+    const sig = JSON.stringify(o);
+    if (sig === periodSig) return;
+    periodSig = sig;
+    const byLabel = {};
+    o.items.forEach(function (x) { byLabel[x.label] = x.id; });
+    periodDD._setItems(o.items.map(function (x) { return x.label; }), o.selected, function (v) {
+      const selPeriod = document.getElementById("selPeriod");
+      if (selPeriod) syncHidden(selPeriod, v);
+      if (typeof window.trmViewSet === "function" && byLabel[v] != null) window.trmViewSet(byLabel[v]);
+    });
+  };
+
   function buildBar() {
     const bar = document.getElementById("topFilters") || document.querySelector(".topbar-filters");
     if (!bar) return;
@@ -273,7 +305,10 @@
 
     bar.appendChild(buildDropdown("الاسبوع", WEEKS,   { onPick: function (v) { syncHidden(selWeek, v); } }));
     bar.appendChild(buildDropdown("الشهر",   MONTHS,  { onPick: function (v) { syncHidden(selMonth, v); } }));
-    bar.appendChild(buildDropdown("الفترة",  PERIODS, { onPick: function (v) { syncHidden(selPeriod, v); } }));
+    periodDD = buildDropdown("الفترة",  PERIODS, { onPick: function (v) { syncHidden(selPeriod, v); } });
+    bar.appendChild(periodDD);
+    periodSig = "";
+    if (typeof window.tbPeriodSync === "function") window.tbPeriodSync();
     bar.appendChild(buildDropdown("السنوات", YEARS,   { selected: "العام " + CUR_YEAR + "هـ", onPick: function (v) { syncHidden(selYear, v); } }));
   }
 

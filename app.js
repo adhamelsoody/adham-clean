@@ -10897,6 +10897,8 @@ window.lvlView = function (id) {
           </div>
         </section>
 
+        ${dedCardHtml(p2)}
+
         ${fixed ? (function () {
           /* الإعدادُ المحفوظ يُعرض في صفحة البرنامج: ضبطَه المشرفُ مرّةً
              فيجب أن يراه حين يفتح البرنامج، لا أن يفتح شاشةَ الإعداد
@@ -10964,10 +10966,13 @@ window.lvlView = function (id) {
           </section>`;
         })() : ""}
 
-        <section class="sp-card sp-wide2">
+        <section class="sp-card sp-wide2" data-lvprog="${esc(p2.id)}">
           <div class="sp-cardhead">${ic("layers", 17)}
-            <div><h3>المستويات</h3><p>النطاق القرآني لكلٍّ وعدد طلابه</p></div>
-            <span class="sp-count">${toArabicDigits(lvls.length)}</span></div>
+            <div><h3>المستويات</h3><p>${fixed ? "النطاق القرآني لكلٍّ وعدد طلابه"
+              : toArabicDigits(lvls.length) + " مستويات – أضف مستوى ثم احفظه لإضافته للبرنامج"}</p></div>
+            <span class="sp-count">${toArabicDigits(lvls.length)}</span>
+            ${!fixed && lvls.length ? `<button class="btn btn-primary btn-sm ded-lvadd"
+              onclick="window.dedLevelAdd('${jsAttr(p2.id)}')">${ic("plus", 15)} إضافة مستوى</button>` : ""}</div>
           ${lvls.length ? `<div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
             <thead><tr><th>#</th><th>المستوى</th><th>النطاق</th><th>الانتقال</th><th>الطلاب</th><th></th></tr></thead>
             <tbody>${lvls.map((lv, n) => `<tr>
@@ -10979,7 +10984,14 @@ window.lvlView = function (id) {
               <td><button class="btn btn-ghost btn-sm"
                 onclick="window.lvDetail('${jsAttr(lv.id)}')">التفاصيل</button></td>
             </tr>`).join("")}</tbody></table></div></div>`
-            : `<div class="qg-empty">لا مستويات مسجَّلة لهذا البرنامج</div>`}
+            : fixed ? `<div class="qg-empty">لا مستويات مسجَّلة لهذا البرنامج</div>`
+            : `<div class="ded-lvempty">
+                <span class="ded-lvico">${ic("layers", 22)}</span>
+                <strong>لا توجد مستويات بعد</strong>
+                <span>ابدأ بإضافة المستوى الأول لهذا البرنامج</span>
+                <button class="btn btn-primary" onclick="window.dedLevelAdd('${jsAttr(p2.id)}')">${ic("plus", 16)} إضافة مستوى</button>
+              </div>`}
+          ${!fixed ? `<div class="ded-saved">كل التغييرات محفوظة</div>` : ""}
         </section>
 
         <section class="sp-card sp-wide2">
@@ -11003,6 +11015,440 @@ window.lvlView = function (id) {
         ${String(id) === SARD_ID ? sardPanel() : ""}
       </div>
     </aside>`);
+};
+
+/* =========================================================================
+   درجة الالتزام وتقييم الأداء — آلية الخصم لكل ركن
+   -------------------------------------------------------------------------
+   تُعرض في صفحة البرنامج: درجةُ الالتزام (متى يُطالَب الطالب بما فاته)،
+   وتقييمُ الأداء: «الافتراضي» أو «تخصيص». والتخصيصُ يفتح «آلية الخصم»
+   بثلاثة أركان (حفظ · مراجعة · تلاوة)، لكلٍّ أخطاؤه (تردد · لحن · خطأ)
+   ومقدارُ ما يُخصم بكلٍّ، وشروطُ عدم الاجتياز والإجراءُ المترتّب عليه.
+
+     settings.deductCfg/<programId>
+     { mode: "default" | "custom",
+       pillars: { hifz|review|tilawah: {
+         errors:  [{ k, h, cut: "full"|"half"|"quarter" }],
+         fail:    { byCount, maxErrors, byScore, minScore },
+         actions: { evaluate, notDone, repeat } } } }
+
+   مفتاحٌ مستقلّ لا داخل sysPrgCfg: plSave يكتب sysPrgCfg[pid] كائناً
+   جديداً فيسقط منه كلُّ مفتاحٍ لا يعرفه.
+   ========================================================================= */
+const DED_MIC = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+  stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg>`;
+
+const DED_PILLARS = [
+  { k: "hifz",    h: "حفظ",    tone: "g", icon: () => ic("book", 16),    sub: "" },
+  { k: "review",  h: "مراجعة", tone: "a", icon: () => ic("refresh", 16), sub: "يشمل التثبيت والمراجعة الإضافية والتراكمية" },
+  { k: "tilawah", h: "تلاوة",  tone: "b", icon: () => DED_MIC,           sub: "" }
+];
+
+const DED_CUTS = [
+  { k: "full",    h: "درجة كاملة", v: 1 },
+  { k: "half",    h: "نصف درجة",   v: 0.5 },
+  { k: "quarter", h: "ربع درجة",   v: 0.25 }
+];
+
+const DED_ERRORS = [
+  { k: "taraddud", h: "تردد", cut: "full" },
+  { k: "lahn",     h: "لحن",  cut: "half" },
+  { k: "khata",    h: "خطأ",  cut: "quarter" }
+];
+
+const DED_ACTIONS = [
+  { k: "evaluate", h: "يُحتسب التقييم",  d: "يتم رصد تقييم جودة الأداء" },
+  { k: "notDone",  h: "لا يُسجّل كمنجز", d: "لا يُحتسب الدرس منجزاً" },
+  { k: "repeat",   h: "يُعاد التسميع",   d: "يُطلب منه إعادة التسميع" }
+];
+
+/* إعدادُ ركنٍ واحد: المحفوظ فوق الافتراضي، فلا يسقط حقلٌ ناقص */
+function dedPillarOf(saved) {
+  const s = saved || {};
+  const errs = Array.isArray(s.errors) ? s.errors : [];
+  const f = s.fail || {}, a = s.actions || {};
+  return {
+    errors: DED_ERRORS.map(d => {
+      const v = errs.find(x => x && x.k === d.k) || {};
+      return {
+        k: d.k,
+        h: String(v.h || "").trim() || d.h,
+        cut: DED_CUTS.some(c => c.k === v.cut) ? v.cut : d.cut
+      };
+    }),
+    fail: {
+      byCount:   f.byCount === true,
+      maxErrors: Number(f.maxErrors) > 0 ? Number(f.maxErrors) : 3,
+      byScore:   f.byScore === true,
+      minScore:  f.minScore != null && f.minScore !== "" ? Number(f.minScore) : 5
+    },
+    actions: {
+      evaluate: a.evaluate === true,
+      notDone:  a.notDone === true,
+      repeat:   a.repeat === true
+    }
+  };
+}
+
+/* آليةُ الخصم لبرنامج — تُقرأ من الإعدادات وتسقط على الافتراضي */
+function dedCfgOf(pid) {
+  const all = (DB.settings || {}).deductCfg || {};
+  const saved = all[String(pid)] || {};
+  const out = { mode: saved.mode === "custom" ? "custom" : "default", pillars: {} };
+  DED_PILLARS.forEach(p => { out.pillars[p.k] = dedPillarOf((saved.pillars || {})[p.k]); });
+  return out;
+}
+window.dedCfgOf = dedCfgOf;
+
+/* درجةُ الالتزام: للمثبَّت من sysPrgCfg (المصدر الذي يقرؤه النظام)،
+   ولبرنامج المدير من سجلّ البرنامج نفسِه. */
+function dedCommitOf(p2) {
+  if (!p2) return "presentAbsent";
+  if (isSysProgram(p2.id)) return sysPrgCfg(p2.id).commit || "presentAbsent";
+  return p2.commit || "presentAbsent";
+}
+
+function dedFindProgram(pid) {
+  return (cur("programs") || []).find(x => String(x.id) === String(pid)) ||
+         sysPrograms().find(x => String(x.id) === String(pid)) || null;
+}
+
+/* إعادة رسم صفحة البرنامج مع حفظ موضع التمرير */
+function dedRefreshView(pid) {
+  const body = document.querySelector("#panelRoot .sp-body");
+  const top = body ? body.scrollTop : 0;
+  if (typeof window.lvlView === "function") window.lvlView(pid);
+  const nb = document.querySelector("#panelRoot .sp-body");
+  if (nb) nb.scrollTop = top;
+}
+
+/* بطاقة «درجة الالتزام وتقييم الأداء» في صفحة البرنامج */
+function dedCardHtml(p2) {
+  if (!p2 || String(p2.id) === SARD_ID) return "";
+  const can = isTopAdmin();
+  const c = dedCfgOf(p2.id);
+  const commit = dedCommitOf(p2);
+  const cutH = k => (DED_CUTS.find(x => x.k === k) || {}).h || "—";
+  const pid = jsAttr(p2.id);
+
+  const summary = c.mode === "custom"
+    ? `<div class="ded-sum">${DED_PILLARS.map(pl => {
+        const v = c.pillars[pl.k];
+        const conds = [v.fail.byCount ? "عند " + toArabicDigits(v.fail.maxErrors) + " أخطاء" : "",
+                       v.fail.byScore ? "أقل من " + toArabicDigits(v.fail.minScore) + " من ١٠" : ""]
+                      .filter(Boolean).join(" أو ");
+        const acts = DED_ACTIONS.filter(a => v.actions[a.k]).map(a => a.h).join(" · ");
+        return `<div class="ded-sum-row">
+          <span class="ded-tico t-${pl.tone}">${pl.icon()}</span>
+          <strong>${esc(pl.h)}</strong>
+          <span class="ded-sum-bits">${v.errors.map(e =>
+            `<span class="pil-bit">${esc(e.h)}: يُخصم ${esc(cutH(e.cut))}</span>`).join("")}
+            ${conds ? `<span class="pil-bit">عدم الاجتياز: ${esc(conds)}</span>` : ""}
+            ${conds && acts ? `<span class="pil-bit">الإجراء: ${esc(acts)}</span>` : ""}</span>
+        </div>`;
+      }).join("")}</div>`
+    : `<div class="ded-note">يُطبَّق الخصم الافتراضي للنظام على جميع الأركان</div>`;
+
+  return `<section class="sp-card sp-wide2" id="dedCard">
+    <div class="sp-cardhead">${ic("target", 17)}
+      <div><h3>درجة الالتزام وتقييم الأداء</h3>
+        <p>متى يُطالَب الطالب بما فاته، وكيف يُخصم من درجته</p></div></div>
+    <div class="ded-row">
+      <div class="ded-field">
+        <label for="dedCommit">درجة الالتزام</label>
+        <select id="dedCommit"${can ? "" : " disabled"}
+          onchange="window.dedCommitSet('${pid}', this.value)">
+          ${SYS_COMMIT.map(x => `<option value="${esc(x.k)}"${x.k === commit ? " selected" : ""}>${esc(x.h)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="ded-field">
+        <label>تقييم الأداء</label>
+        <div class="ded-seg" role="group" aria-label="تقييم الأداء">
+          <button type="button" class="ded-segb${c.mode === "default" ? " on" : ""}"${can ? "" : " disabled"}
+            onclick="window.dedModeSet('${pid}', 'default')">الافتراضي</button>
+          <button type="button" class="ded-segb${c.mode === "custom" ? " on" : ""}"${can ? "" : " disabled"}
+            onclick="window.dedModeSet('${pid}', 'custom')">تخصيص</button>
+        </div>
+      </div>
+    </div>
+    ${summary}
+    <div class="ded-saved">${can ? "كل التغييرات محفوظة" : "الضبط من صلاحية مدير النظام"}</div>
+  </section>`;
+}
+
+/* الكتابة في الإعدادات: قاعدةُ الخادم تقصرها على المدير */
+function dedPersistSettings() {
+  if (!DB.settings) DB.settings = {};
+  DB.settings.id = DB.settings.id || "app";
+  return Promise.resolve(persistSet("settings", DB.settings));
+}
+
+window.dedCommitSet = function (pid, value) {
+  if (!isTopAdmin()) { showToast("الضبط من صلاحية مدير النظام", "warn"); return; }
+  if (!SYS_COMMIT.some(x => x.k === value)) return;
+  const p2 = dedFindProgram(pid);
+  if (!p2) return;
+
+  if (isSysProgram(pid)) {
+    if (!DB.settings) DB.settings = {};
+    if (!DB.settings.sysPrgCfg) DB.settings.sysPrgCfg = {};
+    const raw = DB.settings.sysPrgCfg[String(pid)] || {};
+    const prev = raw.commit;
+    /* يُدمج فوق المحفوظ: الأركان وبقية الحقول تبقى كما هي */
+    DB.settings.sysPrgCfg[String(pid)] = Object.assign({}, raw, { commit: value });
+    dedPersistSettings().then(ok => {
+      if (ok === false) {
+        const r2 = DB.settings.sysPrgCfg[String(pid)];
+        if (prev == null) delete r2.commit; else r2.commit = prev;
+        showToast("تعذّر حفظ درجة الالتزام", "warn");
+      } else showToast("حُفظت درجة الالتزام", "success");
+      dedRefreshView(pid);
+    });
+    return;
+  }
+
+  const r = (DB.programs || []).find(x => String(x.id) === String(pid));
+  if (!r) return;
+  const prev = r.commit;
+  r.commit = value;
+  Promise.resolve(persistSet("programs", r)).then(ok => {
+    if (ok === false) {
+      if (prev == null) delete r.commit; else r.commit = prev;
+      showToast("تعذّر حفظ درجة الالتزام", "warn");
+    } else showToast("حُفظت درجة الالتزام", "success");
+    dedRefreshView(pid);
+  });
+};
+
+window.dedModeSet = function (pid, mode) {
+  if (!isTopAdmin()) { showToast("الضبط من صلاحية مدير النظام", "warn"); return; }
+  if (mode === "custom") { window.dedOpen(pid); return; }
+
+  const c = dedCfgOf(pid);
+  if (c.mode === "default") return;
+  if (!DB.settings) DB.settings = {};
+  if (!DB.settings.deductCfg) DB.settings.deductCfg = {};
+  const raw = DB.settings.deductCfg[String(pid)] || {};
+  /* التخصيصُ المحفوظ يبقى: الرجوع إلى «تخصيص» يعيده كما كان */
+  DB.settings.deductCfg[String(pid)] = Object.assign({}, raw, { mode: "default" });
+  dedPersistSettings().then(ok => {
+    if (ok === false) {
+      DB.settings.deductCfg[String(pid)] = raw;
+      showToast("تعذّر الحفظ", "warn");
+    } else showToast("يُطبَّق الآن تقييم الأداء الافتراضي", "success");
+    dedRefreshView(pid);
+  });
+};
+
+/* =========================================================================
+   نافذة «آلية الخصم – تخصيص»
+   ========================================================================= */
+const DED = { pid: "", tab: "hifz", draft: null };
+
+function dedPaneHtml() {
+  const pl = DED_PILLARS.find(x => x.k === DED.tab) || DED_PILLARS[0];
+  const v = DED.draft.pillars[pl.k];
+
+  const errs = v.errors.map((e, i) => `
+    <div class="ded-err">
+      <span class="ded-flag">${ic("flag", 15)}</span>
+      <input class="ded-ename" id="dedEn_${i}" value="${esc(e.h)}" readonly maxlength="30"
+        aria-label="اسم الخطأ" oninput="window.dedErrName(${i}, this.value)"
+        onblur="this.readOnly = true">
+      <button type="button" class="ded-pen" title="تعديل الاسم"
+        onclick="window.dedEditName(${i})">${ic("pen", 15)}</button>
+      <span class="ded-cutl">يُخصم</span>
+      <select class="ded-cut" aria-label="مقدار الخصم" onchange="window.dedErrCut(${i}, this.value)">
+        ${DED_CUTS.map(c => `<option value="${esc(c.k)}"${c.k === e.cut ? " selected" : ""}>${esc(c.h)}</option>`).join("")}
+      </select>
+    </div>`).join("");
+
+  const acts = DED_ACTIONS.map(a => `
+    <label class="ded-act${v.actions[a.k] ? " on" : ""}">
+      <input type="checkbox"${v.actions[a.k] ? " checked" : ""}
+        onchange="window.dedAct('${a.k}', this.checked)">
+      <span class="ded-acttx"><strong>${esc(a.h)}</strong><small>${esc(a.d)}</small></span>
+    </label>`).join("");
+
+  return `
+    <div class="ded-sech">أخطاء ركن ${esc(pl.h)}</div>
+    ${pl.sub ? `<div class="ded-secsub">${esc(pl.sub)}</div>` : ""}
+    <div class="ded-errs">${errs}</div>
+
+    <div class="ded-fail">
+      <div class="ded-failh">${ic("info", 15)} في حال عدم الاجتياز في ركن ${esc(pl.h)}</div>
+      <div class="ded-failsub">حدّد شروط عدم الاجتياز والإجراء المترتب عليه.</div>
+
+      <div class="ded-conds">
+        <div class="ded-cond">
+          <label class="ded-tg">
+            <span class="switch"><input type="checkbox"${v.fail.byCount ? " checked" : ""}
+              onchange="window.dedFail('byCount', this.checked)"><span class="slider"></span></span>
+            <span>حسب عدد الأخطاء</span>
+          </label>
+          ${v.fail.byCount ? `<div class="ded-thr">عند بلوغ
+            <input type="number" min="1" max="99" step="1" value="${esc(v.fail.maxErrors)}"
+              oninput="window.dedFailNum('maxErrors', this.value)"> أخطاء</div>` : ""}
+        </div>
+        <div class="ded-cond">
+          <label class="ded-tg">
+            <span class="switch"><input type="checkbox"${v.fail.byScore ? " checked" : ""}
+              onchange="window.dedFail('byScore', this.checked)"><span class="slider"></span></span>
+            <span>حسب الدرجة</span>
+          </label>
+          ${v.fail.byScore ? `<div class="ded-thr">إذا كانت أقل من
+            <input type="number" min="0" max="10" step="0.25" value="${esc(v.fail.minScore)}"
+              oninput="window.dedFailNum('minScore', this.value)"> من ١٠</div>` : ""}
+        </div>
+      </div>
+
+      <div class="ded-acth">الإجراء عند عدم اجتيازه (يمكن اختيار أكثر من إجراء)</div>
+      <div class="ded-acts">${acts}</div>
+    </div>`;
+}
+
+function dedTabsHtml() {
+  return DED_PILLARS.map(pl => `
+    <button type="button" class="ded-tab${pl.k === DED.tab ? " on" : ""}"
+      onclick="window.dedTab('${pl.k}')">
+      <span class="ded-tico t-${pl.tone}">${pl.icon()}</span>
+      <span class="ded-tabn">${esc(pl.h)}</span>
+      <span class="ded-tabc">${toArabicDigits(DED.draft.pillars[pl.k].errors.length)} أخطاء</span>
+    </button>`).join("");
+}
+
+function dedRedraw() {
+  const t = document.getElementById("dedTabs");
+  const p = document.getElementById("dedPane");
+  if (t) t.innerHTML = dedTabsHtml();
+  if (p) p.innerHTML = dedPaneHtml();
+}
+
+window.dedOpen = function (pid) {
+  if (!isTopAdmin()) { showToast("الضبط من صلاحية مدير النظام", "warn"); return; }
+  const p2 = dedFindProgram(pid);
+  if (!p2) return;
+  DED.pid = String(pid);
+  DED.tab = "hifz";
+  /* نسخةٌ عميقة: الإلغاء لا يترك أثراً في الإعدادات */
+  DED.draft = JSON.parse(JSON.stringify(dedCfgOf(pid)));
+
+  openModal("آلية الخصم – تخصيص", p2.name || "",
+    `<div class="ded-tabs" id="dedTabs">${dedTabsHtml()}</div>
+     <div class="ded-pane" id="dedPane">${dedPaneHtml()}</div>`,
+    `<button class="btn btn-ghost" data-action="close-modal">إلغاء</button>
+     <button class="btn btn-primary ded-savebtn" onclick="window.dedSave()">حفظ آلية الخصم</button>`);
+
+  const m = document.querySelector("#modalRoot .modal");
+  if (m) m.classList.add("wide", "ded-modal");
+};
+
+window.dedTab = function (k) {
+  if (!DED.draft || !DED_PILLARS.some(x => x.k === k)) return;
+  DED.tab = k;
+  dedRedraw();
+};
+
+window.dedEditName = function (i) {
+  const el = document.getElementById("dedEn_" + i);
+  if (!el) return;
+  el.readOnly = false;
+  el.focus();
+  el.select();
+};
+
+window.dedErrName = function (i, value) {
+  const e = DED.draft && DED.draft.pillars[DED.tab].errors[i];
+  if (e) e.h = String(value || "");
+};
+
+window.dedErrCut = function (i, value) {
+  const e = DED.draft && DED.draft.pillars[DED.tab].errors[i];
+  if (e && DED_CUTS.some(c => c.k === value)) e.cut = value;
+};
+
+window.dedFail = function (key, on) {
+  if (!DED.draft) return;
+  DED.draft.pillars[DED.tab].fail[key] = !!on;
+  const p = document.getElementById("dedPane");
+  if (p) p.innerHTML = dedPaneHtml();
+};
+
+window.dedFailNum = function (key, value) {
+  if (!DED.draft) return;
+  DED.draft.pillars[DED.tab].fail[key] = value === "" ? "" : Number(value);
+};
+
+window.dedAct = function (key, on) {
+  if (!DED.draft) return;
+  DED.draft.pillars[DED.tab].actions[key] = !!on;
+  const p = document.getElementById("dedPane");
+  if (p) p.innerHTML = dedPaneHtml();
+};
+
+window.dedSave = function () {
+  if (!isTopAdmin()) { showToast("الضبط من صلاحية مدير النظام", "warn"); return; }
+  if (!DED.draft || !DED.pid) return;
+
+  /* التحقّق قبل الكتابة: شرطٌ بلا قيمةٍ صحيحة أو بلا إجراء لا يعني شيئاً */
+  for (const pl of DED_PILLARS) {
+    const v = DED.draft.pillars[pl.k];
+    v.errors.forEach((e, i) => { e.h = String(e.h || "").trim() || DED_ERRORS[i].h; });
+    const n = Number(v.fail.maxErrors), s = Number(v.fail.minScore);
+    if (v.fail.byCount && !(n >= 1 && n <= 99 && Math.floor(n) === n)) {
+      DED.tab = pl.k; dedRedraw();
+      showToast("عدد الأخطاء في ركن " + pl.h + " يجب أن يكون عدداً صحيحاً من ١ إلى ٩٩", "warn"); return;
+    }
+    if (v.fail.byScore && !(v.fail.minScore !== "" && s >= 0 && s <= 10)) {
+      DED.tab = pl.k; dedRedraw();
+      showToast("الدرجة في ركن " + pl.h + " يجب أن تكون بين ٠ و١٠", "warn"); return;
+    }
+    if ((v.fail.byCount || v.fail.byScore) && !DED_ACTIONS.some(a => v.actions[a.k])) {
+      DED.tab = pl.k; dedRedraw();
+      showToast("اختر إجراءً واحداً على الأقل عند عدم الاجتياز في ركن " + pl.h, "warn"); return;
+    }
+  }
+
+  const pid = DED.pid;
+  const pillars = {};
+  DED_PILLARS.forEach(pl => { pillars[pl.k] = dedPillarOf(DED.draft.pillars[pl.k]); });
+
+  if (!DB.settings) DB.settings = {};
+  if (!DB.settings.deductCfg) DB.settings.deductCfg = {};
+  const prev = DB.settings.deductCfg[pid];
+  DB.settings.deductCfg[pid] = { mode: "custom", pillars: pillars, updatedAt: Date.now() };
+
+  dedPersistSettings().then(ok => {
+    if (ok === false) {
+      if (prev == null) delete DB.settings.deductCfg[pid]; else DB.settings.deductCfg[pid] = prev;
+      showToast("تعذّر حفظ آلية الخصم", "warn");
+      return;
+    }
+    closeModal();
+    DED.draft = null;
+    showToast("حُفظت آلية الخصم", "success");
+    dedRefreshView(pid);
+  });
+};
+
+/* زرّ «إضافة مستوى» في صفحة البرنامج: يفتح نموذج المستوى الموجود نفسه */
+window.dedLevelAdd = function (pid) {
+  if (isSysProgram(pid)) return;
+  /* نموذجُ المستوى يبني قائمتَي السور من QSURAHS، وصفحةُ البرنامج قد تُفتح
+     قبل تحميل الفهرس — فيُحمَّل أولاً ثم يُفتح النموذج. */
+  const open = () => {
+    LVX.prog = String(pid);
+    LVX.reopen = String(pid);
+    window.lvxForm();
+  };
+  if (typeof QSURAHS !== "undefined" && QSURAHS) { open(); return; }
+  if (typeof window.Quran === "undefined" || !window.Quran.surahs) {
+    showToast("تعذّر تحميل فهرس السور — أعد المحاولة", "warn"); return;
+  }
+  window.Quran.surahs()
+    .then(list => { QSURAHS = list; open(); })
+    .catch(() => showToast("تعذّر تحميل فهرس السور — أعد المحاولة", "warn"));
 };
 
 /* =========================================================================
@@ -11220,6 +11666,12 @@ window.lvxSave = function () {
   showToast((id ? "حُدّث المستوى" : "أُضيف المستوى") +
             (moved ? ` وحُدّثت ${toArabicDigits(moved)} خطة` : ""), "success");
   mount();
+  /* أُضيف من صفحة البرنامج وهي ما زالت مفتوحة: تُعاد لتُظهر المستوى الجديد */
+  const back = LVX.reopen; LVX.reopen = "";
+  if (back && back === String(LVX.prog) &&
+      document.querySelector('#panelRoot [data-lvprog="' + back + '"]')) {
+    window.lvlView(back);
+  }
 };
 
 window.lvxDelete = function (id) {
@@ -17854,6 +18306,11 @@ window.trmForm = function (id) {
         <input type="date" id="tmFrom" value="${r ? esc(r.from || "") : ""}"></div>
       <div class="field"><label>إلى <span class="req">*</span></label>
         <input type="date" id="tmTo" value="${r ? esc(r.to || "") : ""}"></div>
+      <div class="field full"><label class="manu-same">
+        <input type="checkbox" id="tmParallel"${r && r.parallel ? " checked" : ""}>
+        <span>فترة موازية</span>
+        <small>تعمل مع الفترة النشطة دون أن تؤرشفها، ويجوز أن تتداخل تواريخهما — كالدورة الرمضانية</small>
+      </label></div>
      </div>`,
     `<button class="btn btn-primary" data-action="trm-save">${r ? "حفظ" : "إضافة"}</button>
      ${r ? `<button class="btn btn-danger" data-action="trm-del" data-id="${esc(r.id)}">حذف</button>` : ""}
@@ -17868,22 +18325,39 @@ window.trmSave = function () {
 
   const id = val("#tmId");
   const me = complexName(STATE.complexId) || "";
-  /* منع تداخل الفترات لنفس الجهة */
-  const clash = trmRows().find(x => String(x.id) !== String(id) && trmOwn(x) &&
-                                    x.from && x.to && from <= x.to && to >= x.from);
+  const pEl = document.getElementById("tmParallel");
+  const parallel = !!(pEl && pEl.checked);
+  /* منع تداخل الفترات لنفس الجهة — إلا الموازية: تداخلُها مقصود */
+  const clash = parallel ? null : trmRows().find(x => String(x.id) !== String(id) && trmOwn(x) &&
+                                    !x.parallel && x.from && x.to && from <= x.to && to >= x.from);
   if (clash) { showToast("الفترة تتداخل مع «" + (clash.name || "") + "»", "warn"); return; }
 
   if (!Array.isArray(DB.terms)) DB.terms = [];
   if (id) {
     const r = DB.terms.find(x => String(x.id) === String(id));
-    if (r) { Object.assign(r, { name, from, to }); persistSet("terms", r); }
+    if (r) { Object.assign(r, { name, from, to, parallel }); persistSet("terms", r); }
     showToast("حُفظت الفترة", "success");
-  } else {
-    const r = { id: "tm" + Date.now(), name, from, to, owner: me };
-    DB.terms.push(r); persistSet("terms", r);
-    showToast("أُضيفت الفترة", "success");
+    closeModal(); mount();
+    return;
   }
+
+  const r = { id: "tm" + Date.now(), name, from, to, owner: me, parallel };
+  DB.terms.push(r); persistSet("terms", r);
+  showToast("أُضيفت الفترة", "success");
   closeModal(); mount();
+
+  /* المواصفات: «عند إنشاء دورة جديدة يتيح النظام خيار استيراد البيانات من
+     دورة سابقة». الموازيةُ لا تُرحَّل إليها — تعمل بجوار النشطة. */
+  const act = activeTerm();
+  if (!parallel && act && String(act.id) !== String(r.id)) {
+    openModal("ترحيل البيانات", r.name,
+      noteCard(`<p>هل تريد ترحيل البيانات من <strong>${esc(act.name || "")}</strong>
+        إلى <strong>${esc(r.name)}</strong>؟</p>
+        <p style="margin-top:8px">يُفتح معالج الترحيل لتختار المعلّمين والطلاب والحلقات،
+        وعند التنفيذ تُفعَّل الفترة الجديدة وتُؤرشف السابقة للقراءة فقط.</p>`),
+      `<button class="btn btn-primary" onclick="window.trmMigrate('${jsAttr(r.id)}')">نعم، افتح معالج الترحيل</button>
+       <button class="btn btn-ghost" data-action="close-modal">لاحقاً</button>`);
+  }
 };
 window.trmDelete = function (id) {
   const r = trmRows().find(x => String(x.id) === String(id));
@@ -17913,11 +18387,21 @@ function activeTerm() {
   const list = cur("terms") || [];
   if (!list.length) return null;
 
-  const marked = list.find(t => t && t.active === true && t.archived !== true);
+  const act = list.filter(t => t && t.active === true && t.archived !== true);
+
+  /* فترةُ العمل: المعروضةُ إن كانت نشطة — بها تعمل الفترات الموازية */
+  const v = typeof viewTermPicked === "function" ? viewTermPicked() : "";
+  if (v) {
+    const hit = act.find(t => String(t.id) === v);
+    if (hit) return hit;
+  }
+
+  /* الأساسيةُ قبل الموازية */
+  const marked = act.find(t => !t.parallel) || act[0];
   if (marked) return marked;
 
   const today = todayISO();
-  const inRange = list.find(t => t && t.archived !== true &&
+  const inRange = list.find(t => t && t.archived !== true && !t.parallel &&
     t.from && t.to && String(t.from) <= today && today <= String(t.to));
   return inRange || null;
 }
@@ -17970,6 +18454,153 @@ function inTerm(rec, termId) {
 }
 
 /* =========================================================================
+   الفترة المعروضة · الفترات الموازية · القراءة فقط
+   -------------------------------------------------------------------------
+   الفترة النشطة كانت واحدةً لا غير، وكلُّ الصفحات تقرأ حضور الفترات كلّها
+   ودرجاتها مختلطةً — فلا يبدأ الفصل الجديد من صفر، ولا سبيل إلى عرض فصلٍ
+   مضى إلا في تقريرٍ واحد.
+
+     • فترةٌ «موازية» (parallel) تعمل مع النشطة ولا تؤرشفها — كالدورة
+       الرمضانية بجوار الفصل. فيجوز أن تنشط أكثر من فترة.
+     • «الفترة المعروضة» يختارها المستخدم من قائمة «الفترة» في الشريط
+       العلوي، وتُحفظ في المتصفح. إن كانت نشطةً صارت فترةَ العمل التي
+       تُوسم بها السجلات الجديدة؛ وإن كانت مؤرشفةً عُرضت للقراءة فقط.
+     • الحضور والتسميع يُفرزان بالفترة المعروضة في cur() نفسِها، فتبدأ
+       كلُّ فترةٍ من صفر ويبقى تاريخ ما قبلها كاملاً.
+   ========================================================================= */
+const TERM_VIEW_KEY = "mirath_view_term";
+
+/* الفترات النشطة كلّها (الأساسية والموازية) */
+function activeTerms() {
+  return (cur("terms") || []).filter(t => t && t.active === true && t.archived !== true);
+}
+
+/* الفترة التي اختارها المستخدم للعرض — إن بقيت موجودة */
+function viewTermPicked() {
+  if (STATE.viewTerm === undefined) {
+    try { STATE.viewTerm = localStorage.getItem(TERM_VIEW_KEY) || ""; }
+    catch (e) { STATE.viewTerm = ""; }
+  }
+  const id = String(STATE.viewTerm || "");
+  if (!id) return "";
+  return (DB.terms || []).some(t => t && String(t.id) === id) ? id : "";
+}
+
+/* الفترة المعروضة: المختارة، وإلا فترة العمل */
+function viewTermId() {
+  return viewTermPicked() || activeTermId();
+}
+
+/* العرضُ للقراءة فقط حين تكون الفترة المعروضة غيرَ فترة العمل */
+function viewReadOnly() {
+  const v = viewTermPicked();
+  return !!v && v !== activeTermId();
+}
+
+window.trmViewSet = function (id, silent) {
+  STATE.viewTerm = String(id || "");
+  try {
+    if (STATE.viewTerm) localStorage.setItem(TERM_VIEW_KEY, STATE.viewTerm);
+    else localStorage.removeItem(TERM_VIEW_KEY);
+  } catch (e) {}
+  if (silent) return;
+  const t = (DB.terms || []).find(x => String(x.id) === STATE.viewTerm);
+  showToast(!t ? "تعرض الآن الفترة النشطة"
+    : viewReadOnly() ? "تعرض «" + (t.name || "") + "» — للقراءة فقط"
+    : "فترة العمل الآن: «" + (t.name || "") + "»", "info");
+  mount();
+};
+
+/* خيارات قائمة «الفترة» في الشريط العلوي — يقرؤها topbar-dates.js */
+window.trmViewOptions = function () {
+  const terms = (cur("terms") || []).slice()
+    .sort((a, b) => String(b.from || "").localeCompare(String(a.from || "")));
+  if (!terms.length) return null;
+  const cur2 = viewTermId();
+  const items = terms.map(t => ({
+    id: String(t.id),
+    label: (t.name || "—") + (t.active === true && t.archived !== true
+      ? (t.parallel ? " · موازية" : " · نشطة") : t.archived ? " · مؤرشفة" : "")
+  }));
+  const sel = items.find(x => x.id === cur2);
+  return { items: items, selected: sel ? sel.label : "" };
+};
+
+/* الفرز: الحضور والتسميع بالفترة المعروضة.
+   حضورُ الموظفين (staffId) لا يُفرز: المسيّر يُحسب بالتاريخ وقد يعبر الشهرُ
+   حدَّ فترتين. والسجلُّ القديم الذي لا وسم له ولا يقع في نطاق أي فترة يبقى
+   ظاهراً — إخفاؤه يُفقِد بياناتٍ لا تُنسب إلى شيء. */
+const TERM_VIEW_COLLS = ["attendance", "recitations"];
+let TERM_VIEW_OFF = false;
+
+function termViewFilter(coll, list) {
+  if (TERM_VIEW_OFF || TERM_VIEW_COLLS.indexOf(coll) === -1) return list;
+  const tid = viewTermId();
+  if (!tid) return list;
+
+  const ranges = (DB.terms || []).filter(t => t && t.from && t.to);
+  const byDate = {};
+  const termOf = d => {
+    const k = String(d || "");
+    if (!k) return "";
+    if (byDate[k] === undefined) {
+      const hit = ranges.find(t => String(t.from) <= k && k <= String(t.to));
+      byDate[k] = hit ? String(hit.id) : "";
+    }
+    return byDate[k];
+  };
+
+  return list.filter(r => {
+    if (!r) return false;
+    if (coll === "attendance" && r.staffId) return true;
+    const t = r.termId ? String(r.termId) : termOf(r.date);
+    return !t || t === tid;
+  });
+}
+
+/* قراءةٌ عبر الفترات كلّها — للتقارير التي تختار فترتها بنفسها */
+function curAll(coll) {
+  const prev = TERM_VIEW_OFF;
+  TERM_VIEW_OFF = true;
+  try { return cur(coll); } finally { TERM_VIEW_OFF = prev; }
+}
+
+/* إنهاء فترةٍ موازية وأرشفتها */
+window.trmEnd = function (id) {
+  const t = (DB.terms || []).find(x => String(x.id) === String(id));
+  if (!t) return;
+  openModal("إنهاء الفترة وأرشفتها", t.name || "",
+    noteCard(`<p>تُؤرشف <strong>${esc(t.name || "")}</strong> للقراءة فقط.
+      بياناتها تبقى كاملة في التقارير وعند عرضها، ولا يُكتب فيها بعد ذلك.</p>`),
+    `<button class="btn btn-danger" onclick="window.trmEndDo('${jsAttr(id)}')">إنهاء وأرشفة</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+window.trmEndDo = function (id) {
+  const t = (DB.terms || []).find(x => String(x.id) === String(id));
+  if (!t) return;
+  t.active = false; t.archived = true; t.archivedAt = Date.now();
+  Promise.resolve(persistSet("terms", t)).then(ok => {
+    if (viewTermPicked() === String(id)) window.trmViewSet("", true);
+    closeModal();
+    showToast(ok === false ? "تعذّر حفظ الأرشفة" : "أُرشفت الفترة", ok === false ? "warn" : "success");
+    mount();
+  });
+};
+
+/* شريطُ القراءة فقط — يُلحق بأعلى كل صفحة ما دامت الفترة المعروضة غيرَ فترة العمل */
+function trmViewBanner() {
+  if (!viewReadOnly()) return "";
+  const t = (DB.terms || []).find(x => String(x.id) === viewTermPicked());
+  if (!t) return "";
+  return `<div class="trm-viewbar" role="status">
+    ${ic("lock", 16)}
+    <span>تعرض فترة <strong>${esc(t.name || "")}</strong>${t.archived ? " المؤرشفة" : ""} — للقراءة فقط،
+      ولا يُحفظ فيها أي تعديل.</span>
+    <button type="button" class="btn btn-soft btn-sm" onclick="window.trmViewSet('')">العودة إلى الفترة النشطة</button>
+  </div>`;
+}
+
+/* =========================================================================
    تفعيل فترة وأرشفة سابقتها
    ========================================================================= */
 window.trmActivate = function (id) {
@@ -17994,16 +18625,28 @@ window.trmActivate = function (id) {
 
 window.trmActivateDo = function (id) {
   if (!Array.isArray(DB.terms)) return;
+  const target = DB.terms.find(x => String(x.id) === String(id));
+  if (!target) return;
   let archived = 0;
+
+  /* الكتابة في فترة العمل لا في معروضةٍ للقراءة */
+  window.trmViewSet("", true);
 
   DB.terms.forEach(t => {
     const isIt = String(t.id) === String(id);
-    /* فترة واحدة نشطة: تفعيل الجديدة يؤرشف ما سواها */
-    if (t.active === true && !isIt) { t.archived = true; archived++; }
-    t.active = isIt;
-    if (isIt) { t.archived = false; t.activatedAt = Date.now(); }
+    if (isIt) {
+      t.active = true; t.archived = false; t.activatedAt = Date.now();
+    } else if (t.active === true && !target.parallel && !t.parallel) {
+      /* الأساسيةُ الجديدة تؤرشف الأساسيةَ السابقة — والموازيةُ تبقى */
+      t.active = false; t.archived = true; t.archivedAt = Date.now(); archived++;
+    } else {
+      return;
+    }
     persistSet("terms", t);
   });
+
+  /* الموازيةُ تُفتح للعمل فور تفعيلها */
+  if (target.parallel) window.trmViewSet(String(id), true);
 
   closeModal();
   showToast("فُعّلت الفترة" + (archived ? " وأُرشفت السابقة" : ""), "success");
@@ -18022,7 +18665,7 @@ window.trmActivateDo = function (id) {
 /* pick: من يُرحَّل · dest: وجهة كلٍّ إن نُقل · staff: ترحيل المعلّمين */
 const MIG = { from: "", to: "", pick: {}, dest: {}, staff: true };
 
-window.trmMigrate = function () {
+window.trmMigrate = function (toId) {
   const terms = (cur("terms") || []).filter(t => t);
   if (terms.length < 2) {
     showToast("يلزم فترتان على الأقل: التي تُغلق والتي تُفتح", "warn");
@@ -18031,8 +18674,11 @@ window.trmMigrate = function () {
 
   const act = activeTerm();
   MIG.from = act ? String(act.id) : String(terms[0].id);
-  MIG.to = String((terms.find(t => String(t.id) !== MIG.from) || terms[0]).id);
+  MIG.to = String((terms.find(t => String(t.id) === String(toId || "") && String(t.id) !== MIG.from) ||
+                  terms.find(t => String(t.id) !== MIG.from && !t.archived && !t.parallel) ||
+                  terms.find(t => String(t.id) !== MIG.from) || terms[0]).id);
   MIG.pick = {};
+  MIG.dest = {};
 
   /* الجميع مُختارون ابتداءً: الأغلب استمرارٌ لا انقطاع */
   (cur("students") || []).forEach(s => { if (s.status !== "متوقف") MIG.pick[String(s.id)] = true; });
@@ -18079,12 +18725,24 @@ window.trmMigAll = function (on) {
   trmMigrateRender();
 };
 
+/* تنتقل الحلقةُ إن بقي فيها طالبٌ مُرحَّل، أو نُقل إليها أحد، أو كانت
+   بلا طلاب. والتي لا يُرحَّل منها أحدٌ تبقى في الفترة القديمة (تجميد). */
+function trmMigCircleMoves(c, studs) {
+  const cid = String(c.id);
+  const mine = studs.filter(x => String(x.circleId || "") === cid);
+  if (!mine.length) return true;
+  if (Object.keys(MIG.dest).some(k => MIG.pick[k] && String(MIG.dest[k]) === cid)) return true;
+  return mine.some(x => MIG.pick[String(x.id)] &&
+    (!MIG.dest[String(x.id)] || String(MIG.dest[String(x.id)]) === cid));
+}
+
 function trmMigrateRender() {
   const terms = cur("terms") || [];
   const studs = (cur("students") || []).filter(s => s.status !== "متوقف");
   const picked = studs.filter(s => MIG.pick[String(s.id)]).length;
   const circles = (cur("circles") || []).filter(c =>
     !MIG.from || !c.termId || String(c.termId) === String(MIG.from));
+  const movingC = circles.filter(c => trmMigCircleMoves(c, studs)).length;
 
   const opt = (sel) => terms.map(t =>
     `<option value="${esc(t.id)}"${String(sel) === String(t.id) ? " selected" : ""}>${esc(t.name)}${
@@ -18120,11 +18778,13 @@ function trmMigrateRender() {
 
      ${MIG.from === MIG.to
        ? noteCard("اختر فترتين مختلفتين.")
-       : noteCard(`سيُنقل <strong>${toArabicDigits(circles.length)}</strong> حلقة و
+       : noteCard(`سيُنقل <strong>${toArabicDigits(movingC)}</strong> حلقة و
           <strong>${toArabicDigits(picked)}</strong> من <strong>${toArabicDigits(studs.length)}</strong> طالباً.
           <br>الخطط والمصاحف تبقى كما هي — الطالب يواصل من حيث وقف.
           <br>سجلات الحضور والتسميع لا تُحذف: تبقى موسومة بفترتها فتُفرَز بها.
-          <br>والواجبات المعلَّقة من الفترة المنتهية تُطوى فلا تُطالَب في الجديدة.`)}
+          <br>والواجبات المعلَّقة من الفترة المنتهية تُطوى فلا تُطالَب في الجديدة.
+          <br>غيرُ المحدَّدين يبقَون في الفترة القديمة موقوفين، والحلقةُ التي لا يُرحَّل منها أحدٌ تبقى فيها.
+          <br>المشرفون وصلاحياتُ الحسابات لا ترتبط بفترة، فتستمرّ كما هي.`)}
 
      <!-- المواصفات: «الموظفون غالباً مستمرون — نسخ جميع المعلمين والمشرفين
           إلى الدورة الجديدة مع الحفاظ على صلاحياتهم ومجموعاتهم» -->
@@ -18163,14 +18823,22 @@ function trmMigrateRender() {
 window.trmMigrateDo = function () {
   if (MIG.from === MIG.to) return;
 
-  let movedC = 0, kept = 0, stopped = 0;
+  /* الترحيل يكتب في فترة العمل: لو بقيت فترةٌ مؤرشفة معروضةً رُدّت كتاباته */
+  window.trmViewSet("", true);
 
-  /* الحلقات تنتقل إلى الفترة الجديدة */
+  let movedC = 0, kept = 0, stopped = 0, frozenC = 0;
+  const uniq = a => a.filter((x, i) => x && a.indexOf(x) === i);
+
+  /* الحلقات: تنتقل التي يستمرّ فيها أحد، وتبقى غيرُها في الفترة القديمة */
+  const activeStuds = (DB.students || []).filter(s2 => s2 && s2.status !== "متوقف");
   (DB.circles || []).forEach(c => {
     if (MIG.from && c.termId && String(c.termId) !== String(MIG.from)) return;
-    c.termId = MIG.to;
+    const moves = trmMigCircleMoves(c, activeStuds);
+    c.termIds = uniq((Array.isArray(c.termIds) ? c.termIds : []).map(String)
+      .concat([String(MIG.from)], moves ? [String(MIG.to)] : []));
+    if (moves) { c.termId = MIG.to; movedC++; }
+    else { c.termId = MIG.from; frozenC++; }
     persistSet("circles", c);
-    movedC++;
   });
 
   /* الطلاب: المُختارون يستمرّون، وغيرهم يُعلَّمون غير نشطين ولا يُحذفون.
@@ -18181,16 +18849,22 @@ window.trmMigrateDo = function () {
   (DB.students || []).forEach(s => {
     if (s.status === "متوقف") return;
 
+    /* عضويةُ الطالب في الفترات: المُرحَّل في الاثنتين، وغيرُه في القديمة وحدها */
+    const tids = (Array.isArray(s.termIds) ? s.termIds : []).map(String);
+
     if (!MIG.pick[String(s.id)]) {
       s.status = "متوقف";
       s.stoppedAt = Date.now();
       s.stoppedReason = "لم يُرحَّل إلى الفترة الجديدة";
+      s.termIds = uniq(tids.concat([String(MIG.from)]));
       persistSet("students", s);
       stopped++;
       return;
     }
 
     kept++;
+    s.termIds = uniq(tids.concat([String(MIG.from), String(MIG.to)]));
+    s.termId = String(MIG.to);
 
     /* =================================================================
        الخطةُ تُرحَّل ومعها موضعُ التسميع
@@ -18243,10 +18917,9 @@ window.trmMigrateDo = function () {
     }
 
     const destId = MIG.dest[String(s.id)];
-    if (!destId || String(destId) === String(s.circleId)) return;
-
-    const c = (cur("circles") || []).find(x => String(x.id) === String(destId));
-    if (!c) return;
+    const c = destId && String(destId) !== String(s.circleId)
+      ? (cur("circles") || []).find(x => String(x.id) === String(destId)) : null;
+    if (!c) { persistSet("students", s); return; }
 
     const from = s.circle || "";
     s.circleId = String(c.id);
@@ -18320,6 +18993,7 @@ window.trmMigrateDo = function () {
             (moved ? ` · نُقل ${toArabicDigits(moved)} بين الحلقات` : "") +
             (staffN ? ` · ${toArabicDigits(staffN)} معلّماً` : "") +
             (stopped ? ` · أُوقف ${toArabicDigits(stopped)}` : "") +
+            (frozenC ? ` · بقيت ${toArabicDigits(frozenC)} حلقة في الفترة القديمة` : "") +
             (closedA ? ` · طُويت ${toArabicDigits(closedA)} واجباً معلَّقاً` : ""), "success");
   mount();
 };
@@ -18331,8 +19005,8 @@ function trmActivePanel() {
   if (!terms.length) return "";
 
   const stats = act ? {
-    att: (cur("attendance") || []).filter(r => !r.staffId && inTerm(r, act.id)).length,
-    rec: (cur("recitations") || []).filter(r => inTerm(r, act.id)).length
+    att: (curAll("attendance") || []).filter(r => !r.staffId && inTerm(r, act.id)).length,
+    rec: (curAll("recitations") || []).filter(r => inTerm(r, act.id)).length
   } : null;
 
   return `<div class="card" style="margin-top:18px">
@@ -18362,15 +19036,18 @@ function trmActivePanel() {
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
       <thead><tr><th>الفترة</th><th>النطاق</th><th>الحالة</th><th></th></tr></thead>
       <tbody>${terms.map(t => {
-        const on = act && String(act.id) === String(t.id);
+        const live = t.active === true && t.archived !== true;
+        const viewing = String(viewTermId()) === String(t.id);
         return `<tr>
-          <td><strong>${esc(t.name || "—")}</strong></td>
+          <td><strong>${esc(t.name || "—")}</strong>${t.parallel ? ' <span class="pt-badge">موازية</span>' : ""}</td>
           <td class="pt-num" dir="ltr">${esc(t.from || "—")} → ${esc(t.to || "—")}</td>
-          <td>${on ? '<span class="pt-badge on">نشطة</span>'
+          <td>${live ? '<span class="pt-badge on">نشطة</span>'
                    : t.archived ? '<span class="pt-badge off">مؤرشفة</span>'
-                   : '<span class="muted">—</span>'}</td>
-          <td class="pt-actions">${on ? "" :
-            `<button class="btn btn-ghost btn-sm" onclick="window.trmActivate('${jsAttr(t.id)}')">تفعيل</button>`}</td>
+                   : '<span class="muted">—</span>'}${viewing ? ' <span class="pt-badge">معروضة</span>' : ""}</td>
+          <td class="pt-actions">
+            ${viewing ? "" : `<button class="btn btn-ghost btn-sm" onclick="window.trmViewSet('${jsAttr(t.id)}')">عرض</button>`}
+            ${live ? "" : `<button class="btn btn-ghost btn-sm" onclick="window.trmActivate('${jsAttr(t.id)}')">تفعيل</button>`}
+            ${live && t.parallel ? `<button class="btn btn-ghost btn-sm" onclick="window.trmEnd('${jsAttr(t.id)}')">إنهاء وأرشفة</button>` : ""}</td>
         </tr>`;
       }).join("")}</tbody></table></div></div>
   </div>`;
@@ -20262,7 +20939,7 @@ function repTermBar() {
 function repRecRows() {
   /* الفترة المختارة وحدها: كان التقرير يجمع كل الفترات فيختلط إنجاز
      فصلٍ بفصل ويظهر متوسّط لا يصف شيئاً. */
-  const recs = byTerm(cur("recitations"));
+  const recs = byTerm(curAll("recitations"));
   return cur("students").map(st => {
     const pl = cur("plans").find(x => String(x.studentId) === String(st.id)) || {};
     const mine = recs.filter(r => String(r.studentId) === String(st.id));
@@ -20273,7 +20950,7 @@ function repRecRows() {
     const fix  = Number(pl.fixTotal)  || 0, fixDone  = Number(pl.fixDone)  || 0;
     const avg  = pct(hifzDone + revDone + fixDone, hifz + rev + fix);
 
-    const att = byTerm(cur("attendance") || []).filter(a => String(a.studentId) === String(st.id));
+    const att = byTerm(curAll("attendance") || []).filter(a => String(a.studentId) === String(st.id));
     const cnt = k => att.filter(a => a.status === k).length;
     const dates = att.filter(a => a.status === "حاضر").map(a => a.date).sort();
     const grade = v => kpiGrade(v);
@@ -25311,8 +25988,9 @@ function mount() {
     if (h) setDocTitle(h.textContent.trim());
   }, 0);
   if (!root) return;
-  root.innerHTML = html;
+  root.innerHTML = (typeof trmViewBanner === "function" ? trmViewBanner() : "") + html;
   root.scrollTop = 0;
+  try { if (typeof window.tbPeriodSync === "function") window.tbPeriodSync(); } catch (e) {}
   runAnimations(root);
   try { fabRender(); } catch (e) { console.warn("fab:", e); }
   try { updateMsgBadge(); } catch (e) { /* الشريط غير موجود بعد */ }
@@ -30379,7 +31057,20 @@ function guardSession(coll, obj, silent) {
   return true;
 }
 
+/* ما يُمنع حفظه حين تُعرض فترةٌ غيرُ فترة العمل */
+const TERM_VIEW_LOCK = TERM_BOUND.concat(["students", "circles", "plans", "teachers", "planRules"]);
+
 function guardArchived(coll, obj, silent) {
+  if (TERM_VIEW_LOCK.indexOf(coll) > -1 && typeof viewReadOnly === "function" && viewReadOnly() &&
+      !(isTopAdmin() && DB.__archiveOverride === true)) {
+    /* تنبيهٌ واحد كل بضع ثوانٍ: الفحوص الدورية تحاول الكتابة كذلك فتُردّ صامتة */
+    if (!silent && Date.now() - (guardArchived._ro || 0) > 4000) {
+      guardArchived._ro = Date.now();
+      showToast("تعرض فترةً للقراءة فقط — ارجع إلى الفترة النشطة لحفظ التعديل", "warn");
+    }
+    return true;
+  }
+
   const t = inArchivedTerm(coll, obj);
   if (!t) return false;
 
@@ -30515,6 +31206,7 @@ function persistSet(coll, obj) {
 function persistPlan(id) {
   const db = FDB(); if (!db) return;
   const p = DB.plans.find(x => x.id == id); if (!p) return;
+  if (typeof guardArchived === "function" && guardArchived("plans", p)) return;
   const data = Object.assign({}, p, { ext: PLAN_EXTRA[id] || null });
   if (data._o == null) data._o = Date.now();
   db.collection("plans").doc(String(id)).set(data)
@@ -31641,7 +32333,9 @@ var ARCHIVE_VIEW = false;
 
 function cur(coll) {
   const raw = Array.isArray(DB[coll]) ? DB[coll] : [];
-  return personFilter(coll, facilityFilter(coll, levelFilter(coll, archiveFilter(coll, raw))));
+  /* termViewFilter: الحضور والتسميع بالفترة المعروضة — لا تختلط الفترات */
+  return personFilter(coll, facilityFilter(coll, levelFilter(coll, archiveFilter(coll,
+    typeof termViewFilter === "function" ? termViewFilter(coll, raw) : raw))));
 }
 
 function archiveFilter(coll, list) {

@@ -8950,3 +8950,138 @@ html[data-theme="dark"] .pl-row { background: #1b3736; }
 html[data-theme="dark"] .pl-name,
 html[data-theme="dark"] .pl-f select,
 html[data-theme="dark"] .pl-segb { background: #14292a; border-color: #244544; color: #dce9e9; }
+/* =========================================================================
+   درجة الالتزام وتقييم الأداء + نافذة «آلية الخصم – تخصيص»
+   ========================================================================= */
+.ded-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 18px; padding: 4px 0 6px; }
+.ded-field { display: flex; flex-direction: column; gap: 7px; }
+.ded-field > label { font-size: 12.5px; font-weight: 700; color: var(--text-muted); }
+.ded-field select {
+  height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-main); font: inherit; font-size: 14px; font-weight: 700;
+}
+.ded-field select:disabled { opacity: .7; cursor: not-allowed; }
+.ded-seg {
+  display: inline-flex; align-self: flex-start; gap: 4px; padding: 4px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+}
+.ded-segb {
+  min-width: 92px; height: 36px; padding: 0 16px; border-radius: 9px; border: 0;
+  background: transparent; color: var(--text-muted); font: inherit; font-size: 13.5px; font-weight: 700;
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.ded-segb:hover:not(:disabled) { background: var(--brand-soft); color: var(--brand-dark); }
+.ded-segb.on { background: var(--brand-soft); color: var(--brand-dark); box-shadow: inset 0 0 0 1px #cfe5e4; }
+.ded-segb:disabled { cursor: not-allowed; opacity: .7; }
+.ded-note { font-size: 13px; color: var(--text-muted); padding: 8px 0 2px; }
+.ded-sum { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; }
+.ded-sum-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ded-sum-row > strong { font-size: 14px; min-width: 52px; }
+.ded-sum-bits { display: flex; flex-wrap: wrap; gap: 6px; }
+.ded-saved { font-size: 12px; color: var(--text-faint); margin-top: 12px; }
+
+/* أيقونة الركن الملوّنة */
+.ded-tico { width: 30px; height: 30px; border-radius: 9px; display: inline-grid; place-items: center; color: #fff; flex-shrink: 0; }
+.ded-tico.t-g { background: #17915a; }
+.ded-tico.t-a { background: #e0a21b; }
+.ded-tico.t-b { background: #2c3f8f; }
+
+/* النافذة */
+.modal.ded-modal { max-width: 820px; }
+.ded-tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--border); margin: -4px 0 16px; }
+.ded-tab {
+  display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 8px;
+  border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; background: transparent;
+  font: inherit; color: var(--text-muted); cursor: pointer; transition: color .15s, border-color .15s;
+}
+.ded-tab:hover { color: var(--text-main); }
+.ded-tab.on { border-bottom-color: var(--brand-dark); color: var(--text-main); }
+.ded-tabn { font-size: 14.5px; font-weight: 800; }
+.ded-tabc { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #eef2f2; color: #7d8f90; }
+.ded-tab.on .ded-tabc { background: var(--brand-soft); color: var(--brand-dark); }
+
+.ded-sech { font-size: 14px; font-weight: 800; color: var(--text-main); }
+.ded-secsub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+.ded-errs { display: flex; flex-direction: column; margin-top: 10px; }
+.ded-err {
+  display: flex; align-items: center; gap: 10px; padding: 12px 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.ded-flag { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: #e9f5ef; color: #17915a; flex-shrink: 0; }
+.ded-ename {
+  flex: 1; min-width: 0; height: 34px; padding: 0 8px; border-radius: 8px;
+  border: 1px solid transparent; background: transparent; color: var(--text-main);
+  font: inherit; font-size: 14px; font-weight: 700;
+}
+.ded-ename:not([readonly]) { border-color: var(--brand-main); background: var(--surface); }
+.ded-ename[readonly] { cursor: default; }
+.ded-pen { width: 32px; height: 32px; border-radius: 8px; border: 0; background: transparent; color: var(--text-faint); display: grid; place-items: center; cursor: pointer; }
+.ded-pen:hover { background: var(--brand-soft); color: var(--brand-dark); }
+.ded-cutl { font-size: 13px; font-weight: 700; color: #17915a; margin-inline-start: 14px; }
+.ded-cut {
+  height: 36px; min-width: 132px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-main); font: inherit; font-size: 13.5px; font-weight: 700;
+}
+
+.ded-fail { margin-top: 18px; }
+.ded-failh { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 800; color: var(--text-main); }
+.ded-failh svg { color: var(--text-muted); }
+.ded-failsub { font-size: 12px; color: var(--text-muted); margin: 3px 0 12px; }
+.ded-conds { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 24px; }
+.ded-cond { display: flex; flex-direction: column; gap: 8px; }
+.ded-tg { display: inline-flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 700; color: var(--text-main); cursor: pointer; }
+.ded-thr { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
+.ded-thr input {
+  width: 80px; height: 34px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-main); font: inherit; text-align: center;
+}
+.ded-acth { font-size: 12.5px; font-weight: 700; color: var(--text-muted); margin: 16px 0 8px; }
+.ded-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.ded-act {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface); cursor: pointer; transition: border-color .15s, background .15s;
+}
+.ded-act:hover { border-color: #bcd9d8; }
+.ded-act.on { border-color: var(--brand-main); background: var(--brand-soft); }
+.ded-act input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--brand-main); flex-shrink: 0; }
+.ded-acttx { display: flex; flex-direction: column; gap: 2px; }
+.ded-acttx strong { font-size: 13.5px; color: var(--text-main); }
+.ded-acttx small { font-size: 11.5px; color: var(--text-muted); }
+.ded-modal .ded-savebtn { margin-inline-start: auto; }
+
+/* المستويات في صفحة البرنامج */
+.ded-lvadd { margin-inline-start: 8px; }
+.ded-lvempty {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+  padding: 26px 12px; border: 1px dashed var(--border); border-radius: 14px;
+}
+.ded-lvempty strong { font-size: 15px; color: var(--text-main); }
+.ded-lvempty > span:not(.ded-lvico) { font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; }
+.ded-lvico { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: #eef2f2; color: var(--text-muted); margin-bottom: 4px; }
+
+@media (max-width: 600px) {
+  .ded-err { flex-wrap: wrap; }
+  .ded-cutl { margin-inline-start: 40px; }
+  .ded-cut { flex: 1; }
+  .ded-tab { flex-direction: column; gap: 4px; }
+}
+
+html[data-theme="dark"] .ded-tabc,
+html[data-theme="dark"] .ded-lvico { background: #14292a; color: #9fbcbd; }
+html[data-theme="dark"] .ded-flag { background: #0f2a22; }
+html[data-theme="dark"] .ded-segb.on { box-shadow: inset 0 0 0 1px #244544; }
+html[data-theme="dark"] .ded-act:hover { border-color: #244544; }
+
+/* =========================================================================
+   شريط «تعرض فترة للقراءة فقط» أعلى الصفحة
+   ========================================================================= */
+.trm-viewbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 16px; padding: 10px 14px; border-radius: 12px;
+  background: var(--warning-soft); border: 1px solid #f0dfae; color: #7a5b0f;
+  font-size: 13.5px;
+}
+.trm-viewbar svg { flex-shrink: 0; }
+.trm-viewbar span { flex: 1; min-width: 200px; }
+.trm-viewbar .btn { margin-inline-start: auto; }
+html[data-theme="dark"] .trm-viewbar { border-color: #5a4a22; color: #e8cf8a; }
