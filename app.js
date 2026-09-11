@@ -4543,6 +4543,10 @@ const TEACHER_PERMS = [
   { g: "الخطة والواجبات" },
   { k: "editPlan",    h: "وضع الواجبات وتعديل مسار الخطة",
     d: "تحديد موضع الحفظ والمراجعة والمقدار لكل طالب" },
+  /* المواصفات: «تغيير مسار خطة الطالب — وتشمل ثلاث صلاحيات فرعية» */
+  { k: "planStart",   h: "تغيير موضع البداية للواجب", d: "فرعيّةٌ من تعديل المسار" },
+  { k: "planQty",     h: "تغيير عدد الأوجه أو الأسطر المحددة", d: "فرعيّةٌ من تعديل المسار" },
+  { k: "planEnd",     h: "تغيير موضع النهاية للواجب", d: "تعطيلُ الثلاث: المعلّم ملتزمٌ حرفياً بالخطة المبرمجة" },
   { k: "extraDuty",   h: "إضافة واجبات وتسميعات طارئة",
     d: "خارج نطاق الخطة الأساسية للطالب" },
 
@@ -10024,6 +10028,172 @@ function planScopeMosque() {
     .find(m => m && String(m.id) === id) || null;
 }
 
+/* =========================================================================
+   إعداداتُ كلّ مسجدٍ مستقلّة
+   -------------------------------------------------------------------------
+   المواصفات: «جدول الإعدادات وجدول دليل الإجراءات يجب أن يكونا مرتبطين
+   برقم المسجد، بحيث يحتفظ كلّ مسجدٍ بإعداداته وقواعد ترحيله وسلسلة عقوباته
+   وتنبيهاته بشكلٍ منفصل تماماً».
+
+   وكانت الإعداداتُ كتلةً واحدةً للنظام كلّه، ولا يكتبها إلا المدير (قاعدة
+   settings). فمديرُ المسجد يعدّل في شاشة الإعدادات فيُردّ حفظُه على الخادم
+   بصمت، ولو نجح لغيّر إعداداتِ المساجد كلّها.
+
+   الحلُّ طبقةٌ فوق العامّ لا نسخةٌ موازية — كما خطةُ المسجد (planCfg):
+     • mosques/<id>.cfg يحمل ما خصّصه المسجد من مفاتيح MOSQUE_CFG_KEYS.
+     • جلسةُ من ينتمي لمسجدٍ واحد تُدمَج فيها الطبقة عند التحميل، فتقرأ كلُّ
+       الشاشات القيمَ الفعّالة لمسجده بلا تعديلها.
+     • حفظُ مدير المسجد للإعدادات يُحوَّل في persistSet إلى سجلّ مسجده.
+     • الإدارةُ العليا تعدّل العامَّ، وتقرأ طبقةَ كلّ مسجدٍ حين تحكم على
+       طلابه (التنبيهات والتعويض وجهة التحضير).
+   ========================================================================= */
+const MOSQUE_CFG_KEYS = [
+  /* التنبيهات والإجراءات */
+  "alNoRecite", "alPartial", "alMonthMiss", "alAbsRun", "alAbsSpread", "alSpreadDays",
+  "alTimerHours", "procedures",
+  /* التحضير */
+  "attWho", "attEditMin", "attLabels", "attCustom", "offDutyMode", "partialExemptPct", "autoApprove",
+  /* الحفظ والتقييم والخصم */
+  "musMarks", "recPass", "hwTypes", "hwRedoBelow", "hwOnAbsence", "hwOnExcuse", "hwOnPartial",
+  /* المقرأة وكبار السن */
+  "maqraahOn", "maqraahUrl", "elderlyAge", "elderlyEase",
+  /* الرسائل والمواقيت */
+  "msgEvents", "msgCostCap", "prayerOn", "prayerCity", "prayerCountry", "prayerMethod"
+];
+
+let CFG_BASE = null;        /* الإعدادات العامة كما في السحابة — بلا طبقة */
+let CFG_MOSQUE = "";        /* المسجد الذي دُمجت طبقته في هذه الجلسة */
+
+const cfgClone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+
+/* مسجدُ الجلسة: لمن ينتمي لمسجدٍ واحد — لا للإدارة العليا ولا لمدير المجمّع */
+function cfgOwnMosque() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (["mosqueManager", "supervisor", "teacher", "student", "parent"].indexOf(r) < 0) return null;
+  return typeof planScopeMosque === "function" ? planScopeMosque() : null;
+}
+
+/* يُنادى بعد تحميل الإعدادات: يحفظ العامّ ويدمج طبقة المسجد */
+function cfgApplyOverlay(fresh) {
+  if (!DB.settings) DB.settings = {};
+  /* fresh: الإعداداتُ جاءت للتوّ من السحابة فهي العامّ الخالص */
+  if (fresh || CFG_BASE === null) CFG_BASE = cfgClone(DB.settings) || {};
+  /* الرجوعُ إلى العامّ ثمّ دمجُ الطبقة — فلا تتراكم طبقتان */
+  MOSQUE_CFG_KEYS.forEach(k => {
+    if (CFG_BASE[k] === undefined) delete DB.settings[k];
+    else DB.settings[k] = cfgClone(CFG_BASE[k]);
+  });
+  CFG_MOSQUE = "";
+  const m = cfgOwnMosque();
+  if (!m || !m.cfg) return;
+  MOSQUE_CFG_KEYS.forEach(k => { if (m.cfg[k] !== undefined) DB.settings[k] = cfgClone(m.cfg[k]); });
+  CFG_MOSQUE = String(m.id);
+}
+
+/* الإعدادُ الفعّال لمسجدٍ بعينه — للإدارة حين تحكم على طلاب مسجد */
+const CFG_FOR_CACHE = {};
+function cfgFor(mid) {
+  const base = DB.settings || {};
+  if (!mid || String(mid) === CFG_MOSQUE || !isTopAdmin()) return base;
+  const m = (DB.mosques || []).find(x => x && String(x.id) === String(mid));
+  if (!m || !m.cfg) return base;
+  const c = CFG_FOR_CACHE[String(mid)];
+  if (c && c.cfg === m.cfg && c.base === base) return c.out;
+  const out = Object.assign({}, base);
+  MOSQUE_CFG_KEYS.forEach(k => { if (m.cfg[k] !== undefined) out[k] = m.cfg[k]; });
+  CFG_FOR_CACHE[String(mid)] = { cfg: m.cfg, base, out };
+  return out;
+}
+
+/* حفظ الإعدادات: المديرُ يكتب العامّ، ومديرُ المسجد يكتب طبقة مسجده.
+   يُرجِع وعداً إن حُوِّل، وإلا null فيمضي persistSet كما كان. */
+function cfgRouteSave(obj) {
+  if (isTopAdmin()) {
+    const b = cfgClone(obj) || {}; delete b.id; delete b._o;
+    CFG_BASE = b;
+    return null;
+  }
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (r !== "mosqueManager" && r !== "supervisor") return null;
+  const m = typeof planScopeMosque === "function" ? planScopeMosque() : null;
+  if (!m) { showToast("لا مسجد مرتبط بحسابك — يُسنَد من الإعدادات ← المستخدمون", "warn"); return Promise.resolve(false); }
+
+  const base = CFG_BASE || {};
+  const cfg = Object.assign({}, m.cfg || {});
+  /* الفارغُ ({} أو [] أو "") كغير المحدَّد — لا طبقةَ لما لا قيمةَ له */
+  const nrm = x => (x === undefined || x === null || x === "" ||
+    (typeof x === "object" && !Object.keys(x).length)) ? "" : JSON.stringify(x);
+  MOSQUE_CFG_KEYS.forEach(k => {
+    const v = obj[k];
+    if (nrm(v) === nrm(base[k])) delete cfg[k];      /* كالعامّ: لا طبقة */
+    else cfg[k] = cfgClone(v);
+  });
+  /* ما ليس من إعدادات المسجد لا يُكتب — ويُعاد في الذاكرة إلى العامّ */
+  let foreign = 0;
+  Object.keys(obj).forEach(k => {
+    if (k === "id" || k === "_o" || MOSQUE_CFG_KEYS.indexOf(k) > -1) return;
+    if (JSON.stringify(obj[k]) !== JSON.stringify(base[k])) {
+      foreign++;
+      if (base[k] === undefined) delete DB.settings[k]; else DB.settings[k] = cfgClone(base[k]);
+    }
+  });
+  if (foreign) showToast("بعض ما عدّلته إعداداتٌ عامّة للنظام — تعديلها للإدارة العليا", "info");
+
+  const prev = m.cfg;
+  m.cfg = cfg;
+  return Promise.resolve(persistSet("mosques", m)).then(ok => {
+    if (ok === false) m.cfg = prev;
+    cfgApplyOverlay();
+    return ok;
+  });
+}
+
+/* من يعدّل الإعدادات: الإدارةُ العليا للعامّ، ومديرُ المسجد لطبقة مسجده */
+function cfgCanEdit() {
+  if (isTopAdmin()) return true;
+  const r = ((STATE && STATE.user) || {}).role || "";
+  return (r === "mosqueManager" || r === "supervisor") &&
+         !!(typeof planScopeMosque === "function" && planScopeMosque());
+}
+
+/* إعادة إعدادات المسجد إلى العامّ */
+window.cfgMosqueReset = function () {
+  const m = typeof planScopeMosque === "function" ? planScopeMosque() : null;
+  if (!m) return;
+  openModal("إعادة إعدادات المسجد", m.name || "",
+    noteCard("تُحذف تخصيصات هذا المسجد، ويعود إلى الإعدادات العامة للنظام."),
+    `<button class="btn btn-danger" onclick="window.cfgMosqueResetDo()">إعادة</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+window.cfgMosqueResetDo = function () {
+  const m = typeof planScopeMosque === "function" ? planScopeMosque() : null;
+  if (!m) return;
+  const prev = m.cfg;
+  delete m.cfg;
+  Promise.resolve(persistSet("mosques", m)).then(ok => {
+    if (ok === false) m.cfg = prev;
+    cfgApplyOverlay();
+    closeModal();
+    showToast(ok === false ? "تعذّر الحفظ" : "عاد المسجد إلى الإعدادات العامة", ok === false ? "warn" : "success");
+    mount();
+  });
+};
+
+/* شريطٌ أعلى الإعدادات لمدير المسجد: ما يعدّله خاصٌّ بمسجده */
+function cfgMosqueBanner() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (r !== "mosqueManager" && r !== "supervisor") return "";
+  const m = typeof planScopeMosque === "function" ? planScopeMosque() : null;
+  if (!m) return noteCard("حسابك غير مرتبط بمسجد — لا تُحفظ الإعدادات حتى يُسنَد.");
+  const n = Object.keys(m.cfg || {}).length;
+  return `<div class="trm-viewbar" style="background:var(--brand-soft);border-color:#cfe5e4;color:var(--brand-dark)">
+    ${ic("mosque", 16)}
+    <span>تعدّل إعدادات <strong>${esc(m.name || "مسجدك")}</strong> — تعلو الإعدادات العامة ولا تمسّ المساجد الأخرى${
+      n ? " · " + toArabicDigits(n) + " إعداداً مخصّصاً" : ""}.</span>
+    ${n ? `<button type="button" class="btn btn-ghost btn-sm" onclick="window.cfgMosqueReset()">إعادة للعام</button>` : ""}
+  </div>`;
+}
+
 /* الزرُّ يظهر لمدير المسجد ولو لم يُسنَد إليه مسجدٌ بعد: اللوحةُ تخبره
    بالسبب حين يضغط. وإخفاؤه صامتاً يجعل الخللَ بلا أثرٍ يُتتبَّع. */
 function canPlanSetup() {
@@ -12133,8 +12303,8 @@ function fixLessonsFor(studentId) {
 /* =========================================================================
    إعدادات المحرّك
    ========================================================================= */
-function planEngineCfg() {
-  const s = DB.settings || {};
+function planEngineCfg(mid) {
+  const s = typeof cfgFor === "function" ? cfgFor(mid) : (DB.settings || {});
   return {
     /* دون هذا الحدّ يرسب الواجب ويُعاد غداً ويُمنع التقدّم */
     redo: Number(s.hwRedoBelow) > 0 ? Number(s.hwRedoBelow) : 60,
@@ -14094,7 +14264,8 @@ function rollForward(studentId, fromDate, toDate) {
     if (typeof termOfDate === "function" && termArchived(termOfDate(fromDate))) return 0;
   } catch (e) {}
 
-  const cfg = planEngineCfg();
+  /* سياسةُ التعويض من مسجد الطالب */
+  const cfg = planEngineCfg(((cur("students") || []).find(x => String(x.id) === String(studentId)) || {}).mosqueId);
   const att = (cur("attendance") || []).find(r =>
     String(r.studentId) === String(studentId) && String(r.date) === String(fromDate));
   let status = att ? String(att.status) : "";
@@ -14851,8 +15022,8 @@ const PROC_DEFAULTS = {
   ]
 };
 
-function procList(track) {
-  const saved = ((DB.settings || {}).procedures || {})[track];
+function procList(track, mid) {
+  const saved = (((typeof cfgFor === "function" ? cfgFor(mid) : DB.settings) || {}).procedures || {})[track];
   if (Array.isArray(saved) && saved.length) {
     return saved.map((x, i) => ({ n: i + 1, h: String(x.h || x) }));
   }
@@ -14862,8 +15033,8 @@ function procList(track) {
 /* ---------------------------------------------------------------
    شروط التنبيه — كما نصّت المواصفات
    --------------------------------------------------------------- */
-function alertCfg() {
-  const s = DB.settings || {};
+function alertCfg(mid) {
+  const s = typeof cfgFor === "function" ? cfgFor(mid) : (DB.settings || {});
   return {
     noReciteDays: Number(s.alNoRecite) > 0 ? Number(s.alNoRecite) : 3,
     partialDays:  Number(s.alPartial)  > 0 ? Number(s.alPartial)  : 3,
@@ -14908,7 +15079,7 @@ function alertLateBanner() {
 
 /* تجاوز المهلة؟ */
 function alertLate(a) {
-  return a && a.status === "open" && hoursOpen(a) >= alertCfg().timerHours;
+  return a && a.status === "open" && hoursOpen(a) >= alertCfg(a.mosqueId).timerHours;
 }
 
 function daysAgo(n) {
@@ -14931,13 +15102,14 @@ function runOfDays(records, test, need) {
    توليد التنبيهات
    ========================================================================= */
 function scanAlerts() {
-  const cfg = alertCfg();
   const out = [];
   const today = todayISO();
 
   (cur("students") || []).forEach(st => {
     if (!st || st.status === "متوقف") return;
     const sid = String(st.id);
+    /* شروطُ مسجد الطالب — لكلّ مسجدٍ عتباتُه */
+    const cfg = alertCfg(st.mosqueId);
     /* «تحضير فقط» لا يُسمَّع قصداً: لا تُولَّد له تنبيهاتٌ تعليمية */
     const eduOn = !st.attOnly;
 
@@ -14950,7 +15122,7 @@ function scanAlerts() {
     const present = att.filter(a => a.status === "حاضر" || a.status === "متأخر");
 
     if (eduOn && runOfDays(present, a => !hasRec(a.date), cfg.noReciteDays)) {
-      out.push({ track: "edu", kind: "noRecite", studentId: sid, student: st.name,
+      out.push({ track: "edu", kind: "noRecite", studentId: sid, student: st.name, mosqueId: st.mosqueId || "",
         title: "حضر بلا تسميع",
         text: `${cfg.noReciteDays} أيام حضور متتالية دون تسجيل تسميع.` });
     }
@@ -14966,7 +15138,7 @@ function scanAlerts() {
         (r.grade === "إعادة" || (r.score != null && Number(r.score) < redo))) ||
       asgs.some(x => String(x.date) === d.date && (Number(x.shortQty) > 0 || x.status === "failed"));
     if (eduOn && runOfDays(recDays, partialDay, cfg.partialDays)) {
-      out.push({ track: "edu", kind: "partial", studentId: sid, student: st.name,
+      out.push({ track: "edu", kind: "partial", studentId: sid, student: st.name, mosqueId: st.mosqueId || "",
         title: "تسميع غير كامل",
         text: `${cfg.partialDays} جلسات متتالية بعجزٍ أو تراجع.` });
     }
@@ -14976,7 +15148,7 @@ function scanAlerts() {
     const missedMonth = present.filter(a =>
       String(a.date) >= monthAgo && !hasRec(a.date)).length;
     if (eduOn && missedMonth >= cfg.monthMisses) {
-      out.push({ track: "edu", kind: "monthMiss", studentId: sid, student: st.name,
+      out.push({ track: "edu", kind: "monthMiss", studentId: sid, student: st.name, mosqueId: st.mosqueId || "",
         title: "تكرار عدم التسميع",
         text: `${missedMonth} أيام حضورٍ بلا تسميع خلال شهر.` });
     }
@@ -14985,7 +15157,7 @@ function scanAlerts() {
     const abs = att.filter(a => a.status === "غائب" && !a.excuse && !a.reason);
     if (runOfDays(att.filter(a => a.status === "غائب" || a.status === "حاضر" || a.status === "متأخر"),
                   a => a.status === "غائب" && !a.excuse && !a.reason, cfg.absRun)) {
-      out.push({ track: "adm", kind: "absRun", studentId: sid, student: st.name,
+      out.push({ track: "adm", kind: "absRun", studentId: sid, student: st.name, mosqueId: st.mosqueId || "",
         title: "غياب متتالٍ",
         text: `${cfg.absRun} أيام غياب متتالية بلا عذر.` });
     }
@@ -14994,7 +15166,7 @@ function scanAlerts() {
     const since = daysAgo(cfg.spreadDays);
     const spread = abs.filter(a => String(a.date) >= since).length;
     if (spread >= cfg.absSpread) {
-      out.push({ track: "adm", kind: "absSpread", studentId: sid, student: st.name,
+      out.push({ track: "adm", kind: "absSpread", studentId: sid, student: st.name, mosqueId: st.mosqueId || "",
         title: "غياب متفرّق",
         text: `${spread} أيام غياب خلال ${cfg.spreadDays} يوماً.` });
     }
@@ -15046,7 +15218,7 @@ window.alertOpen = function (alertId) {
   const a = (cur("sysAlerts") || []).find(x => String(x.id) === String(alertId));
   if (!a) return;
 
-  const list = procList(a.track);
+  const list = procList(a.track, a.mosqueId);
   const aTerm = a.termId || (typeof activeTermId === "function" ? activeTermId() : "");
   const step = procStepOf(a.studentId, a.track, aTerm);
   const prev = (cur("procLog") || []).filter(x =>
@@ -15068,7 +15240,7 @@ window.alertOpen = function (alertId) {
       ${ahead ? `<span class="proc-lock">بعد الإجراء ${toArabicDigits(step)}</span>` : ""}
     </label>`;
   }).join("");
-  const hrs = hoursOpen(a), lim = alertCfg().timerHours;
+  const hrs = hoursOpen(a), lim = alertCfg(a.mosqueId).timerHours;
 
   const hist = prev.length
     ? `<div class="proc-hist"><strong>ما اتُّخذ سابقاً</strong>
@@ -15113,7 +15285,7 @@ window.alertAct = function () {
   if (n !== step) { showToast("الإجراء المتاح هو رقم " + toArabicDigits(step) + " — لا تخطّي ولا رجوع", "warn"); return; }
   const note = String(val("#al_note") || "").trim();
   if (!note) { showToast("اكتب السبب وما تمّ — يُوثَّق مع الإجراء", "warn"); return; }
-  const p = procList(a.track).find(x => x.n === n);
+  const p = procList(a.track, a.mosqueId).find(x => x.n === n);
   const u = (STATE && STATE.user) || {};
 
   /* التوثيق باسم المشرف الفعلي ووقته وسببه — نصّت عليه المصفوفة */
@@ -17641,6 +17813,28 @@ function msgFire(kind, ctx) {
     const key = "msg|" + kind + "|" + (st.id || ctx.id || "") + "|" + (ctx.date || todayISO());
     if ((cur("msgOutbox") || []).some(m => String(m.key) === key)) return null;
 
+    /* =================================================================
+       كبحُ التكاليف — المواصفات: «منع تكرار إرسال رسالة الغياب النصية إذا
+       تكرّر غياب الطالب لأيامٍ متتالية، وتحويلها تلقائياً لإشعارٍ مجانيٍّ
+       داخل التطبيق». يُقاس على آخر يومٍ حُضّر فيه الطالب قبل هذا اليوم:
+       إن كان غياباً فهذا تكرار — لا رسالةَ جوّالٍ جديدة، والإشعارُ يمضي.
+       ================================================================= */
+    if (kind === "absent" && st.id &&
+        ((typeof cfgFor === "function" ? cfgFor(st.mosqueId) : DB.settings) || {}).msgCostCap === true) {
+      const d0 = String(ctx.date || todayISO());
+      const prev = (cur("attendance") || [])
+        .filter(a => a && !a.staffId && String(a.studentId) === String(st.id) && String(a.date) < d0)
+        .sort((x, y) => String(y.date).localeCompare(String(x.date)))[0];
+      if (prev && prev.status === "غائب") {
+        if (typeof pushNotif === "function") {
+          pushNotif({ key: "n" + key, title: ev.h,
+            text: text + " (إشعار داخل التطبيق — لم تُرسل رسالة جوّال لتكرار الغياب)",
+            type: "warn", label: "غياب متكرر" });
+        }
+        return { capped: true, key };
+      }
+    }
+
     const phone = msgPhoneFor(ev.to, ctx);
     const rec = {
       id: "mo" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
@@ -17954,6 +18148,14 @@ window.msgEvSet = function (k, field, v) {
   s.msgEvents[k][field] = field === "on" ? !!v : String(v || "");
 };
 
+window.msgCapSet = function (on) {
+  const s = DB.settings || (DB.settings = {});
+  s.msgCostCap = !!on;
+  Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
+    .then(ok => { showToast(ok === false ? "تعذّر الحفظ"
+      : (on ? "فُعّل كبح التكاليف" : "أُلغي كبح التكاليف"), ok === false ? "warn" : "success"); });
+};
+
 window.msgEvSave = function () {
   const s = DB.settings || {};
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
@@ -17998,6 +18200,18 @@ function setPanelMessages() {
           onchange="window.msgEvSet('${esc(e.k)}','body',this.value)">${esc(e.body)}</textarea>
       </div>
     </div>`).join("")}
+
+    <div class="card" style="margin-top:6px">
+      <div class="fac-toolbar">
+        <div><strong style="font-size:14.5px">كبح التكاليف</strong>
+          <div class="muted" style="font-size:11.5px;margin-top:2px">
+            إذا تكرّر غياب الطالب أياماً متتالية لا تُكرَّر رسالة الجوّال، ويصل بدلها إشعارٌ مجانيّ داخل التطبيق</div></div>
+        <label class="switch" style="margin-inline-start:auto">
+          <input type="checkbox" id="msg_cap"${(DB.settings || {}).msgCostCap === true ? " checked" : ""}
+            onchange="window.msgCapSet(this.checked)">
+          <span class="slider"></span></label>
+      </div>
+    </div>
 
     <div style="display:flex;gap:8px;margin-top:4px">
       <button class="btn btn-primary btn-sm" onclick="window.msgEvSave()">حفظ الأحداث</button>
@@ -19640,6 +19854,7 @@ function adminSettingsNew() {
 
   return `<div class="page">
     ${pageHead("الإعدادات", "", backArrow())}
+    ${typeof cfgMosqueBanner === "function" ? cfgMosqueBanner() : ""}
     <div class="st-layout">
       <aside class="st-side">
         <nav class="st-menu">${setSections().map(x =>
@@ -19710,6 +19925,7 @@ const STAT_DEFS = [
   { k: "enrolled",  h: "الطلاب المسجلين" },
   { k: "facAchieve",h: "إنجازات المنشـآت" },
   { k: "attendance",h: "إحصائية الحضور" },
+  { k: "risk",      h: "الطلاب الأكثر غياباً وتعثراً" },
   { k: "exams",     h: "إحصائية الاختبارات" },
   { k: "points",    h: "إحصائية النقاط" },
   { k: "store",     h: "إحصائية المتجر و الجوائز" },
@@ -20175,6 +20391,49 @@ function statBody(k) {
       sCard("عدد الغياب", cnt("غائب"), SC.red, "x"),
       sCard("عدد الاستئذان", cnt("مستأذن"), SC.indigo, "list"),
       sCard("عدد التأخر", cnt("متأخر"), SC.gray, "clock")], 3);
+
+    /* المواصفات: «الطلاب الأكثر غياباً أو تعثراً في الحفظ» — من الفترة
+       المعروضة (cur يفرز الحضور بها)، وفي نطاق المستخدم. */
+    case "risk": {
+      const nm = sid => (st.find(x => String(x.id) === String(sid)) || {});
+      const absBy = {};
+      att.forEach(a => {
+        if (!a || a.staffId || a.status !== "غائب") return;
+        const k2 = String(a.studentId);
+        absBy[k2] = absBy[k2] || { n: 0, noEx: 0, last: "" };
+        absBy[k2].n++;
+        if (!a.reason && !a.excuse) absBy[k2].noEx++;
+        if (String(a.date) > absBy[k2].last) absBy[k2].last = String(a.date);
+      });
+      const topAbs = Object.keys(absBy).filter(k2 => nm(k2).id)
+        .sort((x, y) => absBy[y].n - absBy[x].n).slice(0, 10);
+      const tId = typeof activeTermId === "function" ? activeTermId() : "";
+      const asgs = (cur("assignments") || []).filter(a => !tId || !a.termId || String(a.termId) === tId);
+      const weak = {};
+      asgs.forEach(a => {
+        const bad = a.status === "failed" || (a.status === "missed" && !a.settled) || Number(a.shortQty) > 0;
+        if (!bad) return;
+        const k2 = String(a.studentId);
+        weak[k2] = (weak[k2] || 0) + 1;
+      });
+      const topWeak = Object.keys(weak).filter(k2 => nm(k2).id)
+        .sort((x, y) => weak[y] - weak[x]).slice(0, 10);
+      const tbl = (head, rows) => rows.length
+        ? `<div class="pt-wrap"><div class="pt-scroll"><table class="ptable"><thead><tr>${head}</tr></thead>
+            <tbody>${rows.join("")}</tbody></table></div></div>`
+        : `<div class="muted" style="padding:14px;text-align:center">لا بيانات في هذه الفترة.</div>`;
+      return `<div class="s-sub">الأكثر غياباً</div>` +
+        tbl("<th>#</th><th>الطالب</th><th>الحلقة</th><th>أيام الغياب</th><th>بلا عذر</th><th>آخر غياب</th>",
+          topAbs.map((k2, i) => `<tr><td class="pt-num">${toArabicDigits(i + 1)}</td>
+            <td><strong>${esc(nm(k2).name || "—")}</strong></td><td class="muted">${esc(nm(k2).circle || "—")}</td>
+            <td class="pt-num pay-bad">${toArabicDigits(absBy[k2].n)}</td><td class="pt-num">${toArabicDigits(absBy[k2].noEx)}</td>
+            <td class="pt-num" dir="ltr">${esc(absBy[k2].last)}</td></tr>`)) +
+        `<div class="s-sub" style="margin-top:14px">الأكثر تعثراً في الحفظ</div>` +
+        tbl("<th>#</th><th>الطالب</th><th>الحلقة</th><th>واجبات راسبة أو فائتة أو ناقصة</th>",
+          topWeak.map((k2, i) => `<tr><td class="pt-num">${toArabicDigits(i + 1)}</td>
+            <td><strong>${esc(nm(k2).name || "—")}</strong></td><td class="muted">${esc(nm(k2).circle || "—")}</td>
+            <td class="pt-num pay-bad">${toArabicDigits(weak[k2])}</td></tr>`));
+    }
 
     case "exams": return sGrid([
       sCard("عدد الاختبارات", 0, SC.dark, "list"),
@@ -22814,6 +23073,51 @@ window.pickMusStudent = function (id) {
 };
 
 /* أخطاء الطالب المحفوظة — خريطة موضع -> نوع */
+/* =========================================================================
+   المزامنة اللحظية لمصحف الطالب
+   -------------------------------------------------------------------------
+   المواصفات: «إذا كان الطالب يُسمع عن بُعد يرى الكلمة تتلوّن بالأحمر في
+   الثواني نفسها التي ضغط فيها المعلم». كانت البيانات تُقرأ مرّةً عند الفتح،
+   فلا يرى الطالبُ التأشير حتى يعيد التحميل.
+
+   يُفتح مستمعٌ على علامات الطالب المعروض وحده (where studentId) ما دامت
+   صفحةُ المصحف مفتوحة، ويُغلق حين يغادرها — فلا تكلفة قراءةٍ على بقية النظام.
+   ========================================================================= */
+const MUS_LIVE = { sid: "", off: null };
+
+function musLiveStop() {
+  try { if (MUS_LIVE.off) MUS_LIVE.off(); } catch (e) {}
+  MUS_LIVE.off = null; MUS_LIVE.sid = "";
+}
+
+function musLiveSync(sid) {
+  const db = FDB();
+  if (!db || !sid) { musLiveStop(); return; }
+  if (MUS_LIVE.sid === String(sid) && MUS_LIVE.off) return;
+  musLiveStop();
+  try {
+    const q = db.collection("mushafMarks").where("studentId", "==", String(sid));
+    if (!q || typeof q.onSnapshot !== "function") return;
+    MUS_LIVE.sid = String(sid);
+    MUS_LIVE.off = q.onSnapshot(snap => {
+      const incoming = [];
+      snap.forEach(d => incoming.push(Object.assign({ id: d.id }, d.data() || {})));
+      const mine = x => x && String(x.studentId) === String(sid);
+      const sig = list => list.filter(mine).map(x => x.key + "=" + x.kind).sort().join("|");
+      const before = sig(DB.mushafMarks || []);
+      DB.mushafMarks = (DB.mushafMarks || []).filter(x => !mine(x)).concat(incoming);
+      if (sig(DB.mushafMarks) === before) return;          /* لا جديد */
+      if (STATE.page !== "mushaf") return;
+      /* إعادة الرسم مع حفظ موضع التمرير — التأشير يتتابع أثناء القراءة */
+      const root = document.getElementById("pageContent");
+      const y = root ? root.scrollTop : 0, wy = window.scrollY;
+      mount();
+      if (root) root.scrollTop = y;
+      try { window.scrollTo(0, wy); } catch (e) {}
+    }, err => { console.warn("musLive:", err); musLiveStop(); });
+  } catch (e) { console.warn("musLive:", e); musLiveStop(); }
+}
+
 function studentMarks(st) {
   const out = {};
   if (!st) return out;
@@ -22984,6 +23288,7 @@ function mushafPage() {
 
   /* المصحف المعروض هو مصحف الطالب المختار — تُقرأ علاماته المحفوظة */
   const musSt = mushafStudent();
+  try { musLiveSync(musSt ? musSt.id : ""); } catch (e) {}
   m.marks = musSt ? studentMarks(musSt) : (isReader ? {} : m.marks);
 
   /* الفرشة: الصفحة اليمنى هي الأقدم رقماً لأن القراءة من اليمين لليسار،
@@ -23533,11 +23838,15 @@ function modalDuty(studentId) {
 
   const curKind = p.kind || kinds[0];
   const forDay = STATE.dutyDay === "tomorrow" ? "tomorrow" : "today";
+  const pathLocks = ["planStart", "planQty", "planEnd"].filter(k => !teacherCan(k))
+    .map(k => ({ planStart: "موضع البداية", planQty: "المقدار", planEnd: "موضع النهاية" })[k]);
 
   openModal("واجب " + (st.name || ""), "حدّد نوع الواجب وموضعه من المصحف",
     `<input type="hidden" id="dt_sid" value="${esc(String(st.id))}">
      <input type="hidden" id="dt_day" value="${forDay}">
 
+     ${pathLocks.length ? noteCard("لا تملك تغيير: <strong>" + esc(pathLocks.join(" · ")) +
+       "</strong> — تبقى كما برمجتها الإدارة.") : ""}
      <div class="form-grid">
 
       <div class="field full">
@@ -23671,6 +23980,20 @@ function saveDuty() {
 
   const u = (STATE && STATE.user) || {};
   const isAdmin = u.role === "admin" || isMgrRole(u.role);
+
+  /* الصلاحياتُ الفرعية لمسار الخطة — تُفحص على ما تغيّر فعلاً لا على النموذج
+     كلّه، فمن مُنع تغيير البداية يستطيع كتابة ملاحظة أو تحديد النوع */
+  if (!isNew && u.role === "teacher") {
+    const same = (a, b) => String(a == null ? "" : a) === String(b == null ? "" : b);
+    const blocked = [];
+    if (!teacherCan("planStart") && !(same(draft.hFromS, p.hFromS) && same(draft.hFromA, p.hFromA))) blocked.push("موضع البداية");
+    if (!teacherCan("planQty") && !(same(draft.amount, p.amount) && same(draft.unit, p.unit || "وجه"))) blocked.push("المقدار");
+    if (!teacherCan("planEnd") && !(same(draft.hToS, p.hToS) && same(draft.hToA, p.hToA))) blocked.push("موضع النهاية");
+    if (blocked.length) {
+      showToast("لا تملك صلاحية تغيير: " + blocked.join(" · ") + " — الخطة كما برمجتها الإدارة", "warn");
+      return;
+    }
+  }
 
   /* الأصل أن يعتمد المعلّم واجبه بنفسه. ومن أرادت الإدارة إخضاعه للمراجعة
      عطّلت له صلاحية «اعتماد الواجب بنفسه» من شاشة المستخدمين، فتمرّ
@@ -26343,6 +26666,8 @@ function runPeriodicScans(force) {
 function mount() {
   /* الفحوص الثقيلة كلّ دقيقتين — والشارات مع كلّ رسم لأنها خفيفة */
   try { runPeriodicScans(); } catch (e) {}
+  /* مغادرةُ المصحف تُغلق مستمعَه اللحظيّ */
+  try { if (STATE.page !== "mushaf" && typeof musLiveStop === "function" && MUS_LIVE.off) musLiveStop(); } catch (e) {}
 
   /* قوائمُ السور في أي شاشة: الفهرسُ يُجلب من الشبكة فقد لا يكون حاضراً
      وقت الرسم، فتبقى القائمةُ فارغةً بلا سبب ظاهر. تُملأ بعد كلّ رسم —
@@ -28528,7 +28853,10 @@ function dutyUnlocked(studentId, typeName, dateISO) {
 }
 window.dutyUnlocked = dutyUnlocked;
 
-function modalDuty() {
+/* كانت تحمل اسم modalDuty نفسَه، فتطغى — لأنها الأخيرة — على نافذة «واجب
+   الطالب» (modalDuty(studentId)): زرُّ واجب الطالب وواجبُ الغد والزرُّ العائم
+   كانت تفتح نافذةَ «إضافة نوع واجب» بدلها، فلا يصل المعلّم إلى مسار الخطة. */
+function modalDutyType() {
   openModal("إضافة نوع واجب جديد", "عرّف نوع واجب وسلوكه في الخطة",
     `<div class="form-grid">
       ${formField("اسم الواجب", "full", "مثال: سرد", "d_name")}
@@ -29463,8 +29791,8 @@ const ATT_EFFECTS = [
   { k: "exempt",  h: "يُعفى من واجب اليوم" }
 ];
 
-function attCfg() {
-  const s = DB.settings || {};
+function attCfg(mid) {
+  const s = typeof cfgFor === "function" ? cfgFor(mid) : (DB.settings || {});
   return {
     who: ATT_WHO.some(x => x.k === s.attWho) ? s.attWho : "both",
     editMin: Math.max(0, Number(s.attEditMin) || 0),
@@ -29492,7 +29820,7 @@ function attWhoOf(circleId) {
   const c = (cur("circles") || []).find(x => String(x.id) === String(circleId || "")) ||
             (DB.circles || []).find(x => String(x.id) === String(circleId || ""));
   const v = c && c.attWho;
-  return ATT_WHO.some(x => x.k === v) ? v : attCfg().who;
+  return ATT_WHO.some(x => x.k === v) ? v : attCfg(c && c.mosqueId).who;
 }
 
 /* هل يحضّر هذا المستخدم في هذه الحلقة؟ المالكُ يبقى مخرجاً للطوارئ */
@@ -29532,7 +29860,7 @@ function attCfgPersist(msg) {
                             ok === false ? "warn" : "success"); mount(); });
 }
 window.attCfgSave = function () {
-  if (!isTopAdmin()) { showToast("إعدادات التحضير للإدارة العليا", "warn"); return; }
+  if (!cfgCanEdit()) { showToast("إعدادات التحضير للإدارة العليا ومدير المسجد", "warn"); return; }
   const s = DB.settings || (DB.settings = {});
   const who = val("#ac_who");
   if (ATT_WHO.some(x => x.k === who)) s.attWho = who;
@@ -29559,7 +29887,7 @@ window.attCfgSave = function () {
   attCfgPersist();
 };
 window.attCustomAdd = function () {
-  if (!isTopAdmin()) return;
+  if (!cfgCanEdit()) return;
   const s = DB.settings || (DB.settings = {});
   const list = Array.isArray(s.attCustom) ? s.attCustom.slice() : [];
   list.push({ k: "c" + Date.now(), h: "", base: "حاضر", effect: "deficit" });
@@ -29567,7 +29895,7 @@ window.attCustomAdd = function () {
   mount();
 };
 window.attCustomDel = function (k) {
-  if (!isTopAdmin()) return;
+  if (!cfgCanEdit()) return;
   const s = DB.settings || (DB.settings = {});
   s.attCustom = (s.attCustom || []).filter(x => String(x.k) !== String(k));
   mount();
@@ -29575,7 +29903,7 @@ window.attCustomDel = function (k) {
 
 function setPanelAttCfg() {
   const c = attCfg();
-  const ro = !isTopAdmin();
+  const ro = !cfgCanEdit();
   return `<div class="card" style="margin-top:18px">
     <div class="fac-toolbar">
       <div><strong style="font-size:15px">إعدادات التحضير</strong>
@@ -30514,7 +30842,7 @@ document.addEventListener("click", (e) => {
     case "modal-teacher": modalTeacher(); break;
     case "modal-program": modalProgram(); break;
     case "modal-level": modalLevel(); break;
-    case "modal-duty": modalDuty(); break;
+    case "modal-duty": modalDutyType(); break;
     case "modal-daily-duties": modalDailyDuties(t.dataset.id); break;
     case "modal-report": modalReport(t.dataset.name); break;
     case "export-report": exportReportCSV(t.dataset.name); break;
@@ -31225,6 +31553,8 @@ async function loadSettings(db, source) {
     console.warn("loadSettings", err);
   }
   DB.settings = merged;
+  /* طبقةُ المسجد: المساجدُ حُمّلت قبلها في المجموعات الأساسية */
+  try { if (typeof cfgApplyOverlay === "function") cfgApplyOverlay(true); } catch (e) {}
 }
 
 async function loadAllData(source) {
@@ -31886,6 +32216,12 @@ function scopeStamp(coll, data) {
 
 function persistSet(coll, obj) {
   const db = FDB(); if (!db || obj == null) return Promise.resolve(false);
+
+  /* حفظُ مدير المسجد للإعدادات يُكتب في طبقة مسجده لا في العامّ */
+  if (coll === "settings" && typeof cfgRouteSave === "function") {
+    const routed = cfgRouteSave(obj);
+    if (routed) return routed;
+  }
 
   /* الدورة المؤرشفة لا تُكتب: المنع هنا لا في الأزرار — الأزرار تُخفى
      والدوال تُنادى. */
