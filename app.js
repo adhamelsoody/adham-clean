@@ -16249,48 +16249,112 @@ function payStaff() {
 /* =========================================================================
    الحساب
    ------------------------------------------------------------------------- */
+/* كسرُ الأشهر في الفترة: شهرٌ كاملٌ = ١، ونصفُه = ٠٫٥ — ليُصرف الراتب
+   الشهريّ كاملاً عن شهره أيّاً كان عددُ أيامه، ويُقسَّط لفترةٍ جزئية */
+function payMonthsIn(from, to) {
+  const a = new Date(String(from) + "T00:00:00"), b = new Date(String(to) + "T00:00:00");
+  if (isNaN(a) || isNaN(b) || b < a) return 0;
+  let n = 0;
+  const d = new Date(a);
+  while (d <= b) {
+    const y = d.getFullYear(), m = d.getMonth();
+    const dim = new Date(y, m + 1, 0).getDate();
+    const endM = new Date(y, m, dim);
+    const last = endM < b ? endM : b;
+    n += (Math.round((last - d) / 86400000) + 1) / dim;
+    d.setTime(new Date(y, m + 1, 1).getTime());
+  }
+  return Math.round(n * 10000) / 10000;
+}
+
+/* =========================================================================
+   صفُّ الموظّف في المسيّر
+   -------------------------------------------------------------------------
+   • الأيام تُعدّ بالتاريخ لا بالسجلّ: للمعلّم سجلٌّ في كلّ حلقة (الفجر
+     والعصر)، واليومُ يومٌ واحد — والتأخّرُ يُجمع من الحلقتين.
+   • الغيابُ المستنتَج: يومٌ حُضّر فيه طلابُ حلقته الأصيلة ولا سجلَّ له —
+     حضر الطلابُ وغاب معلّمُهم. ويومٌ لا تحضيرَ فيه لأحدٍ إجازةٌ لا غياب
+     (المواصفات: «الإجازة التلقائية للحلقة»).
+   • الأساسي: الشهريُّ يُصرف بكسر أشهر الفترة ويُخصم منه الغياب باليومية؛
+     واليوميُّ والساعيّ بعدد الأيام ثم تُطبَّق نسبُ الخصم بحالة كلّ يوم.
+   ========================================================================= */
 function payRowOf(staff, from, to) {
   const r = payRates(staff);
   const c = payCfg();
+  const F = String(from), T = String(to);
 
-  /* سجلات دوام هذا الموظف في الفترة — من محور الدوام لا من حسابٍ جديد */
   const recs = (cur("attendance") || []).filter(a =>
     a && a.staffId && String(a.staffId) === String(staff.id) &&
-    String(a.date) >= String(from) && String(a.date) <= String(to));
+    String(a.date) >= F && String(a.date) <= T);
 
-  let present = 0, absent = 0, excused = 0, lateDays = 0, lateMin = 0, cut = 0;
+  /* يومٌ واحدٌ وإن تعدّدت حلقاتُه */
+  const byDate = {};
+  recs.forEach(a => { (byDate[String(a.date)] = byDate[String(a.date)] || []).push(a); });
 
-  recs.forEach(a => {
-    const st = String(a.status || "");
+  /* الغيابُ المستنتَج — للمعلّم وحده، من حلقاته الأصيلة */
+  let inferred = 0;
+  if (staff.coll === "teachers") {
+    const myC = (cur("circles") || []).filter(x => x &&
+      (x.teacherId ? String(x.teacherId) === String(staff.id)
+                   : String(x.teacher || "") === String(staff.name || ""))).map(x => String(x.id));
+    const studDays = {};
+    if (myC.length) {
+      (cur("attendance") || []).forEach(a => {
+        if (!a || a.staffId || !a.studentId) return;
+        const d = String(a.date);
+        if (d < F || d > T || myC.indexOf(String(a.circleId || "")) === -1) return;
+        studDays[d] = true;
+      });
+    }
+    Object.keys(studDays).forEach(d => {
+      if (!byDate[d]) { byDate[d] = [{ status: "غائب", inferred: true, date: d }]; inferred++; }
+    });
+  }
+
+  let present = 0, absent = 0, excused = 0, lateDays = 0, lateMin = 0, cutLate = 0, cutDays = 0;
+  Object.keys(byDate).forEach(d => {
+    const list = byDate[d];
+    const has = st => list.some(a => String(a.status || "") === st);
+    const st = has("متأخر") ? "متأخر" : has("حاضر") ? "حاضر" : has("مستأذن") ? "مستأذن" : "غائب";
     if (st === "غائب") absent++;
     else if (st === "مستأذن") excused++;
     else present++;
 
-    if (st === "متأخر") {
+    if (has("متأخر")) {
       lateDays++;
-      /* الدقائق محسوبة سلفاً من وقت بداية الحلقة عند التحضير */
-      const m = Math.max(0, (Number(a.lateMin) || 0) - c.grace);
-      lateMin += Number(a.lateMin) || 0;
-      cut += m * r.minute;
+      list.forEach(a => {
+        if (String(a.status) !== "متأخر") return;
+        const m = Number(a.lateMin) || 0;
+        lateMin += m;
+        cutLate += Math.max(0, m - c.grace) * r.minute;     /* السماحُ في كلّ حلقة */
+      });
     }
 
-    /* خصم اليوم بنسبة حالته */
     const pct = payCutOf(st);
-    if (pct > 0) cut += r.daily * (pct / 100);
+    if (pct > 0) cutDays += r.daily * (pct / 100);
   });
 
-  const days = recs.length;
-  const base = r.daily * days;
+  const days = Object.keys(byDate).length;
+  const months = payMonthsIn(F, T);
+  const monthlyPay = !(Number(staff.wage) > 0) && Number(staff.salary) > 0;
+  const payType = Number(staff.wage) > 0 ? "daily"
+               : (Number(staff.salary) > 0 ? "monthly" : (Number(staff.hourRate) > 0 ? "hourly" : ""));
+  const base = monthlyPay ? r.monthly * months : r.daily * days;
+  const cut = cutLate + cutDays;
+  const R2 = v => Math.round(v * 100) / 100;
 
   return {
     id: staff.id, name: staff.name, role: staff.role,
-    daily: r.daily, hour: r.hour,
-    days, present, absent, excused, lateDays,
+    from: F, to: T, payType,
+    salary: Number(staff.salary) || 0,
+    daily: r.daily, hour: R2(r.hour),
+    days, present, absent, excused, lateDays, inferredAbsent: inferred,
     lateMin,
-    cut: Math.round(cut * 100) / 100,
-    base: Math.round(base * 100) / 100,
+    cutLate: R2(cutLate), cutDays: R2(cutDays),
+    cut: R2(cut),
+    base: R2(base),
     bonus: 0, note: "",
-    net: Math.round((base - cut) * 100) / 100
+    net: R2(base - cut)
   };
 }
 
@@ -16322,7 +16386,7 @@ function payDefaultRange() {
 
 window.paySet = function (k, v) {
   PAY[k] = String(v || "");
-  if (k === "from" || k === "to") PAY.rows = null;   /* الفترة تغيّرت: يُعاد الحساب */
+  if (k === "from" || k === "to") { PAY.rows = null; PAY.sheetId = ""; }   /* الفترة تغيّرت: يُعاد الحساب */
 
   /* الحساب يجري من تلقائه متى اكتملت الفترة: كان المستخدم يختار المسمّى
      فلا يرى شيئاً حتى يضغط «حساب المسيّر» — وهو زرٌّ لا يُفهم لزومه، إذ
@@ -16392,8 +16456,72 @@ window.payDetail = function (staffId) {
     `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
 };
 
+/* =========================================================================
+   الاعتماد
+   -------------------------------------------------------------------------
+   كان «الحفظ» يُنشئ مسيّراً جديداً كلّ مرّة — فتعديلُ مسيّرٍ مفتوحٍ ثم حفظُه
+   يترك نسختين بالفترة نفسها — ولا حالة تفرّق المسودّة من المعتمد.
+   المسودّةُ تُحدَّث في مكانها، والمعتمدُ يُقفل: لا تعديل ولا حذف إلا بفكّ
+   اعتماده من المالك. والمسيّراتُ القديمة بلا حالة تُعدّ معتمدة، إذ كان
+   حفظُها هو «اعتماد المسيّر».
+   ========================================================================= */
+function paySheetOf(id) {
+  return (cur("paySheets") || []).find(x => String(x.id) === String(id || "")) || null;
+}
+function payApproved(sheet) {
+  return !!sheet && sheet.status !== "draft";
+}
+function payLocked(silent) {
+  const sh = paySheetOf(PAY.sheetId);
+  if (payApproved(sh)) {
+    if (!silent) showToast("المسيّر معتمد — لا يُعدَّل إلا بفكّ اعتماده", "warn");
+    return true;
+  }
+  return false;
+}
+
+/* فترةُ المسيّر الدراسية: التي تقع فيها بدايتُه — لا النشطةُ وقت الحفظ،
+   فمسيّرُ شهرٍ مضى يُحفظ في دورته ولو حُفظ بعد انتقال النظام لغيرها */
+function payTermOf(from, to) {
+  return (typeof termOfDate === "function" ? (termOfDate(from) || termOfDate(to)) : "") ||
+         (typeof activeTermId === "function" ? activeTermId() : "");
+}
+
+window.payApprove = function () {
+  if (!canEditFinance()) { showToast("اعتماد المسيّر للمدير", "warn"); return; }
+  if (!PAY.rows || !PAY.rows.length) { showToast("لا مسيّر لاعتماده", "warn"); return; }
+  let sh = paySheetOf(PAY.sheetId);
+  if (payApproved(sh)) { showToast("المسيّر معتمد سلفاً", "info"); return; }
+  if (!sh) { window.paySave(true); sh = paySheetOf(PAY.sheetId); }
+  if (!sh) return;
+  const u = (STATE && STATE.user) || {};
+  const prev = { status: sh.status, approvedBy: sh.approvedBy, approvedAt: sh.approvedAt };
+  sh.status = "approved";
+  sh.approvedBy = u.name || u.email || "—";
+  sh.approvedAt = Date.now();
+  Promise.resolve(persistSet("paySheets", sh)).then(ok => {
+    if (ok === false) { Object.assign(sh, prev); showToast("تعذّر اعتماد المسيّر", "warn"); }
+    else showToast("اعتُمد المسيّر — الإجمالي " + toArabicDigits(sh.total), "success");
+    mount();
+  });
+};
+
+/* فكُّ الاعتماد: للمالك وحده — تصحيحُ خطأٍ في مسيّرٍ صُرف */
+window.payUnapprove = function () {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (r !== "owner") { showToast("فكّ اعتماد المسيّر للمالك", "warn"); return; }
+  const sh = paySheetOf(PAY.sheetId);
+  if (!payApproved(sh)) return;
+  sh.status = "draft";
+  sh.unapprovedAt = Date.now();
+  persistSet("paySheets", sh);
+  showToast("فُكّ اعتماد المسيّر — صار مسودّة", "info");
+  mount();
+};
+
 window.payBuild = function () {
   if (!PAY.from || !PAY.to) { showToast("حدّد الفترة", "warn"); return; }
+  if (payLocked()) return;
   PAY.rows = payStaff().map(s => payRowOf(s, PAY.from, PAY.to));
   PAY.sheetId = "";
   showToast("حُسب المسيّر لـ" + toArabicDigits(PAY.rows.length) + " موظفاً", "success");
@@ -16406,6 +16534,7 @@ window.payEdit = function (id, field, v) {
   if (!canEditFinance()) { showToast("تعديل المسيّر للمدير", "warn"); return; }
 
   if (!PAY.rows) return;
+  if (payLocked()) { mount(); return; }
   const r = PAY.rows.find(x => String(x.id) === String(id));
   if (!r) return;
 
@@ -16422,6 +16551,7 @@ window.payEdit = function (id, field, v) {
 /* الإجراءات الجماعية — «مكافأة أو خصم لجميع الموظفين بنسبة معينة» */
 window.payBulk = function () {
   if (!PAY.rows || !PAY.rows.length) { showToast("احسب المسيّر أولاً", "warn"); return; }
+  if (payLocked()) return;
 
   openModal("إجراء جماعي", "يُطبَّق على " + toArabicDigits(PAY.rows.length) + " موظفاً",
     `<div class="form-grid">
@@ -16448,6 +16578,7 @@ window.payBulkDo = function () {
   /* الحارس في الدالة لا في الزرّ: إخفاء الزرّ لا يمنع نداءه */
   if (!canEditFinance()) { showToast("الإجراءات الجماعية للمدير", "warn"); return; }
 
+  if (payLocked()) { closeModal(); return; }
   const kind = val("#pb_kind"), mode = val("#pb_mode");
   const v = Number(val("#pb_val"));
   if (!isFinite(v) || v <= 0) { showToast("القيمة رقم موجب", "warn"); return; }
@@ -16473,17 +16604,16 @@ window.payBulkDo = function () {
 /* =========================================================================
    الحفظ والسجل
    ------------------------------------------------------------------------- */
-window.paySave = function () {
+window.paySave = function (quiet) {
   /* الحارس في الدالة لا في الزرّ: إخفاء الزرّ لا يمنع نداءه */
-  if (!canEditFinance()) { showToast("اعتماد المسيّر للمدير", "warn"); return; }
+  if (!canEditFinance()) { showToast("حفظ المسيّر للمدير", "warn"); return; }
 
   if (!PAY.rows || !PAY.rows.length) { showToast("لا مسيّر لحفظه", "warn"); return; }
+  if (payLocked()) return;
 
   const u = (STATE && STATE.user) || {};
   const total = PAY.rows.reduce((n, r) => n + (Number(r.net) || 0), 0);
-
-  const sheet = {
-    id: "ps" + Date.now(),
+  const fields = {
     from: PAY.from, to: PAY.to,
     rows: PAY.rows.map(r => Object.assign({}, r)),   /* نسخة لا مرجع */
     count: PAY.rows.length,
@@ -16491,15 +16621,19 @@ window.paySave = function () {
     by: u.name || u.email || "—",
     ts: Date.now(),
     complexId: STATE.complexId || "",
-    termId: typeof activeTermId === "function" ? activeTermId() : ""
+    termId: payTermOf(PAY.from, PAY.to),
+    status: "draft"
   };
 
+  /* المسودّةُ المفتوحةُ تُحدَّث في مكانها — لا نسخةَ ثانيةً بالفترة نفسها */
   if (!Array.isArray(DB.paySheets)) DB.paySheets = [];
-  DB.paySheets.push(sheet);
+  let sheet = paySheetOf(PAY.sheetId);
+  if (sheet && sheet.status === "draft") Object.assign(sheet, fields);
+  else { sheet = Object.assign({ id: "ps" + Date.now() }, fields); DB.paySheets.push(sheet); }
   persistSet("paySheets", sheet);
 
   PAY.sheetId = sheet.id;
-  showToast("حُفظ المسيّر — الإجمالي " + toArabicDigits(sheet.total), "success");
+  if (!quiet) showToast("حُفظ المسيّر مسودّةً — الإجمالي " + toArabicDigits(sheet.total), "success");
   mount();
 };
 
@@ -16525,6 +16659,7 @@ window.payDelete = function (id) {
 window.payDeleteDo = function (id) {
   /* الحارس في الدالة لا في الزرّ: إخفاء الزرّ لا يمنع نداءه */
   if (!canEditFinance()) { showToast("حذف المسيّر للمدير", "warn"); return; }
+  if (payApproved(paySheetOf(id))) { closeModal(); showToast("المسيّر المعتمد لا يُحذف", "warn"); return; }
 
   const i = (DB.paySheets || []).findIndex(x => String(x.id) === String(id));
   if (i > -1) { DB.paySheets.splice(i, 1); persistDelete("paySheets", id); }
@@ -16548,11 +16683,13 @@ window.payPrint = function (onlyId) {
   const w = window.open("", "_blank");
   if (!w) { showToast("اسمح بالنوافذ المنبثقة للطباعة", "warn"); return; }
 
+  const shP = paySheetOf(PAY.sheetId);
+  const f2 = v => (Number(v) || 0).toFixed(2);
   const tds = rows.map((r, i) => `<tr>
     <td>${i + 1}</td><td>${esc(r.name)}</td><td>${esc(r.role)}</td>
-    <td>${r.daily.toFixed(2)}</td><td>${r.present}</td><td>${r.absent}</td>
-    <td>${r.lateMin}</td><td>${(Number(r.bonus) || 0).toFixed(2)}</td>
-    <td>${r.cut.toFixed(2)}</td><td><b>${r.net.toFixed(2)}</b></td>
+    <td>${f2(r.base)}</td><td>${f2(r.hour)}</td><td>${r.present}</td><td>${r.absent}</td>
+    <td>${r.lateMin}</td><td>${f2(r.bonus)}</td>
+    <td>${f2(r.cut)}</td><td><b>${f2(r.net)}</b></td>
     <td>${esc(r.note || "")}</td><td class="sig"></td>
   </tr>`).join("");
 
@@ -16578,15 +16715,18 @@ window.payPrint = function (onlyId) {
 
     <h1>مسيّر الرواتب${org ? " — " + esc(org) : ""}</h1>
     <div class="sub">الفترة: ${esc(PAY.from)} إلى ${esc(PAY.to)} ·
-      عدد الموظفين: ${rows.length} · تاريخ الطباعة: ${new Date().toLocaleDateString("ar-EG")}</div>
+      عدد الموظفين: ${rows.length} · تاريخ الطباعة: ${new Date().toLocaleDateString("ar-EG")} ·
+      ${payApproved(shP) ? "معتمد" + (shP.approvedBy ? " من " + esc(shP.approvedBy) : "") +
+        (shP.approvedAt ? " في " + new Date(shP.approvedAt).toLocaleDateString("ar-EG") : "")
+        : "<b>مسودّة غير معتمدة</b>"}</div>
 
     <table><thead><tr>
-      <th>#</th><th>اسم الموظف</th><th>المسمّى</th><th>اليومية</th>
+      <th>#</th><th>اسم الموظف</th><th>المسمّى</th><th>الراتب الأساسي</th><th>قيمة الساعة</th>
       <th>أيام الحضور</th><th>الغياب</th><th>دقائق التأخّر</th>
       <th>مكافأة</th><th>الخصم</th><th>الصافي</th><th>ملاحظات</th><th>التوقيع</th>
     </tr></thead>
     <tbody>${tds}</tbody>
-    <tfoot><tr><td colspan="9">الإجمالي</td><td>${total.toFixed(2)}</td><td colspan="2"></td></tr></tfoot>
+    <tfoot><tr><td colspan="10">الإجمالي</td><td>${total.toFixed(2)}</td><td colspan="2"></td></tr></tfoot>
     </table>
 
     <div class="foot">
@@ -16700,7 +16840,9 @@ function adminPayroll() {
     try { PAY.rows = payStaff().map(x => payRowOf(x, PAY.from, PAY.to)); } catch (e) {}
   }
 
-  const finRO = !canEditFinance();     /* المشرف والداعم: قراءة فقط */
+  const curSheet = paySheetOf(PAY.sheetId);
+  const approved = payApproved(curSheet);
+  const finRO = !canEditFinance() || approved;     /* المشرف والداعم، والمعتمدُ: قراءة فقط */
 
   if (!PAY.from || !PAY.to) {
     const d = payDefaultRange();
@@ -16741,7 +16883,11 @@ function adminPayroll() {
       ${PAY.rows ? `
         ${finRO ? "" : `<button class="btn btn-ghost btn-sm" onclick="window.payBulk()">إجراء جماعي</button>`}
         <button class="btn btn-ghost btn-sm" onclick="window.payPrint()">طباعة</button>
-        ${finRO ? "" : `<button class="btn btn-ghost btn-sm" onclick="window.paySave()">حفظ المسيّر</button>`}` : ""}
+        ${finRO ? "" : `<button class="btn btn-ghost btn-sm" onclick="window.paySave()">حفظ مسودّة</button>
+          <button class="btn btn-primary btn-sm" onclick="window.payApprove()">${ic("check", 14)} اعتماد المسيّر</button>`}
+        ${approved ? `<span class="pt-badge on" style="align-self:center">معتمد${curSheet.approvedBy ? " — " + esc(curSheet.approvedBy) : ""}</span>
+          ${((STATE && STATE.user) || {}).role === "owner"
+            ? `<button class="btn btn-ghost btn-sm" onclick="window.payUnapprove()">فكّ الاعتماد</button>` : ""}` : ""}` : ""}
     </div>
   </div>`;
 
@@ -16760,8 +16906,10 @@ function adminPayroll() {
     <td><strong>${esc(r.name)}</strong></td>
     <td class="muted">${esc(r.role)}</td>
     <td class="pt-num">${toArabicDigits(Math.round(r.daily))}</td>
+    <td class="pt-num">${toArabicDigits(Math.round((Number(r.hour) || 0) * 100) / 100)}</td>
     <td class="pt-num">${toArabicDigits(r.present)}</td>
-    <td class="pt-num${r.absent ? " pay-bad" : ""}">${toArabicDigits(r.absent)}</td>
+    <td class="pt-num${r.absent ? " pay-bad" : ""}"${r.inferredAbsent
+      ? ` title="منها ${toArabicDigits(r.inferredAbsent)} يوم حُضّر فيه طلابه بلا حضورٍ له"` : ""}>${toArabicDigits(r.absent)}</td>
     <td class="pt-num">${toArabicDigits(r.excused)}</td>
     <td class="pt-num${r.lateMin ? " pay-warn" : ""}">${toArabicDigits(r.lateMin)}</td>
     <td>${finRO ? `<span class="pt-num">${toArabicDigits(Math.round(r.base))}</span>`
@@ -16786,12 +16934,12 @@ function adminPayroll() {
       <button class="row-btn" title="طباعة قسيمته"
         onclick="window.payPrint('${jsAttr(r.id)}')">${ic("download", 14)}</button></td>
   </tr>`).join("")
-    : `<tr><td colspan="13" style="text-align:center;padding:26px" class="muted">
+    : `<tr><td colspan="14" style="text-align:center;padding:26px" class="muted">
         لا نتائج للفلترة.</td></tr>`;
 
   return `<div class="page">
     ${pageHead("مسيّرات الرواتب",
-      PAY.sheetId ? "مسيّر محفوظ — أي تعديل يحتاج حفظاً جديداً" : "مسوّدة غير محفوظة")}
+      approved ? "مسيّر معتمد — للقراءة والطباعة" : PAY.sheetId ? "مسودّة محفوظة — تُحدَّث بالحفظ وتُقفل بالاعتماد" : "مسوّدة غير محفوظة")}
     ${bar}
 
     <div class="pay-sum">
@@ -16803,7 +16951,7 @@ function adminPayroll() {
     <div class="card">
       <div class="pt-wrap"><div class="pt-scroll"><table class="ptable pay-table">
         <thead><tr>
-          <th>الموظف</th><th>المسمّى</th><th>اليومية</th>
+          <th>الموظف</th><th>المسمّى</th><th>اليومية</th><th>قيمة الساعة</th>
           <th>حضور</th><th>غياب</th><th>بعذر</th><th>دقائق التأخّر</th>
           <th title="المحسوب — قابلٌ للتعديل">الأساسي</th>
           <th>مكافأة</th><th>خصم</th><th>الصافي</th>
@@ -16824,18 +16972,19 @@ function paySavedPanel(saved) {
       <div class="muted" style="font-size:11.5px;margin-top:2px">
         كل مسيّر محفوظ بأرقامه وقت اعتماده — لا يتغيّر بتغيّر السجلات بعده</div></div></div>
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
-      <thead><tr><th>الفترة</th><th>الموظفون</th><th>الإجمالي</th>
+      <thead><tr><th>الفترة</th><th>الموظفون</th><th>الإجمالي</th><th>الحالة</th>
         <th>بواسطة</th><th>التاريخ</th><th></th></tr></thead>
       <tbody>${saved.map(s => `<tr${PAY.sheetId === s.id ? ' style="background:var(--brand-soft)"' : ""}>
         <td dir="ltr" class="pt-num">${esc(s.from)} → ${esc(s.to)}</td>
         <td class="pt-num">${toArabicDigits(s.count || 0)}</td>
         <td class="pt-num"><strong>${toArabicDigits(Math.round(s.total || 0))}</strong></td>
+        <td>${payApproved(s) ? '<span class="pt-badge on">معتمد</span>' : '<span class="pt-badge off">مسودّة</span>'}</td>
         <td class="muted" style="font-size:12px">${esc(s.by || "—")}</td>
         <td class="muted" style="font-size:12px">${esc(new Date(s.ts).toLocaleDateString("ar-EG"))}</td>
         <td class="pt-actions">
           <button class="btn btn-ghost btn-sm" onclick="window.payOpen('${jsAttr(s.id)}')">فتح</button>
-          <button class="row-btn cp-danger" onclick="window.payDelete('${jsAttr(s.id)}')"
-            title="حذف">${ic("trash", 14)}</button></td>
+          ${payApproved(s) ? "" : `<button class="row-btn cp-danger" onclick="window.payDelete('${jsAttr(s.id)}')"
+            title="حذف">${ic("trash", 14)}</button>`}</td>
       </tr>`).join("")}</tbody>
     </table></div></div>
   </div>`;
@@ -21712,7 +21861,8 @@ function teacherAttendance() {
     return [...set.entries()];
   })();
 
-  const circleBar = myCirc.length > 1 ? workCircleBar(true) : "";
+  const circleBar = (myCirc.length > 1 ? workCircleBar(true) : "") +
+    staffSelfBar(attCircle() || (myCirc.length === 1 ? myCirc[0][0] : ""));
 
   /* بحلقةٍ مختارة: طلابُها وحدَهم — ومنهم من له حلقةٌ أخرى */
   if (attCircle()) {
@@ -29264,6 +29414,7 @@ function attMap(dateISO, circleId) {
   const m = {};
   const cid = circleId != null ? String(circleId) : "";
   cur("attendance").forEach(function (r) {
+    if (r && r.staffId) return;              /* حضورُ المعلّم ليس سجلَّ طالب */
     if (String(r.date) !== String(dateISO)) return;
     /* بحلقةٍ محدَّدة: سجلُّها وحدَه — وإلا خلط تحضيرُ الفجر بالعصر.
        والسجلُّ القديم بلا حلقةٍ يُقبل فلا يضيع ما سُجّل قبل الفصل. */
@@ -29449,6 +29600,9 @@ function attSaveAll() {
 
   STATE.attDraft = {};
   STATE.attSel = {};
+
+  /* حضورُ المعلّم في كلّ حلقةٍ حُضّر طلابُها */
+  try { [...new Set(touched)].forEach(cid => staffAutoIn(cid, dateISO)); } catch (e) {}
 
   /* حلقاتُ ما حُضّر: تُفحص كلُّها فقد يشمل الحفظُ أكثرَ من حلقة */
   try {
@@ -29651,6 +29805,8 @@ function attSet(studentId, status, circleId) {
   persistSet("attendance", rec);
 
   /* اكتمالُ التحضير يعتمد الجلسةَ من تلقائه للمشرف — بلا زرٍّ يُضغط */
+  /* أوّلُ طالبٍ يُحضَّر يُثبت حضورَ معلّمه في الحلقة */
+  try { if (rec.circleId) staffAutoIn(rec.circleId, dateISO); } catch (e) {}
   try { if (typeof autoApproveCheck === "function") autoApproveCheck(rec.circleId); } catch (e) {}
 
   mount();
@@ -31700,6 +31856,101 @@ function facilityFilter(coll, raw) {
    ========================================================================= */
 
 /* سجل المعلم في مجموعة teachers المطابق للحساب الحالي */
+/* =========================================================================
+   تحضيرُ المعلّم التلقائيّ — وقتُه وتأخّرُه من وقت الحلقة والأذان
+   -------------------------------------------------------------------------
+   المواصفات: «يرصد النظام وقت حضور المعلم الفعلي ويسجّله تلقائياً بمجرّد
+   تحضير أوّل طالب، أو بزرٍّ يحضّر به نفسه قبل أي إجراء»، و«تُقرأ الحلقة
+   المرتبطة بالأذان فيُقارن وقت التحضير بوقت بدايتها». وحضورُه في كلّ حلقةٍ
+   منفصل، ويُجمع آخر الشهر في مسيّره.
+
+   كانت شاشاتُ الدوام والمسيّر تقرأ سجلاتٍ بحقل staffId لا يكتبها شيءٌ في
+   الصفحات المحمَّلة (duty-plus.js غير مُدرَج)، فالمسيّر أصفارٌ بنيوية.
+   السجلّ هنا بالشكل الذي يقرؤه المسيّر نفسُه، ويحمل studentId فارغاً
+   والحالة من القائمة المسموحة لأن قاعدة attendance تشترطهما.
+   ========================================================================= */
+function staffInId(dateISO, teacherId, circleId) {
+  return "sa__" + dateISO + "__" + teacherId + "__" + circleId;
+}
+
+/* سجلُّ حضور المعلّم في حلقةٍ ويوم — إن وُجد */
+function staffInOf(dateISO, teacherId, circleId) {
+  const id = staffInId(dateISO, teacherId, circleId);
+  return (DB.attendance || []).find(x => x && String(x.id) === id) || null;
+}
+
+/* دقائق التأخّر عن بداية الحلقة — والبداية من الأذان إن رُبطت به */
+function staffLateMin(c, dateISO, inT) {
+  const startT = typeof circleStartAt === "function" ? circleStartAt(c, dateISO) : c.start;
+  const toMin = t => { const m = String(t || "").match(/^(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null; };
+  const s0 = toMin(startT), t0 = toMin(inT);
+  return { startT: startT || "", late: (s0 == null || t0 == null) ? 0 : Math.max(0, t0 - s0) };
+}
+
+/* يُسجَّل للمعلّم الأصيل وحده — المساعدُ لا يُحتسب دوامه على الحلقة —
+   وفي يومه الجاري فقط: تحضيرُ يومٍ مضى لا يعني أنه حضر الآن. */
+function staffAutoIn(circleId, dateISO, manual) {
+  const u = (STATE && STATE.user) || {};
+  if (u.role !== "teacher") return null;
+  const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
+  if (!t) return null;
+  const c = (cur("circles") || []).find(x => String(x.id) === String(circleId));
+  if (!c) return null;
+  const mine = c.teacherId ? String(c.teacherId) === String(t.id)
+                           : String(c.teacher || "") === String(t.name || "");
+  if (!mine) return null;
+  const d = String(dateISO || todayISO());
+  if (d !== todayISO()) return null;
+  if (staffInOf(d, t.id, c.id)) return null;
+
+  const inT = nowHHMM();
+  const lt = staffLateMin(c, d, inT);
+  const rec = {
+    id: staffInId(d, t.id, c.id), date: d,
+    staffId: String(t.id), staffUid: String(u.uid || ""), staffName: t.name || "",
+    staffRole: "معلم", studentId: "",
+    circleId: String(c.id), circle: c.name || "",
+    mosqueId: c.mosqueId || t.mosqueId || "", complexId: c.complexId || t.complexId || "",
+    status: lt.late > 0 ? "متأخر" : "حاضر",
+    inTime: inT, startAt: lt.startT, lateMin: lt.late,
+    auto: !manual,
+    termId: activeTermId() || termOfDate(d),
+    by: u.email || "", ts: Date.now()
+  };
+  if (!Array.isArray(DB.attendance)) DB.attendance = [];
+  DB.attendance.push(rec);
+  persistSet("attendance", rec);
+  return rec;
+}
+
+/* زرُّ «تسجيل حضوري» — قبل تحضير أيّ طالب */
+window.staffSelfIn = function (circleId) {
+  const rec = staffAutoIn(circleId, todayISO(), true);
+  if (!rec) { showToast("حضورك مسجَّلٌ في هذه الحلقة اليوم، أو ليست حلقتك الأصيلة", "info"); return; }
+  showToast("سُجّل حضورك " + rec.inTime + (rec.lateMin ? " — تأخّر " + toArabicDigits(rec.lateMin) + " د" : ""),
+            rec.lateMin ? "warn" : "success");
+  mount();
+};
+
+/* شريطُ حضور المعلّم في شاشة التحضير */
+function staffSelfBar(circleId) {
+  const u = (STATE && STATE.user) || {};
+  if (u.role !== "teacher" || !circleId) return "";
+  const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
+  const c = (cur("circles") || []).find(x => String(x.id) === String(circleId));
+  if (!t || !c) return "";
+  const mine = c.teacherId ? String(c.teacherId) === String(t.id)
+                           : String(c.teacher || "") === String(t.name || "");
+  if (!mine) return "";
+  const r = staffInOf(todayISO(), t.id, c.id);
+  return `<div class="chip-list" style="margin-bottom:10px">
+    ${r ? `<span class="chip ${r.lateMin ? "t-amber" : "t-green"}">حضورك في «${esc(c.name || "")}»: ${esc(r.inTime)}${
+            r.lateMin ? " · تأخّر " + toArabicDigits(r.lateMin) + " د" : ""}</span>`
+        : `<button type="button" class="chip t-blue" style="border:none;cursor:pointer"
+             onclick="window.staffSelfIn('${jsAttr(c.id)}')">${ic("clock", 13)} تسجيل حضوري في «${esc(c.name || "")}»</button>`}
+  </div>`;
+}
+
 function myTeacherRecord() {
   const u = (STATE && STATE.user) || {};
   const list = Array.isArray(DB.teachers) ? DB.teachers : [];
