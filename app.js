@@ -1948,6 +1948,9 @@ function modalEditCircle(id) {
           ${tr.map(x => `<option value="${esc(x.id)}"${String(c.termId) === String(x.id)
             ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>` : "";
       })()}
+      <div class="field"><label>جهة التحضير</label>
+        <select id="ec_attwho"><option value="">حسب الإعداد العام (${esc((ATT_WHO.find(x => x.k === attCfg().who) || {}).h || "")})</option>
+          ${ATT_WHO.map(x => `<option value="${x.k}"${c.attWho === x.k ? " selected" : ""}>${esc(x.h)}</option>`).join("")}</select></div>
       <!-- رابط غرفة المقرأة لهذه الحلقة — يسبق رابط المسجد العام -->
       <div class="field full"><label>رابط المقرأة (اختياري)</label>
         <input id="ec_maq" dir="ltr" value="${esc(c.maqraahUrl || "")}"
@@ -14094,7 +14097,10 @@ function rollForward(studentId, fromDate, toDate) {
   const cfg = planEngineCfg();
   const att = (cur("attendance") || []).find(r =>
     String(r.studentId) === String(studentId) && String(r.date) === String(fromDate));
-  const status = att ? String(att.status) : "";
+  let status = att ? String(att.status) : "";
+  /* أثرُ الحالة المخصّصة: «يُعفى» كالاستئذان المُعفي، و«عجز» كحاضرٍ لم يسمّع */
+  const attEffect = att && att.kind ? ((attCustomOf(att.kind) || {}).effect || "base") : "base";
+  if (attEffect === "deficit") status = "";
 
   /* يوم إجازة الحلقة لا يُحاسَب عليه الطالب — نصّت المواصفات:
      «لكي لا يتأثّر الطلاب ولا تُحسب عليهم متأخّرات تعويضية» */
@@ -14168,6 +14174,13 @@ function rollForward(studentId, fromDate, toDate) {
     if (leftShare && leftShare.exempt) {
       a.status = "excused"; a.settled = true;
       a.note = "غادر بعد " + toArabicDigits(leftShare.pct) + "٪ من الحلقة";
+      persistSet("assignments", a);
+      return;
+    }
+
+    if (attEffect === "exempt") {
+      a.status = "excused"; a.settled = true;
+      a.note = "حالة الحضور: " + attLabel(att.status, att.kind);
       persistSet("assignments", a);
       return;
     }
@@ -18149,6 +18162,8 @@ function setPanelMushaf() {
       </div>
     </div>
 
+    ${setPanelAttCfg()}
+
     ${maqraahPanel()}
 
     <div class="card" style="margin-top:18px">
@@ -21969,7 +21984,21 @@ function teacherAttendance() {
   })();
 
   const circleBar = (myCirc.length > 1 ? workCircleBar(true) : "") +
-    staffSelfBar(attCircle() || (myCirc.length === 1 ? myCirc[0][0] : ""));
+    staffSelfBar(attCircle() || (myCirc.length === 1 ? myCirc[0][0] : "")) +
+    (function () {
+      const cidN = attCircle() || (myCirc.length === 1 ? myCirc[0][0] : "");
+      const notes = [];
+      if (cidN && !attMayTake(cidN, true)) {
+        notes.push(attWhoOf(cidN) === "teacher"
+          ? "تحضير هذه الحلقة للمعلم وحده — تعرضه هنا للقراءة."
+          : "تحضير هذه الحلقة للمشرف والإدارة — تعرضه هنا للقراءة.");
+      }
+      const em = attCfg().editMin;
+      if (em && ((STATE && STATE.user) || {}).role === "teacher") {
+        notes.push("مهلة تعديل التحضير " + toArabicDigits(em) + " دقيقة من أوّل حفظ، وبعدها التعديل من الإدارة.");
+      }
+      return notes.length ? noteCard(notes.join("<br>")) : "";
+    })();
 
   /* بحلقةٍ مختارة: طلابُها وحدَهم — ومنهم من له حلقةٌ أخرى */
   if (attCircle()) {
@@ -22006,14 +22035,25 @@ function teacherAttendance() {
     const isDraft = !!attDraft()[String(s.id)];
     const on      = !!sel[String(s.id)];
 
+    /* قفلُ الصفّ: جهةُ التحضير أو انتهاءُ مهلة المعلّم */
+    const svRec = saved[String(s.id)];
+    const rowLock = !attMayTake(recCircleOf(s, attCircle()), true) ||
+                    (svRec && !attEditOpen(svRec, true));
+    const lockAttr = rowLock ? ` disabled title="${esc(!attMayTake(recCircleOf(s, attCircle()), true)
+      ? "التحضير هنا ليس من صلاحيتك" : "انتهت مهلة التعديل — التعديل من الإدارة")}"` : "";
+    const curKind = cs ? (cs.kind || "") : "";
     const chips = ATT_STATES.map(st => {
       const act = st === "مستأذن"
         ? `data-action="att-excuse" data-student="${esc(String(s.id))}"`
         : `data-action="att-set" data-student="${esc(String(s.id))}" data-status="${esc(st)}"` +
           ` data-circle="${esc(attCircle())}"`;
-      return `<button type="button" class="chip ${now === st ? "active " + ATT_TINT[st] : ""}"
-        ${act} style="border:none;cursor:pointer">${esc(st)}</button>`;
-    }).join("");
+      return `<button type="button" class="chip ${now === st && !curKind ? "active " + ATT_TINT[st] : ""}"
+        ${act}${lockAttr} style="border:none;cursor:pointer">${esc(attLabel(st))}</button>`;
+    }).join("") + attCfg().custom.map(x =>
+      `<button type="button" class="chip ${curKind === x.k ? "active " + (ATT_TINT[x.base] || "") : ""}"
+        data-action="att-set" data-student="${esc(String(s.id))}" data-status="${esc(x.base)}"
+        data-kind="${esc(x.k)}" data-circle="${esc(attCircle())}"${lockAttr}
+        style="border:none;cursor:pointer">${esc(x.h)}</button>`).join("");
 
     const duty = isDutyDay(s, dateISO);
     const lateM = (cs && cs.status === "متأخر" && cs.inTime) ? lateMinutesOf(s, cs.inTime) : 0;
@@ -22061,7 +22101,7 @@ function teacherAttendance() {
     </div>` : "";
 
   const summary = `<div class="chip-list" style="margin-bottom:12px">
-    ${ATT_STATES.map(st => `<span class="chip ${ATT_TINT[st]}">${esc(st)}: ${cnt(st)}</span>`).join("")}
+    ${ATT_STATES.map(st => `<span class="chip ${ATT_TINT[st]}">${esc(attLabel(st))}: ${cnt(st)}</span>`).join("")}
     <span class="chip">سُجّل ${done} من ${students.length}</span>
     ${pending ? `<span class="chip t-amber">غير محفوظ: ${pending}</span>` : ""}
   </div>`;
@@ -22849,6 +22889,7 @@ function mushafGo(n) {
   const m = mushaf();
   m.page = Math.min(604, Math.max(1, Number(n) || 1));
   m.marks = {};                 /* التأشير خاص بكل صفحة */
+  m.hl = "";                    /* تظليلُ آية البدء لصفحتها وحدها */
   mount();
 }
 
@@ -22916,7 +22957,8 @@ function mushafSheet(n) {
       const ttl = k ? ` title="${esc(musMark(k).h)}"` : "";
       return `<span class="mus-w${cls}"${ttl} onclick="window.mushafMark('${key}')">${esc(w)}</span>`;
     }).join(" ");
-    body += `<span class="mus-ayah">${words} <span class="mus-num">${toArabicDigits(v.a)}</span></span> `;
+    const hl = m.hl && m.hl === v.s + ":" + v.a ? " mus-hl" : "";
+    body += `<span class="mus-ayah${hl}">${words} <span class="mus-num">${toArabicDigits(v.a)}</span></span> `;
   });
 
   return `<div class="mus-page">
@@ -23123,6 +23165,27 @@ function reciteNextFrom(sid, kindAr) {
   return null;
 }
 
+/* =========================================================================
+   زرّ «أوّل آية من الواجب» — يفتح وجه المصحف المطلوب مباشرة
+   -------------------------------------------------------------------------
+   المواصفات: «ظهور زرّ اختصار بالآية الأولى من واجب الطالب، بمجرّد الضغط
+   عليه يفتح وجه المصحف المطلوب مباشرة» — فلا يبحث المعلّم عن الصفحة بيده.
+   ويُختار الطالبُ في المصحف ليُحفظ تأشيرُ أخطائه في مصحفه، وتُظلَّل الآية.
+   ========================================================================= */
+window.reciteOpenMushaf = function (sid, s, a) {
+  if (typeof window.Quran === "undefined" || !window.Quran.locate) {
+    showToast("محرّك المصحف غير متاح", "warn"); return;
+  }
+  window.Quran.locate(Number(s), Number(a)).then(loc => {
+    if (!loc) { showToast("تعذّر تحديد صفحة الآية", "warn"); return; }
+    STATE.musStudent = String(sid || "");
+    const m = mushaf();
+    m.page = loc.page; m.marks = {}; m.hl = Number(s) + ":" + Number(a);
+    STATE.page = "mushaf";
+    mount();
+  }).catch(() => showToast("تعذّر تحميل موضع الآية", "warn"));
+};
+
 window.reciteStudentPick = function (sid) {
   const f = reciteForm();
   f.lastStudent = String(sid || "");
@@ -23200,6 +23263,11 @@ function teacherRecite() {
 
       <div class="field full"><label>نوع التسميع</label>
         <div class="chip-list">${kindChips}</div></div>
+
+      ${nextFrom && curSid ? `<div class="field full">
+        <button type="button" class="btn btn-soft btn-sm" style="justify-self:start"
+          onclick="window.reciteOpenMushaf('${jsAttr(curSid)}', ${Number(nextFrom.s)}, ${Number(nextFrom.a)})">
+          ${ic("book", 15)} أوّل آية: ${esc((QSURAHS.find(x => x.i === Number(nextFrom.s)) || {}).n || "")} ${toArabicDigits(nextFrom.a)} — افتح في المصحف</button></div>` : ""}
 
       <div class="field"><label>من سورة</label>
         <select id="r_fromS" onchange="window.reciteSurahChange('from')">${surahOpts(nextFrom ? nextFrom.s : (f.fromS || 1))}</select></div>
@@ -29369,6 +29437,186 @@ function panelProgram(id) {
 const ATT_STATES = ["حاضر", "متأخر", "مستأذن", "غائب"];
 const ATT_TINT   = { "حاضر": "t-green", "متأخر": "t-amber", "مستأذن": "t-blue", "غائب": "t-red" };
 
+/* =========================================================================
+   إعدادات التحضير — جهةُ التحضير · مهلةُ التعديل · تسميةُ الحالات
+   -------------------------------------------------------------------------
+   المواصفات:
+     • «يتيح النظام خياراً في إعدادات كل حلقة لتحديد من يملك صلاحية تحضير
+       الطلاب: المعلم فقط، أم المشرف/الإدارة فقط، أم كلا الطرفين».
+     • «بعد حفظ المعلم للتحضير يمنحه النظام مهلة يحددها مدير النظام (٣٠
+       دقيقة أو ساعة)، بعدها تُقفل شاشة التحضير ولا يعدّل إلا عن طريق الإدارة».
+     • «إضافة أو تعديل أو إعادة تسمية حالات الحضور، وربط كل مسمّى بحالته
+       التقنية الأساسية — مثلاً: حاضر ولم يسمّع = [حاضر] في الدوام، ويترتّب
+       عليه [عجز وتأخّر] في الخطط».
+
+   الحالةُ المحفوظة تبقى إحدى الأربع (قاعدة attendance لا تقبل غيرها، وكلُّ
+   التقارير تقرؤها)، ويُضاف إليها kind حين تكون مسمّىً مخصّصاً.
+   ========================================================================= */
+const ATT_WHO = [
+  { k: "both",    h: "المعلم والمشرف معاً" },
+  { k: "teacher", h: "المعلم فقط" },
+  { k: "staff",   h: "المشرف / الإدارة فقط" }
+];
+const ATT_EFFECTS = [
+  { k: "base",    h: "كالحالة الأساسية" },
+  { k: "deficit", h: "يُحسب عجزاً ويُعوَّض غداً" },
+  { k: "exempt",  h: "يُعفى من واجب اليوم" }
+];
+
+function attCfg() {
+  const s = DB.settings || {};
+  return {
+    who: ATT_WHO.some(x => x.k === s.attWho) ? s.attWho : "both",
+    editMin: Math.max(0, Number(s.attEditMin) || 0),
+    labels: s.attLabels || {},
+    custom: Array.isArray(s.attCustom) ? s.attCustom.filter(x => x && x.k) : []
+  };
+}
+
+function attCustomOf(kind) {
+  if (!kind) return null;
+  return attCfg().custom.find(x => String(x.k) === String(kind)) || null;
+}
+
+/* الاسمُ المعروض: المسمّى المخصّص، وإلا ما سُمّيت به الحالة، وإلا اسمُها */
+function attLabel(status, kind) {
+  const c = attCustomOf(kind);
+  if (c) return c.h;
+  const l = attCfg().labels[String(status || "")];
+  return l ? String(l) : String(status || "");
+}
+window.attLabel = attLabel;
+
+/* جهةُ التحضير: إعدادُ الحلقة، وإلا الإعدادُ العام */
+function attWhoOf(circleId) {
+  const c = (cur("circles") || []).find(x => String(x.id) === String(circleId || "")) ||
+            (DB.circles || []).find(x => String(x.id) === String(circleId || ""));
+  const v = c && c.attWho;
+  return ATT_WHO.some(x => x.k === v) ? v : attCfg().who;
+}
+
+/* هل يحضّر هذا المستخدم في هذه الحلقة؟ المالكُ يبقى مخرجاً للطوارئ */
+function attMayTake(circleId, silent) {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (r === "owner") return true;
+  const mode = attWhoOf(circleId);
+  const isT = r === "teacher";
+  const ok = mode === "both" || (mode === "teacher" ? isT : !isT);
+  if (!ok && !silent) {
+    showToast(mode === "teacher" ? "تحضير هذه الحلقة للمعلم وحده"
+                                 : "تحضير هذه الحلقة للمشرف والإدارة وحدهم", "warn");
+  }
+  return ok;
+}
+
+/* مهلةُ التعديل: للمعلّم وحده، من أوّل حفظٍ للسجلّ — والإدارةُ تعدّل بعدها */
+function attEditOpen(rec, silent) {
+  if (!rec) return true;
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (r !== "teacher") return true;
+  const m = attCfg().editMin;
+  if (!m) return true;
+  const t0 = Number(rec.firstTs || rec.ts) || 0;
+  const open = !t0 || (Date.now() - t0) <= m * 60000;
+  if (!open && !silent) {
+    showToast("انتهت مهلة التعديل (" + toArabicDigits(m) + " دقيقة) — التعديل من الإدارة", "warn");
+  }
+  return open;
+}
+
+/* ---------------- الضبط ---------------- */
+function attCfgPersist(msg) {
+  const s = DB.settings || (DB.settings = {});
+  Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
+    .then(ok => { showToast(ok === false ? "تعذّر الحفظ" : (msg || "حُفظت إعدادات التحضير"),
+                            ok === false ? "warn" : "success"); mount(); });
+}
+window.attCfgSave = function () {
+  if (!isTopAdmin()) { showToast("إعدادات التحضير للإدارة العليا", "warn"); return; }
+  const s = DB.settings || (DB.settings = {});
+  const who = val("#ac_who");
+  if (ATT_WHO.some(x => x.k === who)) s.attWho = who;
+  const m = Number(val("#ac_min"));
+  s.attEditMin = isFinite(m) && m >= 0 ? Math.round(m) : 0;
+  const labels = {};
+  ATT_STATES.forEach((st, i) => {
+    const v = String(val("#ac_l" + i) || "").trim();
+    if (v && v !== st) labels[st] = v;
+  });
+  s.attLabels = labels;
+  /* المسمّياتُ المخصّصة: الاسمُ مطلوب، والأساسيةُ من الأربع */
+  const rows = [...document.querySelectorAll(".ac-custom")];
+  const out = [];
+  for (const row of rows) {
+    const h = String((row.querySelector(".ac-h") || {}).value || "").trim();
+    const b = (row.querySelector(".ac-b") || {}).value;
+    const e = (row.querySelector(".ac-e") || {}).value;
+    if (!h) { showToast("اكتب اسم كلّ حالةٍ مخصّصة أو احذفها", "warn"); return; }
+    if (ATT_STATES.indexOf(b) < 0) return;
+    out.push({ k: row.dataset.k, h, base: b, effect: ATT_EFFECTS.some(x => x.k === e) ? e : "base" });
+  }
+  s.attCustom = out;
+  attCfgPersist();
+};
+window.attCustomAdd = function () {
+  if (!isTopAdmin()) return;
+  const s = DB.settings || (DB.settings = {});
+  const list = Array.isArray(s.attCustom) ? s.attCustom.slice() : [];
+  list.push({ k: "c" + Date.now(), h: "", base: "حاضر", effect: "deficit" });
+  s.attCustom = list;
+  mount();
+};
+window.attCustomDel = function (k) {
+  if (!isTopAdmin()) return;
+  const s = DB.settings || (DB.settings = {});
+  s.attCustom = (s.attCustom || []).filter(x => String(x.k) !== String(k));
+  mount();
+};
+
+function setPanelAttCfg() {
+  const c = attCfg();
+  const ro = !isTopAdmin();
+  return `<div class="card" style="margin-top:18px">
+    <div class="fac-toolbar">
+      <div><strong style="font-size:15px">إعدادات التحضير</strong>
+        <div class="muted" style="font-size:11.5px;margin-top:2px">
+          من يحضّر، ومهلةُ تعديل المعلّم، وأسماءُ حالات الحضور</div></div>
+    </div>
+    <div class="form-grid" style="padding:0 16px 12px">
+      <div class="field"><label>جهة التحضير (افتراضياً)</label>
+        <select id="ac_who"${ro ? " disabled" : ""}>${ATT_WHO.map(x =>
+          `<option value="${x.k}"${x.k === c.who ? " selected" : ""}>${esc(x.h)}</option>`).join("")}</select>
+        <small style="font-size:11px;color:var(--text-faint)">ويُخصَّص لكلّ حلقةٍ من تعديل بياناتها</small></div>
+      <div class="field"><label>مهلة تعديل المعلّم (دقيقة)</label>
+        <input id="ac_min" type="number" min="0" dir="ltr" value="${esc(c.editMin)}"${ro ? " disabled" : ""}>
+        <small style="font-size:11px;color:var(--text-faint)">٠ = بلا حدّ · تبدأ من أوّل حفظ، وبعدها التعديل للإدارة</small></div>
+    </div>
+    <div style="padding:0 16px 6px"><strong style="font-size:13px">أسماء الحالات الأساسية</strong></div>
+    <div class="form-grid" style="padding:0 16px 10px">
+      ${ATT_STATES.map((st, i) => `<div class="field"><label>${esc(st)}</label>
+        <input id="ac_l${i}" value="${esc(c.labels[st] || st)}"${ro ? " disabled" : ""}></div>`).join("")}
+    </div>
+    <div style="padding:0 16px 6px;display:flex;align-items:center;gap:8px">
+      <strong style="font-size:13px">حالات مخصّصة</strong>
+      <small class="muted">مثال: «حاضر ولم يسمّع» ← أساسيّتها «حاضر» · أثرها «عجز يُعوَّض»</small>
+      ${ro ? "" : `<button class="fac-tbtn add" onclick="window.attCustomAdd()" title="إضافة حالة"
+        style="margin-inline-start:auto">+</button>`}
+    </div>
+    <div style="padding:0 16px 12px">
+      ${c.custom.length ? c.custom.map(x => `<div class="ac-custom proc-edit" data-k="${esc(x.k)}">
+        <input class="ac-h" value="${esc(x.h)}" placeholder="اسم الحالة"${ro ? " disabled" : ""}>
+        <select class="ac-b"${ro ? " disabled" : ""}>${ATT_STATES.map(b =>
+          `<option${b === x.base ? " selected" : ""}>${esc(b)}</option>`).join("")}</select>
+        <select class="ac-e"${ro ? " disabled" : ""}>${ATT_EFFECTS.map(e =>
+          `<option value="${e.k}"${e.k === (x.effect || "base") ? " selected" : ""}>${esc(e.h)}</option>`).join("")}</select>
+        ${ro ? "" : `<button class="row-btn cp-danger" onclick="window.attCustomDel('${jsAttr(x.k)}')" title="حذف">${ic("trash", 14)}</button>`}
+      </div>`).join("") : `<div class="muted" style="font-size:12.5px">لا حالات مخصّصة.</div>`}
+    </div>
+    ${ro ? "" : `<div style="padding:0 16px 16px">
+      <button class="btn btn-primary btn-sm" onclick="window.attCfgSave()">حفظ إعدادات التحضير</button></div>`}
+  </div>`;
+}
+
 function todayISO() {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -29585,7 +29833,7 @@ function attCurrent(studentId, saved) {
   const d = attDraft()[String(studentId)];
   if (d) return d;
   const r = saved[String(studentId)];
-  return r ? { status: r.status, reason: r.reason || "" } : null;
+  return r ? { status: r.status, reason: r.reason || "", kind: r.kind || "" } : null;
 }
 
 function attDraftCount() { return Object.keys(attDraft()).length; }
@@ -29660,7 +29908,7 @@ function attSaveAll() {
   const u = (STATE && STATE.user) || {};
   if (!Array.isArray(DB.attendance)) DB.attendance = [];
 
-  let n = 0;
+  let n = 0, blocked = 0;
   const touched = [];      /* حلقاتُ ما حُضّر — تُفحص للاعتماد التلقائيّ */
   ids.forEach(sid => {
     const st = DB.students.find(x => String(x.id) === String(sid));
@@ -29672,8 +29920,13 @@ function attSaveAll() {
     const multi = studentCircleIds(st).length > 1;
     const id = attExistingId(dateISO, sid, cid, multi) || attId(dateISO, sid, multi ? cid : "");
     const cRec = (cur("circles") || []).find(x => String(x.id) === String(cid));
+    /* جهةُ التحضير ومهلةُ التعديل: يُتخطّى الممنوعُ ويُذكر عددُه */
+    const prevRec = (DB.attendance || []).find(r => String(r.id) === id);
+    if (!attMayTake(cid, true) || (prevRec && !attEditOpen(prevRec, true))) { blocked++; return; }
     const rec = {
       id: id, date: dateISO,
+      kind: prevRec && prevRec.status === d.status ? (prevRec.kind || "") : "",
+      firstTs: prevRec ? (Number(prevRec.firstTs || prevRec.ts) || Date.now()) : Date.now(),
       studentId: String(st.id), student: st.name || "",
       circleId: cid,
       circle: (cRec && cRec.name) || st.circle || "",
@@ -29720,7 +29973,9 @@ function attSaveAll() {
   } catch (e) {}
 
   mount();
-  showToast("حُفظ تحضير " + n + " طالباً");
+  showToast("حُفظ تحضير " + n + " طالباً" + (blocked
+    ? " · تُخطّي " + toArabicDigits(blocked) + " (خارج صلاحيتك أو بعد مهلة التعديل)" : ""),
+    blocked ? "warn" : "success");
 }
 
 /* حذف سجل حضور — كان يُعدَّل ولا يُحذف، فسجلٌ سُجّل بالخطأ لطالب
@@ -29874,21 +30129,31 @@ window.attLeaveClear = function (studentId) {
   mount();
 };
 
-function attSet(studentId, status, circleId) {
+function attSet(studentId, status, circleId, kind) {
   const dateISO = attDate();
   const st = DB.students.find(function (s) { return String(s.id) === String(studentId); });
   if (!st) return;
 
   const u = (STATE && STATE.user) || {};
+  /* الحالةُ المخصّصة تُحفظ على أساسيّتها — والأساسيّةُ وحدها تقبلها القاعدة */
+  const cst = attCustomOf(kind);
+  if (cst) status = cst.base;
+  if (ATT_STATES.indexOf(status) < 0) return;
+  /* جهةُ التحضير ومهلةُ التعديل — في الدالة لا في الزرّ */
+  if (!attMayTake(recCircleOf(st, circleId || attCircle()))) return;
   /* حلقةُ التحضير: المحدَّدةُ في الشاشة، وإلا أولى حلقات الطالب. وبها
      يُبنى المفتاح، فتحضيرُ الفجر لا يمحو تحضيرَ العصر. */
   const cids = studentCircleIds(st);
   const cid = recCircleOf(st, circleId || attCircle());
   const id = attExistingId(dateISO, studentId, cid, cids.length > 1) ||
              attId(dateISO, studentId, cids.length > 1 ? cid : "");
+  const prevRec = (DB.attendance || []).find(function (r) { return String(r.id) === id; });
+  if (prevRec && !attEditOpen(prevRec)) return;
   const rec = {
     id: id,
     date: dateISO,
+    kind: cst ? String(cst.k) : "",
+    firstTs: prevRec ? (Number(prevRec.firstTs || prevRec.ts) || Date.now()) : Date.now(),
     studentId: String(st.id),
     student: st.name || "",
     circleId: cid || (st.circleId != null ? String(st.circleId) : ""),
@@ -30018,7 +30283,7 @@ document.addEventListener("click", (e) => {
       mount();
       break;
     }
-    case "att-set":  attSet(t.dataset.student, t.dataset.status, t.dataset.circle || ""); break;
+    case "att-set":  attSet(t.dataset.student, t.dataset.status, t.dataset.circle || "", t.dataset.kind || ""); break;
     case "att-shift": attShift(t.dataset.days); break;
     case "att-rest": attMarkRest(); break;
     case "att-excuse": attExcuseAsk(t.dataset.student, false); break;
@@ -30283,6 +30548,7 @@ document.addEventListener("click", (e) => {
       c.capacity = Number(val("#ec_cap")) || 0;
       c.termId = val("#ec_term", c.termId || "");
       c.maqraahUrl = val("#ec_maq", c.maqraahUrl || "");
+      { const aw = val("#ec_attwho", ""); if (ATT_WHO.some(x => x.k === aw)) c.attWho = aw; else delete c.attWho; }
 
       const ecFac = facTwoValue("ec_cx", "ec_mosque");
       if (ecFac.complexId) { c.complexId = ecFac.complexId; c.mosque = ecFac.mosque; c.mosqueId = ecFac.mosqueId; }

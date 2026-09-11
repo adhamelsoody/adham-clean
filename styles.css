@@ -9085,3 +9085,7 @@ html[data-theme="dark"] .ded-act:hover { border-color: #244544; }
 .trm-viewbar span { flex: 1; min-width: 200px; }
 .trm-viewbar .btn { margin-inline-start: auto; }
 html[data-theme="dark"] .trm-viewbar { border-color: #5a4a22; color: #e8cf8a; }
+
+/* آيةُ البدء من زرّ «أوّل آية» في التسميع */
+.mus-ayah.mus-hl { background: rgba(255, 206, 84, .38); border-radius: 6px; box-shadow: 0 0 0 3px rgba(255, 206, 84, .38); }
+html[data-theme="dark"] .mus-ayah.mus-hl { background: rgba(255, 206, 84, .22); box-shadow: 0 0 0 3px rgba(255, 206, 84, .22); }
