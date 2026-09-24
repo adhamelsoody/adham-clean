@@ -28492,7 +28492,7 @@ function modalStudent() {
       <div class="field"><label>تاريخ الميلاد</label>
         <input id="s_birth" type="date">
         <small style="font-size:11px;color:var(--text-faint)">العمر يُحسب منه فلا يشيخ الرقم وحده</small></div>
-      ${formField("رقم ولي الأمر", "tel", "05xxxxxxxx", "s_parent")}
+      ${phoneBox("رقم ولي الأمر", "s_parent", "", "+966", "field")}
       ${facTwoFields("s_cx", "s_mosque", "", "")}
       ${formField("الحلقة", "select", cur("circles").length ? cur("circles").map(c => c.name) : ["—"], "s_circle")}
       ${formField("نوع الدوام", "select", ["دوام كامل", "دوام جزئي"], "s_attType")}
@@ -28569,7 +28569,7 @@ function modalEditStudent(id) {
         <input id="es_birth" type="date" value="${esc(s.birth || "")}">
         ${s.birth ? `<small style="font-size:11px;color:var(--text-faint)">العمر: ${
           toArabicDigits(ageFromBirth(s.birth) ?? "—")} سنة</small>` : ""}</div>
-      <div class="field"><label>رقم ولي الأمر</label><input id="es_parent" type="tel" inputmode="numeric" value="${esc(s.parent || "")}" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      ${phoneBox("رقم ولي الأمر", "es_parent", s.parent === "—" ? "" : s.parent, s.parentCC, "field")}
       ${facTwoFields("es_cx", "es_mosque", s.complexId || "", s.mosqueId || "")}
       <div class="field"><label>الحلقة</label><select id="es_circle">${cur("circles").length ? cur("circles").map(c => `<option ${c.name === s.circle ? "selected" : ""}>${esc(c.name)}</option>`).join("") : `<option>—</option>`}</select></div>
       <div class="field"><label>نوع الدوام</label><select id="es_attType"><option ${s.attType === "دوام كامل" ? "selected" : ""}>دوام كامل</option><option ${s.attType === "دوام جزئي" ? "selected" : ""}>دوام جزئي</option></select></div>
@@ -29157,15 +29157,10 @@ function stuCollect() {
 
   /* الهاتفُ يُجمع بمفتاحه: الرقمُ بلا مفتاحٍ لا يُتّصل به من خارج البلد */
   [["sp_phone", "phoneCC", "phone"], ["sp_parent", "parentCC", "parent"]].forEach(function (t) {
-    const el = document.querySelector("#" + t[0]);
-    if (!el) return;
-    const cc = document.querySelector("#" + t[0] + "_cc");
-    let bare = String(el.value || "").trim();
-    /* «٥» وحدَها ليست رقماً: هي البدايةُ المثبَّتة يُلمس الحقلُ فتظهر ثمّ
-       يُترك. لا تُحفظ فيصير للطالب رقمٌ لا وجودَ له. */
-    if (bare.replace(/\D+/g, "").length < 2) bare = "";
-    out.stu[t[1]] = cc ? cc.value : "";
-    out.stu[t[2]] = bare ? (cc ? cc.value + " " : "") + bare : "";
+    const r = phoneRead(t[0]);
+    if (!r) return;
+    out.stu[t[1]] = r.cc;
+    out.stu[t[2]] = r.full;
   });
 
   if (g("#spHifzQty") != null) {
@@ -29232,16 +29227,20 @@ const SP_CC = ["+966", "+20", "+971", "+965", "+974", "+973", "+968", "+962", "+
 const SP_CC_BY1 = { "5": "+966", "0": "+20" };
 const SP_PHONE_MAX = 10;
 
-function spPhone(label, id, value, cc) {
+/* =========================================================================
+   حقلُ الهاتف — بانٍ واحدٌ للبطاقة والنماذج
+   -------------------------------------------------------------------------
+   كان «رقم ولي الأمر» في نموذجَي الإضافة والتعديل حقلاً عارياً بلا مفتاح
+   دولة، فيُحفظ رقمٌ لا يُعرف بلدُه ولا تنطبق عليه قاعدةُ الخمسة. صار
+   الثلاثةُ من هذا الباني، فقاعدةٌ واحدةٌ تحكمها جميعاً.
+   ========================================================================= */
+function phoneBox(label, id, value, cc, wrap) {
   const v = String(value == null ? "" : value);
-  /* المفتاحُ المكتوبُ في القيمة أصدقُ من الحقل المنفصل: لو اختلفا بقيت
-     أرقامُ المفتاح القديم داخل الرقم فيُقرأ رقمٌ لا وجودَ له. */
   const inVal = SP_CC.filter(c => v.indexOf(c) === 0)[0] || "";
   const code = inVal || cc || SP_CC[0];
-  /* لا يُقصّ المحفوظُ هنا: أرقامٌ قديمةٌ أطولُ من عشرة تُعرض كما هي فلا
-     يضيع آخرُها عند أوّل حفظ. الحدُّ على الإدخال الجديد لا على المخزون. */
   const bare = (inVal ? v.slice(inVal.length) : v).replace(/\D+/g, "");
-  return `<div class="sp-field">
+  const w = wrap || "sp-field";
+  return `<div class="${w}">
     <label for="${id}">${esc(label)}</label>
     <div class="sp-phone">
       <select id="${id}_cc" class="sp-cc">${SP_CC.map(c =>
@@ -29253,6 +29252,21 @@ function spPhone(label, id, value, cc) {
     </div>
   </div>`;
 }
+
+/* قراءةُ الحقل: الرقمُ بمفتاحه، و«٥» وحدَها ليست رقماً */
+function phoneRead(id) {
+  const el = document.querySelector("#" + id);
+  if (!el) return null;
+  const cc = document.querySelector("#" + id + "_cc");
+  let bare = String(el.value || "").trim();
+  if (bare.replace(/\D+/g, "").length < 2) bare = "";
+  return { cc: cc ? String(cc.value || "") : "",
+           full: bare ? (cc ? cc.value + " " : "") + bare : "" };
+}
+
+/* المفتاحُ المكتوبُ في القيمة أصدقُ من الحقل المنفصل، والمحفوظُ لا يُقصّ
+   عند العرض — الحدُّ على الإدخال الجديد لا على المخزون. */
+function spPhone(label, id, value, cc) { return phoneBox(label, id, value, cc, "sp-field"); }
 
 /* أرقامٌ فقط، وعشرةٌ لا تزيد، والمفتاحُ يتبع أوّلَ رقم.
    لا تُكتب القيمةُ إلا إن تغيّرت: كتابتُها في كلّ ضغطةٍ تقفز بالمؤشّر
@@ -31433,7 +31447,10 @@ document.addEventListener("click", (e) => {
       s.birth = val("#es_birth", s.birth || "");
       const esAge = ageFromBirth(s.birth);
       if (esAge != null) s.age = String(esAge);
-      s.parent = val("#es_parent", s.parent || "");
+      /* الرقمُ بمفتاحه، والمفتاحُ يُحفظ ليُقرأ الحقلُ صحيحاً في كلّ نموذج */
+      const _ep = typeof phoneRead === "function" ? phoneRead("es_parent") : null;
+      if (_ep) { s.parent = _ep.full; s.parentCC = _ep.cc; }
+      else s.parent = val("#es_parent", s.parent || "");
       const esFac = facTwoValue("es_cx", "es_mosque");
       s.mosque    = esFac.mosque;
       s.mosqueId  = esFac.mosqueId;
@@ -31710,7 +31727,9 @@ document.addEventListener("click", (e) => {
         mosque: sFac.mosque, mosqueId: sFac.mosqueId,
         circle: sCircle,   circleId:  idByName("circles", sCircle),
         teacher: sTeacher, teacherId: sTeacherId,
-        parent: val("#s_parent", "—"), attType: val("#s_attType", "دوام كامل"),
+        parent: (function () { const r = phoneRead("s_parent"); return r ? (r.full || "—") : val("#s_parent", "—"); })(),
+        parentCC: (function () { const r = phoneRead("s_parent"); return r ? r.cc : ""; })(),
+        attType: val("#s_attType", "دوام كامل"),
         /* الأيام تُرَث من الحلقة إن تُركت فارغة بدل نصّ "يومياً" الافتراضي */
         days: val("#s_days", "") || circleDaysOf(sCircle) || "يومياً",
         birth: val("#s_birth", ""),
