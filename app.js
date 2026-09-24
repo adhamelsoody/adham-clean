@@ -4284,9 +4284,29 @@ function syncStudentRecord(u) {
   };
 
   if (st) {
-    const same = Object.keys(fields).every(k =>
-      String(st[k] == null ? "" : st[k]) === String(fields[k] == null ? "" : fields[k]));
-    if (!same) { Object.assign(st, fields); persistSet("students", st); }
+    /* =====================================================================
+       المزامنة تملأ ولا تدهس
+       ---------------------------------------------------------------------
+       كانت تنسخ حقولَ الحساب فوق ملفّ الطالب كلَّما اختلفا، وهي تجري بعد
+       كلّ تحميلٍ للبيانات (syncAllTeachers). فمن عدّل اسم الطالب في بطاقته
+       رآه محفوظاً، ثمّ أعاد التحميل فعاد الاسمُ القديم — لأن اسمَ الحساب
+       لم يتغيّر، فدهس المُعدَّل وكُتب في قاعدة البيانات. وكذلك الجوّال
+       والجنسية والحالة.
+
+       الحسابُ يملك ما لا يُعدَّل في البطاقة: uid وحدَه. وما عداه يُملأ إن
+       كان فارغاً في الملفّ — وهو مقصدُ المزامنة الأصليّ: ملفٌّ ناقصٌ
+       يُكمَّل — ولا يُمَسّ إن كان مكتوباً.
+       ===================================================================== */
+    const BLANK = ["", "—", "-", "null", "undefined"];
+    const empty = v => BLANK.indexOf(String(v == null ? "" : v).trim()) > -1;
+    const OWNED = ["uid"];               /* للحساب وحدَه: ليس في أيّ نموذج */
+    const patch = {};
+    Object.keys(fields).forEach(k => {
+      const nv = fields[k];
+      if (OWNED.indexOf(k) > -1) { if (String(st[k] || "") !== String(nv || "")) patch[k] = nv; return; }
+      if (empty(st[k]) && !empty(nv)) patch[k] = nv;
+    });
+    if (Object.keys(patch).length) { Object.assign(st, patch); persistSet("students", st); }
   } else {
     /* طالب جديد بلا حلقة — تُسنده الإدارة لاحقاً من صفحة الطلاب */
     st = Object.assign({
@@ -30056,11 +30076,18 @@ window.stuSave = function (id) {
   const s = DB.students.find(x => x.id == id);
   if (!s) return;
 
+  /* صورةُ السجلّ قبل أيّ تعديل — يُردّ إليها إن لم تقع الكتابة */
+  let before = null;
+  try { before = JSON.parse(JSON.stringify(s)); } catch (e) { before = null; }
+
   /* المعروضُ الآن فوق مسوّدة التبويب الآخر: يُحفظ التبويبان معاً */
   const d = stuDraftFor(s.id);
   const c = stuCollect();
   const stu = Object.assign({}, d.stu, c.stu);
   const plan = Object.assign({}, d.plan, c.plan);
+  /* نسخةٌ سليمةٌ للمسوّدة: plan تُنزع منها days بعد قليل */
+  const keepStu = Object.assign({}, stu);
+  const keepPlan = Object.assign({}, plan);
 
   Object.keys(stu).forEach(k => { s[k] = stu[k]; });
 
@@ -30079,11 +30106,34 @@ window.stuSave = function (id) {
   }
   s.active = s.status !== "متوقف";
 
-  persistSet("students", s);
-  stuDraftReset("");
-  showToast("حُفظت بيانات " + (s.name || "الطالب"), "success");
-  closePanel();
-  mount();
+  /* =======================================================================
+     لا يُعلَن الحفظُ قبل أن يقع
+     -----------------------------------------------------------------------
+     كانت الرسالةُ تُعرض والبطاقةُ تُغلق قبل أن تُعرف نتيجةُ الكتابة. فإن
+     ردّها حارسُ الفترة المؤرشفة أو رفضتها قواعدُ الخادم، رأى المستخدم
+     «حُفظت» ثمّ وجد القديم بعد التحديث ولا يدري لماذا.
+
+     وعند الفشل يُردّ السجلّ إلى ما كان — فلا تبقى في الذاكرة قيمةٌ ليست
+     في قاعدة البيانات — وتبقى البطاقةُ مفتوحةً بما كُتب فيها.
+     ======================================================================= */
+  Promise.resolve(persistSet("students", s)).then(function (saved) {
+    if (saved) {
+      stuDraftReset("");
+      showToast("حُفظت بيانات " + (s.name || "الطالب"), "success");
+      closePanel();
+      mount();
+      return;
+    }
+    if (before) { Object.keys(s).forEach(k => { delete s[k]; }); Object.assign(s, before); }
+    /* ما كُتب يعود إلى المسوّدة، فتُعاد البطاقةُ بما كتبه لا بما في السجلّ */
+    try {
+      STU_DRAFT.id = String(s.id);
+      STU_DRAFT.stu = Object.assign({}, STU_DRAFT.stu, keepStu);
+      if (Object.keys(keepPlan).length) STU_DRAFT.plan = Object.assign({}, STU_DRAFT.plan, keepPlan);
+    } catch (e) {}
+    showToast("لم تُحفظ التعديلات — راجع التنبيه أعلاه، وما كتبتَه ما زال في البطاقة", "warn");
+    try { panelStudent(s.id, true); } catch (e) {}
+  });
 };
 
 function panelTeacher(id) {
@@ -32657,9 +32707,13 @@ function persistSet(coll, obj) {
   return db.collection(coll).doc(String(obj.id)).set(data)
     .then(() => true)
     .catch(err => {
+      persistFail("persistSet", coll, err);
+      /* رفضُ القواعد ليس انقطاعاً: طابورُ الرفع يعيد المحاولة أبداً بلا
+         طائل، والمستخدم يُبلَّغ بالنجاح. يُعاد false ليعلم النداء. */
+      const denied = err && (err.code === "permission-denied" || err.code === "unauthenticated");
+      if (denied) return false;
       /* الفشل قد يكون انقطاعاً لا رفضاً: يُحفظ ويُعاد رفعه */
       offqPush("set", coll, data);
-      persistFail("persistSet", coll, err);
       return true;
     });
 }
@@ -34646,11 +34700,17 @@ function spAccountOf(st) {
   if (!st) return null;
   const users = (Array.isArray(DB.users) ? DB.users : []);
   const sid = String(st.id);
-  return users.find(u => u && String(u.studentId || "") === sid) ||
-         users.find(u => u && Array.isArray(u.studentIds) &&
-                         u.studentIds.some(x => String(x) === sid)) ||
-         (st.idNo ? users.find(u => u && (String(u.username || "") === String(st.idNo) ||
-                                          String(u.idNo || "") === String(st.idNo))) : null) ||
+  const eq = (a, b) => a && b && String(a).trim() === String(b).trim();
+  const eqi = (a, b) => a && b && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  /* الرباطُ الرسميّ أوّلاً، ثمّ ما تربطه المزامنة فعلاً: uid والبريد.
+     وأخيراً الاسمُ — وهو ما تبحث به syncStudentRecord نفسُها، فما تجده
+     هي يجب أن تجده هذه وإلا قيل «لا حساب» لطالبٍ اعتُمد حسابُه. */
+  return users.find(u => u && eq(u.studentId, sid)) ||
+         users.find(u => u && Array.isArray(u.studentIds) && u.studentIds.some(x => eq(x, sid))) ||
+         users.find(u => u && u.role === "student" && eq(u.uid, st.uid)) ||
+         users.find(u => u && u.role === "student" && eqi(u.email, st.email)) ||
+         (st.idNo ? users.find(u => u && (eq(u.username, st.idNo) || eq(u.idNo, st.idNo))) : null) ||
+         users.find(u => u && u.role === "student" && eq(u.name, st.name)) ||
          null;
 }
 
@@ -34685,6 +34745,11 @@ window.spPlacePanel = function (id) {
          ${row("البريد", acc.email || "—")}
          ${row("الحالة", acc.active === false ? "موقوف" : "مفعَّل")}
        </div>`
+    : !(Array.isArray(DB.users) && DB.users.length)
+      ? `<div class="sp-place-acc none">
+           ${noteCard(`قائمةُ الحسابات لم تُحمَّل في هذه الصفحة، فلا يمكن بيانُ
+             حساب الطالب هنا. افتح «المستخدمون والحسابات» لمعرفة حالته.`)}
+         </div>`
     : `<div class="sp-place-acc none">
          ${noteCard(`لا حسابَ مرتبطاً بهذا الطالب بعد — يُنشأ من «المستخدمون
            والحسابات» ويُربط بمعرّفه ليدخل بنفسه ويرى واجباته.`)}
