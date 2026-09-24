@@ -9127,14 +9127,77 @@ body.panel-open .side-panel.sp-page .sp-body { padding-inline: 18px; }
 .sp-verify { grid-template-columns: minmax(13ch, 1fr) auto; }
 .sp-verify input { min-width: 13ch; }
 
-/* رقمُ الواتس: تسعةُ أرقامٍ ومفتاحُ الدولة في سطرٍ واحدٍ بلا قصّ */
-.sp-phone { grid-template-columns: 76px minmax(12ch, 1fr); }
-.sp-phone input { min-width: 12ch; width: 100%; }
-.sp-cc { padding-inline: 4px; font-size: 13px; }
+/* رقمُ الواتس: عشرةُ أرقامٍ ومفتاحُ الدولة كاملاً في سطرٍ واحدٍ بلا قصّ.
+   كان عمودُ المفتاح ٧٦ بكسل، وسهمُ القائمة وحدَه يأكل عشرين، فيظهر
+   «+96» ويُقصّ آخرُه. ويُجبَر على اتجاه اللاتينية لئلا تنقلب علامةُ
+   الجمع إلى آخر النصّ في سياقٍ عربيّ. */
+.sp-phone { grid-template-columns: 96px minmax(11ch, 1fr); }
+.sp-phone input { min-width: 11ch; width: 100%; }
+.sp-cc {
+  padding-inline: 6px;
+  font-size: 13.5px;
+  direction: ltr;
+  text-align: center;
+  text-align-last: center;
+}
 .sp-grid { grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); }
 @media (max-width: 520px) {
   .sp-grid { grid-template-columns: 1fr; }
-  .sp-phone { grid-template-columns: 70px 1fr; }
+  .sp-phone { grid-template-columns: 88px 1fr; }
+}
+
+/* =========================================================================
+   شارةُ الالتزام في ترويسة البطاقة
+   -------------------------------------------------------------------------
+   كانت بطاقةً في ذيل تبويب الخطة لا تُرى إلا بعد تمريرٍ طويل. هنا تُقرأ
+   مع اسم الطالب: لونٌ واحدٌ يكفي للحكم، والعددُ بجواره لمن أراد التفصيل.
+   ========================================================================= */
+.sp-commit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.sp-commit svg { flex: none; }
+.sp-commit small { font-weight: 500; opacity: .75; font-size: 11.5px; }
+.sp-commit.ok   { background: rgba(16, 137, 98, .12);  color: #0d7a57; border-color: rgba(16, 137, 98, .28); }
+.sp-commit.late { background: rgba(200, 106, 16, .14);  color: #a75c0c; border-color: rgba(200, 106, 16, .32); }
+html[data-theme="dark"] .sp-commit.ok   { background: rgba(16, 137, 98, .22);  color: #7fd9b6; }
+html[data-theme="dark"] .sp-commit.late { background: rgba(200, 106, 16, .24);  color: #f0b871; }
+
+/* =========================================================================
+   لوحةُ موقع الطالب وحسابه
+   ========================================================================= */
+.sp-place { display: grid; gap: 4px; }
+.sp-place-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 14px; margin-bottom: 6px;
+  color: var(--brand, #0b7f83); font-size: 13.5px;
+}
+.sp-place-head:first-child { margin-top: 0; }
+.sp-place-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--surface-2, #f6f8f8);
+  font-size: 13.5px;
+}
+.sp-place-row + .sp-place-row { margin-top: 4px; }
+.sp-place-lbl { color: var(--text-faint, #8e9aa2); font-size: 12.5px; }
+.sp-place-val { font-weight: 600; word-break: break-word; }
+.sp-place-row small { grid-column: 1 / -1; color: var(--text-faint, #8e9aa2); font-size: 11.5px; }
+.sp-place-acc.ok { display: grid; gap: 4px; }
+@media (max-width: 520px) {
+  .sp-place-row { grid-template-columns: 1fr; gap: 2px; }
 }
 
 /* توسيطُ + و − داخل زرَّيهما: كانا يعتمدان على السطر الافتراضي وحشوِ

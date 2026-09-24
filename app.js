@@ -29204,31 +29204,55 @@ const SP_CC = ["+966", "+20", "+971", "+965", "+974", "+973", "+968", "+962", "+
 
 
 
+/* أوّلُ رقمٍ يحدّد المفتاح: الخمسةُ سعوديّةٌ والصفرُ مصريّ. وما سواهما
+   يُترك لاختيار المستخدم — فالتخمينُ فيما لا قرينةَ عليه خطأٌ صامت. */
+const SP_CC_BY1 = { "5": "+966", "0": "+20" };
+const SP_PHONE_MAX = 10;
+
 function spPhone(label, id, value, cc) {
-
   const v = String(value == null ? "" : value);
-
-  const code = cc || (SP_CC.filter(c => v.indexOf(c) === 0)[0]) || SP_CC[0];
-
-  const bare = v.indexOf(code) === 0 ? v.slice(code.length).trim() : v;
-
+  /* المفتاحُ المكتوبُ في القيمة أصدقُ من الحقل المنفصل: لو اختلفا بقيت
+     أرقامُ المفتاح القديم داخل الرقم فيُقرأ رقمٌ لا وجودَ له. */
+  const inVal = SP_CC.filter(c => v.indexOf(c) === 0)[0] || "";
+  const code = inVal || cc || SP_CC[0];
+  /* لا يُقصّ المحفوظُ هنا: أرقامٌ قديمةٌ أطولُ من عشرة تُعرض كما هي فلا
+     يضيع آخرُها عند أوّل حفظ. الحدُّ على الإدخال الجديد لا على المخزون. */
+  const bare = (inVal ? v.slice(inVal.length) : v).replace(/\D+/g, "");
   return `<div class="sp-field">
-
     <label for="${id}">${esc(label)}</label>
-
     <div class="sp-phone">
-
       <select id="${id}_cc" class="sp-cc">${SP_CC.map(c =>
-
         `<option${c === code ? " selected" : ""}>${c}</option>`).join("")}</select>
-
-      <input id="${id}" type="tel" dir="ltr" value="${esc(bare)}">
-
+      <input id="${id}" type="tel" dir="ltr" inputmode="numeric" maxlength="${SP_PHONE_MAX}"
+        value="${esc(bare)}" oninput="window.spPhoneIn(this,'${id}_cc')">
     </div>
-
   </div>`;
-
 }
+
+/* أرقامٌ فقط، وعشرةٌ لا تزيد، والمفتاحُ يتبع أوّلَ رقم.
+   لا تُكتب القيمةُ إلا إن تغيّرت: كتابتُها في كلّ ضغطةٍ تقفز بالمؤشّر
+   إلى آخر الحقل، فيتعذّر التصحيحُ في وسط الرقم. */
+/* اسمُ المستخدم: عشرةُ محارفَ لا تزيد — يُقصّ اللصقُ الأطول ولا يُرفض */
+window.spIdnoIn = function (el) {
+  if (!el) return;
+  const clean = String(el.value || "").slice(0, 10);
+  if (clean !== el.value) el.value = clean;
+};
+
+window.spPhoneIn = function (el, ccId) {
+  if (!el) return;
+  const clean = String(el.value || "").replace(/\D+/g, "").slice(0, SP_PHONE_MAX);
+  if (clean !== el.value) {
+    const atEnd = el.selectionStart === el.value.length;
+    el.value = clean;
+    if (!atEnd) { try { el.setSelectionRange(clean.length, clean.length); } catch (e) {} }
+  }
+  const sel = ccId && document.getElementById(ccId);
+  if (sel && clean) {
+    const c = SP_CC_BY1[clean.charAt(0)];
+    if (c && SP_CC.indexOf(c) > -1) sel.value = c;
+  }
+};
 
 
 
@@ -29383,6 +29407,16 @@ function panelStudent(id, keepDraft) {
   const chip = (icon, text) => text
     ? `<span class="sp-chip">${ic(icon, 14)}${esc(String(text))}</span>` : "";
 
+  /* مؤشّرُ الالتزام: كان بطاقةً في ذيل تبويب الخطة لا تُرى إلا بعد تمرير
+     طويل — وهو أوّلُ ما يُسأل عنه. صار شارةً في الترويسة مع اسم الطالب. */
+  const lateN = Number(s.delays) || 0;
+  const commitChip = `<span class="sp-commit${lateN ? " late" : " ok"}"
+      title="${lateN ? "عليه متأخّراتٌ لم تُغلق" : "لا متأخّرات"}">
+      ${ic(lateN ? "alert" : "checkCircle", 14)}
+      <span>${lateN ? "متأخّر" : "منتظم"}</span>
+      <small>${lateN ? toArabicDigits(lateN) + " يوم" : "لا تأخير"}</small>
+    </span>`;
+
   const head = `<div class="sp-head">
     <div class="sp-id">
       <div class="avatar sp-avatar">${initials(s.name)}</div>
@@ -29393,6 +29427,7 @@ function panelStudent(id, keepDraft) {
           ${chip("flag", s.nationality)}
           ${chip("book", circlesN + " حلقات")}
           ${statusBadge(s.status || "نشط")}
+          ${commitChip}
         </div>
       </div>
     </div>
@@ -29444,7 +29479,8 @@ function panelStudent(id, keepDraft) {
         <div class="sp-field">
           <label for="sp_idno">اسم المستخدم <span class="sp-req">*</span></label>
           <div class="sp-verify">
-            <input id="sp_idno" type="text" dir="ltr" value="${esc(String(s.idNo || ""))}">
+            <input id="sp_idno" type="text" dir="ltr" inputmode="numeric" maxlength="10"
+              value="${esc(String(s.idNo || ""))}" oninput="window.spIdnoIn(this)">
             <span class="sp-badge${s.idNo ? " ok" : ""}">${ic("checkCircle", 14)}${s.idNo ? "موثّق" : "غير موثّق"}</span>
           </div>
         </div>
@@ -29525,7 +29561,6 @@ function panelStudent(id, keepDraft) {
   const totalRec = recs.length;
   const attPct = totalRec ? Math.round((nPresent + nLate) / totalRec * 100) : 0;
   const prog = Number(s.progress) || 0;
-  const nDelay = Number(s.delays) || 0;
   /* تاريخُ بداية الخطة: من الخطة إن سُجّل، وإلا يومُ انضمام الطالب */
   const startDate = (s.plan || {}).startDate ||
     (s.joinedAt ? new Date(s.joinedAt).toISOString().slice(0, 10) : "");
@@ -29594,9 +29629,6 @@ function panelStudent(id, keepDraft) {
     ${spPlanLiveCard(s)}
 
     <div class="sp-stats sp-wide2">
-      ${statCard("مؤشر الالتزام", nDelay ? "متأخر" : "منتظم",
-        `<span class="sp-late${nDelay ? " on" : ""}">${nDelay ? nDelay + " يوم" : "لا تأخير"}</span>`,
-        "clock", nDelay ? "warn" : "")}
       ${statCard("مؤشر الإنجاز", prog + "%", `<div class="progress green"><span data-pct="${prog}"></span></div>`, "graph")}
       ${statCard("تقرير الحضور", attPct + "%",
         `<span class="sp-dot g">${nPresent} حضور</span> <span class="sp-dot a">${nLate} تأخر</span>
@@ -34607,6 +34639,91 @@ function spFindStudent(key) {
 }
 
 /* فتحُ موقع الطالب وحسابه داخل النظام */
+/* حسابُ الطالب: الملفُّ المرتبط به في «المستخدمون والحسابات».
+   يُبحث عنه بمعرّف الطالب أوّلاً — وهو الرباط الرسميّ — ثمّ باسم
+   المستخدم، فبعضُ الحسابات القديمة رُبطت به وحدَه. */
+function spAccountOf(st) {
+  if (!st) return null;
+  const users = (Array.isArray(DB.users) ? DB.users : []);
+  const sid = String(st.id);
+  return users.find(u => u && String(u.studentId || "") === sid) ||
+         users.find(u => u && Array.isArray(u.studentIds) &&
+                         u.studentIds.some(x => String(x) === sid)) ||
+         (st.idNo ? users.find(u => u && (String(u.username || "") === String(st.idNo) ||
+                                          String(u.idNo || "") === String(st.idNo))) : null) ||
+         null;
+}
+
+/* لوحةُ موقع الطالب وحسابه: أين هو في شجرة المنشآت، ومن يحمل حسابه.
+   كان الزرُّ يعيد فتحَ البطاقة نفسِها، فإن كانت مفتوحةً لم يتغيّر شيء
+   فبدا معطَّلاً — ولم يكن يعرض الحساب أصلاً. */
+window.spPlacePanel = function (id) {
+  const st = spFindStudent(id);
+  if (!st) { showToast("تعذّر العثور على الطالب", "warn"); return; }
+
+  const circle = (cur("circles") || []).find(c =>
+    String(c.id) === String(st.circleId) || (st.circle && c.name === st.circle)) || null;
+  const mosque = (cur("mosques") || []).find(m =>
+    String(m.id) === String(st.mosqueId) || (st.mosque && m.name === st.mosque)) || null;
+  const cxId = st.complexId || (mosque && mosque.complexId) || "";
+  const complex = (cur("complexes") || []).find(x => String(x.id) === String(cxId)) || null;
+  const teacher = (cur("teachers") || []).find(t =>
+    String(t.id) === String((circle || {}).teacherId) ||
+    (st.teacher && t.name === st.teacher)) || null;
+
+  const acc = spAccountOf(st);
+  const row = (label, value, note) => `<div class="sp-place-row">
+    <span class="sp-place-lbl">${esc(label)}</span>
+    <span class="sp-place-val">${value == null || value === "" ? "—" : esc(String(value))}</span>
+    ${note ? `<small>${esc(note)}</small>` : ""}
+  </div>`;
+
+  const accBlock = acc
+    ? `<div class="sp-place-acc ok">
+         ${row("اسم الحساب", acc.name || acc.email || "—")}
+         ${row("اسم المستخدم", acc.username || acc.idNo || st.idNo || "—")}
+         ${row("البريد", acc.email || "—")}
+         ${row("الحالة", acc.active === false ? "موقوف" : "مفعَّل")}
+       </div>`
+    : `<div class="sp-place-acc none">
+         ${noteCard(`لا حسابَ مرتبطاً بهذا الطالب بعد — يُنشأ من «المستخدمون
+           والحسابات» ويُربط بمعرّفه ليدخل بنفسه ويرى واجباته.`)}
+       </div>`;
+
+  openModal("موقع الطالب وحسابه", st.name || "",
+    `<div class="sp-place">
+      <div class="sp-place-head">${ic("layers", 16)} <strong>الموقع</strong></div>
+      ${row("المجمّع", (complex || {}).name || st.complex || "")}
+      ${row("المسجد", (mosque || {}).name || st.mosque || "")}
+      ${row("الحلقة", (circle || {}).name || st.circle || "")}
+      ${row("المعلّم", (teacher || {}).name || st.teacher || "")}
+      <div class="sp-place-head">${ic("user", 16)} <strong>الحساب</strong></div>
+      ${accBlock}
+    </div>`,
+    `<button class="btn btn-primary" onclick="window.spPlaceGo('${jsAttr(st.id)}')">
+       ${ic("user", 16)} فتح بطاقة الطالب</button>
+     ${canDo && canDo("users") ? `<button class="btn btn-ghost"
+       onclick="closeModal(); window.go('admin/users')">${ic("users", 16)} الحسابات</button>` : ""}
+     <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+};
+
+/* من اللوحة إلى البطاقة: تُضبط الصفحةُ أوّلاً ثمّ تُفتح البطاقة */
+window.spPlaceGo = function (id) {
+  const st = spFindStudent(id);
+  closeModal();
+  if (!st) return;
+  const iface = typeof allowedIface === "function" ? (allowedIface() || STATE.iface) : STATE.iface;
+  if (iface) STATE.iface = iface;
+  /* صفحةُ الطلاب مسجَّلةٌ في PAGES ولا تظهر في القائمة الجانبية — فلو
+     سُئلت القائمةُ وحدَها لبقي المستخدم حيث هو وانفتحت البطاقةُ فوق
+     صفحةٍ لا علاقةَ لها بالطالب. */
+  if (PAGES[STATE.iface + "/students"] && STATE.page !== "students") {
+    STATE.page = "students";
+    mount();
+  }
+  panelStudent(st.id);
+};
+
 window.spLocate = function (id) {
   const st = spFindStudent(id);
   if (!st) { showToast("تعذّر العثور على الطالب", "warn"); return; }
@@ -34620,26 +34737,46 @@ window.spLocate = function (id) {
     mount();
     return;
   }
-  const iface = typeof allowedIface === "function" ? (allowedIface() || STATE.iface) : STATE.iface;
-  if (iface) STATE.iface = iface;
-  /* صفحةُ الطلاب مسجَّلةٌ في PAGES ولا تظهر في القائمة الجانبية — فلو
-     سُئلت القائمةُ وحدَها لبقي المستخدم حيث هو وانفتحت البطاقةُ فوق
-     صفحةٍ لا علاقةَ لها بالطالب. */
-  if (PAGES[STATE.iface + "/students"]) STATE.page = "students";
-  mount();
-  panelStudent(st.id);
+  window.spPlacePanel(st.id);
 };
 
 let SP_URL_DONE = false;
 function spOpenFromUrl() {
-  if (SP_URL_DONE) return;
+  if (SP_URL_DONE) return true;
   const key = spUrlStudentId();
-  if (!key) return;
+  if (!key) return true;                       /* لا وسمَ في الرابط: لا شأنَ لنا */
+  if (!Array.isArray(DB.students) || !DB.students.length) return false;  /* البيانات لم تصل بعد */
   SP_URL_DONE = true;
   const st = spFindStudent(key);
-  if (!st) { showToast("الرابط لا يطابق أي طالب", "warn"); return; }
-  window.spLocate(st.id);
+  if (!st) { showToast("الرابط لا يطابق أي طالب", "warn"); return true; }
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (r === "student" || r === "parent") { window.spLocate(st.id); return true; }
+  /* الرابطُ يفتح بطاقةَ الطالب ثمّ لوحةَ موقعه وحسابه فوقها: إغلاقُ
+     اللوحة يترك فاتحَ الرابط على الطالب المقصود لا على صفحةٍ أخرى. */
+  try { window.spPlaceGo(st.id); } catch (e) {}
+  try { window.spPlacePanel(st.id); } catch (e) {}
+  return true;
 }
+
+/* =========================================================================
+   قارئُ الرابط يعمل أيّاً كان المشغّل
+   -------------------------------------------------------------------------
+   init() في app.js ليست المدخلَ الوحيد: index.html يشغّل auth.js وصفحاتُ
+   الإدارة تشغّل shell.js، وكلاهما يبني الصفحة بنفسه ولا ينادي init. فكان
+   قارئُ ?s= الموضوعُ داخلها لا يعمل إلا نظريّاً — ومن نسخ رابطَ الطالب
+   ولصقه رأى لوحةَ حسابه هو لا الطالب. يُستأنَف هنا مستقلاً عن المشغّل:
+   يفحص كلَّ ثلث ثانية حتى تصل البيانات، ثمّ ينصرف. و SP_URL_DONE يمنع
+   التكرارَ إن نودي من init أيضاً.
+   ========================================================================= */
+(function () {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  let tries = 0;
+  const timer = setInterval(function () {
+    let done = false;
+    try { done = spOpenFromUrl(); } catch (e) { done = true; }
+    if (done || ++tries > 40) clearInterval(timer);   /* اثنتا عشرة ثانيةً حدّاً */
+  }, 300);
+})();
 
 /* =========================================================
    INIT
