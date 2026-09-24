@@ -8114,9 +8114,20 @@ const PLAN_QTY_TYPE = ["كمية مرنة", "كمية ثابتة"];
 const PLAN_QTY = ["ربع وجه", "نصف وجه", "ثلاثة أرباع وجه", "وجه", "وجهان",
                   "ثلاثة أوجه", "أربعة أوجه", "خمسة أوجه", "ستة أوجه",
                   "ثمانية أوجه", "عشرة أوجه"];
-const PLAN_DIR = ["من الناس", "من الفاتحة"];
-/* المراجعةُ تقبل اتجاهاً ثالثاً: مدىً يحدّده المعلّم بنفسه */
-const PLAN_DIR_REV = ["من الفاتحة", "من الناس", "تخصيصي"];
+const PLAN_DIR = ["من الفاتحة", "من الناس"];
+/* أُلغي «تخصيصي» من اتجاه المراجعة: الاتجاهُ صار يحكم ترتيبَ السور فعلاً،
+   فالخيارُ الثالث لا معنى له. والخططُ القديمة المحفوظة عليه تُقرأ كما هي
+   ولا تُمَسّ بياناتُها — يُعامَل «تخصيصي» معاملةَ «من الفاتحة» عند العرض. */
+const PLAN_DIR_REV = ["من الفاتحة", "من الناس"];
+
+/* اتجاهُ الخطة نصّاً إلى اتجاه المحرّك */
+function spDirKey(v) { return String(v || "").indexOf("الناس") > -1 ? "backward" : "forward"; }
+
+/* النصُّ المعروض: القديمُ «تخصيصي» يظهر على «من الفاتحة» فلا يبقى زرٌّ معلَّق */
+function spDirText(v) {
+  const t = String(v || "");
+  return PLAN_DIR.indexOf(t) > -1 ? t : (t.indexOf("الناس") > -1 ? "من الناس" : PLAN_DIR[0]);
+}
 
 const BPL = { edit: {}, cols: { hifz: 1, review: 1, tathbit: 1 } };
 
@@ -8126,11 +8137,11 @@ function bplOf(st) {
     hifzOn:   p.hifzOn   !== false,
     hifzType: p.hifzType || PLAN_QTY_TYPE[0],
     hifzQty:  p.hifzQty  || "نصف وجه",
-    hifzDir:  p.hifzDir  || PLAN_DIR[0],
+    hifzDir:  spDirText(p.hifzDir || PLAN_DIR[0]),
     revOn:    p.revOn    !== false,
     revType:  p.revType  || PLAN_QTY_TYPE[0],
     revQty:   p.revQty   || "وجه",
-    revDir:   p.revDir   || PLAN_DIR[0],
+    revDir:   spDirText(p.revDir || PLAN_DIR[0]),
     tatOn:    !!p.tatOn,
     tatCount: Number(p.tatCount) || 0
   };
@@ -14052,7 +14063,10 @@ function generateAssignments(studentId, dateISO) {
     } else if (t.k === "hifz") {
       const from = nextHifzFrom(plan);
       rec.fromS = from.s; rec.fromA = from.a;
-      rec.direction = pillarDirOf("hifz") || dirOf(plan.direction);
+      /* اختيارُ المعلّم لهذا الطالب يعلو افتراضَ البرنامج — لا خلطَ بين
+         خطة الطالب وخطة البرنامج العامة */
+      rec.direction = plan.dirSet ? dirOf(plan.direction)
+                                  : (pillarDirOf("hifz") || dirOf(plan.direction));
       if (from.repeat) {
         rec.isRepeat = true; rec.round = from.round; rec.ofRounds = from.of;
         rec.note = from.note;
@@ -14084,7 +14098,9 @@ function generateAssignments(studentId, dateISO) {
 
       /* الاتجاهُ يُحسم قبل التقدّم لا بعده: كان يُسنَد في آخر السطور،
          و stepFrom تقرؤه قبل إسناده فتمضي تصاعداً دائماً. */
-      rec.direction = pillarDirOf(t.k) || dirOf(plan.direction);
+      rec.direction = (plan.revDirection && (t.k === "rev" || t.k === "tilawah"))
+        ? dirOf(plan.revDirection)
+        : (plan.dirSet ? dirOf(plan.direction) : (pillarDirOf(t.k) || dirOf(plan.direction)));
 
       /* المراجعة والتلاوة تبدآن من حيث انتهى آخرُ ما سُمّع من نوعها */
       const last = asgTermList()
@@ -14104,7 +14120,11 @@ function generateAssignments(studentId, dateISO) {
            فعلاً وإن طُويت واجباتُ فترته. */
         const cp = (plan.carryPos || {})[t.k];
         const ps = pillarStartOf(t.k);
+        /* سورةُ ابتداء المراجعة المختارة للطالب أوّلاً */
+        const rv = (t.k === "rev" || t.k === "tilawah") && plan.revFromS
+          ? { s: Number(plan.revFromS), a: Number(plan.revFromA) || 1 } : null;
         if (cp && cp.s) { rec.fromS = cp.s; rec.fromA = cp.a || 1; }
+        else if (rv) { rec.fromS = rv.s; rec.fromA = rv.a; }
         else if (ps) { rec.fromS = ps; rec.fromA = rec.direction === "backward" ? 0 : 1; }
         else if (plan.hifzFromS) { rec.fromS = plan.hifzFromS; rec.fromA = plan.hifzFromA || 1; }
       }
@@ -26609,6 +26629,9 @@ function go(page) {
     location.href = /^(\/|https?:)/.test(f) ? f : "/admin/" + f;
     return;
   }
+  /* القائمةُ الجانبية ظاهرةٌ بجوار بطاقة الطالب، فالانتقالُ منها يُغلقها —
+     وإلا بقيت البطاقةُ فوق صفحةٍ أخرى. */
+  try { if (document.body.classList.contains("panel-open")) closePanel(); } catch (e) {}
   STATE.page = page;
   STATE.planId = null;
   STATE.facilityView = null;   /* مغادرة الصفحة تُغلق عرض التفاصيل */
@@ -26783,6 +26806,8 @@ function closePanel() {
   const r = $("#panelRoot");
   if (r) r.innerHTML = "";
   document.body.classList.remove("panel-open");
+  /* مسوّدةُ بطاقة الطالب تعيش ما دامت البطاقةُ مفتوحة */
+  try { if (typeof stuDraftReset === "function") stuDraftReset(""); } catch (e) {}
 }
 
 function showToast(msg, type) {
@@ -29071,7 +29096,86 @@ function panelCircle(id) {
    ========================================================================= */
 function stuTab() { return STATE.stuTab === "plan" ? "plan" : "info"; }
 
+/* =========================================================================
+   مسوّدةُ بطاقة الطالب — التنقّل بين التبويبين لا يُضيّع ما كُتب
+   -------------------------------------------------------------------------
+   كان stuTabSet يعيد رسمَ البطاقة من سجلّ الطالب، فكلُّ ما حُرِّر في التبويب
+   المعروض ولم يُحفَظ يُمحى بمجرّد الانتقال إلى الآخر ثم العودة. و stuSave
+   تقرأ ما هو معروضٌ وحدَه، فحقولُ التبويب الغائب لا تُحفظ أصلاً.
+
+   تُلتقط الحقولُ المعروضة في مسوّدةٍ مربوطةٍ بمعرّف الطالب قبل كلّ انتقال،
+   وتُدمج عند الرسم وعند الحفظ. ومعرّفُ الطالب شرطٌ في المسوّدة، فلا تُعرض
+   بيانات طالبٍ في بطاقة غيره.
+   ========================================================================= */
+const STU_DRAFT = { id: "", stu: {}, plan: {} };
+
+function stuDraftFor(id) {
+  if (String(STU_DRAFT.id) !== String(id)) return { stu: {}, plan: {} };
+  return { stu: STU_DRAFT.stu || {}, plan: STU_DRAFT.plan || {} };
+}
+
+function stuDraftReset(id) {
+  STU_DRAFT.id = String(id || "");
+  STU_DRAFT.stu = {}; STU_DRAFT.plan = {};
+}
+
+/* يُلتقط ما هو معروضٌ الآن — الحقلُ الغائب لا يُكتب فلا يُمحى بفراغ */
+function stuCollect() {
+  const out = { stu: {}, plan: {} };
+  const g = sel => { const el = document.querySelector(sel); return el ? el.value : null; };
+  const put = (sel, key) => { const v = g(sel); if (v != null) out.stu[key] = v; };
+
+  put("#sp_name", "name");       put("#sp_idno", "idNo");
+  put("#sp_nameEn", "nameEn");   put("#sp_class", "classification");
+  put("#sp_fileName_v", "fileName"); put("#sp_fileData_v", "fileData");
+  put("#sp_nat", "nationality"); put("#sp_gender", "gender");
+  put("#sp_birth", "birth");     put("#sp_rel", "parentRel");
+  put("#sp_email", "email");     put("#sp_school", "school");
+  put("#sp_grade", "grade");     put("#sp_addr", "address");
+  put("#sp_notes", "notes");     put("#sp_attType", "attType");
+  put("#sp_status", "status");
+
+  /* الهاتفُ يُجمع بمفتاحه: الرقمُ بلا مفتاحٍ لا يُتّصل به من خارج البلد */
+  [["sp_phone", "phoneCC", "phone"], ["sp_parent", "parentCC", "parent"]].forEach(function (t) {
+    const el = document.querySelector("#" + t[0]);
+    if (!el) return;
+    const cc = document.querySelector("#" + t[0] + "_cc");
+    const bare = String(el.value || "").trim();
+    out.stu[t[1]] = cc ? cc.value : "";
+    out.stu[t[2]] = bare ? (cc ? cc.value + " " : "") + bare : "";
+  });
+
+  if (g("#spHifzQty") != null) {
+    const dayBox = document.querySelector(".sp-days");
+    out.plan = {
+      hifzOn:   g("#spHifzOn") === "1",
+      hifzType: g("#spHifzType"), hifzQty: g("#spHifzQty"), hifzDir: g("#spHifzDir"),
+      hifzSura: g("#spHifzSura"), hifzAyah: Number(g("#spHifzAyah")) || 1,
+      revOn:    g("#spRevOn") === "1",
+      revType:  g("#spRevType"), revQty: g("#spRevQty"), revDir: g("#spRevDir"),
+      revSura:  g("#spRevSura"), revAyah: Number(g("#spRevAyah")) || 1,
+      tatOn:    g("#spTatOn") === "1",
+      tatCount: Number(g("#spTatCount")) || 0,
+      /* تقييمُ الأداء يُحفظ مع الخطة: هو حكمٌ عليها لا على الطالب وحده */
+      scoreHifz: Math.min(10, Number(g("#spScoreHifz")) || 0),
+      scoreRev:  Math.min(10, Number(g("#spScoreRev"))  || 0)
+    };
+    if (dayBox) out.plan.days = [].slice.call(dayBox.querySelectorAll(".sp-day.on")).map(b => b.textContent.trim());
+  }
+  return out;
+}
+
+/* يُنادى قبل كلّ إعادة رسمٍ للبطاقة نفسِها */
+function stuDraftKeep(id) {
+  if (!document.querySelector(".sp-page")) return;
+  if (String(STU_DRAFT.id) !== String(id)) stuDraftReset(id);
+  const c = stuCollect();
+  STU_DRAFT.stu = Object.assign({}, STU_DRAFT.stu, c.stu);
+  if (Object.keys(c.plan).length) STU_DRAFT.plan = Object.assign({}, STU_DRAFT.plan, c.plan);
+}
+
 window.stuTabSet = function (k, id) {
+  stuDraftKeep(id);
   STATE.stuTab = k === "plan" ? "plan" : "info";
   panelStudent(id);
 };
@@ -29258,9 +29362,19 @@ window.spFileClear = function () {
 
 
 
-function panelStudent(id) {
-  const s = DB.students.find(x => x.id == id);
-  if (!s) { showToast("الطالب غير موجود", "warn"); return; }
+function panelStudent(id, keepDraft) {
+  const rec = DB.students.find(x => x.id == id);
+  if (!rec) { showToast("الطالب غير موجود", "warn"); return; }
+  /* فتحةٌ جديدةٌ لطالبٍ آخر تبدأ بمسوّدةٍ نظيفة */
+  if (!keepDraft && String(STU_DRAFT.id) !== String(rec.id)) {
+    stuDraftReset(rec.id);
+    STATE.stuTab = "info";          /* طالبٌ جديد يُفتح على بياناته لا على تبويبٍ سابق */
+  }
+
+  /* نسخةُ عرضٍ فوقها المسوّدة — سجلُّ الطالب لا يُمَسّ قبل الحفظ */
+  const d = stuDraftFor(rec.id);
+  const s = Object.assign({}, rec, d.stu);
+  s.plan = Object.assign({}, rec.plan || {}, d.plan);
 
   const tab = stuTab();
   const circlesN = (cur("circles") || []).filter(c =>
@@ -29309,8 +29423,8 @@ function panelStudent(id) {
         onclick="window.spQr('${jsAttr(pubLink)}')">${ic("grid", 15)} رمز QR</button>
       <button type="button" class="btn btn-ghost btn-sm"
         onclick="window.spCopy('${jsAttr(pubLink)}')">${ic("doc", 15)} نسخ الرابط</button>
-      <button type="button" class="btn btn-ghost btn-sm"
-        onclick="window.open('${jsAttr(pubLink)}','_blank')">${ic("arrowUp", 15)} فتح</button>
+      <button type="button" class="btn btn-ghost btn-sm" title="فتح موقع الطالب وحسابه"
+        onclick="window.spLocate('${jsAttr(s.id)}')">${ic("arrowUp", 15)} موقع الطالب وحسابه</button>
     </div>
   </div>`;
 
@@ -29394,7 +29508,9 @@ function panelStudent(id) {
         ${spField("المدرسة", "sp_school", s.school, "text")}
         ${spField("العنوان", "sp_addr", s.address, "text")}
       </div>
-    </section>`;
+    </section>
+
+    ${spProcCard(s)}`;
 
   /* ---- تبويب المستوى وخطة التسميع ---- */
   const pl = bplOf(s);
@@ -29434,12 +29550,15 @@ function panelStudent(id) {
       <input type="hidden" id="${name}" value="${esc(val)}">
     </div>`;
 
-  const startRow = (pfx, sura, ayah) => `
+  /* سورةُ الابتداء: افتراضُها أوّلُ سورةٍ في الاتجاه المختار —
+     «من الفاتحة» تبدأ بالفاتحة، و«من الناس» تبدأ بالناس. */
+  const startRow = (pfx, sura, ayah, dirId, dirVal) => `
     <div class="sp-start">
-      <label>الابتداء — السورة والآية</label>
+      <label>سورة الابتداء — السورة والآية</label>
       <div class="sp-startrow">
-        <select id="${pfx}Sura" class="sp-sel sp-sura" data-cur="${esc(sura || "")}">
-          <option>${esc(sura || "الناس")}</option>
+        <select id="${pfx}Sura" class="sp-sel sp-sura" data-dir="${esc(dirId)}"
+          data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}">
+          <option>${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}</option>
         </select>
         <div class="sp-step">
           <button type="button" onclick="window.spAyah('${pfx}', 1)">+</button>
@@ -29467,9 +29586,12 @@ function panelStudent(id) {
       <div class="sp-inline">
         <span class="sp-pill sp-pill-soft">البرنامج: ${esc(s.program || "—")}</span>
         <span class="sp-pill sp-pill-soft">المستوى: ${esc(s.level || "—")}</span>
-        <button class="btn btn-ghost btn-sm" data-action="edit-student" data-id="${s.id}">${ic("edit", 14)} تغيير</button>
+        <button class="btn btn-ghost btn-sm"
+          onclick="window.spProgLevel('${jsAttr(s.id)}')">${ic("edit", 14)} تغيير البرنامج والمستوى</button>
       </div>
     </section>
+
+    ${spPlanLiveCard(s)}
 
     <div class="sp-stats sp-wide2">
       ${statCard("مؤشر الالتزام", nDelay ? "متأخر" : "منتظم",
@@ -29526,7 +29648,7 @@ function panelStudent(id) {
         <div class="sp-field"><label>الكمية</label>${qtySel("spHifzQty", pl.hifzQty, PLAN_QTY)}</div>
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
-      ${startRow("spHifz", (s.plan || {}).hifzSura, (s.plan || {}).hifzAyah)}
+      ${startRow("spHifz", (s.plan || {}).hifzSura, (s.plan || {}).hifzAyah, "spHifzDir", pl.hifzDir)}
       <div class="sp-tatline">
         <button type="button" class="bpl-tog${pl.tatOn ? " on" : ""}"
           onclick="window.spTog(this,'spTatOn')"><span class="bpl-knob"></span><b>تثبيت</b></button>
@@ -29552,7 +29674,7 @@ function panelStudent(id) {
         <div class="sp-field"><label>الكمية</label>${qtySel("spRevQty", pl.revQty, PLAN_QTY)}</div>
         <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("spRevDir", pl.revDir, PLAN_DIR_REV)}</div>
       </div>
-      ${startRow("spRev", (s.plan || {}).revSura, (s.plan || {}).revAyah)}
+      ${startRow("spRev", (s.plan || {}).revSura, (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
     </section>`;
 
   openPanel(`<div class="panel-back" data-action="close-panel"></div>
@@ -29597,6 +29719,14 @@ window.spDir = function (btn, hiddenId, value) {
   btn.classList.add("on");
   const h = document.getElementById(hiddenId);
   if (h) h.value = value;
+
+  /* الاتجاهُ يحكم ترتيبَ السور وسورةَ الابتداء معاً: «من الناس» يعرضها
+     الناس ← الفلق ← … ← الفاتحة ويبدأ منها، و«من الفاتحة» بالعكس. */
+  const sel = document.querySelector('select.sp-sura[data-dir="' + hiddenId + '"]');
+  if (sel) {
+    sel.dataset.cur = spDirKey(value) === "backward" ? "الناس" : "الفاتحة";
+    spFillSurahs(sel.closest(".sp-page") || document);
+  }
 };
 
 window.spNum = function (id, delta) {
@@ -29613,64 +29743,302 @@ function spFillSurahs(root) {
   const sels = (root || document).querySelectorAll("select.sp-sura");
   if (!sels.length || !window.Quran || typeof Quran.surahs !== "function") return;
   Quran.surahs().then(function (list) {
-    const names = (list || []).map(x => x.name || x.nameAr || String(x)).filter(Boolean);
+    /* ملفُّ الفهرس يحمل {i,n,a,p} — وكان يُقرأ x.name فيعود undefined،
+       فيسقط على String(x) = "[object Object]" مئةً وأربعَ عشرةَ مرة. */
+    SP_SURAHS = (list || []).filter(x => x && x.i && x.n);
+    let names = (list || []).map(x => (x && (x.n || x.name || x.nameAr)) || "").filter(Boolean);
     if (!names.length) return;
     sels.forEach(function (sel) {
-      const cur = sel.dataset.cur || sel.value || names[0];
-      sel.innerHTML = names.map(n =>
-        '<option' + (n === cur ? ' selected' : '') + '>' + n + '</option>').join("");
+      /* الترتيبُ يتبع الاتجاه: «من الناس» يعرضها معكوسةً كما يمضي التسميع */
+      const dirEl = sel.dataset.dir ? document.getElementById(sel.dataset.dir) : null;
+      const back = dirEl && String(dirEl.value || "").indexOf("الناس") > -1;
+      const list2 = back ? names.slice().reverse() : names;
+      const cur = sel.dataset.cur || sel.value || list2[0];
+      sel.innerHTML = list2.map(n =>
+        '<option' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>').join("");
     });
   }).catch(function () {});
 }
 
+/* فهرسُ السور للبحث عن رقم سورة الابتداء — يُملأ مع قائمة السور */
+let SP_SURAHS = null;
+
+function spSurahIdx(name) {
+  const n = String(name || "").trim();
+  if (!n || !Array.isArray(SP_SURAHS)) return 0;
+  const hit = SP_SURAHS.find(x => String(x.n) === n);
+  return hit ? Number(hit.i) : 0;
+}
+
+/* =========================================================================
+   خطةُ الطالب الفعلية — لا خطةٌ ثانيةٌ بجوارها
+   -------------------------------------------------------------------------
+   بطاقةُ الطالب كانت تكتب اتجاهَها وسورةَ ابتدائها في student.plan وحدَه،
+   ولا يقرؤه المحرّك: يولّد الواجبَ من سجلّ plans (direction و hifzFromS).
+   فالمعلّم يختار «من الناس» فلا يتغيّر شيء، ويختار سورةَ ابتداءٍ فلا تُقرأ.
+
+   يُكتب المختارُ هنا في سجلّ الخطة نفسِه، فيسري على التسميع اليوميّ وعلى
+   الانتقال إلى السورة التالية. ولا تُنشأ خطةٌ لمن سُجّل للتحضير وحده.
+   ========================================================================= */
+function spSyncEnginePlan(st) {
+  if (!st || st.attOnly) return null;
+  const p = st.plan || {};
+  let rec = typeof planOfStudent === "function" ? planOfStudent(st) : null;
+
+  if (!rec) {
+    if (!Array.isArray(DB.plans)) DB.plans = [];
+    rec = { id: "pl" + Date.now(), studentId: String(st.id), student: st.name || "",
+            complexId: st.complexId || STATE.complexId, mosqueId: st.mosqueId || "",
+            circle: st.circle || "", delays: 0, status: "نشطة" };
+    DB.plans.push(rec);
+  }
+
+  rec.student = st.name || rec.student;
+  if (st.program) rec.program = st.program;
+  if (st.levelId) rec.levelId = st.levelId;
+  if (st.level)   rec.level = st.level;
+  const pg = (cur("programs") || []).concat(typeof sysPrograms === "function" ? sysPrograms() : [])
+    .find(x => String(x.name) === String(st.program));
+  if (pg) rec.programId = pg.id;
+
+  /* اتجاهُ الحفظ اختيارُ المعلّم لهذا الطالب: يعلو افتراضَ البرنامج */
+  if (p.hifzDir) { rec.direction = spDirKey(p.hifzDir); rec.dirSet = true; }
+  if (p.revDir)  { rec.revDirection = spDirKey(p.revDir); }
+
+  const hs = spSurahIdx(p.hifzSura);
+  if (hs) { rec.hifzFromS = hs; rec.hifzFromA = Math.max(1, Number(p.hifzAyah) || 1); }
+  const rs = spSurahIdx(p.revSura);
+  if (rs) { rec.revFromS = rs; rec.revFromA = Math.max(1, Number(p.revAyah) || 1); }
+
+  persistSet("plans", rec);
+  return rec;
+}
+
+/* =========================================================================
+   بطاقةُ الطالب — الإجراءات المسجَّلة · الخطة الفعلية · البرنامج والمستوى
+   -------------------------------------------------------------------------
+   ثلاثةُ أقسامٍ تقرأ من الأنظمة القائمة ولا تُنشئ لها نظيراً:
+     • الإجراءات من procLog و sysAlerts (نظام التنبيهات والإجراءات التدرّجية).
+     • الخطة من سجلّ plans ومن واجبات اليوم — لا من student.plan وحدَه.
+     • البرامج والمستويات من programsForPick و levels.
+   ========================================================================= */
+
+/* ---- الإجراءات المسجَّلة على هذا الطالب وحدَه ---- */
+function spProcCard(s) {
+  const sid = String(s.id);
+  const rows = (cur("procLog") || [])
+    .filter(x => x && String(x.studentId) === sid)
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const open = (cur("sysAlerts") || [])
+    .filter(a => a && String(a.studentId) === sid && a.status === "open");
+
+  const trackAr = t => t === "edu" ? "تعليمي" : t === "adm" ? "إداري" : "—";
+  const dt = ts => { try { return new Date(ts).toLocaleDateString("ar-EG"); } catch (e) { return ""; } };
+
+  const body = rows.length
+    ? `<div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
+        <thead><tr><th>التاريخ</th><th>المسار</th><th>الإجراء</th><th>السبب</th><th>بواسطة</th></tr></thead>
+        <tbody>${rows.map(x => `<tr>
+          <td class="pt-num" style="font-size:12px">${esc(dt(x.ts))}</td>
+          <td>${esc(trackAr(x.track))}</td>
+          <td><strong>${toArabicDigits(Number(x.step) || 0)}. ${esc(x.title || "—")}</strong>${
+            x.note ? `<div class="muted" style="font-size:11.5px">${esc(x.note)}</div>` : ""}</td>
+          <td class="muted" style="font-size:12px">${esc(x.reason || "—")}</td>
+          <td class="muted" style="font-size:12px">${esc(x.by || "—")}</td>
+        </tr>`).join("")}</tbody></table></div></div>`
+    : `<div class="muted" style="padding:16px;text-align:center">لا إجراءات مسجَّلة على هذا الطالب.</div>`;
+
+  return `<section class="sp-card sp-wide2">
+    <div class="sp-cardhead">${ic("flag", 17)}
+      <div><h3>الإجراءات المسجَّلة على الطالب</h3>
+        <p>ما اتُّخذ معه من إجراءاتٍ تعليميةٍ وإدارية</p></div>
+      <span class="sp-count">${toArabicDigits(rows.length)}</span></div>
+    ${open.length ? noteCard(`<strong>${toArabicDigits(open.length)}</strong> تنبيهاً مفتوحاً لم يُتَّخذ فيه إجراءٌ بعد: ` +
+      esc(open.map(a => a.title).join(" · "))) : ""}
+    ${body}
+  </section>`;
+}
+
+/* ---- الخطة الفعلية للطالب: من سجلّ الخطة وواجبات اليوم ---- */
+function spPlanLiveCard(s) {
+  const rec = typeof planOfStudent === "function" ? planOfStudent(s) : null;
+  if (s.attOnly) {
+    return `<section class="sp-card sp-wide2">
+      <div class="sp-cardhead">${ic("book", 17)}
+        <div><h3>خطة الطالب الحالية</h3><p>وضعُ الطالب: تحضير فقط</p></div></div>
+      <div class="muted" style="padding:16px;text-align:center">
+        هذا الطالب مسجَّلٌ للتحضير وحدَه — لا خطةَ تسميعٍ له.</div></section>`;
+  }
+  if (!rec) {
+    return `<section class="sp-card sp-wide2">
+      <div class="sp-cardhead">${ic("book", 17)}
+        <div><h3>خطة الطالب الحالية</h3><p>لا خطةَ مرتبطةً بهذا الطالب بعد</p></div></div>
+      ${noteCard(`لم تُنشأ خطةٌ لهذا الطالب. اختر له البرنامج والمستوى ثم احفظ إعدادات
+        الحفظ والمراجعة أدناه — تُنشأ خطتُه ويبدأ توليدُ واجباته اليومية.`)}</section>`;
+  }
+
+  const surah = i => (typeof surahName === "function" ? surahName(i) : "") || (i ? "سورة " + toArabicDigits(i) : "—");
+  const pos = typeof nextHifzFrom === "function" ? nextHifzFrom(rec) : null;
+  const lp = typeof levelProgress === "function" ? levelProgress(rec) : null;
+  const tally = typeof planTally === "function" ? planTally(rec) : null;
+  const dirAr = dirOf(rec.direction) === "backward" ? "من الناس" : "من الفاتحة";
+
+  /* واجباتُ اليوم كما يراها المحرّك — بلا كتابةٍ في قاعدة البيانات */
+  let duties = [];
+  try { duties = generateAssignments(s.id, todayISO()) || []; } catch (e) { duties = []; }
+  const stAr = { done: "أُنجز", pending: "معلَّق", failed: "لم يجتز", missed: "فات", excused: "معذور" };
+  const stCls = { done: "on", pending: "", failed: "off", missed: "off", excused: "" };
+
+  const dutyRows = duties.length
+    ? duties.map(a => `<tr>
+        <td><strong>${esc(a.kindName || a.kind)}</strong></td>
+        <td class="muted" style="font-size:12px">${a.fromS
+          ? esc(surah(a.fromS)) + " " + toArabicDigits(a.fromA || 1) +
+            (a.toS ? " — " + esc(surah(a.toS)) + " " + toArabicDigits(a.toA || 1) : "")
+          : "—"}</td>
+        <td class="pt-num">${toArabicDigits(a.qty || 0)} ${esc(a.unit || "وجه")}</td>
+        <td><span class="pt-badge ${stCls[a.status] || ""}">${esc(stAr[a.status] || a.status || "—")}</span>${
+          Number(a.doneQty) ? ` <span class="muted" style="font-size:11px">سُمّع ${toArabicDigits(a.doneQty)}</span>` : ""}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4" class="muted" style="text-align:center;padding:14px">
+        لا واجبَ اليوم — إمّا ليس يومَ دوامه أو الخطة موقوفة.</td></tr>`;
+
+  const kv = (k, v) => `<div class="sp-field"><label>${esc(k)}</label>
+    <div class="sp-ro">${v == null || v === "" ? "—" : v}</div></div>`;
+
+  return `<section class="sp-card sp-wide2">
+    <div class="sp-cardhead">${ic("book", 17)}
+      <div><h3>خطة الطالب الحالية</h3>
+        <p>الخطة المرتبطة بهذا الطالب — تتحدّث مع تسميعه اليومي</p></div>
+      ${rec.status ? `<span class="sp-count">${esc(rec.status)}</span>` : ""}</div>
+    <div class="sp-grid">
+      ${kv("البرنامج", esc(rec.program || s.program || "—"))}
+      ${kv("المستوى", esc(rec.level || s.level || "—"))}
+      ${kv("اتجاه التسميع", esc(dirAr))}
+      ${kv("الموضع التالي", pos && pos.s ? esc(surah(pos.s)) + " — آية " + toArabicDigits(pos.a || 1) : "—")}
+      ${lp ? kv("إنجاز المستوى", toArabicDigits(lp.done) + " من " + toArabicDigits(lp.need) +
+        ` <div class="progress green" style="margin-top:6px"><span data-pct="${Math.min(100, lp.pct || 0)}"></span></div>`) : ""}
+      ${tally ? kv("المُسمَّع (الفترة الحالية)",
+        "حفظ " + toArabicDigits(tally.hifzDone) + " · مراجعة " + toArabicDigits(tally.revDone)) : ""}
+    </div>
+
+    <div class="sp-cardhead" style="margin-top:16px">${ic("list", 16)}
+      <div><h3 style="font-size:15px">واجبات اليوم</h3><p>حالتُها تتغيّر مع تسجيل التسميع</p></div></div>
+    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
+      <thead><tr><th>الواجب</th><th>المدى</th><th>المقدار</th><th>الحالة</th></tr></thead>
+      <tbody>${dutyRows}</tbody></table></div></div>
+  </section>`;
+}
+
+/* ---- تغيير البرنامج والمستوى: من مصدر البيانات نفسِه ---- */
+window.spProgLevel = function (id) {
+  const s = DB.students.find(x => x.id == id);
+  if (!s) return;
+  stuDraftKeep(id);                      /* لا يضيع ما حُرِّر قبل فتح النافذة */
+
+  const progs = (typeof programsForPick === "function" ? programsForPick() : (cur("programs") || []))
+    .filter(x => x && x.name);
+  if (!progs.length) {
+    openModal("تغيير البرنامج والمستوى", s.name || "",
+      noteCard("لا برامج معرَّفةٌ في النظام — عرّفها من الإعدادات ← البرامج والمستويات."),
+      `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+    return;
+  }
+
+  const curP = progs.find(x => String(x.name) === String(s.program)) || progs[0];
+  openModal("تغيير البرنامج والمستوى", s.name || "",
+    `<input type="hidden" id="pgl_sid" value="${esc(String(s.id))}">
+     <div class="form-grid">
+       <div class="field"><label>البرنامج</label>
+         <select id="pgl_prog" onchange="window.spProgLevelFill()">
+           ${progs.map(x => `<option value="${esc(x.name)}"${x.name === curP.name ? " selected" : ""}>${esc(x.name)}</option>`).join("")}
+         </select></div>
+       <div class="field"><label>المستوى</label>
+         <select id="pgl_level"></select>
+         <small id="pgl_hint" style="font-size:11px;color:var(--text-faint)"></small></div>
+     </div>
+     ${noteCard("تغييرُ البرنامج أو المستوى يُحدِّث خطة الطالب، ويظهر أثرُه في بطاقته مباشرةً.")}`,
+    `<button class="btn btn-primary" onclick="window.spProgLevelSave()">${ic("check", 16)} حفظ</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+  window.spProgLevelFill(s.levelId || "", s.level || "");
+};
+
+/* مستوياتُ البرنامج المختار — المثبَّتُ والمُعرَّفُ سواء */
+function spLevelsOfProgram(name) {
+  const all = (typeof programsForPick === "function" ? programsForPick() : (cur("programs") || []));
+  const pg = all.find(x => x && String(x.name) === String(name));
+  if (!pg) return [];
+  return (cur("levels") || [])
+    .filter(x => x && String(x.programId) === String(pg.id) && x.status !== "موقوف")
+    .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+}
+
+window.spProgLevelFill = function (curId, curName) {
+  const pEl = document.getElementById("pgl_prog"), lEl = document.getElementById("pgl_level");
+  const hint = document.getElementById("pgl_hint");
+  if (!pEl || !lEl) return;
+  const lv = spLevelsOfProgram(pEl.value);
+  if (!lv.length) {
+    lEl.innerHTML = '<option value="">— لا مستويات لهذا البرنامج —</option>';
+    if (hint) hint.textContent = "عرّف مستوياته من الإعدادات ← البرامج والمستويات";
+    return;
+  }
+  if (hint) hint.textContent = "";
+  lEl.innerHTML = lv.map(x => {
+    const sel = (curId && String(curId) === String(x.id)) ||
+                (!curId && curName && String(curName) === String(x.name));
+    return `<option value="${esc(x.id)}"${sel ? " selected" : ""}>${esc(x.name)}${
+      x.qty ? " — " + toArabicDigits(x.qty) + " " + esc(x.unit || "وجه") : ""}</option>`;
+  }).join("");
+};
+
+window.spProgLevelSave = function () {
+  const s = DB.students.find(x => x.id == val("#pgl_sid"));
+  if (!s) return;
+  const prog = val("#pgl_prog", "");
+  const lvId = val("#pgl_level", "");
+  const lvEl = document.getElementById("pgl_level");
+  const lvName = lvEl && lvEl.selectedIndex >= 0
+    ? String(lvEl.options[lvEl.selectedIndex].text).split(" — ")[0] : "";
+
+  s.program = prog;
+  if (lvId) { s.levelId = lvId; s.level = lvName; }
+  persistSet("students", s);
+
+  /* الخطةُ نفسُها تتبع الاختيار — لا تبقى على مستوىً هُجر */
+  try {
+    const rec = spSyncEnginePlan(s);
+    if (rec && lvId) {
+      rec.levelId = lvId; rec.level = lvName;
+      delete rec.levelDoneCarry;                 /* رصيدُ مستوىً آخر لا يُحسب هنا */
+      persistSet("plans", rec);
+    }
+  } catch (e) { console.warn("spProgLevel:", e); }
+
+  closeModal();
+  showToast("حُفظ البرنامج والمستوى", "success");
+  panelStudent(s.id, true);
+};
+
 window.stuSave = function (id) {
   const s = DB.students.find(x => x.id == id);
   if (!s) return;
-  const put = (sel, key) => {
-    const el = document.querySelector(sel);
-    if (el) s[key] = el.value;
-  };
-  put("#sp_name", "name");     put("#sp_idno", "idNo");
-  put("#sp_nameEn", "nameEn"); put("#sp_class", "classification");
-  put("#sp_fileName_v", "fileName"); put("#sp_fileData_v", "fileData");
-  put("#sp_nat", "nationality"); put("#sp_gender", "gender");
-  put("#sp_birth", "birth");   put("#sp_rel", "parentRel");
 
-  /* الهاتفُ يُجمع بمفتاحه: الرقمُ بلا مفتاحٍ لا يُتّصل به من خارج البلد */
-  const joinPhone = (id, ccKey, key) => {
-    const el = document.querySelector("#" + id), cc = document.querySelector("#" + id + "_cc");
-    if (!el) return;
-    const bare = String(el.value || "").trim();
-    s[ccKey] = cc ? cc.value : "";
-    s[key] = bare ? (cc ? cc.value + " " : "") + bare : "";
-  };
-  joinPhone("sp_phone", "phoneCC", "phone");
-  joinPhone("sp_parent", "parentCC", "parent");
-  put("#sp_email", "email");   put("#sp_school", "school");
-  put("#sp_grade", "grade");   put("#sp_addr", "address");
-  put("#sp_notes", "notes");   put("#sp_attType", "attType");
-  put("#sp_status", "status");
+  /* المعروضُ الآن فوق مسوّدة التبويب الآخر: يُحفظ التبويبان معاً */
+  const d = stuDraftFor(s.id);
+  const c = stuCollect();
+  const stu = Object.assign({}, d.stu, c.stu);
+  const plan = Object.assign({}, d.plan, c.plan);
 
-  /* حقولُ الخطة تُحفظ في s.plan، ولا تُقرأ إلا إن كان تبويبُها معروضاً —
-     فلا يُمحى ما لم يُعرض. */
-  const g = sel => { const el = document.querySelector(sel); return el ? el.value : null; };
-  if (g("#spHifzQty") != null) {
-    const dayBox = document.querySelector(".sp-days");
-    const dys = dayBox ? [].slice.call(dayBox.querySelectorAll(".sp-day.on")).map(b => b.textContent.trim()) : null;
-    s.plan = Object.assign({}, s.plan || {}, {
-      hifzOn:   g("#spHifzOn") === "1",
-      hifzType: g("#spHifzType"), hifzQty: g("#spHifzQty"), hifzDir: g("#spHifzDir"),
-      hifzSura: g("#spHifzSura"), hifzAyah: Number(g("#spHifzAyah")) || 1,
-      revOn:    g("#spRevOn") === "1",
-      revType:  g("#spRevType"), revQty: g("#spRevQty"), revDir: g("#spRevDir"),
-      revSura:  g("#spRevSura"), revAyah: Number(g("#spRevAyah")) || 1,
-      tatOn:    g("#spTatOn") === "1",
-      tatCount: Number(g("#spTatCount")) || 0,
-      /* تقييمُ الأداء يُحفظ مع الخطة: هو حكمٌ عليها لا على الطالب وحده */
-      scoreHifz: Math.min(10, Number(g("#spScoreHifz")) || 0),
-      scoreRev:  Math.min(10, Number(g("#spScoreRev"))  || 0)
-    });
+  Object.keys(stu).forEach(k => { s[k] = stu[k]; });
+
+  if (Object.keys(plan).length) {
+    const dys = plan.days;
+    delete plan.days;
+    s.plan = Object.assign({}, s.plan || {}, plan);
     if (dys) { s.plan.days = dys; if (dys.length) s.days = dys.join(" · "); }
+    /* الاتجاهُ وسورةُ الابتداء يُكتبان في خطة الطالب الفعلية أيضاً */
+    try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(s); } catch (e) {}
   }
 
   if (typeof ageFromBirth === "function" && s.birth) {
@@ -29680,6 +30048,7 @@ window.stuSave = function (id) {
   s.active = s.status !== "متوقف";
 
   persistSet("students", s);
+  stuDraftReset("");
   showToast("حُفظت بيانات " + (s.name || "الطالب"), "success");
   closePanel();
   mount();
@@ -34211,6 +34580,67 @@ if (typeof window !== "undefined") {
   });
 })();
 
+/* =========================================================================
+   رابطُ الطالب — السهمُ يفتح موقعَ الطالب وحسابَه لا صفحةً عشوائية
+   -------------------------------------------------------------------------
+   كان زرُّ الفتح يذهب إلى index.html?s=<id> ولا أحدَ يقرأ ?s= في النظام،
+   فيُفتح التطبيقُ على صفحته الافتراضية أيّاً كان الطالب. يُقرأ الوسمُ الآن
+   عند الإقلاع فتُفتح بطاقةُ الطالب نفسِه.
+
+   والمعرّفُ يُقرأ كما هو بعد فكّ الترميز — لا [\w-] وحدَها — فلا ينكسر
+   معرّفٌ فيه نقطةٌ أو مسافةٌ أو حروفٌ عربية، ويُبحث باسم المستخدم أيضاً.
+   ========================================================================= */
+function spUrlStudentId() {
+  try {
+    const m = (location.search || "").match(/[?&]s=([^&#]*)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  } catch (e) { return ""; }
+}
+
+function spFindStudent(key) {
+  const k = String(key || "").trim();
+  if (!k) return null;
+  const list = Array.isArray(DB.students) ? DB.students : [];
+  return list.find(x => x && String(x.id) === k) ||
+         list.find(x => x && String(x.idNo || "") === k) ||
+         list.find(x => x && String(x.username || "") === k) || null;
+}
+
+/* فتحُ موقع الطالب وحسابه داخل النظام */
+window.spLocate = function (id) {
+  const st = spFindStudent(id);
+  if (!st) { showToast("تعذّر العثور على الطالب", "warn"); return; }
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (r === "student" || r === "parent") {
+    /* الطالبُ ووليُّ أمره يريان لوحتَهما — ولوليّ الأمر يُختار الابن المقصود */
+    if (r === "parent" && typeof window.pickKid === "function") {
+      try { window.pickKid(st.id); return; } catch (e) {}
+    }
+    STATE.page = "dashboard";
+    mount();
+    return;
+  }
+  const iface = typeof allowedIface === "function" ? (allowedIface() || STATE.iface) : STATE.iface;
+  if (iface) STATE.iface = iface;
+  /* صفحةُ الطلاب مسجَّلةٌ في PAGES ولا تظهر في القائمة الجانبية — فلو
+     سُئلت القائمةُ وحدَها لبقي المستخدم حيث هو وانفتحت البطاقةُ فوق
+     صفحةٍ لا علاقةَ لها بالطالب. */
+  if (PAGES[STATE.iface + "/students"]) STATE.page = "students";
+  mount();
+  panelStudent(st.id);
+};
+
+let SP_URL_DONE = false;
+function spOpenFromUrl() {
+  if (SP_URL_DONE) return;
+  const key = spUrlStudentId();
+  if (!key) return;
+  SP_URL_DONE = true;
+  const st = spFindStudent(key);
+  if (!st) { showToast("الرابط لا يطابق أي طالب", "warn"); return; }
+  window.spLocate(st.id);
+}
+
 /* =========================================================
    INIT
    ========================================================= */
@@ -34249,6 +34679,8 @@ async function init() {
     renderComplexSelect();
     renderNav();
     mount();
+    /* رابطُ الطالب ?s= — بعد وصول البيانات، وإلا لم يُوجد الطالب */
+    try { if (!fromCache) spOpenFromUrl(); } catch (e) { console.warn("spOpenFromUrl:", e); }
   });
 
   showLoading(false);
