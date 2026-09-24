@@ -29160,7 +29160,10 @@ function stuCollect() {
     const el = document.querySelector("#" + t[0]);
     if (!el) return;
     const cc = document.querySelector("#" + t[0] + "_cc");
-    const bare = String(el.value || "").trim();
+    let bare = String(el.value || "").trim();
+    /* «٥» وحدَها ليست رقماً: هي البدايةُ المثبَّتة يُلمس الحقلُ فتظهر ثمّ
+       يُترك. لا تُحفظ فيصير للطالب رقمٌ لا وجودَ له. */
+    if (bare.replace(/\D+/g, "").length < 2) bare = "";
     out.stu[t[1]] = cc ? cc.value : "";
     out.stu[t[2]] = bare ? (cc ? cc.value + " " : "") + bare : "";
   });
@@ -29244,7 +29247,9 @@ function spPhone(label, id, value, cc) {
       <select id="${id}_cc" class="sp-cc">${SP_CC.map(c =>
         `<option${c === code ? " selected" : ""}>${c}</option>`).join("")}</select>
       <input id="${id}" type="tel" dir="ltr" inputmode="numeric" maxlength="${SP_PHONE_MAX}"
-        value="${esc(bare)}" oninput="window.spPhoneIn(this,'${id}_cc')">
+        placeholder="${code === "+966" ? "5XXXXXXXX" : ""}"
+        value="${esc(bare)}" oninput="window.spPhoneIn(this,'${id}_cc')"
+        onfocus="window.spPhoneFocus(this,'${id}_cc')">
     </div>
   </div>`;
 }
@@ -29259,18 +29264,49 @@ window.spIdnoIn = function (el) {
   if (clean !== el.value) el.value = clean;
 };
 
+/* الحقلُ الفارغ يبدأ بالخمسة عند الكتابة فيه — ولا يُمَسّ المكتوبُ فيه
+   سلفاً: رقمٌ قديمٌ لا يبدأ بها ليس خطأً يُصلَح بمجرّد لمس الحقل. */
+window.spPhoneFocus = function (el, ccId) {
+  if (!el || String(el.value || "").trim() !== "") return;
+  const sel = ccId && document.getElementById(ccId);
+  if (!sel || String(sel.value || "") !== "+966") return;
+  el.value = "5";
+  try { el.setSelectionRange(1, 1); } catch (e) {}
+};
+
 window.spPhoneIn = function (el, ccId) {
   if (!el) return;
-  const clean = String(el.value || "").replace(/\D+/g, "").slice(0, SP_PHONE_MAX);
-  if (clean !== el.value) {
-    const atEnd = el.selectionStart === el.value.length;
-    el.value = clean;
-    if (!atEnd) { try { el.setSelectionRange(clean.length, clean.length); } catch (e) {} }
-  }
   const sel = ccId && document.getElementById(ccId);
-  if (sel && clean) {
-    const c = SP_CC_BY1[clean.charAt(0)];
+  let v = String(el.value || "").replace(/\D+/g, "");
+
+  /* أوّلُ رقمٍ يحدّد المفتاح: الصفرُ مصريّ، والخمسةُ سعوديّة */
+  if (v && sel) {
+    const c = SP_CC_BY1[v.charAt(0)];
     if (c && SP_CC.indexOf(c) > -1) sel.value = c;
+  }
+  const cc = sel ? String(sel.value || "") : SP_CC[0];
+
+  /* =====================================================================
+     الخمسةُ مثبَّتةٌ في الرقم السعوديّ
+     ---------------------------------------------------------------------
+     جوّالُ السعودية يبدأ بالخمسة دائماً، والصفرُ البادئ (٠٥…) صيغةٌ محليّة
+     لا تُكتب مع المفتاح الدوليّ. فيُسقَط الصفر، وتُثبَّت الخمسةُ في أوّل
+     الرقم إن لم يبدأ بها — فلا يُكتب رقمٌ لا يُتَّصل به.
+
+     والقاعدةُ مشروطةٌ بالمفتاح +966 وحدَه: أرقامُ مصر تبدأ بالصفر، ولو
+     ثُبّتت الخمسةُ فيها لأفسدتها. ومن أراد رقماً مصريّاً بدأه بالصفر
+     فيتحوّل المفتاحُ إلى +20 من تلقائه ويبقى صفرُه.
+     ===================================================================== */
+  if (cc === "+966") {
+    v = v.replace(/^0+/, "");
+    if (v && v.charAt(0) !== "5") v = "5" + v;
+  }
+  v = v.slice(0, SP_PHONE_MAX);
+
+  if (v !== el.value) {
+    /* المؤشّرُ إلى آخر الحقل متى تغيّر أوّلُه، وإلا قفز موضعُ الكتابة */
+    el.value = v;
+    try { el.setSelectionRange(v.length, v.length); } catch (e) {}
   }
 };
 
