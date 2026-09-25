@@ -29225,7 +29225,11 @@ const SP_CC = ["+966", "+20", "+971", "+965", "+974", "+973", "+968", "+962", "+
 /* أوّلُ رقمٍ يحدّد المفتاح: الخمسةُ سعوديّةٌ والصفرُ مصريّ. وما سواهما
    يُترك لاختيار المستخدم — فالتخمينُ فيما لا قرينةَ عليه خطأٌ صامت. */
 const SP_CC_BY1 = { "5": "+966", "0": "+20" };
-const SP_PHONE_MAX = 10;
+/* طولُ الجوّال السعوديّ تسعةٌ: خمسةٌ وثمانيةٌ بعدها. وغيرُه يُترك أوسعَ
+   قليلاً — رقمُ مصرَ أحدَ عشرَ بصفره — فلا يُقصّ رقمٌ صحيحٌ لبلدٍ آخر. */
+const SP_PHONE_MAX = 9;
+const SP_PHONE_MAX_OTHER = 11;
+function phoneMax(cc) { return String(cc) === "+966" ? SP_PHONE_MAX : SP_PHONE_MAX_OTHER; }
 
 /* =========================================================================
    حقلُ الهاتف — بانٍ واحدٌ للبطاقة والنماذج
@@ -29245,7 +29249,7 @@ function phoneBox(label, id, value, cc, wrap) {
     <div class="sp-phone">
       <select id="${id}_cc" class="sp-cc">${SP_CC.map(c =>
         `<option${c === code ? " selected" : ""}>${c}</option>`).join("")}</select>
-      <input id="${id}" type="tel" dir="ltr" inputmode="numeric" maxlength="${SP_PHONE_MAX}"
+      <input id="${id}" type="tel" dir="ltr" inputmode="numeric" maxlength="${phoneMax(code)}"
         placeholder="${code === "+966" ? "5XXXXXXXX" : ""}"
         value="${esc(bare)}" oninput="window.spPhoneIn(this,'${id}_cc')"
         onfocus="window.spPhoneFocus(this,'${id}_cc')">
@@ -29315,7 +29319,10 @@ window.spPhoneIn = function (el, ccId) {
     v = v.replace(/^0+/, "");
     if (v && v.charAt(0) !== "5") v = "5" + v;
   }
-  v = v.slice(0, SP_PHONE_MAX);
+  v = v.slice(0, phoneMax(cc));
+  /* الحدُّ في السمة يتبع المفتاح كذلك، وإلا منع المتصفّحُ ما تسمح به
+     القاعدةُ حين يتحوّل المفتاح بعد الكتابة. */
+  try { el.setAttribute("maxlength", String(phoneMax(cc))); } catch (e) {}
 
   if (v !== el.value) {
     /* المؤشّرُ إلى آخر الحقل متى تغيّر أوّلُه، وإلا قفز موضعُ الكتابة */
