@@ -28358,10 +28358,28 @@ function facTwoFields(idCx, idMq, curCxId, curMqId) {
     if (m) cxId = String(m.complexId || "");
   }
 
+  /* والمجمّعُ كذلك: مجمّعٌ خارجَ نطاق الرؤية لا يُمحى بفتح النموذج */
+  let cxList = cx.slice();
+  if (cxId && !cxList.some(c => String(c.id) === cxId)) {
+    const ownCx = (Array.isArray(DB.complexes) ? DB.complexes : [])
+      .find(c => String(c.id) === cxId);
+    if (ownCx) cxList = cxList.concat([ownCx]);
+  }
   const cxOpts = `<option value="">— بلا مجمع (مستقل) —</option>` +
-    cx.map(c => `<option value="${esc(String(c.id))}" ${String(c.id) === cxId ? "selected" : ""}>${esc(c.name || "—")}</option>`).join("");
+    cxList.map(c => `<option value="${esc(String(c.id))}" ${String(c.id) === cxId ? "selected" : ""}>${esc(c.name || "—")}</option>`).join("");
 
-  const inCx = cxId ? mq.filter(m => String(m.complexId || "") === cxId) : mq;
+  let inCx = cxId ? mq.filter(m => String(m.complexId || "") === cxId) : mq;
+  /* =======================================================================
+     المسجدُ الحالي يبقى في القائمة ولو خالف مجمَّعه
+     -----------------------------------------------------------------------
+     القائمةُ تُحصر بمساجد المجمّع المختار. فسجلٌّ قديمٌ مسجدُه بلا مجمّع،
+     أو مسجدُه في مجمّعٍ آخر، لا يجد قيمتَه في القائمة فتُقرأ فارغةً —
+     ويُمحى مسجدُه بمجرّد فتح النموذج وحفظه. تُضاف قيمتُه الحالية دائماً.
+     ======================================================================= */
+  if (curMqId && !inCx.some(m => String(m.id) === String(curMqId))) {
+    const own = mq.find(m => String(m.id) === String(curMqId));
+    if (own) inCx = inCx.concat([own]);
+  }
   const mqOpts = `<option value="">— بلا مسجد —</option>` +
     inCx.map(m => `<option value="${esc(String(m.id))}" ${String(m.id) === String(curMqId || "") ? "selected" : ""}>${esc(m.name || "—")}</option>`).join("");
 
@@ -29137,6 +29155,8 @@ function stuDraftFor(id) {
 function stuDraftReset(id) {
   STU_DRAFT.id = String(id || "");
   STU_DRAFT.stu = {}; STU_DRAFT.plan = {};
+  /* صورةٌ اختِيرت لطالبٍ ثمّ فُتح غيرُه لا تنتقل إليه */
+  try { if (typeof photoReset === "function") photoReset("sp_photo"); } catch (e) {}
 }
 
 /* يُلتقط ما هو معروضٌ الآن — الحقلُ الغائب لا يُكتب فلا يُمحى بفراغ */
@@ -29153,7 +29173,24 @@ function stuCollect() {
   put("#sp_email", "email");     put("#sp_school", "school");
   put("#sp_grade", "grade");     put("#sp_addr", "address");
   put("#sp_notes", "notes");     put("#sp_attType", "attType");
-  put("#sp_status", "status");
+  put("#sp_status", "status");   put("#sp_health", "health");
+
+  /* الحلقةُ والمنشأةُ ووضعُ التسجيل — كانت في نموذج التعديل القديم وحدَه.
+     تُجمع هنا كسائر الحقول لتعيش في المسوّدة وتُحفظ مع البطاقة. */
+  if (document.querySelector("#sp_cx") || document.querySelector("#sp_mosque")) {
+    const f = facTwoValue("sp_cx", "sp_mosque");
+    out.stu.mosque = f.mosque; out.stu.mosqueId = f.mosqueId; out.stu.complexId = f.complexId;
+  }
+  put("#sp_circle", "circle");
+  put("#sp_attType2", "attType");        /* بطاقةُ الحلقة تكتب نوعَ الدوام كذلك */
+  if (g("#sp_mode") != null) out.stu.attOnly = g("#sp_mode") === "att";
+  const _cir = document.querySelector("#sp_circles");
+  if (_cir) out.stu.circleIds = [].slice.call(_cir.selectedOptions).map(o => String(o.value));
+  /* الصورةُ تُكتب إن اختِيرت أو أُزيلت وحدَها: photoVal بقيمةٍ حاليةٍ
+     فارغةٍ كانت تمحو صورةَ من لم يمسّ الحقل. */
+  if (typeof PHOTO_BUF !== "undefined" && PHOTO_BUF["sp_photo"] !== undefined) {
+    out.stu.photo = PHOTO_BUF["sp_photo"];
+  }
 
   /* الهاتفُ يُجمع بمفتاحه: الرقمُ بلا مفتاحٍ لا يُتّصل به من خارج البلد */
   [["sp_phone", "phoneCC", "phone"], ["sp_parent", "parentCC", "parent"]].forEach(function (t) {
@@ -29580,8 +29617,42 @@ function panelStudent(id, keepDraft) {
     </section>
 
     <section class="sp-card">
+      <div class="sp-cardhead">${ic("grid", 17)}
+        <div><h3>الحلقة والمنشأة</h3><p>موضع الطالب في المنشآت وحلقاته ووضع تسجيله</p></div></div>
+      <div class="sp-grid">
+        ${facTwoFields("sp_cx", "sp_mosque", s.complexId || "", s.mosqueId || "")}
+        <div class="field"><label for="sp_circle">الحلقة</label>
+          <select id="sp_circle">${(cur("circles") || []).length
+            ? (cur("circles") || []).map(c =>
+                `<option${c.name === s.circle ? " selected" : ""}>${esc(c.name)}</option>`).join("")
+            : `<option>—</option>`}</select></div>
+        <div class="field"><label for="sp_attType2">نوع الدوام</label>
+          <select id="sp_attType2">${["دوام كامل", "دوام جزئي"].map(o =>
+            `<option${o === (s.attType || "دوام كامل") ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>
+        <div class="field"><label for="sp_mode">وضع الطالب</label>
+          <select id="sp_mode">
+            <option value=""${s.attOnly ? "" : " selected"}>بخطة تسميع</option>
+            <option value="att"${s.attOnly ? " selected" : ""}>تحضير فقط — بلا خطة</option>
+          </select></div>
+      </div>
+      <div class="sp-field sp-wide">
+        <label for="sp_circles">حلقات إضافية</label>
+        <select id="sp_circles" multiple size="3">
+          ${(cur("circles") || []).map(c => {
+            const on = (typeof studentCircleIds === "function" ? studentCircleIds(s) : [])
+              .indexOf(String(c.id)) > -1;
+            return `<option value="${esc(c.id)}"${on ? " selected" : ""}>${esc(c.name)}</option>`;
+          }).join("")}
+        </select>
+        <small class="muted" style="font-size:11px">تحضيرُه مستقلٌّ في كلّ حلقة، وخطتُه ومصحفُه واحد</small>
+      </div>
+    </section>
+
+    <section class="sp-card">
       <div class="sp-cardhead">${ic("layers", 17)}
         <div><h3>التصنيف والمرفقات</h3><p>تصنيف الطالب وملاحظاته وملفاته</p></div></div>
+
+      ${photoField("sp_photo", s.photo || "", "صورة الطالب")}
 
       <div class="sp-field sp-wide" style="margin-top:0">
         <label for="sp_class">تصنيف الطالب</label>
@@ -29620,6 +29691,22 @@ function panelStudent(id, keepDraft) {
       <div class="sp-grid" style="margin-top:14px">
         ${spField("المدرسة", "sp_school", s.school, "text")}
         ${spField("العنوان", "sp_addr", s.address, "text")}
+      </div>
+
+      <div class="sp-field sp-wide">
+        <label for="sp_health">ملاحظات صحية</label>
+        <input id="sp_health" value="${esc(s.health || "")}"
+          placeholder="حساسية · دواء · ما يلزم معلّمه معرفته">
+        <small class="muted" style="font-size:11px">تظهر لمعلّمه في ملفّ الطالب</small>
+      </div>
+
+      <div class="sp-field sp-wide">
+        <label>وضع كبار السن</label>
+        <label class="switch" style="margin-top:2px">
+          <input type="checkbox"${s.elderly === true ? " checked" : ""}
+            onchange="window.elderlySet('${jsAttr(s.id)}',this.checked)">
+          <span class="slider"></span></label>
+        <small class="muted" style="font-size:11px">خطٌّ أكبر وقيودٌ أخفّ في شاشته</small>
       </div>
     </section>
 
@@ -30148,6 +30235,19 @@ window.stuSave = function (id) {
 
   Object.keys(stu).forEach(k => { s[k] = stu[k]; });
 
+  /* الحلقةُ تُختار باسمها: يُزامَن معرّفُها ومعلّمُها وإلا تناقض الاسمُ
+     والمعرّف — وهو ما كان يفعله نموذجُ التعديل القديم. */
+  if (stu.circle !== undefined) {
+    s.circleId = idByName("circles", s.circle) || s.circleId || "";
+    const cRec = recByName("circles", s.circle);
+    if (cRec) {
+      if (cRec.teacher) s.teacher = cRec.teacher;
+      if (cRec.teacherId) s.teacherId = String(cRec.teacherId);
+      else s.teacherId = idByName("teachers", s.teacher) || s.teacherId || "";
+    }
+    if (!s.days || s.days === "—") s.days = circleDaysOf(s.circle) || s.days;
+  }
+
   if (Object.keys(plan).length) {
     const dys = plan.days;
     delete plan.days;
@@ -30176,6 +30276,7 @@ window.stuSave = function (id) {
   Promise.resolve(persistSet("students", s)).then(function (saved) {
     if (saved) {
       stuDraftReset("");
+      try { photoReset("sp_photo"); } catch (e) {}
       showToast("حُفظت بيانات " + (s.name || "الطالب"), "success");
       closePanel();
       mount();
@@ -31442,7 +31543,11 @@ document.addEventListener("click", (e) => {
     }
 
     /* ---- الطلاب ---- */
-    case "edit-student": modalEditStudent(t.dataset.id); break;
+    /* «تعديل» يفتح بطاقةَ الطالب: هي الشاشةُ الكاملة بتبويبَيها، والنموذجُ
+       القديم كان يعرض نصفَ الحقول في قائمةٍ طويلة. وما كان فيه وحدَه —
+       الصورةُ والمنشأةُ والحلقةُ والحلقاتُ الإضافية ووضعُ التسجيل
+       والملاحظاتُ الصحية ووضعُ كبار السن — أُضيف إلى البطاقة فلا يضيع. */
+    case "edit-student": panelStudent(t.dataset.id); break;
     case "save-edit-student": {
       const s = DB.students.find(x => x.id == t.dataset.id);
       if (!s) { showToast("الطالب غير موجود", "warn"); break; }
