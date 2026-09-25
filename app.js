@@ -29268,6 +29268,16 @@ function spSelect(label, id, value, opts) {
 
    في تقريرٍ أو رسالة. */
 
+/* الجنسياتُ المعروضةُ في قائمة الهوية. السعوديةُ أوّلُها لأنّها الافتراضُ
+   في سائر شاشات النظام، وما لم يُذكر هنا يُضاف من سجلّ الطالب نفسِه. */
+const SP_NATS = [
+  "المملكة العربية السعودية", "مصر", "اليمن", "السودان", "سوريا", "الأردن",
+  "فلسطين", "الإمارات العربية المتحدة", "الكويت", "قطر", "البحرين", "عُمان",
+  "العراق", "لبنان", "ليبيا", "تونس", "الجزائر", "المغرب", "موريتانيا",
+  "الصومال", "جيبوتي", "جزر القمر", "تشاد", "باكستان", "الهند", "بنغلاديش",
+  "إندونيسيا", "نيجيريا", "تركيا", "أفغانستان", "أخرى"
+];
+
 const SP_CC = ["+966", "+20", "+971", "+965", "+974", "+973", "+968", "+962", "+970", "+249", "+967"];
 
 
@@ -29639,12 +29649,15 @@ function panelStudent(id, keepDraft) {
   </div>`;
 
   const secInfo = `
-    <section class="sp-card sp-soft">
+    <section class="sp-card sp-soft sp-idcard">
       <div class="sp-cardhead">${ic("user", 17)}
         <div><h3>الهوية الأساسية</h3><p>بيانات الطالب الشخصية — مشتركة بين كل الحلقات</p></div></div>
       <div class="sp-grid">
-        ${spField("اسم الطالب/ة", "sp_name", s.name, "text", true)}
-        <div class="sp-field">
+        <div class="sp-field sp-full">
+          <label for="sp_name">اسم الطالب/ة <span class="sp-req">*</span></label>
+          <input id="sp_name" type="text" value="${esc(String(s.name == null ? "" : s.name))}">
+        </div>
+        <div class="sp-field sp-full">
           <label for="sp_idno">اسم المستخدم <span class="sp-req">*</span></label>
           <div class="sp-verify">
             <input id="sp_idno" type="text" dir="ltr" inputmode="numeric" maxlength="10"
@@ -29652,28 +29665,27 @@ function panelStudent(id, keepDraft) {
             <span class="sp-badge${s.idNo ? " ok" : ""}">${ic("checkCircle", 14)}${s.idNo ? "موثّق" : "غير موثّق"}</span>
           </div>
         </div>
-        ${spField("الاسم بالإنجليزي", "sp_nameEn", s.nameEn, "text")}
-        ${spField("الجنسية", "sp_nat", s.nationality, "text")}
-        ${spSelect("الجنس", "sp_gender", s.gender || "ذكر", ["ذكر", "أنثى"])}
-        ${spField("تاريخ الميلاد", "sp_birth", s.birth, "date")}
-        ${spField("المدرسة", "sp_school", s.school, "text")}
-        <div class="sp-field">
-          <label for="sp_health">ملاحظات صحية</label>
-          <input id="sp_health" value="${esc(s.health || "")}"
-            placeholder="حساسية · دواء · ما يلزم معلّمه معرفته">
-          <small class="muted" style="font-size:11px">تظهر لمعلّمه في ملفّ الطالب</small>
+        <div class="sp-field sp-full">
+          <label for="sp_nameEn">الاسم بالإنجليزي</label>
+          <input id="sp_nameEn" type="text" value="${esc(String(s.nameEn == null ? "" : s.nameEn))}">
         </div>
-      </div>
-
-      ${photoField("sp_photo", s.photo || "", "صورة الطالب")}
-
-      <div class="sp-field sp-wide">
-        <label>وضع كبار السن</label>
-        <label class="switch" style="margin-top:2px">
-          <input type="checkbox"${s.elderly === true ? " checked" : ""}
-            onchange="window.elderlySet('${jsAttr(s.id)}',this.checked)">
-          <span class="slider"></span></label>
-        <small class="muted" style="font-size:11px">خطٌّ أكبر وقيودٌ أخفّ في شاشته</small>
+        ${(function () {
+          /* الجنسيةُ قائمةٌ لا حقلٌ حرّ. وجنسيةُ الطالب المحفوظةُ تُضاف إن
+             لم تكن في القائمة — فلا يُمحى ما في السجلّ عند الحفظ. */
+          const list = SP_NATS.slice();
+          const curN = String(s.nationality || "").trim() || SP_NATS[0];
+          if (list.indexOf(curN) < 0) list.unshift(curN);
+          return `<div class="sp-field">
+            <label for="sp_nat">الجنسية</label>
+            <select id="sp_nat">${list.map(o =>
+              `<option${o === curN ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>
+          </div>`;
+        })()}
+        ${spSelect("الجنس", "sp_gender", s.gender || "ذكر", ["ذكر", "أنثى"])}
+        <div class="sp-field sp-full">
+          <label for="sp_birth">تاريخ الميلاد</label>
+          <input id="sp_birth" type="date" value="${esc(String(s.birth == null ? "" : s.birth))}">
+        </div>
       </div>
     </section>
 
@@ -29950,6 +29962,32 @@ function panelStudent(id, keepDraft) {
           }).join("")}
         </select>
         <small class="muted" style="font-size:11px">تحضيرُه مستقلٌّ في كلّ حلقة، وخطتُه ومصحفُه واحد</small>
+      </div>
+    </section>
+
+    <section class="sp-card sp-soft sp-extra">
+      <div class="sp-cardhead">${ic("doc", 17)}
+        <div><h3>بيانات إضافية</h3><p>صورتُه ومدرستُه وما يلزم معلّمَه معرفتُه</p></div></div>
+
+      ${photoField("sp_photo", s.photo || "", "صورة الطالب")}
+
+      <div class="sp-grid" style="margin-top:14px">
+        ${spField("المدرسة", "sp_school", s.school, "text")}
+        <div class="sp-field">
+          <label for="sp_health">ملاحظات صحية</label>
+          <input id="sp_health" value="${esc(s.health || "")}"
+            placeholder="حساسية · دواء · ما يلزم معلّمه معرفته">
+          <small class="muted" style="font-size:11px">تظهر لمعلّمه في ملفّ الطالب</small>
+        </div>
+      </div>
+
+      <div class="sp-field sp-wide">
+        <label>وضع كبار السن</label>
+        <label class="switch" style="margin-top:2px">
+          <input type="checkbox"${s.elderly === true ? " checked" : ""}
+            onchange="window.elderlySet('${jsAttr(s.id)}',this.checked)">
+          <span class="slider"></span></label>
+        <small class="muted" style="font-size:11px">خطٌّ أكبر وقيودٌ أخفّ في شاشته</small>
       </div>
     </section>
 

@@ -9412,3 +9412,15 @@ html[data-theme="dark"] .sp-chipval { background: var(--surface-2); color: var(-
 
 html[data-theme="dark"] .sp-clsf .sp-chipsel { background: var(--surface-1); border-color: var(--border); }
 html[data-theme="dark"] .sp-fileico { background: var(--surface-2); color: var(--text-main); }
+
+/* ============================================================
+   بطاقةُ «الهوية الأساسية» — صفٌّ كاملٌ لكلِّ حقلٍ إلا الجنسيةَ
+   والجنسَ فيتقاسمان صفّاً، كما في التصميم.
+   ============================================================ */
+.sp-idcard .sp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sp-idcard .sp-grid > .sp-full { grid-column: 1 / -1; }
+@media (max-width: 560px) {
+  .sp-idcard .sp-grid { grid-template-columns: 1fr; }
+}
+/* اسمُ الجنسية طويلٌ — يُضيَّق حشوُه قليلاً فلا يُقصّ في نصف الصفّ */
+.sp-idcard #sp_nat { padding-inline: 8px; font-size: 14px; text-overflow: ellipsis; }
