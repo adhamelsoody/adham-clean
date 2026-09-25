@@ -29521,15 +29521,8 @@ function panelStudent(id, keepDraft) {
   const chip = (icon, text) => text
     ? `<span class="sp-chip">${ic(icon, 14)}${esc(String(text))}</span>` : "";
 
-  /* مؤشّرُ الالتزام: كان بطاقةً في ذيل تبويب الخطة لا تُرى إلا بعد تمرير
-     طويل — وهو أوّلُ ما يُسأل عنه. صار شارةً في الترويسة مع اسم الطالب. */
+  /* مؤشّرُ الالتزام: موضعُه بطاقةُ إحصاءٍ في تبويب الخطة كما في التصميم */
   const lateN = Number(s.delays) || 0;
-  const commitChip = `<span class="sp-commit${lateN ? " late" : " ok"}"
-      title="${lateN ? "عليه متأخّراتٌ لم تُغلق" : "لا متأخّرات"}">
-      ${ic(lateN ? "alert" : "checkCircle", 14)}
-      <span>${lateN ? "متأخّر" : "منتظم"}</span>
-      <small>${lateN ? toArabicDigits(lateN) + " يوم" : "لا تأخير"}</small>
-    </span>`;
 
   const head = `<div class="sp-head">
     <div class="sp-id">
@@ -29541,7 +29534,6 @@ function panelStudent(id, keepDraft) {
           ${chip("flag", s.nationality)}
           ${chip("book", circlesN + " حلقات")}
           ${statusBadge(s.status || "نشط")}
-          ${commitChip}
         </div>
       </div>
     </div>
@@ -29753,7 +29745,7 @@ function panelStudent(id, keepDraft) {
      «من الفاتحة» تبدأ بالفاتحة، و«من الناس» تبدأ بالناس. */
   const startRow = (pfx, sura, ayah, dirId, dirVal) => `
     <div class="sp-start">
-      <label>سورة الابتداء — السورة والآية</label>
+      <label>${ic("target", 13)} الابتداء — السورة والآية</label>
       <div class="sp-startrow">
         <select id="${pfx}Sura" class="sp-sel sp-sura" data-dir="${esc(dirId)}"
           data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}">
@@ -29769,30 +29761,41 @@ function panelStudent(id, keepDraft) {
 
   const secPlan = `
     <section class="sp-card sp-wide2">
-      <div class="sp-cardhead">${ic("grid", 17)}
-        <div><h3>الحلقة الحالية</h3><p>موضع الطالب اليوم</p></div></div>
-      <div class="sp-inline">
-        <span class="sp-pill">${esc(s.circle || "بلا حلقة")}</span>
-        ${statusBadge(s.status || "نشط")}
-        <span class="sp-pill sp-pill-soft">${esc(s.teacher || "بلا معلم")}</span>
-        <span class="sp-pill sp-pill-soft">${esc(s.mosque || "—")}</span>
+      <div class="sp-cardhead" style="border-bottom:0;padding-bottom:0;margin-bottom:0">
+        ${ic("grid", 17)}
+        <div>
+          <p style="margin:0">الحلقة الحالية</p>
+          <h3 style="margin-top:2px">${esc(s.circle || "بلا حلقة")}
+            ${statusBadge(s.status || "نشط")}</h3>
+        </div>
+        <div class="sp-headside">
+          <span class="sp-pill sp-pill-soft"><span class="sp-pldot"></span>${esc(s.circle || "بلا حلقة")}</span>
+          ${s.teacher && s.teacher !== "—"
+            ? `<span class="sp-pill sp-pill-soft">${esc(s.teacher)}</span>` : ""}
+        </div>
       </div>
     </section>
 
     <section class="sp-card sp-wide2">
-      <div class="sp-cardhead">${ic("book", 17)}
-        <div><h3>البرنامج والمستوى</h3><p>تغيير البرنامج أو المستوى يعيد توليد الخطة</p></div></div>
-      <div class="sp-inline">
-        <span class="sp-pill sp-pill-soft">البرنامج: ${esc(s.program || "—")}</span>
-        <span class="sp-pill sp-pill-soft">المستوى: ${esc(s.level || "—")}</span>
-        <button class="btn btn-ghost btn-sm"
-          onclick="window.spProgLevel('${jsAttr(s.id)}')">${ic("edit", 14)} تغيير البرنامج والمستوى</button>
+      <div class="sp-cardhead" style="border-bottom:0;padding-bottom:0;margin-bottom:0">
+        ${ic("book", 17)}
+        <div><h3>البرنامج والمستوى</h3>
+          <p>تغيير البرنامج أو المستوى يُعيد توليد الخطة لهذه الحلقة</p></div>
+        <div class="sp-headside">
+          <div class="sp-box"><small>البرنامج</small><strong>${esc(s.program || "—")}</strong></div>
+          <div class="sp-box"><small>المستوى</small><strong>${esc(s.level || "—")}</strong></div>
+          <button class="btn btn-ghost btn-sm"
+            onclick="window.spProgLevel('${jsAttr(s.id)}')">${ic("edit", 14)} تغيير</button>
+        </div>
       </div>
     </section>
 
     ${spPlanLiveCard(s)}
 
     <div class="sp-stats sp-wide2">
+      ${statCard("مؤشر الالتزام", lateN ? "متأخر" : "منتظم",
+        `<span class="sp-late${lateN ? " on" : ""}">${lateN ? toArabicDigits(lateN) + " يوم" : "لا تأخير"}</span>`,
+        "clock", lateN ? "warn" : "ok")}
       ${statCard("مؤشر الإنجاز", prog + "%", `<div class="progress green"><span data-pct="${prog}"></span></div>`, "graph")}
       ${statCard("تقرير الحضور", attPct + "%",
         `<span class="sp-dot g">${nPresent} حضور</span> <span class="sp-dot a">${nLate} تأخر</span>
@@ -29832,11 +29835,14 @@ function panelStudent(id, keepDraft) {
       <div class="sp-days">${dayBtns}</div>
     </section>
 
+    <div class="sp-ghead sp-wide2">${ic("doc", 17)}<h3>الحفظ</h3></div>
+
     <section class="sp-card sp-wide2 sp-hifz">
-      <div class="sp-cardhead">${ic("doc", 17)}
-        <div><h3>الحفظ</h3><p>${esc(pl.hifzQty)} · ${esc(pl.hifzDir)}</p></div>
+      <div class="sp-plrow">
+        <span class="sp-pldot"></span><b>الحفظ</b>
+        <span class="sp-plsum">${esc(pl.hifzQty)} · ${esc(pl.hifzDir)}</span>
         <button type="button" class="bpl-tog${pl.hifzOn ? " on" : ""}" id="spHifzTog"
-          onclick="window.spTog(this,'spHifzOn')"><span class="bpl-knob"></span><b>الحفظ</b></button>
+          onclick="window.spTog(this,'spHifzOn')"><span class="bpl-knob"></span></button>
         <input type="hidden" id="spHifzOn" value="${pl.hifzOn ? 1 : 0}">
       </div>
       <div class="sp-grid">
@@ -29845,7 +29851,8 @@ function panelStudent(id, keepDraft) {
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
       ${startRow("spHifz", (s.plan || {}).hifzSura, (s.plan || {}).hifzAyah, "spHifzDir", pl.hifzDir)}
-      <div class="sp-tatline">
+      <div class="sp-klabel">${ic("layers", 14)} أركان متفرّعة من الحفظ</div>
+      <div class="sp-kidrow">
         <button type="button" class="bpl-tog${pl.tatOn ? " on" : ""}"
           onclick="window.spTog(this,'spTatOn')"><span class="bpl-knob"></span><b>تثبيت</b></button>
         <input type="hidden" id="spTatOn" value="${pl.tatOn ? 1 : 0}">
@@ -29858,11 +29865,14 @@ function panelStudent(id, keepDraft) {
       </div>
     </section>
 
+    <div class="sp-ghead sp-wide2 g-rev">${ic("refresh", 17)}<h3>المراجعة</h3></div>
+
     <section class="sp-card sp-wide2 sp-rev">
-      <div class="sp-cardhead">${ic("refresh", 17)}
-        <div><h3>المراجعة</h3><p>${esc(pl.revQty)} · ${esc(pl.revDir)}</p></div>
+      <div class="sp-plrow">
+        <span class="sp-pldot"></span><b>مراجعة</b>
+        <span class="sp-plsum">${esc(pl.revQty)} · ${esc(pl.revDir)}</span>
         <button type="button" class="bpl-tog${pl.revOn ? " on" : ""}"
-          onclick="window.spTog(this,'spRevOn')"><span class="bpl-knob"></span><b>المراجعة</b></button>
+          onclick="window.spTog(this,'spRevOn')"><span class="bpl-knob"></span></button>
         <input type="hidden" id="spRevOn" value="${pl.revOn ? 1 : 0}">
       </div>
       <div class="sp-grid">

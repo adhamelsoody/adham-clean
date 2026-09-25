@@ -9100,17 +9100,18 @@ html[data-theme="dark"] .mus-ayah.mus-hl { background: rgba(255, 206, 84, .22); 
    تحتها، فيُحبَس المستخدم فيها حتى يُغلقها. تبدأ الآن بعد عرض القائمة
    (--sidebar-w)، وهو صفرٌ في الشاشات الصغيرة فتعود ملءَ الشاشة كما كانت.
    ========================================================================= */
+/* الصفحةُ تملأ الشاشة: جُرّبت بجوار القائمة الجانبية فضاق موضعُها،
+   والقائمةُ في متناول اليد من زرّ الشريط العلويّ. والقاعدةُ تسبق
+   #panelRoot .side-panel في الأولوية وإلا بقيت relative فانزاحت. */
 body.panel-open .panel-back,
 body.panel-open #panelRoot .side-panel.sp-page {
   position: fixed;
-  top: 0;
-  bottom: 0;
-  right: var(--sidebar-w);
-  left: 0;
+  inset: 0;
   width: auto;
   max-width: none;
 }
-body.panel-open .sidebar { z-index: 90; }
+/* القائمةُ الجانبية كانت تُرفع فوق البطاقة لتبقى ظاهرةً بجوارها؛ والبطاقةُ
+   الآن تملأ الشاشة فترجع القائمةُ تحتها ولا تقطع حافّتَها. */
 
 /* حشوٌ أهدأ داخل البطاقة، فلا يتمدّد المحتوى ويخرج عن الشاشة */
 body.panel-open .side-panel.sp-page .sp-body { padding-inline: 18px; }
@@ -9213,3 +9214,93 @@ html[data-theme="dark"] .sp-commit.late { background: rgba(200, 106, 16, .24);  
 }
 .sp-step { flex-wrap: nowrap; }
 .sp-step input { min-width: 56px; }
+
+/* =========================================================================
+   بطاقة الطالب — تبويب المستوى وخطة التسميع
+   -------------------------------------------------------------------------
+   التصميمُ المطلوب: أيقونةٌ في مربّعٍ ملوّنٍ لكلّ بطاقة، وعناوينُ أقسامٍ
+   فوق بطاقتَي الحفظ والمراجعة بحافّةٍ ملوّنة، والقيمُ في صناديقَ معنونةٍ
+   لا في حبّاتٍ. ولغةُ التصميم مأخوذةٌ من شاشة «خطة التسميع» (pl-*) فلا
+   يُخترع نظامٌ ثالثٌ في المشروع.
+   ========================================================================= */
+
+/* مربّعُ الأيقونة في رأس كلّ بطاقة */
+.sp-card > .sp-cardhead > svg:first-child,
+.sp-ghead > svg:first-child {
+  width: 40px; height: 40px; padding: 10px;
+  border-radius: 12px; box-sizing: border-box; flex: none;
+  background: #0f6f72; color: #fff;
+}
+.sp-card.sp-rev > .sp-cardhead > svg:first-child { background: #b7841c; }
+html[data-theme="dark"] .sp-card > .sp-cardhead > svg:first-child { background: #0f6f72; }
+
+/* رأسُ البطاقة يحمل أدواتِه على يساره في السطر نفسِه */
+.sp-cardhead { align-items: center; }
+.sp-cardhead > .sp-headside { margin-inline-start: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* صندوقٌ معنون: تسميةٌ صغيرةٌ فوق القيمة — كالبرنامج والمستوى */
+.sp-box {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 9px 16px; border-radius: 12px;
+  background: #eef5f5; min-width: 0;
+}
+.sp-box small { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+.sp-box strong { font-size: 14.5px; font-weight: 800; color: var(--text); }
+html[data-theme="dark"] .sp-box { background: var(--surface-2); }
+
+/* عنوانُ قسمٍ فوق بطاقةٍ — الحفظ والمراجعة */
+.sp-ghead {
+  display: flex; align-items: center; gap: 12px;
+  margin: 26px 0 12px;
+}
+.sp-ghead h3 { font-size: 17px; font-weight: 800; color: var(--text); margin: 0; }
+.sp-ghead.g-rev > svg:first-child { background: #b7841c; }
+
+/* الحافّةُ الملوّنة تميّز الركنَ كما في شاشة الخطة */
+.sp-card.sp-hifz { border-inline-start: 4px solid #15a2a7; }
+.sp-card.sp-rev  { border-inline-start: 4px solid #d99a1f; }
+
+/* شريطُ الركن: نقطةٌ واسمٌ وملخّصٌ ومفتاحُ تشغيل */
+.sp-plrow {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-bottom: 14px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.sp-plrow .sp-pldot { width: 9px; height: 9px; border-radius: 50%; background: #17b3b8; flex: none; }
+.sp-rev .sp-plrow .sp-pldot { background: #d99a1f; }
+.sp-plrow b { font-size: 15.5px; font-weight: 800; color: var(--text); }
+.sp-plsum {
+  padding: 6px 14px; border-radius: 999px;
+  background: #eef5f5; color: #35595b; font-size: 12.5px; font-weight: 700;
+}
+.sp-rev .sp-plsum { background: #fbf1dd; color: #8a6210; }
+.sp-plrow .bpl-tog { margin-inline-start: auto; }
+html[data-theme="dark"] .sp-plsum { background: var(--surface-2); color: var(--text-main); }
+
+/* تسميةُ الأركان المتفرّعة، وصفُّها */
+.sp-klabel {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--text-muted); margin: 18px 0 8px;
+}
+.sp-kidrow {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; border-radius: 12px; background: #f4f8f8;
+}
+html[data-theme="dark"] .sp-kidrow { background: var(--surface-2); }
+
+/* مربّعاتُ أيقونات بطاقات الإحصاء — ألوانٌ هادئةٌ لا صُلبة */
+.sp-stat-top svg {
+  width: 34px; height: 34px; padding: 8px;
+  border-radius: 10px; box-sizing: border-box; flex: none;
+  background: #eef5f5; color: #35595b;
+}
+.sp-stat.warn .sp-stat-top svg { background: #fdf2e2; color: #a8760f; }
+.sp-stat.ok   .sp-stat-top svg { background: #e8f6ef; color: #17915a; }
+
+/* كلُّ ما وُسِم sp-wide2 يمتدّ على عرض البطاقة، لا البطاقاتُ وحدَها:
+   شبكةُ الإحصاء وعناوينُ الأقسام كانت تنحشر في عمودٍ واحدٍ من ثلاثة. */
+.sp-body > .sp-wide2 { grid-column: 1 / -1; }
+
+/* صفُّ الابتداء: كان الحقلُ يمتدّ على العرض كلِّه فيبتعد عن عدّاده،
+   وفي التصميم يقف عند ثلث البطاقة والعدّادُ بجواره. */
+.sp-card .sp-startrow { grid-template-columns: minmax(200px, 360px) auto; justify-content: start; }
