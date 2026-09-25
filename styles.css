@@ -9316,3 +9316,17 @@ html[data-theme="dark"] .sp-kidrow { background: var(--surface-2); }
   display: grid; place-items: center; cursor: pointer; padding: 0;
 }
 .sp-avcam:hover { background: #0f6f72; }
+
+/* بطاقةُ مؤشّر الالتزام بيضاءُ كأخواتها في التصميم، ولا يلوَّن منها إلا
+   شارةُ الأيام — كان لونُ التنبيه يعمّ البطاقةَ كلَّها فتشذّ عن الصفّ. */
+.sp-stat.warn { border-color: var(--border-soft); background: var(--surface, #fff); }
+.sp-stat.warn .sp-stat-top svg { background: #eef2f5; color: #55706f; }
+
+/* شارةُ العدد على تبويب الخطة: خطةُ الطالب لكلّ حلقةٍ على حِدة */
+.sp-tabnum {
+  display: inline-grid; place-items: center;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 999px; background: rgba(0,0,0,.22); color: inherit;
+  font-size: 11.5px; font-weight: 800; margin-inline-start: 7px;
+}
+.sp-tab:not(.on) .sp-tabnum { background: #dfe8e8; color: #4a6566; }

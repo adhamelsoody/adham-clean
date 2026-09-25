@@ -29589,7 +29589,8 @@ function panelStudent(id, keepDraft) {
     <button type="button" class="sp-tab${tab === "info" ? " on" : ""}"
       onclick="window.stuTabSet('info','${jsAttr(s.id)}')">${ic("user", 16)} بيانات الطالب</button>
     <button type="button" class="sp-tab${tab === "plan" ? " on" : ""}"
-      onclick="window.stuTabSet('plan','${jsAttr(s.id)}')">${ic("book", 16)} المستوى وخطة التسميع</button>
+      onclick="window.stuTabSet('plan','${jsAttr(s.id)}')">${ic("book", 16)} المستوى وخطة التسميع
+      ${circlesN ? `<span class="sp-tabnum">${toArabicDigits(circlesN)}</span>` : ""}</button>
   </div>`;
 
   const secInfo = `
