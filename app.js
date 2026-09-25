@@ -29230,9 +29230,19 @@ function stuDraftKeep(id) {
 }
 
 window.stuTabSet = function (k, id) {
-  stuDraftKeep(id);
-  STATE.stuTab = k === "plan" ? "plan" : "info";
-  panelStudent(id);
+  /* الخطأُ هنا كان يُسقط الرسمَ صامتاً فتبدو البطاقةُ كأنها اختفت.
+     يُعلَن الآن بنصّه، ويُعاد الرسمُ على التبويب السابق فلا يضيع شيء. */
+  const prev = STATE.stuTab;
+  try {
+    stuDraftKeep(id);
+    STATE.stuTab = k === "plan" ? "plan" : "info";
+    panelStudent(id);
+  } catch (e) {
+    STATE.stuTab = prev;
+    try { showToast("تعذّر فتح التبويب: " + ((e && e.message) || e), "warn"); } catch (e2) {}
+    try { console.error("stuTabSet:", e); } catch (e2) {}
+    try { panelStudent(id, true); } catch (e2) {}
+  }
 };
 
 function spField(label, id, value, type, req) {
@@ -29380,6 +29390,20 @@ window.spPhotoPick = function (id) {
     const i2 = document.getElementById("sp_photo_input");
     if (i2) i2.click();
   }, 80);
+};
+
+/* حبّةُ التصنيف: عرضُ المختار وإزالتُه — والقائمةُ هي المصدر عند الحفظ */
+window.spClassPick = function (sel) {
+  const chip = document.getElementById("sp_classChip");
+  if (!chip || !sel) return;
+  const v = String(sel.value || "");
+  const span = chip.querySelector("span");
+  if (span) span.textContent = v;
+  chip.style.display = (v && v !== "—") ? "" : "none";
+};
+window.spClassClear = function () {
+  const sel = document.getElementById("sp_class");
+  if (sel) { sel.value = "—"; window.spClassPick(sel); }
 };
 
 /* ---- أفعالُ ترويسة بطاقة الطالب ---- */
@@ -29594,7 +29618,7 @@ function panelStudent(id, keepDraft) {
   </div>`;
 
   const secInfo = `
-    <section class="sp-card">
+    <section class="sp-card sp-soft">
       <div class="sp-cardhead">${ic("user", 17)}
         <div><h3>الهوية الأساسية</h3><p>بيانات الطالب الشخصية — مشتركة بين كل الحلقات</p></div></div>
       <div class="sp-grid">
@@ -29614,7 +29638,7 @@ function panelStudent(id, keepDraft) {
       </div>
     </section>
 
-    <section class="sp-card">
+    <section class="sp-card sp-soft sp-contact">
       <div class="sp-cardhead">${ic("phone", 17)}
         <div><h3>معلومات التواصل</h3><p>أرقام التواصل والبريد</p></div></div>
       <div class="sp-grid">
@@ -29625,11 +29649,10 @@ function panelStudent(id, keepDraft) {
       </div>
     </section>
 
-    <section class="sp-card">
+    <section class="sp-card sp-soft">
       <div class="sp-cardhead">${ic("grid", 17)}
-        <div><h3>الحلقة والمنشأة</h3><p>موضع الطالب في المنشآت وحلقاته ووضع تسجيله</p></div></div>
+        <div><h3>الحلقة</h3><p>حلقةُ الطالب وحلقاتُه الإضافية ووضعُ تسجيله</p></div></div>
       <div class="sp-grid">
-        ${facTwoFields("sp_cx", "sp_mosque", s.complexId || "", s.mosqueId || "")}
         <div class="field"><label for="sp_circle">الحلقة</label>
           <select id="sp_circle">${(cur("circles") || []).length
             ? (cur("circles") || []).map(c =>
@@ -29657,7 +29680,7 @@ function panelStudent(id, keepDraft) {
       </div>
     </section>
 
-    <section class="sp-card">
+    <section class="sp-card sp-soft">
       <div class="sp-cardhead">${ic("layers", 17)}
         <div><h3>التصنيف والمرفقات</h3><p>تصنيف الطالب وملاحظاته وملفاته</p></div></div>
 
@@ -29670,8 +29693,17 @@ function panelStudent(id, keepDraft) {
             "خامس ابتدائي", "سادس ابتدائي", "أول متوسط", "ثاني متوسط", "ثالث متوسط",
             "أول ثانوي", "ثاني ثانوي", "ثالث ثانوي", "جامعي", "موظف"];
           const cur2 = s.classification || s.grade || "—";
-          return `<select id="sp_class" class="sp-sel">${opts.map(o =>
-            `<option${o === cur2 ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+          /* الحبّةُ تعرض المختار ويُزال بنقرة، والقائمةُ خلفها كما هي —
+             فلا يتغيّر ما يُقرأ عند الحفظ ولا تُكسر البيانات القديمة. */
+          return `<div class="sp-chipsel">
+            <span class="sp-chipval" id="sp_classChip"
+              style="${cur2 && cur2 !== "—" ? "" : "display:none"}">
+              <span>${esc(cur2)}</span>
+              <button type="button" title="إزالة" onclick="window.spClassClear()">${ic("x", 12)}</button>
+            </span>
+            <select id="sp_class" class="sp-sel" onchange="window.spClassPick(this)">${opts.map(o =>
+              `<option${o === cur2 ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>
+          </div>`;
         })()}
       </div>
 
@@ -29852,7 +29884,7 @@ function panelStudent(id, keepDraft) {
 
     <div class="sp-ghead sp-wide2">${ic("doc", 17)}<h3>الحفظ</h3></div>
 
-    <section class="sp-card sp-wide2 sp-hifz">
+    <section class="sp-card sp-wide2 sp-hifz${pl.hifzOn ? "" : " sp-off"}">
       <div class="sp-plrow">
         <span class="sp-pldot"></span><b>الحفظ</b>
         <span class="sp-plsum">${esc(pl.hifzQty)} · ${esc(pl.hifzDir)}</span>
@@ -29882,7 +29914,7 @@ function panelStudent(id, keepDraft) {
 
     <div class="sp-ghead sp-wide2 g-rev">${ic("refresh", 17)}<h3>المراجعة</h3></div>
 
-    <section class="sp-card sp-wide2 sp-rev">
+    <section class="sp-card sp-wide2 sp-rev${pl.revOn ? "" : " sp-off"}">
       <div class="sp-plrow">
         <span class="sp-pldot"></span><b>مراجعة</b>
         <span class="sp-plsum">${esc(pl.revQty)} · ${esc(pl.revDir)}</span>
@@ -29930,8 +29962,12 @@ window.spDay = function (btn, day) {
 
 window.spTog = function (btn, hiddenId) {
   btn.classList.toggle("on");
+  const on = btn.classList.contains("on");
   const h = document.getElementById(hiddenId);
-  if (h) h.value = btn.classList.contains("on") ? 1 : 0;
+  if (h) h.value = on ? 1 : 0;
+  /* الركنُ المطفأ تُطوى تفاصيلُه: حقولٌ لا أثرَ لها تُربك القارئ */
+  const card = btn.closest(".sp-card");
+  if (card) card.classList.toggle("sp-off", !on);
 };
 
 window.spDir = function (btn, hiddenId, value) {

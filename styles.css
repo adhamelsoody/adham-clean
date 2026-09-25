@@ -9330,3 +9330,40 @@ html[data-theme="dark"] .sp-kidrow { background: var(--surface-2); }
   font-size: 11.5px; font-weight: 800; margin-inline-start: 7px;
 }
 .sp-tab:not(.on) .sp-tabnum { background: #dfe8e8; color: #4a6566; }
+
+/* =========================================================================
+   تبويب البيانات — مربّعاتٌ هادئةٌ كما في التصميم، والركنُ المطفأ يُطوى
+   ========================================================================= */
+
+/* رؤوسُ بطاقات تبويب البيانات: مربّعٌ فاتحٌ وأيقونةٌ داكنة — لا مربّعٌ صلب.
+   والصلبُ يبقى في بطاقتَي الحلقة والبرنامج في تبويب الخطة. */
+.sp-card.sp-soft > .sp-cardhead > svg:first-child {
+  background: #eef2f3; color: #3f5d5e;
+}
+.sp-card.sp-soft.sp-contact > .sp-cardhead > svg:first-child {
+  background: #fdf2e2; color: #c98a1b;
+}
+
+/* الركنُ المطفأ: يبقى رأسُه ومفتاحُه وتُطوى تفاصيلُه */
+/* يُطوى كلُّ ما تحت الرأس: صفُّ الابتداء داخل غلافٍ لا يُطابقه اسمُه،
+   فالقاعدةُ على الأبناء جميعاً أضبطُ من تعدادهم. */
+.sp-card.sp-off > * { display: none; }
+.sp-card.sp-off > .sp-plrow { display: flex; }
+.sp-card.sp-off .sp-plrow { padding-bottom: 0; margin-bottom: 0; border-bottom: 0; }
+.sp-card.sp-off { opacity: .92; }
+
+/* حبّةُ التصنيف: المختارُ ظاهرٌ ويُزال بنقرة */
+.sp-chipsel { position: relative; display: flex; align-items: center; gap: 8px; }
+.sp-chipsel .sp-sel { flex: 1; min-width: 0; }
+.sp-chipval {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 6px 5px 11px; border-radius: 9px;
+  background: #eef2f3; color: #35595b; font-size: 13px; font-weight: 700;
+  white-space: nowrap;
+}
+.sp-chipval button {
+  display: grid; place-items: center; width: 18px; height: 18px; padding: 0;
+  border: 0; border-radius: 50%; background: #cfdada; color: #3f5d5e; cursor: pointer;
+}
+.sp-chipval button:hover { background: #b9c9c9; }
+html[data-theme="dark"] .sp-chipval { background: var(--surface-2); color: var(--text-main); }
