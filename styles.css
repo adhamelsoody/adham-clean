@@ -9367,3 +9367,48 @@ html[data-theme="dark"] .sp-kidrow { background: var(--surface-2); }
 }
 .sp-chipval button:hover { background: #b9c9c9; }
 html[data-theme="dark"] .sp-chipval { background: var(--surface-2); color: var(--text-main); }
+
+/* ============================================================
+   بطاقةُ «التصنيف والمرفقات» — ثلاثةُ حقولٍ كما في التصميم:
+   تصنيفٌ في حبّةٍ داخل الصندوق، ملاحظاتٌ، ومرفقٌ بمشبكٍ وزرِّ إضافة.
+   ============================================================ */
+
+/* ترويسةُ البطاقة: بطاقةُ تصنيفٍ رماديةٌ ناعمة */
+.sp-card.sp-clsf > .sp-cardhead > svg:first-child { background: #eef2f3; color: #3f5d5e; }
+
+/* الصندوقُ واحدٌ: القائمةُ شفّافةٌ تغطّيه، والحبّةُ فوقها */
+.sp-clsf .sp-chipsel {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  min-height: 48px; padding: 7px 14px 7px 40px;
+  border: 1.5px solid #dfe6e6; border-radius: 11px; background: #fff;
+  cursor: pointer;
+}
+.sp-clsf .sp-chipsel::after {
+  content: ""; position: absolute; inset-inline-end: 15px; top: 50%;
+  width: 9px; height: 9px; margin-top: -5px; pointer-events: none;
+  border-left: 1.8px solid #8aa0a1; border-bottom: 1.8px solid #8aa0a1;
+  transform: rotate(-45deg);
+}
+.sp-clsf .sp-chipsel:focus-within { border-color: #15a2a7; box-shadow: 0 0 0 3px rgba(21,162,167,.14); }
+.sp-clsf .sp-chipsel .sp-sel {
+  position: absolute; inset: 0; width: 100%; height: 100%; flex: none;
+  padding: 0; border: 0; border-radius: 11px;
+  background: transparent; color: transparent; opacity: 0; cursor: pointer;
+}
+.sp-clsf .sp-chipval { position: relative; z-index: 1; }
+.sp-chipph { font-size: 14.5px; color: #93a5a6; pointer-events: none; }
+
+/* المرفقُ: مشبكٌ يمينَ النصّ وزرٌّ دائريٌّ في الطرف المقابل */
+.sp-clsf .sp-file { cursor: pointer; }
+.sp-clsf .sp-file:hover { border-color: #b7cdcd; background: #f6fafa; }
+.sp-fileico {
+  width: 38px; height: 38px; border-radius: 50%; flex: none;
+  background: #eef2f3; color: #3f5d5e; display: grid; place-items: center;
+}
+.sp-filebtn { border-radius: 50%; }
+.sp-file .sp-fdel { display: none; }
+.sp-file.sp-has .sp-fdel { display: grid; }
+.sp-file.sp-has .sp-fadd { display: none; }
+
+html[data-theme="dark"] .sp-clsf .sp-chipsel { background: var(--surface-1); border-color: var(--border); }
+html[data-theme="dark"] .sp-fileico { background: var(--surface-2); color: var(--text-main); }

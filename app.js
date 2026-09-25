@@ -65,7 +65,10 @@ const ICONS = {
   freeze: 'M12 2v20M2 12h20M5 5l14 14M19 5L5 19',
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
   lock: 'M5 11h14a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7a2 2 0 012-2zM7 11V7a5 5 0 0110 0v4',
-  toggle: 'M16 7H8a5 5 0 000 10h8a5 5 0 000-10zM16 17a5 5 0 100-10 5 5 0 000 10z'
+  toggle: 'M16 7H8a5 5 0 000 10h8a5 5 0 000-10zM16 17a5 5 0 100-10 5 5 0 000 10z',
+  /* بطاقةُ التصنيف والمرفقات — بطاقةُ تصنيفٍ ومشبكُ ورق */
+  tag: 'M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01',
+  clip: 'M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48'
 };
 /* أيقونات مصمتة — تُرسم بالتعبئة لا بالحد */
 const ICONS_SOLID = {
@@ -29399,7 +29402,11 @@ window.spClassPick = function (sel) {
   const v = String(sel.value || "");
   const span = chip.querySelector("span");
   if (span) span.textContent = v;
-  chip.style.display = (v && v !== "—") ? "" : "none";
+  const set = (v && v !== "—");
+  chip.style.display = set ? "" : "none";
+  /* النصُّ البديل يظهر حين لا تصنيفَ — فلا يبقى الصندوقُ خالياً بلا معنى */
+  const ph = document.getElementById("sp_classPh");
+  if (ph) ph.style.display = set ? "none" : "";
 };
 window.spClassClear = function () {
   const sel = document.getElementById("sp_class");
@@ -29512,6 +29519,12 @@ window.spFilePick = function (input) {
 
     if (lbl) lbl.textContent = f.name;
 
+    /* الصندوقُ يعلن حالتَه فوراً: مشبكٌ ونصٌّ وزرُّ إزالةٍ بدل زرِّ الإضافة */
+    const box = document.getElementById("sp_fileBox");
+    if (box) box.classList.add("sp-has");
+    const hint = document.getElementById("sp_fileHint");
+    if (hint) hint.textContent = "اضغط للاستبدال";
+
   };
 
   rd.readAsDataURL(f);
@@ -29531,6 +29544,14 @@ window.spFileClear = function () {
   if (n) n.value = ""; if (d) d.value = "";
 
   if (lbl) lbl.textContent = "أرفق الملف";
+
+  const box = document.getElementById("sp_fileBox");
+  if (box) box.classList.remove("sp-has");
+  const hint = document.getElementById("sp_fileHint");
+  if (hint) hint.textContent = "اضغط لإرفاق ملف";
+
+  const inp = document.getElementById("sp_fileIn");
+  if (inp) { try { inp.value = ""; } catch (e) {} }
 
 };
 
@@ -29635,6 +29656,24 @@ function panelStudent(id, keepDraft) {
         ${spField("الجنسية", "sp_nat", s.nationality, "text")}
         ${spSelect("الجنس", "sp_gender", s.gender || "ذكر", ["ذكر", "أنثى"])}
         ${spField("تاريخ الميلاد", "sp_birth", s.birth, "date")}
+        ${spField("المدرسة", "sp_school", s.school, "text")}
+        <div class="sp-field">
+          <label for="sp_health">ملاحظات صحية</label>
+          <input id="sp_health" value="${esc(s.health || "")}"
+            placeholder="حساسية · دواء · ما يلزم معلّمه معرفته">
+          <small class="muted" style="font-size:11px">تظهر لمعلّمه في ملفّ الطالب</small>
+        </div>
+      </div>
+
+      ${photoField("sp_photo", s.photo || "", "صورة الطالب")}
+
+      <div class="sp-field sp-wide">
+        <label>وضع كبار السن</label>
+        <label class="switch" style="margin-top:2px">
+          <input type="checkbox"${s.elderly === true ? " checked" : ""}
+            onchange="window.elderlySet('${jsAttr(s.id)}',this.checked)">
+          <span class="slider"></span></label>
+        <small class="muted" style="font-size:11px">خطٌّ أكبر وقيودٌ أخفّ في شاشته</small>
       </div>
     </section>
 
@@ -29646,15 +29685,14 @@ function panelStudent(id, keepDraft) {
         ${spPhone("رقم واتس ولي الأمر", "sp_parent", s.parent === "—" ? "" : s.parent, s.parentCC)}
         ${spSelect("صلة ولي الأمر", "sp_rel", s.parentRel || "الأب", ["الأب", "الأم", "الأخ", "العم", "الخال", "أخرى"])}
         ${spField("البريد الإلكتروني", "sp_email", s.email, "email")}
+        ${spField("العنوان", "sp_addr", s.address, "text")}
       </div>
     </section>
 
 
-    <section class="sp-card sp-soft">
-      <div class="sp-cardhead">${ic("layers", 17)}
+    <section class="sp-card sp-soft sp-clsf">
+      <div class="sp-cardhead">${ic("tag", 17)}
         <div><h3>التصنيف والمرفقات</h3><p>تصنيف الطالب وملاحظاته وملفاته</p></div></div>
-
-      ${photoField("sp_photo", s.photo || "", "صورة الطالب")}
 
       <div class="sp-field sp-wide" style="margin-top:0">
         <label for="sp_class">تصنيف الطالب</label>
@@ -29665,59 +29703,43 @@ function panelStudent(id, keepDraft) {
           const cur2 = s.classification || s.grade || "—";
           /* الحبّةُ تعرض المختار ويُزال بنقرة، والقائمةُ خلفها كما هي —
              فلا يتغيّر ما يُقرأ عند الحفظ ولا تُكسر البيانات القديمة. */
+          const set2 = cur2 && cur2 !== "—";
           return `<div class="sp-chipsel">
-            <span class="sp-chipval" id="sp_classChip"
-              style="${cur2 && cur2 !== "—" ? "" : "display:none"}">
-              <span>${esc(cur2)}</span>
-              <button type="button" title="إزالة" onclick="window.spClassClear()">${ic("x", 12)}</button>
-            </span>
             <select id="sp_class" class="sp-sel" onchange="window.spClassPick(this)">${opts.map(o =>
               `<option${o === cur2 ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>
+            <span class="sp-chipval" id="sp_classChip" style="${set2 ? "" : "display:none"}">
+              <span>${esc(cur2)}</span>
+              <button type="button" title="إزالة التصنيف"
+                onclick="event.stopPropagation();window.spClassClear()">${ic("x", 12)}</button>
+            </span>
+            <span class="sp-chipph" id="sp_classPh"
+              style="${set2 ? "display:none" : ""}">اختر تصنيف الطالب</span>
           </div>`;
         })()}
       </div>
 
       <div class="sp-field sp-wide">
         <label for="sp_notes">ملاحظات</label>
-        <textarea id="sp_notes" rows="4" placeholder="أي ملاحظات حول الطالب…">${esc(s.notes || s.health || "")}</textarea>
+        <textarea id="sp_notes" rows="4" placeholder="أي ملاحظات حول الطالب…">${esc(s.notes || "")}</textarea>
       </div>
 
       <div class="sp-field sp-wide">
         <label>ملف مرفق للطالب</label>
-        <div class="sp-file" id="sp_fileBox">
-          <button type="button" class="sp-filebtn" onclick="document.getElementById('sp_fileIn').click()">
-            ${ic("plus", 16)}</button>
+        <div class="sp-file${s.fileName ? " sp-has" : ""}" id="sp_fileBox"
+          onclick="document.getElementById('sp_fileIn').click()">
+          <span class="sp-fileico">${ic("clip", 17)}</span>
           <div class="sp-filetxt">
             <strong id="sp_fileName">${esc((s.fileName || "أرفق الملف"))}</strong>
-            <small>${s.fileName ? "اضغط للاستبدال" : "اضغط لإرفاق ملف"}</small>
+            <small id="sp_fileHint">${s.fileName ? "اضغط للاستبدال" : "اضغط لإرفاق ملف"}</small>
           </div>
-          ${s.fileName ? `<button type="button" class="sp-act" title="إزالة"
-            onclick="window.spFileClear()">${ic("x", 15)}</button>` : ""}
+          <button type="button" class="sp-filebtn sp-fadd" title="إرفاق ملف"
+            onclick="event.stopPropagation();document.getElementById('sp_fileIn').click()">${ic("plus", 16)}</button>
+          <button type="button" class="sp-filebtn sp-fdel" title="إزالة الملف"
+            onclick="event.stopPropagation();window.spFileClear()">${ic("x", 15)}</button>
         </div>
         <input type="file" id="sp_fileIn" style="display:none" onchange="window.spFilePick(this)">
         <input type="hidden" id="sp_fileName_v" value="${esc(s.fileName || "")}">
         <input type="hidden" id="sp_fileData_v" value="${esc(s.fileData || "")}">
-      </div>
-
-      <div class="sp-grid" style="margin-top:14px">
-        ${spField("المدرسة", "sp_school", s.school, "text")}
-        ${spField("العنوان", "sp_addr", s.address, "text")}
-      </div>
-
-      <div class="sp-field sp-wide">
-        <label for="sp_health">ملاحظات صحية</label>
-        <input id="sp_health" value="${esc(s.health || "")}"
-          placeholder="حساسية · دواء · ما يلزم معلّمه معرفته">
-        <small class="muted" style="font-size:11px">تظهر لمعلّمه في ملفّ الطالب</small>
-      </div>
-
-      <div class="sp-field sp-wide">
-        <label>وضع كبار السن</label>
-        <label class="switch" style="margin-top:2px">
-          <input type="checkbox"${s.elderly === true ? " checked" : ""}
-            onchange="window.elderlySet('${jsAttr(s.id)}',this.checked)">
-          <span class="slider"></span></label>
-        <small class="muted" style="font-size:11px">خطٌّ أكبر وقيودٌ أخفّ في شاشته</small>
       </div>
     </section>
 
