@@ -29370,6 +29370,18 @@ window.spPhoneIn = function (el, ccId) {
 
 
 
+/* شارةُ الكاميرا تفتح منتقي الصورة — وهو في تبويب البيانات، فيُنتقل
+   إليه أوّلاً إن كان المعروضُ تبويبَ الخطة. */
+window.spPhotoPick = function (id) {
+  const inp = document.getElementById("sp_photo_input");
+  if (inp) { inp.click(); return; }
+  try { window.stuTabSet("info", id); } catch (e) { return; }
+  setTimeout(function () {
+    const i2 = document.getElementById("sp_photo_input");
+    if (i2) i2.click();
+  }, 80);
+};
+
 /* ---- أفعالُ ترويسة بطاقة الطالب ---- */
 
 window.spCopy = function (txt) {
@@ -29526,14 +29538,18 @@ function panelStudent(id, keepDraft) {
 
   const head = `<div class="sp-head">
     <div class="sp-id">
-      <div class="avatar sp-avatar">${initials(s.name)}</div>
+      <div class="sp-avwrap">
+        <div class="avatar sp-avatar">${s.photo
+          ? `<img src="${esc(s.photo)}" alt="">` : initials(s.name)}</div>
+        <button type="button" class="sp-avcam" title="تغيير صورة الطالب"
+          onclick="window.spPhotoPick('${jsAttr(s.id)}')">${ic("eye", 13)}</button>
+      </div>
       <div class="sp-idtext">
         <h2>${esc(s.name || "—")}</h2>
         <div class="sp-chips">
           ${chip("user", s.idNo || s.id)}
           ${chip("flag", s.nationality)}
           ${chip("book", circlesN + " حلقات")}
-          ${statusBadge(s.status || "نشط")}
         </div>
       </div>
     </div>
@@ -29565,7 +29581,7 @@ function panelStudent(id, keepDraft) {
       <button type="button" class="btn btn-ghost btn-sm"
         onclick="window.spCopy('${jsAttr(pubLink)}')">${ic("doc", 15)} نسخ الرابط</button>
       <button type="button" class="btn btn-ghost btn-sm" title="فتح موقع الطالب وحسابه"
-        onclick="window.spLocate('${jsAttr(s.id)}')">${ic("arrowUp", 15)} موقع الطالب وحسابه</button>
+        onclick="window.spLocate('${jsAttr(s.id)}')">${ic("arrowUp", 15)} فتح</button>
     </div>
   </div>`;
 
@@ -29789,8 +29805,6 @@ function panelStudent(id, keepDraft) {
         </div>
       </div>
     </section>
-
-    ${spPlanLiveCard(s)}
 
     <div class="sp-stats sp-wide2">
       ${statCard("مؤشر الالتزام", lateN ? "متأخر" : "منتظم",

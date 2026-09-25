@@ -9304,3 +9304,15 @@ html[data-theme="dark"] .sp-kidrow { background: var(--surface-2); }
 /* صفُّ الابتداء: كان الحقلُ يمتدّ على العرض كلِّه فيبتعد عن عدّاده،
    وفي التصميم يقف عند ثلث البطاقة والعدّادُ بجواره. */
 .sp-card .sp-startrow { grid-template-columns: minmax(200px, 360px) auto; justify-content: start; }
+
+/* صورةُ الطالب في الترويسة وشارةُ تغييرها */
+.sp-avwrap { position: relative; flex: none; }
+.sp-avwrap .sp-avatar { overflow: hidden; }
+.sp-avwrap .sp-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sp-avcam {
+  position: absolute; inset-inline-start: -2px; bottom: -2px;
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid var(--surface, #fff); background: #17b3b8; color: #fff;
+  display: grid; place-items: center; cursor: pointer; padding: 0;
+}
+.sp-avcam:hover { background: #0f6f72; }
