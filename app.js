@@ -29649,36 +29649,6 @@ function panelStudent(id, keepDraft) {
       </div>
     </section>
 
-    <section class="sp-card sp-soft">
-      <div class="sp-cardhead">${ic("grid", 17)}
-        <div><h3>الحلقة</h3><p>حلقةُ الطالب وحلقاتُه الإضافية ووضعُ تسجيله</p></div></div>
-      <div class="sp-grid">
-        <div class="field"><label for="sp_circle">الحلقة</label>
-          <select id="sp_circle">${(cur("circles") || []).length
-            ? (cur("circles") || []).map(c =>
-                `<option${c.name === s.circle ? " selected" : ""}>${esc(c.name)}</option>`).join("")
-            : `<option>—</option>`}</select></div>
-        <div class="field"><label for="sp_attType2">نوع الدوام</label>
-          <select id="sp_attType2">${["دوام كامل", "دوام جزئي"].map(o =>
-            `<option${o === (s.attType || "دوام كامل") ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>
-        <div class="field"><label for="sp_mode">وضع الطالب</label>
-          <select id="sp_mode">
-            <option value=""${s.attOnly ? "" : " selected"}>بخطة تسميع</option>
-            <option value="att"${s.attOnly ? " selected" : ""}>تحضير فقط — بلا خطة</option>
-          </select></div>
-      </div>
-      <div class="sp-field sp-wide">
-        <label for="sp_circles">حلقات إضافية</label>
-        <select id="sp_circles" multiple size="3">
-          ${(cur("circles") || []).map(c => {
-            const on = (typeof studentCircleIds === "function" ? studentCircleIds(s) : [])
-              .indexOf(String(c.id)) > -1;
-            return `<option value="${esc(c.id)}"${on ? " selected" : ""}>${esc(c.name)}</option>`;
-          }).join("")}
-        </select>
-        <small class="muted" style="font-size:11px">تحضيرُه مستقلٌّ في كلّ حلقة، وخطتُه ومصحفُه واحد</small>
-      </div>
-    </section>
 
     <section class="sp-card sp-soft">
       <div class="sp-cardhead">${ic("layers", 17)}
@@ -29751,7 +29721,7 @@ function panelStudent(id, keepDraft) {
       </div>
     </section>
 
-    ${spProcCard(s)}`;
+`;
 
   /* ---- تبويب المستوى وخطة التسميع ---- */
   const pl = bplOf(s);
@@ -29928,7 +29898,40 @@ function panelStudent(id, keepDraft) {
         <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("spRevDir", pl.revDir, PLAN_DIR_REV)}</div>
       </div>
       ${startRow("spRev", (s.plan || {}).revSura, (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
-    </section>`;
+    </section>
+
+    <section class="sp-card sp-soft">
+      <div class="sp-cardhead">${ic("grid", 17)}
+        <div><h3>الحلقة</h3><p>حلقةُ الطالب وحلقاتُه الإضافية ووضعُ تسجيله</p></div></div>
+      <div class="sp-grid">
+        <div class="field"><label for="sp_circle">الحلقة</label>
+          <select id="sp_circle">${(cur("circles") || []).length
+            ? (cur("circles") || []).map(c =>
+                `<option${c.name === s.circle ? " selected" : ""}>${esc(c.name)}</option>`).join("")
+            : `<option>—</option>`}</select></div>
+        <div class="field"><label for="sp_attType2">نوع الدوام</label>
+          <select id="sp_attType2">${["دوام كامل", "دوام جزئي"].map(o =>
+            `<option${o === (s.attType || "دوام كامل") ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>
+        <div class="field"><label for="sp_mode">وضع الطالب</label>
+          <select id="sp_mode">
+            <option value=""${s.attOnly ? "" : " selected"}>بخطة تسميع</option>
+            <option value="att"${s.attOnly ? " selected" : ""}>تحضير فقط — بلا خطة</option>
+          </select></div>
+      </div>
+      <div class="sp-field sp-wide">
+        <label for="sp_circles">حلقات إضافية</label>
+        <select id="sp_circles" multiple size="3">
+          ${(cur("circles") || []).map(c => {
+            const on = (typeof studentCircleIds === "function" ? studentCircleIds(s) : [])
+              .indexOf(String(c.id)) > -1;
+            return `<option value="${esc(c.id)}"${on ? " selected" : ""}>${esc(c.name)}</option>`;
+          }).join("")}
+        </select>
+        <small class="muted" style="font-size:11px">تحضيرُه مستقلٌّ في كلّ حلقة، وخطتُه ومصحفُه واحد</small>
+      </div>
+    </section>
+
+    ${spProcCard(s)}`;
 
   openPanel(`<div class="panel-back" data-action="close-panel"></div>
     <aside class="side-panel sp-page" data-stop>
