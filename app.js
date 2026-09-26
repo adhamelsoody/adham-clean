@@ -32669,6 +32669,40 @@ function denyReason(coll, u, rec) {
          "» ليست ضمن ما أُسند إلى حسابك";
 }
 
+/* =========================================================================
+   نطاقٌ عالق في حساب المدير — إصلاحُه
+   -------------------------------------------------------------------------
+   المتصفّحُ والخادمُ كانا يختلفان في معنى «حسابٌ بلا نطاق»:
+     • app.js: المالكُ والمديرُ بلا نطاقٍ ما لم يُسنَد إليهما scopeIds قصداً،
+       فحقلا mosqueId/complexId المفردان أثرُ مزامنةٍ لا اختيار — فيريان
+       كلَّ الطلاب.
+     • firestore.rules: أيُّ قيمةٍ في الحقلين المفردين تحصر الحساب، فيُرفض
+       حفظُ كلِّ سجلٍّ خارجها.
+   فيرى المديرُ الطالبَ ويفتحه ويحرّره، ثمّ يُردّ عند الحفظ.
+
+   العلاجُ محوُ الحقلين العالقين من سجلّه هو — ولا يُمنح بذلك شيءٌ جديد:
+   المتصفّحُ يعامله أصلاً معاملةَ غير المحصور. ومشروطٌ بألّا يكون له
+   scopeIds، فالحصرُ المقصودُ لا يُمَسّ، وبأن يكون دورُه admin أو owner.
+   ========================================================================= */
+let SCOPE_FIX_TRIED = false;
+
+window.fixMyScope = function () {
+  const u = (STATE && STATE.user) || {};
+  const role = String(u.role || "");
+  if (role !== "admin" && role !== "owner") return false;
+  if (Array.isArray(u.scopeIds) && u.scopeIds.length) return false;   /* حصرٌ مقصود */
+
+  const rec = (Array.isArray(DB.users) ? DB.users : [])
+    .find(x => String(x.uid || x.id) === String(u.uid || u.id));
+  if (!rec) return false;
+  if (!rec.mosqueId && !rec.complexId) return false;
+
+  rec.mosqueId = ""; rec.complexId = "";
+  u.mosqueId = ""; u.complexId = "";
+  persistSet("users", rec);
+  return true;
+};
+
 function persistFail(where, coll, err, rec) {
   console.warn(where, coll, err);
   const denied = err && (err.code === "permission-denied" || err.code === "unauthenticated");
@@ -32695,6 +32729,20 @@ function persistFail(where, coll, err, rec) {
       الحلّ: "امسح complexId/mosqueId من مستندك في users، أو انشر القواعد " +
              "بأمر firebase deploy --only firestore:rules"
     });
+
+    /* نطاقٌ عالقٌ في حساب المدير: يُصلَح مرّةً ثمّ يُطلَب إعادةُ الحفظ */
+    if (!SCOPE_FIX_TRIED && coll !== "users") {
+      SCOPE_FIX_TRIED = true;
+      let fixed = false;
+      try { fixed = window.fixMyScope(); } catch (e) { fixed = false; }
+      if (fixed) {
+        if (typeof showToast === "function") {
+          showToast("كان في حسابك حصرٌ بمنشأةٍ من أثر مزامنةٍ قديمة — أُزيل الآن. " +
+                    "اضغط «حفظ التعديلات» مرّةً أخرى.", "warn");
+        }
+        return;
+      }
+    }
 
     const why = denyReason(coll, u, rec);
     if (typeof showToast === "function") {
