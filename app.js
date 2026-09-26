@@ -8174,6 +8174,10 @@ const QTY_NUMERIC = ["عدد أوجه", "أسطر", "أجزاء"];
 function qtyIsNum(t) { return QTY_NUMERIC.indexOf(String(t || "")) > -1; }
 function qtyListFor(t) { return QTY_BY_TYPE[String(t || "")] || PLAN_QTY; }
 
+/* عنوانُ الحقل الرقميّ باسم وحدته، فلا يبقى «الكمية» مبهماً أمام عدّاد */
+const QTY_NUM_LABEL = { "عدد أوجه": "عدد الأوجه", "أسطر": "عدد الأسطر", "أجزاء": "عدد الأجزاء" };
+function qtyNumLabel(t) { return QTY_NUM_LABEL[String(t || "")] || "الكمية"; }
+
 const PLAN_DIR = ["من الفاتحة", "من الناس"];
 /* أُلغي «تخصيصي» من اتجاه المراجعة: الاتجاهُ صار يحكم ترتيبَ السور فعلاً،
    فالخيارُ الثالث لا معنى له. والخططُ القديمة المحفوظة عليه تُقرأ كما هي
@@ -10783,14 +10787,20 @@ function plQtyCtl(k, val, type) {
   const v = String(val == null ? "" : val);
   const id = "pl_q_" + k;
   if (qtyIsNum(type)) {
-    return `<input id="${esc(id)}" type="number" min="0" step="1" dir="ltr"
-      value="${esc(v.replace(/[^\d.]/g, ""))}" placeholder="اكتب العدد" oninput="window.plDirty()">`;
+    return `<label for="${esc(id)}">${esc(qtyNumLabel(type))}</label>
+      <div class="pl-step">
+        <button type="button" onclick="window.plNum('${esc(id)}', 1)">+</button>
+        <input id="${esc(id)}" type="number" min="0" value="${esc(v.replace(/\D+/g, "")) || 0}"
+          oninput="window.plDirty()">
+        <button type="button" onclick="window.plNum('${esc(id)}', -1)">−</button>
+      </div>`;
   }
   const list = qtyListFor(type).slice();
   if (v && list.indexOf(v) < 0) list.unshift(v);
-  return `<select id="${esc(id)}" onchange="window.plDirty()">
-    <option value=""${v ? "" : " selected"}>— غير محدَّدة —</option>
-    ${list.map(q => `<option${q === v ? " selected" : ""}>${esc(q)}</option>`).join("")}</select>`;
+  return `<label for="${esc(id)}">الكمية</label>
+    <select id="${esc(id)}" onchange="window.plDirty()">
+      <option value=""${v ? "" : " selected"}>— غير محدَّدة —</option>
+      ${list.map(q => `<option${q === v ? " selected" : ""}>${esc(q)}</option>`).join("")}</select>`;
 }
 
 function sysFields(pid, def) {
@@ -10804,8 +10814,8 @@ function sysFields(pid, def) {
   return `<div class="pl-fields">
     ${has("qtyType") ? `<div class="pl-f pl-wide"><label>نوع الكمية</label>
       ${seg("pl_qt_" + def.k, v.qtyType, SYS_QTY_TYPES)}</div>` : ""}
-    ${has("qty") ? `<div class="pl-f"><label>الكمية</label>
-      <div id="pl_qbox_${esc(def.k)}">${plQtyCtl(def.k, v.qty, v.qtyType)}</div></div>` : ""}
+    ${has("qty") ? `<div class="pl-f" id="pl_qbox_${esc(def.k)}">${
+      plQtyCtl(def.k, v.qty, v.qtyType)}</div>` : ""}
     ${has("qtyNum") ? `<div class="pl-f"><label>الكمية</label>
       <div class="pl-step">
         <button type="button" onclick="window.plNum('pl_n_${esc(def.k)}', 1)">+</button>
@@ -29453,14 +29463,19 @@ window.spPhoneFocus = function () {};
 function spQtyCtl(id, val, type) {
   const v = String(val == null ? "" : val);
   if (qtyIsNum(type)) {
-    return `<input id="${id}" class="sp-sel" type="number" min="0" step="1" dir="ltr"
-      value="${esc(v.replace(/[^\d.]/g, ""))}" placeholder="اكتب العدد">`;
+    return `<label for="${id}">${esc(qtyNumLabel(type))}</label>
+      <div class="sp-step">
+        <button type="button" onclick="window.spNum('${id}', 1)">+</button>
+        <input id="${id}" type="number" min="0" value="${esc(v.replace(/\D+/g, "")) || 0}">
+        <button type="button" onclick="window.spNum('${id}', -1)">−</button>
+      </div>`;
   }
   const list = qtyListFor(type).slice();
   if (v && list.indexOf(v) < 0) list.unshift(v);
-  return `<select id="${id}" class="sp-sel">
-    <option value=""${v ? "" : " selected"}>— غير محدَّدة —</option>
-    ${list.map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  return `<label for="${id}">الكمية</label>
+    <select id="${id}" class="sp-sel">
+      <option value=""${v ? "" : " selected"}>— غير محدَّدة —</option>
+      ${list.map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
 }
 
 /* تغييرُ النوع يُعيد بناء حقل الكمية وحدَه — لا البطاقة كلَّها */
@@ -30054,8 +30069,7 @@ function panelStudent(id, keepDraft) {
       <div class="sp-grid">
         <div class="sp-field"><label>نوع الكمية</label>${qtySel("spHifzType", pl.hifzType, PLAN_QTY_TYPE,
           "window.spQtyType(this,'spHifzQty')")}</div>
-        <div class="sp-field"><label>الكمية</label>
-          <div id="spHifzQtyBox">${spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div></div>
+        <div class="sp-field" id="spHifzQtyBox">${spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div>
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
       ${startRow("spHifz", (s.plan || {}).hifzSura, (s.plan || {}).hifzAyah, "spHifzDir", pl.hifzDir)}
@@ -30086,8 +30100,7 @@ function panelStudent(id, keepDraft) {
       <div class="sp-grid">
         <div class="sp-field"><label>نوع الكمية</label>${qtySel("spRevType", pl.revType, PLAN_QTY_TYPE,
           "window.spQtyType(this,'spRevQty')")}</div>
-        <div class="sp-field"><label>الكمية</label>
-          <div id="spRevQtyBox">${spQtyCtl("spRevQty", pl.revQty, pl.revType)}</div></div>
+        <div class="sp-field" id="spRevQtyBox">${spQtyCtl("spRevQty", pl.revQty, pl.revType)}</div>
         <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("spRevDir", pl.revDir, PLAN_DIR_REV)}</div>
       </div>
       ${startRow("spRev", (s.plan || {}).revSura, (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
