@@ -9119,7 +9119,8 @@ body.panel-open .side-panel.sp-page .sp-body { padding-inline: 18px; }
 /* بطاقةٌ فيها جدولٌ عريض (الإجراءات مثلاً) كانت تفرض عرضَها الأدنى على
    عمود الشبكة كلِّه فيخرج المحتوى عن الشاشة في الجوّال. صفرُ العرضِ الأدنى
    يردُّها إلى عرض العمود، ويتكفّل .pt-scroll بتمرير الجدول أفقيًّا. */
-.sp-page .sp-body > * { min-width: 0; }
+.sp-page .sp-body > *,
+.sp-page .sp-body > .sp-sec > * { min-width: 0; }
 @media (max-width: 1100px) {
   body.panel-open .side-panel.sp-page .sp-body { padding-inline: 14px; }
 }
@@ -9299,7 +9300,8 @@ html[data-theme="dark"] .sp-kidrow { background: var(--surface-2); }
 
 /* كلُّ ما وُسِم sp-wide2 يمتدّ على عرض البطاقة، لا البطاقاتُ وحدَها:
    شبكةُ الإحصاء وعناوينُ الأقسام كانت تنحشر في عمودٍ واحدٍ من ثلاثة. */
-.sp-body > .sp-wide2 { grid-column: 1 / -1; }
+.sp-body > .sp-wide2,
+.sp-body > .sp-sec > .sp-wide2 { grid-column: 1 / -1; }
 
 /* صفُّ الابتداء: كان الحقلُ يمتدّ على العرض كلِّه فيبتعد عن عدّاده،
    وفي التصميم يقف عند ثلث البطاقة والعدّادُ بجواره. */
@@ -9424,3 +9426,11 @@ html[data-theme="dark"] .sp-fileico { background: var(--surface-2); color: var(-
 }
 /* اسمُ الجنسية طويلٌ — يُضيَّق حشوُه قليلاً فلا يُقصّ في نصف الصفّ */
 .sp-idcard #sp_nat { padding-inline: 8px; font-size: 14px; text-overflow: ellipsis; }
+
+/* ============================================================
+   قسما البطاقة يعيشان معاً في الصفحة، والنقرةُ تُظهر أحدَهما.
+   display:contents يُبقي بطاقاتِهما أبناءً مباشرين للشبكة، فلا
+   يتغيّر تخطيطٌ ولا تُعاد الحسابات عند التنقّل.
+   ============================================================ */
+.sp-body > .sp-sec { display: contents; }
+.sp-body > .sp-sec.off { display: none; }

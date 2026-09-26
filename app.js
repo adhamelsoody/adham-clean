@@ -29232,14 +29232,35 @@ function stuDraftKeep(id) {
   if (Object.keys(c.plan).length) STU_DRAFT.plan = Object.assign({}, STU_DRAFT.plan, c.plan);
 }
 
+/* =====================================================================
+   التنقّلُ بين التبويبين بلا إعادة رسم
+   ---------------------------------------------------------------------
+   كان كلُّ نقرةٍ تُعيد بناء البطاقة كلِّها: الترويسةُ والرابطُ والتبويبان
+   وقسماهما معاً — ومنه اللاجُّ المحسوس. والقسمان يُرسمان الآن مرّةً
+   واحدةً عند الفتح، والنقرةُ تُظهر أحدَهما وتُخفي الآخر، فلا حسابَ
+   ولا إعادةَ بناءٍ ولا فقدانَ لما كُتب في الحقول.
+   ===================================================================== */
 window.stuTabSet = function (k, id) {
-  /* الخطأُ هنا كان يُسقط الرسمَ صامتاً فتبدو البطاقةُ كأنها اختفت.
-     يُعلَن الآن بنصّه، ويُعاد الرسمُ على التبويب السابق فلا يضيع شيء. */
   const prev = STATE.stuTab;
+  const want = k === "plan" ? "plan" : "info";
   try {
-    stuDraftKeep(id);
-    STATE.stuTab = k === "plan" ? "plan" : "info";
-    panelStudent(id);
+    const info = document.getElementById("spSecInfo");
+    const plan = document.getElementById("spSecPlan");
+    /* إن لم يكن القسمان مرسومين (بطاقةٌ قديمةٌ في الصفحة) فالرسمُ سبيلُنا */
+    if (!info || !plan) { stuDraftKeep(id); STATE.stuTab = want; panelStudent(id); return; }
+
+    STATE.stuTab = want;
+    info.classList.toggle("off", want !== "info");
+    plan.classList.toggle("off", want !== "plan");
+
+    const tabs = document.querySelectorAll(".sp-tabs .sp-tab");
+    if (tabs.length === 2) {
+      tabs[0].classList.toggle("on", want === "info");
+      tabs[1].classList.toggle("on", want === "plan");
+    }
+    /* الجسمُ يعود إلى أعلاه كما لو فُتح التبويبُ من جديد */
+    const body = document.querySelector("#panelRoot .sp-body");
+    if (body) { try { body.scrollTop = 0; } catch (e2) {} }
   } catch (e) {
     STATE.stuTab = prev;
     try { showToast("تعذّر فتح التبويب: " + ((e && e.message) || e), "warn"); } catch (e2) {}
@@ -29398,6 +29419,8 @@ window.spPhoneIn = function (el, ccId) {
 window.spPhotoPick = function (id) {
   const inp = document.getElementById("sp_photo_input");
   if (inp) { inp.click(); return; }
+  /* لم يعد للصورة حقلٌ في البطاقات، فمنتقيها في الترويسة. وهذا المسارُ
+     احتياطٌ لو رُسمت بطاقةٌ قديمةٌ لا ترويسةَ فيها. */
   try { window.stuTabSet("info", id); } catch (e) { return; }
   setTimeout(function () {
     const i2 = document.getElementById("sp_photo_input");
@@ -29594,10 +29617,13 @@ function panelStudent(id, keepDraft) {
   const head = `<div class="sp-head">
     <div class="sp-id">
       <div class="sp-avwrap">
-        <div class="avatar sp-avatar">${s.photo
+        <div class="avatar sp-avatar" id="sp_photo_av">${s.photo
           ? `<img src="${esc(s.photo)}" alt="">` : initials(s.name)}</div>
         <button type="button" class="sp-avcam" title="تغيير صورة الطالب"
           onclick="window.spPhotoPick('${jsAttr(s.id)}')">${ic("eye", 13)}</button>
+        <!-- منتقي الصورة في الترويسة نفسِها: لا يعتمد على بطاقةٍ قد تُنقل أو تُحذف -->
+        <input type="file" id="sp_photo_input" accept="image/*" style="display:none"
+          onchange="window.photoPick(this, 'sp_photo')">
       </div>
       <div class="sp-idtext">
         <h2>${esc(s.name || "—")}</h2>
@@ -29755,7 +29781,7 @@ function panelStudent(id, keepDraft) {
       </div>
     </section>
 
-`;
+    ${spSafe(() => spProcCard(s), "الإجراءات المسجَّلة على الطالب")}`;
 
   /* ---- تبويب المستوى وخطة التسميع ---- */
   const pl = bplOf(s);
@@ -29829,6 +29855,36 @@ function panelStudent(id, keepDraft) {
       </div>
     </section>
 
+    <section class="sp-card sp-soft sp-wide2">
+      <div class="sp-cardhead">${ic("grid", 17)}
+        <div><h3>الحلقة</h3><p>حلقةُ الطالب وحلقاتُه الإضافية ووضعُ تسجيله</p></div></div>
+      <div class="sp-grid">
+        <div class="field"><label for="sp_circle">الحلقة</label>
+          <select id="sp_circle">${(cur("circles") || []).length
+            ? (cur("circles") || []).map(c =>
+                `<option${c.name === s.circle ? " selected" : ""}>${esc(c.name)}</option>`).join("")
+            : `<option>—</option>`}</select></div>
+        <div class="field"><label for="sp_attType2">نوع الدوام</label>
+          <select id="sp_attType2">${["دوام كامل", "دوام جزئي"].map(o =>
+            `<option${o === (s.attType || "دوام كامل") ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>
+        <div class="field"><label for="sp_mode">وضع الطالب</label>
+          <select id="sp_mode">
+            <option value=""${s.attOnly ? "" : " selected"}>بخطة تسميع</option>
+            <option value="att"${s.attOnly ? " selected" : ""}>تحضير فقط — بلا خطة</option>
+          </select></div>
+      </div>
+      <div class="sp-field sp-wide">
+        <label for="sp_circles">حلقات إضافية</label>
+        <select id="sp_circles" multiple size="3">
+          ${(cur("circles") || []).map(c => {
+            const on = (typeof studentCircleIds === "function" ? studentCircleIds(s) : [])
+              .indexOf(String(c.id)) > -1;
+            return `<option value="${esc(c.id)}"${on ? " selected" : ""}>${esc(c.name)}</option>`;
+          }).join("")}
+        </select>
+        <small class="muted" style="font-size:11px">تحضيرُه مستقلٌّ في كلّ حلقة، وخطتُه ومصحفُه واحد</small>
+      </div>
+    </section>
     <section class="sp-card sp-wide2">
       <div class="sp-cardhead" style="border-bottom:0;padding-bottom:0;margin-bottom:0">
         ${ic("book", 17)}
@@ -29882,7 +29938,7 @@ function panelStudent(id, keepDraft) {
     <section class="sp-card sp-wide2">
       <div class="sp-cardhead">${ic("calendar", 17)}
         <div><h3>أيام الخطة الأسبوعية</h3><p>الأيام التي يُسمّع فيها الطالب خطته</p></div>
-        <span class="sp-count">${days.length} أيام</span></div>
+        <span class="sp-count" id="spDaysCount">${days.length} أيام</span></div>
       <div class="sp-days">${dayBtns}</div>
     </section>
 
@@ -29934,64 +29990,7 @@ function panelStudent(id, keepDraft) {
       ${startRow("spRev", (s.plan || {}).revSura, (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
     </section>
 
-    <section class="sp-card sp-soft">
-      <div class="sp-cardhead">${ic("grid", 17)}
-        <div><h3>الحلقة</h3><p>حلقةُ الطالب وحلقاتُه الإضافية ووضعُ تسجيله</p></div></div>
-      <div class="sp-grid">
-        <div class="field"><label for="sp_circle">الحلقة</label>
-          <select id="sp_circle">${(cur("circles") || []).length
-            ? (cur("circles") || []).map(c =>
-                `<option${c.name === s.circle ? " selected" : ""}>${esc(c.name)}</option>`).join("")
-            : `<option>—</option>`}</select></div>
-        <div class="field"><label for="sp_attType2">نوع الدوام</label>
-          <select id="sp_attType2">${["دوام كامل", "دوام جزئي"].map(o =>
-            `<option${o === (s.attType || "دوام كامل") ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>
-        <div class="field"><label for="sp_mode">وضع الطالب</label>
-          <select id="sp_mode">
-            <option value=""${s.attOnly ? "" : " selected"}>بخطة تسميع</option>
-            <option value="att"${s.attOnly ? " selected" : ""}>تحضير فقط — بلا خطة</option>
-          </select></div>
-      </div>
-      <div class="sp-field sp-wide">
-        <label for="sp_circles">حلقات إضافية</label>
-        <select id="sp_circles" multiple size="3">
-          ${(cur("circles") || []).map(c => {
-            const on = (typeof studentCircleIds === "function" ? studentCircleIds(s) : [])
-              .indexOf(String(c.id)) > -1;
-            return `<option value="${esc(c.id)}"${on ? " selected" : ""}>${esc(c.name)}</option>`;
-          }).join("")}
-        </select>
-        <small class="muted" style="font-size:11px">تحضيرُه مستقلٌّ في كلّ حلقة، وخطتُه ومصحفُه واحد</small>
-      </div>
-    </section>
-
-    <section class="sp-card sp-soft sp-extra">
-      <div class="sp-cardhead">${ic("doc", 17)}
-        <div><h3>بيانات إضافية</h3><p>صورتُه ومدرستُه وما يلزم معلّمَه معرفتُه</p></div></div>
-
-      ${photoField("sp_photo", s.photo || "", "صورة الطالب")}
-
-      <div class="sp-grid" style="margin-top:14px">
-        ${spField("المدرسة", "sp_school", s.school, "text")}
-        <div class="sp-field">
-          <label for="sp_health">ملاحظات صحية</label>
-          <input id="sp_health" value="${esc(s.health || "")}"
-            placeholder="حساسية · دواء · ما يلزم معلّمه معرفته">
-          <small class="muted" style="font-size:11px">تظهر لمعلّمه في ملفّ الطالب</small>
-        </div>
-      </div>
-
-      <div class="sp-field sp-wide">
-        <label>وضع كبار السن</label>
-        <label class="switch" style="margin-top:2px">
-          <input type="checkbox"${s.elderly === true ? " checked" : ""}
-            onchange="window.elderlySet('${jsAttr(s.id)}',this.checked)">
-          <span class="slider"></span></label>
-        <small class="muted" style="font-size:11px">خطٌّ أكبر وقيودٌ أخفّ في شاشته</small>
-      </div>
-    </section>
-
-    ${spProcCard(s)}`;
+`;
 
   openPanel(`<div class="panel-back" data-action="close-panel"></div>
     <aside class="side-panel sp-page" data-stop>
@@ -29999,7 +29998,8 @@ function panelStudent(id, keepDraft) {
       ${linkRow}
       ${tabs}
       <div class="panel-body sp-body">
-        ${tab === "plan" ? secPlan : secInfo}
+        <div class="sp-sec${tab === "info" ? "" : " off"}" id="spSecInfo">${secInfo}</div>
+        <div class="sp-sec${tab === "plan" ? "" : " off"}" id="spSecPlan">${secPlan}</div>
       </div>
       <div class="sp-foot">
         <button class="btn btn-primary sp-save" onclick="window.stuSave('${jsAttr(s.id)}')">
@@ -30019,7 +30019,10 @@ window.spDay = function (btn, day) {
   btn.classList.toggle("on");
   const box = btn.parentElement;
   const n = box ? box.querySelectorAll(".sp-day.on").length : 0;
-  const c = document.querySelector(".sp-count");
+  /* عدّادُ الأيام بعينه: القسمان معروضان معاً، و«أوّلُ sp-count» كان
+     يقع على عدّاد الإجراءات فيكتب فيه «٣ أيام». */
+  const c = document.getElementById("spDaysCount")
+         || (box && box.closest(".sp-card") ? box.closest(".sp-card").querySelector(".sp-count") : null);
   if (c) c.textContent = n + " أيام";
 };
 
@@ -30144,6 +30147,21 @@ function spSyncEnginePlan(st) {
    ========================================================================= */
 
 /* ---- الإجراءات المسجَّلة على هذا الطالب وحدَه ---- */
+/* بطاقةٌ تعطبُ لا تُسقط البطاقةَ كلَّها: يُعلَن عطبُها في مكانها وبتنبيه،
+   وسائرُ الأقسام تُرسم. كان الخطأُ قبلَها يمنع فتحَ البطاقة أصلاً. */
+function spSafe(fn, name) {
+  try { return fn(); }
+  catch (e) {
+    try { showToast("تعذّر فتح التبويب: " + ((e && e.message) || e), "warn"); } catch (e2) {}
+    try { console.error("panelStudent/" + name + ":", e); } catch (e2) {}
+    return `<section class="sp-card sp-wide2">
+      <div class="sp-cardhead">${ic("alert", 17)}
+        <div><h3>${esc(name)}</h3><p>تعذّر عرضُ هذا القسم</p></div></div>
+      ${noteCard("حدث عطبٌ أثناء بناء هذا القسم: " + esc(String((e && e.message) || e)))}
+    </section>`;
+  }
+}
+
 function spProcCard(s) {
   const sid = String(s.id);
   const rows = (cur("procLog") || [])
