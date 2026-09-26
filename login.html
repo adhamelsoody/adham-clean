@@ -110,9 +110,10 @@
     <p class="sub">نظام إدارة الحلقات القرآنية — تسجيل الدخول</p>
     <div class="err" id="loginErr"></div>
     <div class="field">
-      <label for="email">رقم الهوية / البريد</label>
-      <input type="text" id="email" required dir="ltr" placeholder="رقم الهوية أو البريد الإلكتروني"
-             autocomplete="username" inputmode="text">
+      <label for="email">رقم الهوية</label>
+      <input type="text" id="email" required dir="ltr" placeholder="رقم الهوية"
+             autocomplete="username" inputmode="numeric" maxlength="15"
+             oninput="window.loginIdIn && window.loginIdIn(this)">
     </div>
     <div class="field">
       <label for="pass">كلمة المرور</label>
@@ -165,11 +166,26 @@
     function showErr(msg) { errEl.textContent = msg; errEl.classList.add("show"); }
     function hideErr() { errEl.classList.remove("show"); }
 
+    /* الدخولُ برقم الهوية: تُقبل الأرقامُ وحدَها، وتُحوَّل الأرقامُ العربية
+       (٠١٢…) إلى لاتينيةٍ لأنّ لوحةَ المفاتيح العربية تكتبها هكذا.
+       ومن كان حسابُه القديمُ ببريدٍ لا هويةَ له يظلّ يدخل ببريده — فلا
+       يُحبس أحدٌ خارج النظام — دون أن يُعلَن ذلك في الواجهة. */
+    window.loginIdIn = function (el) {
+      let v = String(el.value || "");
+      v = v.replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660))
+           .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x06F0));
+      if (v.indexOf("@") < 0) v = v.replace(/[^0-9]/g, "").slice(0, 15);
+      if (v !== el.value) {
+        el.value = v;
+        try { el.setSelectionRange(v.length, v.length); } catch (e) {}
+      }
+    };
+
     function msgFor(err) {
       const c = (err && err.code) || "";
-      if (c.includes("wrong-password") || c.includes("invalid-credential")) return "البريد أو كلمة المرور غير صحيحة.";
-      if (c.includes("user-not-found")) return "لا يوجد حساب بهذا البريد.";
-      if (c.includes("invalid-email")) return "صيغة البريد غير صحيحة.";
+      if (c.includes("wrong-password") || c.includes("invalid-credential")) return "رقم الهوية أو كلمة المرور غير صحيحة.";
+      if (c.includes("user-not-found")) return "لا يوجد حساب بهذا الرقم.";
+      if (c.includes("invalid-email")) return "رقم الهوية غير صحيح.";
       if (c.includes("too-many-requests")) return "محاولات كثيرة — انتظر قليلاً.";
       if (c.includes("network")) return "تعذّر الاتصال بالشبكة.";
       return "تعذّر تسجيل الدخول. حاول مجدداً.";
@@ -259,7 +275,7 @@
         return;
       }
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(raw)) {
-        showErr("اكتب بريدك الإلكتروني في الخانة أعلاه ثم اضغط «نسيت كلمة المرور؟».");
+        showErr("اكتب رقم هويتك في الخانة أعلاه ثم اضغط «نسيت كلمة المرور؟».");
         return;
       }
       try {
@@ -283,8 +299,17 @@
 
       document.getElementById("loginForm").addEventListener("submit", async (e) => {
         e.preventDefault(); hideErr();
-        const raw = document.getElementById("email").value.trim();
+        const el0 = document.getElementById("email");
+        try { window.loginIdIn(el0); } catch (e) {}
+        const raw = el0.value.trim();
         const pass = document.getElementById("pass").value;
+
+        /* لا رقمَ ولا بريدَ قديم: تُقال العلّةُ ولا يُرسَل طلبُ دخولٍ فاشل */
+        if (!/^[0-9]{6,15}$/.test(raw) && raw.indexOf("@") < 0) {
+          showErr("أدخل رقم الهوية — أرقامٌ فقط.");
+          return;
+        }
+
         btn.disabled = true; btn.textContent = "جارٍ الدخول…";
         try {
           /* الدخول برقم الهوية: نبحث عن البريد المرتبط به في users،
