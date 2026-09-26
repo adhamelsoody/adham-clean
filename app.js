@@ -32630,7 +32630,46 @@ async function clearAllData() {
 }
 
 /* فشل الحفظ كان صامتاً (console.warn فقط) فيرى المستخدم «تم الحفظ» ولو لم يُحفظ. */
-function persistFail(where, coll, err) {
+/* =========================================================================
+   سببُ الرفض بعينه
+   -------------------------------------------------------------------------
+   «راجع الإدارة» لا تقول شيئاً لمن هو الإدارة. تُقارَن هنا صلاحيةُ الحساب
+   ونطاقُه بالسجلّ المرفوض — بالقواعد نفسِها التي في firestore.rules — فيُقال
+   السببُ وما العمل. وإن بدا كلُّ شيءٍ سليماً في المتصفّح فالرفضُ من الخادم،
+   وأرجحُ أسبابه أنّ القواعد لم تُنشر بعد.
+   ========================================================================= */
+function denyReason(coll, u, rec) {
+  const role = String((u && u.role) || "");
+  if (!role) return "حسابُك بلا دورٍ معرَّف في سجلّ المستخدمين";
+  if (u.active === false) return "حسابُك موقوف";
+  const may = role === "admin" || role === "owner" ||
+              (typeof isMgrRole === "function" && isMgrRole(role));
+  if (!may) return "دورُك «" + role + "» لا يملك حفظَ هذا السجلّ";
+
+  /* النطاق: حسابٌ بلا نطاقٍ يكتب في كلّ شيء، وسجلٌّ بلا منشأةٍ لا يُحجب */
+  const ids = [];
+  ["mosqueId", "complexId"].forEach(k => { if (u[k]) ids.push(String(u[k])); });
+  ["mosqueIds", "complexIds"].forEach(k => {
+    if (Array.isArray(u[k])) u[k].forEach(x => ids.push(String(x)));
+  });
+  if (!ids.length) return "";
+  const rm = String((rec && rec.mosqueId) || "");
+  const rc = String((rec && rec.complexId) || "");
+  if (!rm && !rc) return "";
+  if (ids.indexOf(rm) > -1 || ids.indexOf(rc) > -1) return "";
+
+  const nm = n => {
+    if (!n) return "";
+    const f = (typeof cur === "function"
+      ? (cur("mosques") || []).concat(cur("complexes") || []) : [])
+      .find(x => String(x.id) === String(n));
+    return f ? f.name : n;
+  };
+  return "السجلُّ خارج نطاقك — منشأتُه «" + (nm(rm) || nm(rc)) +
+         "» ليست ضمن ما أُسند إلى حسابك";
+}
+
+function persistFail(where, coll, err, rec) {
   console.warn(where, coll, err);
   const denied = err && (err.code === "permission-denied" || err.code === "unauthenticated");
 
@@ -32657,8 +32696,14 @@ function persistFail(where, coll, err) {
              "بأمر firebase deploy --only firestore:rules"
     });
 
+    const why = denyReason(coll, u, rec);
     if (typeof showToast === "function") {
-      showToast("تعذّر الحفظ — راجع الإدارة", "warn");
+      showToast(why
+        ? "تعذّر الحفظ — " + why
+        : "تعذّر الحفظ — الخادم رفض الكتابة رغم أنّ صلاحيتك تبدو سليمة. " +
+          "أرجحُ سببٍ أنّ قواعد Firestore لم تُنشر: نفّذ " +
+          "firebase deploy --only firestore:rules",
+        "warn");
     }
     return;
   }
@@ -33132,7 +33177,7 @@ function persistSet(coll, obj) {
   return db.collection(coll).doc(String(obj.id)).set(data)
     .then(() => true)
     .catch(err => {
-      persistFail("persistSet", coll, err);
+      persistFail("persistSet", coll, err, data);
       /* رفضُ القواعد ليس انقطاعاً: طابورُ الرفع يعيد المحاولة أبداً بلا
          طائل، والمستخدم يُبلَّغ بالنجاح. يُعاد false ليعلم النداء. */
       const denied = err && (err.code === "permission-denied" || err.code === "unauthenticated");
