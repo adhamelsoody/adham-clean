@@ -6,3 +6,17 @@
 *.rar
 .DS_Store
 Thumbs.db
+
+# مخرجات سكربتات التحديث — كلُّ تشغيلٍ يُنشئ مجلداً فيه نسخةٌ من app.js
+_backup_*/
+CLAUDE.md.قبل_*
+*.ps1
+
+# سجلّات وملفات مؤقتة
+*.log
+npm-debug.log*
+*.tmp
+*~
+
+# إعدادات Claude Code المحليّة — شخصيةٌ لكلّ جهاز، لا تُشارَك
+.claude/settings.local.json
