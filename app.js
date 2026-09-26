@@ -30487,6 +30487,88 @@ window.spProgLevelSave = function () {
   panelStudent(s.id, true);
 };
 
+/* =========================================================================
+   رقمُ الهوية هو هويةُ الدخول — فتغييرُه يلزمه تغييرُ الحساب
+   -------------------------------------------------------------------------
+   الدخولُ يبني بريدَه من رقم الهوية: {الهوية}@mirath.id. وصفحةُ الدخول لا
+   تستطيع سردَ users قبل الدخول (القواعد تمنعه)، فلا تجد بريداً بديلاً
+   وتبني الاصطناعيَّ دائماً.
+
+   وكان تغييرُ رقم الهوية في بطاقة الطالب يكتب students.idNo وحدَه، ولا
+   يمسّ بريدَ الحساب في Firebase Auth ولا users.username. فيصير الطالبُ
+   برقمٍ جديدٍ وحسابُه على القديم — ويُردّ عند الدخول بالرقمين كليهما:
+   الجديدُ لا حسابَ له، والقديمُ لم يعد ظاهراً لأحد.
+
+   تُنادى الآن الدالةُ السحابية updateUserLogin — وهي موجودةٌ ومنشورةٌ في
+   functions/ وتفعل هذا بعينه: تبدّل بريدَ Auth وتكتب username و
+   loginEmail. فيمشي الرقمُ الجديد على الطالب وحسابه معاً.
+   ========================================================================= */
+const SP_FN_REGION = "europe-west1";        /* كما في functions/ و accounts.js */
+const SP_FN_SDK = "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js";
+
+/* مكتبةُ الدوال غيرُ مربوطةٍ بصفحات الإدارة — تُحمَّل عند الحاجة وحدَها،
+   فلا يُضاف طلبٌ إلى كلّ فتحةٍ ولا تُعدَّل سبعَ عشرةَ صفحةً لأجل نداءٍ نادر. */
+let SP_FN_LOADING = null;
+function spFnReady() {
+  if (typeof firebase === "undefined" || !firebase.apps || !firebase.apps.length) {
+    return Promise.reject(new Error("فايربيس غير مهيّأ"));
+  }
+  if (typeof firebase.app === "function" && firebase.app().functions) return Promise.resolve();
+  if (SP_FN_LOADING) return SP_FN_LOADING;
+  SP_FN_LOADING = new Promise(function (res, rej) {
+    const sc = document.createElement("script");
+    sc.src = SP_FN_SDK;
+    sc.onload = function () {
+      if (typeof firebase.app === "function" && firebase.app().functions) res();
+      else rej(new Error("تعذّر تحميل مكتبة الدوال"));
+    };
+    sc.onerror = function () { rej(new Error("تعذّر تحميل مكتبة الدوال — تحقّق من الاتصال")); };
+    document.head.appendChild(sc);
+  });
+  return SP_FN_LOADING;
+}
+
+function spCallFn(name, data) {
+  return spFnReady().then(function () {
+    return firebase.app().functions(SP_FN_REGION).httpsCallable(name)(data || {})
+      .then(r => r.data)
+      .catch(function (e) {
+        const c = (e && e.code) || "";
+        if (c === "functions/not-found" || c === "not-found") {
+          throw new Error("الدالة غير منشورة — نفّذ: firebase deploy --only functions");
+        }
+        throw e;
+      });
+  });
+}
+
+function spSyncLoginId(s, before) {
+  const oldId = String((before && before.idNo) || "");
+  const newId = String((s && s.idNo) || "");
+  if (!newId || newId === oldId) return;                 /* لم يتغيّر */
+
+  const acc = typeof spAccountOf === "function" ? spAccountOf(s) : null;
+  const uid = acc ? String(acc.uid || acc.id || "") : "";
+  if (!uid) return;                                      /* لا حسابَ له بعد */
+
+  if (newId.replace(/\D/g, "").length !== 10) {
+    showToast("رقمُ الهوية عشرةُ أرقام — لم يُحدَّث دخولُ الطالب", "warn");
+    return;
+  }
+
+  spCallFn("updateUserLogin", { uid: uid, username: newId })
+    .then(function (r) {
+      if (acc) { acc.username = newId; acc.loginEmail = (r && r.loginEmail) || acc.loginEmail; }
+      showToast("حُدّث دخولُ الطالب — يدخل الآن برقم " + newId, "success");
+    })
+    .catch(function (e) {
+      const m = (e && e.message) || "سببٌ غير معروف";
+      console.warn("updateUserLogin:", e);
+      showToast("حُفظ الرقم في ملفّ الطالب، لكن لم يُحدَّث دخولُه: " + m +
+                " — عدّله من صفحة الحسابات", "warn");
+    });
+}
+
 window.stuSave = function (id) {
   const s = DB.students.find(x => x.id == id);
   if (!s) return;
@@ -30546,6 +30628,8 @@ window.stuSave = function (id) {
      ======================================================================= */
   Promise.resolve(persistSet("students", s)).then(function (saved) {
     if (saved) {
+      /* رقمُ الهوية هو هويةُ الدخول: إن تغيّر تبعه حسابُ الطالب */
+      try { spSyncLoginId(s, before); } catch (e) {}
       stuDraftReset("");
       try { photoReset("sp_photo"); } catch (e) {}
       showToast("حُفظت بيانات " + (s.name || "الطالب"), "success");
