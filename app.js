@@ -4793,6 +4793,18 @@ window.userSave = function () {
   /* أول مسجد وأول مجمع يُكتبان في الحقلين المفردين للتوافق الخلفي */
   const firstMq = scopeIds.filter(k => k.indexOf("mosque:") === 0)[0];
   const firstCx = scopeIds.filter(k => k.indexOf("complex:") === 0)[0];
+  /* =======================================================================
+     القائمتان الجمعيّتان: بهما وحدَهما يعرف الخادمُ نطاقَ الحساب كاملاً
+     -----------------------------------------------------------------------
+     كان يُكتب scopeIds (وهو ما يقرؤه المتصفّح) والحقلان المفردان وحدَهما.
+     و firestore.rules لا تقرأ scopeIds أصلاً: نطاقُها
+     mosqueIds + complexIds + الحقلان المفردان. فمن أُسنِد إلى مسجدين
+     يرى الاثنين ولا يكتب إلا في الأوّل — يفتح الطالبَ ويحرّره ثمّ يُردّ
+     عند الحفظ. تُكتب القائمتان الآن، فيتطابق ما يراه بما يكتبه.
+     ولا توسيعَ في الصلاحية: هي عينُ ما أُسنِد في scopeIds لا غير.
+     ======================================================================= */
+  const mosqueIds  = scopeIds.filter(k => k.indexOf("mosque:")  === 0).map(k => k.split(":")[1]);
+  const complexIds = scopeIds.filter(k => k.indexOf("complex:") === 0).map(k => k.split(":")[1]);
   const u0 = id ? DB.users.find(x => String(x.id) === String(id)) : null;
 
   /* لا يُمنح دورٌ أعلى من دور المانح — وإلّا أنشأ مديرُ المجمّع مديرَ
@@ -4825,6 +4837,7 @@ window.userSave = function () {
     scopeIds: scopeIds,
     mosqueId:  firstMq ? firstMq.split(":")[1] : "",
     complexId: firstCx ? firstCx.split(":")[1] : "",
+    mosqueIds: mosqueIds, complexIds: complexIds,
     active: !!(el("usActive") && el("usActive").checked)
   };
 
@@ -32685,6 +32698,37 @@ function denyReason(coll, u, rec) {
    scopeIds، فالحصرُ المقصودُ لا يُمَسّ، وبأن يكون دورُه admin أو owner.
    ========================================================================= */
 let SCOPE_FIX_TRIED = false;
+
+/* =========================================================================
+   إصلاحُ نطاق الحسابات القائمة — مرّةً واحدة
+   -------------------------------------------------------------------------
+   الحساباتُ المحفوظةُ قبل هذا التصحيح تحمل scopeIds بلا القائمتين
+   الجمعيّتين، فيرى صاحبُها منشآتِه كلَّها ولا يكتب إلا في الأولى. تُشتقّ
+   القائمتان من scopeIds نفسِه ويُعاد حفظُ ما نقص. لا يُغيَّر إسنادٌ ولا
+   يُمنح نطاقٌ جديد. للمالك والمدير وحدَهما — فهما من يملك الكتابة في users.
+   يُنادى من الكونسول: fixAllScopes()
+   ========================================================================= */
+window.fixAllScopes = function () {
+  const me = (STATE && STATE.user) || {};
+  const role = String(me.role || "");
+  if (role !== "admin" && role !== "owner") {
+    showToast("هذا الإصلاح لمدير النظام وحده", "warn"); return 0;
+  }
+  let n = 0;
+  (Array.isArray(DB.users) ? DB.users : []).forEach(u => {
+    if (!u || !Array.isArray(u.scopeIds) || !u.scopeIds.length) return;
+    const mq = u.scopeIds.filter(k => String(k).indexOf("mosque:")  === 0).map(k => String(k).split(":")[1]);
+    const cx = u.scopeIds.filter(k => String(k).indexOf("complex:") === 0).map(k => String(k).split(":")[1]);
+    const same = a => Array.isArray(a) ? a.map(String).slice().sort().join(",") : null;
+    if (same(u.mosqueIds) === mq.slice().sort().join(",") &&
+        same(u.complexIds) === cx.slice().sort().join(",")) return;
+    u.mosqueIds = mq; u.complexIds = cx;
+    persistSet("users", u); n++;
+  });
+  showToast(n ? ("صُحّح نطاقُ " + toArabicDigits(n) + " حساباً — اطلب منهم إعادة تحميل الصفحة")
+              : "لا حساب يحتاج تصحيحاً", n ? "success" : "info");
+  return n;
+};
 
 window.fixMyScope = function () {
   const u = (STATE && STATE.user) || {};
