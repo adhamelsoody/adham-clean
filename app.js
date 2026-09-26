@@ -8141,6 +8141,39 @@ const PLAN_QTY_TYPE = ["كمية مرنة", "كمية ثابتة",
 const PLAN_QTY = ["ربع وجه", "نصف وجه", "ثلاثة أرباع وجه", "وجه", "وجهان",
                   "ثلاثة أوجه", "أربعة أوجه", "خمسة أوجه", "ستة أوجه",
                   "ثمانية أوجه", "عشرة أوجه"];
+/* =========================================================================
+   الكمياتُ تتبع نوعَها
+   -------------------------------------------------------------------------
+   لكلّ نوعِ كميةٍ قائمتُه: «كمية مرنة» أوسعُها، و«أوجه» أضيقُ منها،
+   و«أحزاب» بالأحزاب. و«عدد أوجه» و«أسطر» و«أجزاء» أرقامٌ يكتبها
+   المستخدم فلا قائمةَ لها. وما لا نوعَ له — «كمية ثابتة» والخططُ
+   القديمة — يبقى على PLAN_QTY فلا يُكسر محفوظ.
+   ========================================================================= */
+const QTY_FLEX = [
+  "سُدس وجه", "خُمس وجه", "ربع وجه", "ثلث وجه", "نصف وجه", "ثلثي وجه",
+  "وجه", "وجه ونصف", "وجهين", "وجهين ونصف",
+  "ثلاثة أوجه", "أربعة أوجه", "خمسة أوجه", "ستة أوجه", "سبعة أوجه",
+  "ثمانية أوجه", "تسعة أوجه", "عشرة أوجه", "١٢ وجه", "١٥ وجه",
+  "جزء ( ٢٠ وجه )", "جزء ونصف ( ٣٠ وجه )", "جزأين ( ٤٠ وجه )"
+];
+const QTY_PAGES = [
+  "ثلث وجه", "نصف وجه", "ثلثي وجه", "وجه", "وجه ونصف", "وجهين",
+  "ثلاثة أوجه", "أربعة أوجه", "خمسة أوجه", "ستة أوجه", "سبعة أوجه",
+  "ثمانية أوجه", "عشرة أوجه", "١٢ وجه", "١٥ وجه",
+  "جزء ( ٢٠ وجه )", "جزء ونصف ( ٣٠ وجه )", "جزأين ( ٤٠ وجه )"
+];
+const QTY_HIZB = [
+  "ربع حزب", "نصف حزب", "ثلاثة أرباع حزب", "حزب كامل",
+  "حزب وربع", "حزب ونصف", "حزبين", "حزبين ونصف",
+  "ثلاثة أحزاب", "أربعة أحزاب", "خمسة أحزاب", "ستة أحزاب",
+  "سبعة أحزاب", "ثمانية أحزاب", "تسعة أحزاب", "عشرة أحزاب"
+];
+const QTY_BY_TYPE = { "كمية مرنة": QTY_FLEX, "أوجه": QTY_PAGES, "أحزاب": QTY_HIZB };
+const QTY_NUMERIC = ["عدد أوجه", "أسطر", "أجزاء"];
+
+function qtyIsNum(t) { return QTY_NUMERIC.indexOf(String(t || "")) > -1; }
+function qtyListFor(t) { return QTY_BY_TYPE[String(t || "")] || PLAN_QTY; }
+
 const PLAN_DIR = ["من الفاتحة", "من الناس"];
 /* أُلغي «تخصيصي» من اتجاه المراجعة: الاتجاهُ صار يحكم ترتيبَ السور فعلاً،
    فالخيارُ الثالث لا معنى له. والخططُ القديمة المحفوظة عليه تُقرأ كما هي
@@ -10745,6 +10778,21 @@ window.plFillSurahs = function () {
     .catch(function () { /* تبقى القائمةُ على خيارها المحفوظ */ });
 };
 
+/* حقلُ الكمية في شاشة خطة البرنامج — القاعدةُ نفسُها التي في بطاقة الطالب */
+function plQtyCtl(k, val, type) {
+  const v = String(val == null ? "" : val);
+  const id = "pl_q_" + k;
+  if (qtyIsNum(type)) {
+    return `<input id="${esc(id)}" type="number" min="0" step="1" dir="ltr"
+      value="${esc(v.replace(/[^\d.]/g, ""))}" placeholder="اكتب العدد" oninput="window.plDirty()">`;
+  }
+  const list = qtyListFor(type).slice();
+  if (v && list.indexOf(v) < 0) list.unshift(v);
+  return `<select id="${esc(id)}" onchange="window.plDirty()">
+    <option value=""${v ? "" : " selected"}>— غير محدَّدة —</option>
+    ${list.map(q => `<option${q === v ? " selected" : ""}>${esc(q)}</option>`).join("")}</select>`;
+}
+
 function sysFields(pid, def) {
   const v = sysPillarCfg(pid, def.k);
   const has = f => (def.fields || []).indexOf(f) > -1;
@@ -10757,11 +10805,7 @@ function sysFields(pid, def) {
     ${has("qtyType") ? `<div class="pl-f pl-wide"><label>نوع الكمية</label>
       ${seg("pl_qt_" + def.k, v.qtyType, SYS_QTY_TYPES)}</div>` : ""}
     ${has("qty") ? `<div class="pl-f"><label>الكمية</label>
-      <select id="pl_q_${esc(def.k)}" onchange="window.plDirty()">
-        <option value="">— غير محدَّدة —</option>
-        ${(typeof PLAN_QTY !== "undefined" ? PLAN_QTY : []).map(q =>
-          `<option${q === v.qty ? " selected" : ""}>${esc(q)}</option>`).join("")}
-      </select></div>` : ""}
+      <div id="pl_qbox_${esc(def.k)}">${plQtyCtl(def.k, v.qty, v.qtyType)}</div></div>` : ""}
     ${has("qtyNum") ? `<div class="pl-f"><label>الكمية</label>
       <div class="pl-step">
         <button type="button" onclick="window.plNum('pl_n_${esc(def.k)}', 1)">+</button>
@@ -10800,6 +10844,18 @@ window.plSeg = function (btn, hiddenId, value) {
   btn.classList.add("on");
   const h = document.getElementById(hiddenId);
   if (h) h.value = value;
+
+  /* نوعُ الكمية يحكم شكلَ حقلها، فيُعاد بناؤه وحدَه عند تغييره */
+  if (String(hiddenId).indexOf("pl_qt_") === 0) {
+    const k = String(hiddenId).slice("pl_qt_".length);
+    const qbox = document.getElementById("pl_qbox_" + k);
+    if (qbox) {
+      const old = document.getElementById("pl_q_" + k);
+      const keep = old ? String(old.value || "") : "";
+      const ok = qtyIsNum(value) ? /^\d/.test(keep) : qtyListFor(value).indexOf(keep) > -1;
+      qbox.innerHTML = plQtyCtl(k, ok ? keep : "", value);
+    }
+  }
   window.plDirty();
 };
 window.plNum = function (id, delta) {
@@ -14005,7 +14061,19 @@ function pillarStartOf(hwKey) {
 const PLAN_QTY_NUM = {
   "ربع وجه": 0.25, "نصف وجه": 0.5, "ثلاثة أرباع وجه": 0.75,
   "وجه": 1, "وجهان": 2, "ثلاثة أوجه": 3, "أربعة أوجه": 4,
-  "خمسة أوجه": 5, "ستة أوجه": 6, "ثمانية أوجه": 8, "عشرة أوجه": 10
+  "خمسة أوجه": 5, "ستة أوجه": 6, "ثمانية أوجه": 8, "عشرة أوجه": 10,
+
+  /* الكمياتُ الجديدة بالأوجه كذلك، وإلا قرأها المحرّكُ صفراً فلم يولّد
+     واجباً. والجزءُ عشرون وجهاً كما في نصّ القائمة، والحزبُ نصفُه. */
+  "سُدس وجه": 1 / 6, "خُمس وجه": 0.2, "ثلث وجه": 1 / 3, "ثلثي وجه": 2 / 3,
+  "وجه ونصف": 1.5, "وجهين": 2, "وجهين ونصف": 2.5,
+  "سبعة أوجه": 7, "تسعة أوجه": 9, "١٢ وجه": 12, "١٥ وجه": 15,
+  "جزء ( ٢٠ وجه )": 20, "جزء ونصف ( ٣٠ وجه )": 30, "جزأين ( ٤٠ وجه )": 40,
+
+  "ربع حزب": 2.5, "نصف حزب": 5, "ثلاثة أرباع حزب": 7.5, "حزب كامل": 10,
+  "حزب وربع": 12.5, "حزب ونصف": 15, "حزبين": 20, "حزبين ونصف": 25,
+  "ثلاثة أحزاب": 30, "أربعة أحزاب": 40, "خمسة أحزاب": 50, "ستة أحزاب": 60,
+  "سبعة أحزاب": 70, "ثمانية أحزاب": 80, "تسعة أحزاب": 90, "عشرة أحزاب": 100
 };
 
 function pillarQtyOf(hwKey) {
@@ -29374,6 +29442,39 @@ window.spIdnoIn = function (el) {
    رقمَه كما هو. تُترك الدالةُ موجودةً لأنّ الحقول تستدعيها في onfocus. */
 window.spPhoneFocus = function () {};
 
+/* =========================================================================
+   حقلُ الكمية في بطاقة الطالب — شكلُه يتبع نوعَها
+   -------------------------------------------------------------------------
+   قائمةٌ للأنواع ذاتِ القوائم، وحقلُ رقمٍ لِما كميتُه عددٌ («عدد أوجه»
+   و«أسطر» و«أجزاء»). والمعرّفُ واحدٌ في الحالتين، فما يقرأ القيمةَ عند
+   الحفظ لا يتغيّر. والقيمةُ المحفوظةُ تبقى مختارةً إن كانت في القائمة،
+   وتُضاف إليها إن لم تكن — فلا تضيع خطةٌ قديمة.
+   ========================================================================= */
+function spQtyCtl(id, val, type) {
+  const v = String(val == null ? "" : val);
+  if (qtyIsNum(type)) {
+    return `<input id="${id}" class="sp-sel" type="number" min="0" step="1" dir="ltr"
+      value="${esc(v.replace(/[^\d.]/g, ""))}" placeholder="اكتب العدد">`;
+  }
+  const list = qtyListFor(type).slice();
+  if (v && list.indexOf(v) < 0) list.unshift(v);
+  return `<select id="${id}" class="sp-sel">
+    <option value=""${v ? "" : " selected"}>— غير محدَّدة —</option>
+    ${list.map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+}
+
+/* تغييرُ النوع يُعيد بناء حقل الكمية وحدَه — لا البطاقة كلَّها */
+window.spQtyType = function (sel, qtyId) {
+  const box = document.getElementById(qtyId + "Box");
+  if (!box || !sel) return;
+  const old = document.getElementById(qtyId);
+  const keep = old ? String(old.value || "") : "";
+  const type = String(sel.value || "");
+  /* تُستبقى القيمةُ إن كانت صالحةً في النوع الجديد، وإلا بُدئ فارغاً */
+  const ok = qtyIsNum(type) ? /^\d/.test(keep) : qtyListFor(type).indexOf(keep) > -1;
+  box.innerHTML = spQtyCtl(qtyId, ok ? keep : "", type);
+};
+
 window.spPhoneIn = function (el, ccId) {
   if (!el) return;
   const sel = ccId && document.getElementById(ccId);
@@ -29808,7 +29909,8 @@ function panelStudent(id, keepDraft) {
   const dayBtns = DAYS.map(d => `<button type="button" class="sp-day${days.indexOf(d) > -1 ? " on" : ""}"
       onclick="window.spDay(this,'${esc(d)}')">${esc(d)}</button>`).join("");
 
-  const qtySel = (id, val, opts) => `<select id="${id}" class="sp-sel">
+  const qtySel = (id, val, opts, onch) => `<select id="${id}" class="sp-sel"${
+      onch ? ` onchange="${onch}"` : ""}>
       ${opts.map(o => `<option${o === val ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
 
   const dirBtns = (name, val, opts) => `<div class="sp-seg">
@@ -29950,8 +30052,10 @@ function panelStudent(id, keepDraft) {
         <input type="hidden" id="spHifzOn" value="${pl.hifzOn ? 1 : 0}">
       </div>
       <div class="sp-grid">
-        <div class="sp-field"><label>نوع الكمية</label>${qtySel("spHifzType", pl.hifzType, PLAN_QTY_TYPE)}</div>
-        <div class="sp-field"><label>الكمية</label>${qtySel("spHifzQty", pl.hifzQty, PLAN_QTY)}</div>
+        <div class="sp-field"><label>نوع الكمية</label>${qtySel("spHifzType", pl.hifzType, PLAN_QTY_TYPE,
+          "window.spQtyType(this,'spHifzQty')")}</div>
+        <div class="sp-field"><label>الكمية</label>
+          <div id="spHifzQtyBox">${spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div></div>
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
       ${startRow("spHifz", (s.plan || {}).hifzSura, (s.plan || {}).hifzAyah, "spHifzDir", pl.hifzDir)}
@@ -29980,8 +30084,10 @@ function panelStudent(id, keepDraft) {
         <input type="hidden" id="spRevOn" value="${pl.revOn ? 1 : 0}">
       </div>
       <div class="sp-grid">
-        <div class="sp-field"><label>نوع الكمية</label>${qtySel("spRevType", pl.revType, PLAN_QTY_TYPE)}</div>
-        <div class="sp-field"><label>الكمية</label>${qtySel("spRevQty", pl.revQty, PLAN_QTY)}</div>
+        <div class="sp-field"><label>نوع الكمية</label>${qtySel("spRevType", pl.revType, PLAN_QTY_TYPE,
+          "window.spQtyType(this,'spRevQty')")}</div>
+        <div class="sp-field"><label>الكمية</label>
+          <div id="spRevQtyBox">${spQtyCtl("spRevQty", pl.revQty, pl.revType)}</div></div>
         <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("spRevDir", pl.revDir, PLAN_DIR_REV)}</div>
       </div>
       ${startRow("spRev", (s.plan || {}).revSura, (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
