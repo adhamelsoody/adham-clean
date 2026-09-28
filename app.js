@@ -11162,6 +11162,82 @@ window.lvDetail = function (lvId) {
    تُبنى على .sp-page نفسِها التي تملأ الشاشة في بطاقة الطالب — فلا تنسيقَ
    ثانٍ يُصان ولا سلوكَ يختلف بين شاشةٍ وأخرى.
    ========================================================================= */
+/* =========================================================================
+   بيانات البرنامج — حقولٌ حيّةٌ لا نصٌّ معروض
+   -------------------------------------------------------------------------
+   كانت الأربعةُ صناديقَ قراءةٍ فقط، وتعديلُها يستلزم فتحَ نموذج البرنامج.
+   صارت تُضبط في مكانها وتُحفظ فور تغييرها. والقوائمُ هي قوائمُ النموذج
+   نفسُها (PRG_SCOPES و LV_TRANSITIONS و REPEAT_MODES و PRG_SESSIONS)
+   والمفاتيحُ المكتوبةُ هي مفاتيحُه — فلا تختلف شاشتان في معنى حقل.
+   والبرامجُ المثبَّتة من النظام تبقى للعرض.
+   ========================================================================= */
+function prgLiveFields(p2, sess) {
+  const pid = String(p2.id);
+  const sel = (label, id, opts, curk, hint) => `
+    <div class="sp-field"><label for="${id}">${esc(label)}</label>
+      <select id="${id}" class="sp-sel" onchange="window.prgLiveSet('${jsAttr(pid)}','${id}')">
+        ${opts.map(o => `<option value="${esc(o.k)}"${String(o.k) === String(curk)
+          ? " selected" : ""}>${esc(o.h)}</option>`).join("")}
+      </select>${hint ? `<small class="muted" style="font-size:11px">${esc(hint)}</small>` : ""}</div>`;
+
+  const scopes = typeof PRG_SCOPES !== "undefined" ? PRG_SCOPES : [];
+  const trans  = typeof LV_TRANSITIONS !== "undefined" ? LV_TRANSITIONS : [];
+  const reps   = typeof REPEAT_MODES !== "undefined" ? REPEAT_MODES : [];
+  const days   = typeof PRG_SESSIONS !== "undefined" ? PRG_SESSIONS : [];
+  const on     = Array.isArray(sess) ? sess : [];
+
+  return `
+    ${sel("النطاق", "pgvScope", scopes, p2.scopeKind || "closed", "المفتوحُ يمضي حتى يوقفه المشرف")}
+    ${sel("الانتقال بين المستويات", "pgvTrans", trans, p2.defTransition || "approve",
+          "افتراضٌ للمستويات الجديدة")}
+    <div class="sp-field"><label for="pgvRepMode">التكرار</label>
+      <div class="prgv-rep">
+        <select id="pgvRepMode" class="sp-sel"
+          onchange="window.prgLiveSet('${jsAttr(pid)}','pgvRepMode')">
+          ${reps.map(m => `<option value="${esc(m.k)}"${String(p2.repeatMode || "") === String(m.k)
+            ? " selected" : ""}>${esc(m.h)}</option>`).join("")}
+        </select>
+        <input id="pgvRepTimes" type="number" min="1" max="10" dir="ltr"
+          value="${esc(Number(p2.repeatTimes) || 1)}"
+          onchange="window.prgLiveSet('${jsAttr(pid)}','pgvRepTimes')">
+      </div></div>
+    <div class="sp-field sp-wide"><label>الفترات اليومية</label>
+      <div class="prg-sessions" id="pgvSessions">
+        ${days.map(n => `<button type="button" data-s="${esc(n)}"
+          class="prg-sess${on.indexOf(n) > -1 ? " on" : ""}"
+          onclick="window.prgLiveSess('${jsAttr(pid)}',this)">${esc(n)}</button>`).join("")}
+      </div></div>`;
+}
+
+/* الحفظُ فورَ التغيير — بالمفاتيح نفسِها التي يكتبها نموذجُ البرنامج */
+window.prgLiveSet = function (pid, id) {
+  const rec = (DB.programs || []).find(x => String(x.id) === String(pid));
+  const el = document.getElementById(id);
+  if (!rec || !el) return;
+  const v = String(el.value || "");
+  if (id === "pgvScope")         rec.scopeKind = v;
+  else if (id === "pgvTrans")    rec.defTransition = v;
+  else if (id === "pgvRepMode")  rec.repeatMode = v;
+  else if (id === "pgvRepTimes") rec.repeatTimes = Math.min(10, Math.max(1, Number(v) || 1));
+  else return;
+  if (id === "pgvRepTimes") { const n = document.getElementById("pgvRepTimes");
+    if (n) n.value = rec.repeatTimes; }
+  Promise.resolve(persistSet("programs", rec)).then(function (okv) {
+    if (okv !== false) showToast("حُفظ", "success");
+  });
+};
+
+window.prgLiveSess = function (pid, btn) {
+  const rec = (DB.programs || []).find(x => String(x.id) === String(pid));
+  if (!rec || !btn) return;
+  btn.classList.toggle("on");
+  rec.sessions = [].slice.call(document.querySelectorAll("#pgvSessions .prg-sess.on"))
+    .map(b => b.getAttribute("data-s"));
+  Promise.resolve(persistSet("programs", rec)).then(function (okv) {
+    if (okv !== false) showToast("حُفظت الفترات اليومية", "success");
+  });
+};
+
 window.lvlView = function (id) {
   const p2 = cur("programs").find(x => String(x.id) === String(id)) ||
              sysPrograms().find(x => String(x.id) === String(id));
@@ -11229,11 +11305,12 @@ window.lvlView = function (id) {
         <section class="sp-card sp-wide2">
           <div class="sp-cardhead">${ic("info", 17)}
             <div><h3>بيانات البرنامج</h3><p>ما ضُبط له ويُورَّث لما تحته</p></div></div>
-          <div class="sp-grid">
+          <div class="sp-grid">${fixed ? `
             ${info("النطاق", p2.scopeKind === "open" ? "مفتوح" : "محدَّد النطاق")}
             ${info("الانتقال بين المستويات", tr)}
             ${info("التكرار", p2.repeatMode ? (p2.repeatMode + " × " + (p2.repeatTimes || 1)) : "—")}
-            ${info("الفترات اليومية", sess.length ? sess.join(" · ") : "—")}
+            ${info("الفترات اليومية", sess.length ? sess.join(" · ") : "—")}`
+            : prgLiveFields(p2, sess)}
           </div>
         </section>
 
