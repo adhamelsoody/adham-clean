@@ -11270,13 +11270,10 @@ function prgLiveFields(p2, sess) {
         <input id="pgvRepTimes" type="number" min="1" max="10" dir="ltr"
           value="${esc(Number(p2.repeatTimes) || 1)}"
           onchange="window.prgLiveSet('${jsAttr(pid)}','pgvRepTimes')">
-      </div></div>
-    <div class="sp-field sp-wide"><label>الفترات اليومية</label>
-      <div class="prg-sessions" id="pgvSessions">
-        ${days.map(n => `<button type="button" data-s="${esc(n)}"
-          class="prg-sess${on.indexOf(n) > -1 ? " on" : ""}"
-          onclick="window.prgLiveSess('${jsAttr(pid)}',this)">${esc(n)}</button>`).join("")}
       </div></div>`;
+  /* «الفترات اليومية» نُقلت من هنا إلى بطاقة «الإعدادات العامة» أدناه
+     (prgGeneralCardHtml) — فهي إعدادٌ عامٌّ لكلّ المستويات لا بيانَ برنامج.
+     المفتاحُ والمعرّفُ والدالّةُ كما هي: sessions و pgvSessions و prgLiveSess. */
 }
 
 /* الحفظُ فورَ التغيير — بالمفاتيح نفسِها التي يكتبها نموذجُ البرنامج */
@@ -11308,6 +11305,103 @@ window.prgLiveSess = function (pid, btn) {
   Promise.resolve(persistSet("programs", rec)).then(function (okv) {
     if (okv !== false) showToast("حُفظت الفترات اليومية", "success");
   });
+};
+
+/* =========================================================================
+   الإعداداتُ العامة — واحدةٌ للبرنامج كلِّه لا تُخصَّص في مستوى
+   -------------------------------------------------------------------------
+   ستّةٌ تسري على كلّ المستويات: درجةُ الالتزام وتقييمُ الأداء (بطاقةُ
+   الخصم)، وألوانُ كلّ واجبٍ في المصحف والمنعُ البرمجيُّ (بطاقةُ
+   الواجبات)، وفتراتُ البرنامج، والشرطُ اليوميُّ للتجاوز.
+   الأربعةُ الأولى كانت مبثوثةً بلا بيانٍ أنّها عامة، والفتراتُ كانت في
+   «بيانات البرنامج»، والشرطُ اليوميُّ لم يكن موجوداً. تُجمع هنا معلَّمةً،
+   ولا يعرضها رأسُ المستوى فلا تُخصَّص لواحدٍ دون غيره.
+   ========================================================================= */
+const PRG_DAILY_FAIL = [
+  { k: "block",  h: "لا يتجاوز — يُعاد واجبُ اليوم غداً" },
+  { k: "deduct", h: "يتجاوز ويُخصم من درجة الالتزام" },
+  { k: "warn",   h: "يتجاوز ويُنبَّه المشرف" }
+];
+
+function prgDailyOf(p2) {
+  const d = (p2 && p2.dailyPass) || {};
+  return {
+    minScore:  d.minScore  === undefined || d.minScore  === null ? 7 : Number(d.minScore),
+    maxErrors: d.maxErrors === undefined || d.maxErrors === null ? 3 : Number(d.maxErrors),
+    allDuties: d.allDuties !== false,
+    onFail:    d.onFail || "block"
+  };
+}
+
+function prgGeneralCardHtml(p2) {
+  if (!p2 || p2.system === true) return "";
+  const pid = jsAttr(String(p2.id));
+  const g = prgDailyOf(p2);
+  const on = prgSessionsOf(p2);
+
+  return `<section class="sp-card sp-wide2" id="prgGenCard">
+    <div class="sp-cardhead">${ic("settings", 17)}
+      <div><h3>الإعدادات العامة</h3>
+        <p>تنطبق على كلّ المستويات — لا تُخصَّص في مستوىً دون غيره</p></div>
+      <span class="pgen-tag">عامّ لكلّ المستويات</span></div>
+
+    <div class="pgen-box">
+      <div class="pgen-h">${ic("calendar", 15)} فترات البرنامج</div>
+      <div class="prg-sessions" id="pgvSessions">
+        ${PRG_SESSIONS.map(n => `<button type="button" data-s="${esc(n)}"
+          class="prg-sess${on.indexOf(n) > -1 ? " on" : ""}"
+          onclick="window.prgLiveSess('${pid}',this)">${esc(n)}</button>`).join("")}
+      </div>
+      <small class="muted">مواعيدُ انعقاد الحلقة في البرنامج كلِّه — ولكلّ واجبٍ أن يقتصر على بعضها</small>
+    </div>
+
+    <div class="pgen-box">
+      <div class="pgen-h">${ic("checkCircle", 15)} الشرط اليومي للتجاوز</div>
+      <p class="pgen-sub">ما يجب أن يبلغه الطالبُ في يومه ليُنتقل به إلى ما بعده</p>
+      <div class="pgen-grid">
+        <div class="pdu-f"><label>أقلّ درجة (من ١٠)</label>
+          <input id="pgenScore" type="number" min="0" max="10" dir="ltr" value="${esc(g.minScore)}"
+            onchange="window.prgDailySet('${pid}','minScore',this.value)"></div>
+        <div class="pdu-f"><label>أقصى أخطاء مسموحة</label>
+          <input id="pgenErr" type="number" min="0" max="50" dir="ltr" value="${esc(g.maxErrors)}"
+            onchange="window.prgDailySet('${pid}','maxErrors',this.value)"></div>
+        <div class="pdu-f"><label>إن لم يُستوفَ الشرط</label>
+          <select id="pgenFail" onchange="window.prgDailySet('${pid}','onFail',this.value)">
+            ${PRG_DAILY_FAIL.map(x => `<option value="${esc(x.k)}"${g.onFail === x.k
+              ? " selected" : ""}>${esc(x.h)}</option>`).join("")}
+          </select></div>
+        <label class="pdu-chk pgen-chk"><input type="checkbox" id="pgenAll"${g.allDuties ? " checked" : ""}
+          onchange="window.prgDailySet('${pid}','allDuties',this.checked)">
+          <span>يشترط إتمامَ واجبات اليوم كلِّها</span></label>
+      </div>
+    </div>
+
+    <div class="pgen-box pgen-links">
+      <div class="pgen-h">${ic("info", 15)} وبقيةُ العامّ في موضعه أدناه</div>
+      <div class="pgen-bits">
+        <span class="pil-bit">درجة الالتزام</span>
+        <span class="pil-bit">تقييم الأداء</span>
+        <span class="pil-bit">ألوان كل واجب في المصحف</span>
+        <span class="pil-bit">المنع البرمجي</span>
+      </div>
+      <small class="muted">الأوّلان في «درجة الالتزام وتقييم الأداء»، والآخران في «واجبات البرنامج» — وكلُّها عامّة</small>
+    </div>
+  </section>`;
+}
+
+window.prgDailySet = function (pid, field, v) {
+  const rec = prgDutyRec(pid); if (!rec) return;
+  const g = prgDailyOf(rec);
+  if (field === "minScore")       g.minScore  = Math.min(10, Math.max(0, Number(v) || 0));
+  else if (field === "maxErrors") g.maxErrors = Math.min(50, Math.max(0, Number(v) || 0));
+  else if (field === "allDuties") g.allDuties = !!v;
+  else if (field === "onFail")    g.onFail    = String(v || "block");
+  else return;
+  rec.dailyPass = g;
+  const el = document.getElementById(field === "minScore" ? "pgenScore"
+           : field === "maxErrors" ? "pgenErr" : "");
+  if (el) el.value = field === "minScore" ? g.minScore : g.maxErrors;
+  prgDutyCommit(rec, "حُفظ");
 };
 
 /* =========================================================================
@@ -11408,6 +11502,7 @@ function prgDutiesCardHtml(p2) {
     <div class="sp-cardhead">${ic("doc", 17)}
       <div><h3>واجبات البرنامج</h3>
         <p>الترتيبُ تصاعديٌّ بالألزم — يُسمّى الواجبُ ويُحذف ويُزاد عليه</p></div>
+      <span class="pgen-tag">عامّ لكلّ المستويات</span>
       <span class="sp-count">${toArabicDigits(list.length)}</span></div>
     <div class="pdu-wrap">${rows}</div>
     <div class="pdu-foot">
@@ -11602,6 +11697,8 @@ window.lvlView = function (id) {
             : prgLiveFields(p2, sess)}
           </div>
         </section>
+
+        ${prgGeneralCardHtml(p2)}
 
         ${prgDutiesCardHtml(p2)}
 
@@ -11851,7 +11948,8 @@ function dedCardHtml(p2) {
   return `<section class="sp-card sp-wide2" id="dedCard">
     <div class="sp-cardhead">${ic("target", 17)}
       <div><h3>درجة الالتزام وتقييم الأداء</h3>
-        <p>متى يُطالَب الطالب بما فاته، وكيف يُخصم من درجته</p></div></div>
+        <p>متى يُطالَب الطالب بما فاته، وكيف يُخصم من درجته</p></div>
+      <span class="pgen-tag">عامّ لكلّ المستويات</span></div>
     <div class="ded-row">
       <div class="ded-field">
         <label for="dedCommit">درجة الالتزام</label>
