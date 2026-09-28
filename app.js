@@ -9712,6 +9712,19 @@ const prgRows = () => cur("programs");
 
 /* وحدات قياس الواجبات واتجاه الخطة — يرثهما كل خطة في البرنامج */
 const PRG_UNITS = ["وجه", "آية", "سطر", "ثمن", "حزب", "جزء", "سورة"];
+/* كيفيةُ حساب المراجعة، ومصيرُ ما بقي من الواجب — إعدادان يُسألان عند
+   إنشاء البرنامج ويُورَّثان لخططه: كانا مفترضَين في المحرّك بلا اختيار. */
+const PRG_REVIEW_CALC = [
+  { k: "cumulative", h: "تراكمية — من أوّل المحفوظ إلى آخره" },
+  { k: "fixed",      h: "مقدارٌ ثابت — يُحدَّد في كلّ مستوى" },
+  { k: "ratio",      h: "نسبةٌ من الحفظ — مثلُ الدرس أو ضِعفُه" },
+  { k: "cycle",      h: "دورةٌ كاملة — يُختم المحفوظ كلُّه كلَّ مدّة" }
+];
+const PRG_LEFTOVER = [
+  { k: "carry", h: "يُجبَر العجز — يُضاف لما بعده حتى يُستوفى" },
+  { k: "reset", h: "يُصفَّر العجز — يُستأنف من واجب اليوم الجديد" }
+];
+
 const PRG_DIRS = [
   { k: "forward",  h: "تصاعدي — من الفاتحة إلى الناس" },
   { k: "backward", h: "تنازلي — من الناس إلى الفاتحة" },
@@ -9752,9 +9765,6 @@ window.prgForm = function (id) {
       <div class="field"><label>نوع البرنامج</label>
         <select id="pgType">${PRG_TYPES.map(t =>
           `<option value="${esc(t)}"${r && r.type === t ? " selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
-      <div class="field"><label>مالك البرنامج</label>
-        <select id="pgOwner">${owners.map(o =>
-          `<option value="${esc(o)}"${r && r.owner === o ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>
       <div class="field"><label>الحالة</label>
         <select id="pgStatus">
           <option value="فعال"${!r || r.status !== "متوقف" ? " selected" : ""}>فعال</option>
@@ -9770,6 +9780,18 @@ window.prgForm = function (id) {
           `<option value="${esc(d.k)}"${(r ? r.direction : "forward") === d.k ? " selected" : ""}>${esc(d.h)}</option>`).join("")}</select></div>
       <div class="field"><label>المدة (أسابيع)</label>
         <input id="pgWeeks" type="number" min="0" value="${r ? esc(r.weeks || "") : ""}" placeholder="اختياري"></div>
+
+      <!-- حسابُ المراجعة ومصيرُ ما بقي من الواجب -->
+      <div class="field"><label>كيفية حساب المراجعة</label>
+        <select id="pgRevCalc">${PRG_REVIEW_CALC.map(x =>
+          `<option value="${esc(x.k)}"${(r ? (r.reviewCalc || "cumulative") : "cumulative") === x.k
+            ? " selected" : ""}>${esc(x.h)}</option>`).join("")}</select></div>
+      <div class="field"><label>ما بقي من الواجب</label>
+        <select id="pgLeft">${PRG_LEFTOVER.map(x =>
+          `<option value="${esc(x.k)}"${(r ? (r.leftover || "carry") : "carry") === x.k
+            ? " selected" : ""}>${esc(x.h)}</option>`).join("")}</select>
+        <small style="font-size:11px;color:var(--text-faint)">
+          الأوجهُ التي لم تُسمَّع: تُلاحَق أم تسقط</small></div>
 
       <!-- التكرار: قاعدةٌ تمنع تجاوز السورة قبل إعادتها -->
       <div class="field"><label>التكرار</label>
@@ -9819,6 +9841,32 @@ window.prgForm = function (id) {
     `<button class="btn btn-primary" data-action="prg-save">${r ? "حفظ" : "إضافة"}</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 };
+/* =========================================================================
+   نسبةُ البرنامج — تلقائيةٌ لا تُسأل
+   -------------------------------------------------------------------------
+   كان «مالك البرنامج» قائمةً يختار منها المنشئ. أُلغيت: البرنامجُ يُنسب
+   لمسجد من أنشأه، فإن لم يكن له مسجدٌ فلمجمّعه، وإلا فاسمُ الجهة.
+   ========================================================================= */
+let NEW_PRG = "";   /* برنامجٌ أُنشئ للتوّ: يُفتح على مستوياته بعد الإغلاق */
+
+function prgAutoMosque() {
+  const u = (STATE && STATE.user) || {};
+  const fc = typeof facCtx === "function" ? facCtx() : null;
+  if (fc && fc.id && fc.coll !== "complexes") return String(fc.id);
+  return String(u.mosqueId || "");
+}
+
+function prgAutoOwner() {
+  const mid = prgAutoMosque();
+  const m = mid ? (DB.mosques || []).find(x => String(x.id) === String(mid)) : null;
+  if (m && m.name) return m.name;
+  const u = (STATE && STATE.user) || {};
+  const cid = String(u.complexId || "");
+  const c = cid ? (DB.complexes || []).find(x => String(x.id) === String(cid)) : null;
+  if (c && c.name) return c.name;
+  return (DB.settings || {}).orgName || "النظام";
+}
+
 window.prgSave = function () {
   /* حارسٌ ثانٍ: لو بلغ النموذجُ حالَ المثبَّت بأي طريق، لا يُكتب */
   if (isSysProgram(val("#pgId"))) {
@@ -9828,12 +9876,20 @@ window.prgSave = function () {
   if (!name) { showToast("اسم البرنامج مطلوب", "warn"); return; }
   if (!Array.isArray(DB.programs)) DB.programs = [];
   const id = val("#pgId");
+  /* السجلُّ القائم — يُقرأ قبل بناء البيانات ليُحفظ مالكُه كما هو */
+  const prev = id ? DB.programs.find(x => String(x.id) === String(id)) : null;
   const data = { name, type: val("#pgType") || PRG_TYPES[0],
-                 owner: val("#pgOwner") || ((DB.settings || {}).orgName || "النظام"),
+                 /* المالكُ لم يعد يُسأل عنه: يُنسب البرنامجُ لمسجد مُنشئه
+                    تلقائياً — أو لمجمّعه إن لم يكن له مسجد. والقديمُ يُبقى
+                    على مالكه فلا تتغيّر نسبةُ برنامجٍ قائم. */
+                 owner: (prev && prev.owner) || prgAutoOwner(),
+                 mosqueId: (prev && prev.mosqueId) || prgAutoMosque(),
                  status: val("#pgStatus") || "فعال",
                  unit: val("#pgUnit") || PRG_UNITS[0],
                  direction: val("#pgDir") || "forward",
                  weeks: Number(val("#pgWeeks")) || 0,
+                 reviewCalc: val("#pgRevCalc") || "cumulative",
+                 leftover: val("#pgLeft") || "carry",
                  repeatMode: val("#pgRepMode") || "",
                  repeatTimes: Math.max(1, Number(val("#pgRepTimes")) || 1),
                  scopeKind: val("#pgScope") || "closed",
@@ -9847,16 +9903,24 @@ window.prgSave = function () {
                    return o;
                  })() };
   if (id) {
-    const r = DB.programs.find(x => String(x.id) === String(id));
-    if (r) { Object.assign(r, data); persistSet("programs", r); }
+    if (prev) { Object.assign(prev, data); persistSet("programs", prev); }
     showToast("حُفظ البرنامج", "success");
   } else {
     if (DB.programs.some(x => String(x.name).trim() === name)) { showToast("اسم البرنامج مستخدم بالفعل", "warn"); return; }
     const r = Object.assign({ id: "pg" + Date.now() }, data);
     DB.programs.push(r); persistSet("programs", r);
+    /* البرنامجُ الجديد يُفتح على مستوياته فوراً: إنشاؤه خطوةٌ أولى،
+       وضبطُ مستوياته هو العمل. */
+    NEW_PRG = String(r.id);
     showToast("أُضيف البرنامج", "success");
   }
   closeModal(); mount();
+  if (NEW_PRG) {
+    const pid = NEW_PRG; NEW_PRG = "";
+    setTimeout(function () {
+      try { LVB.loaded = ""; window.lvlView(pid); } catch (e) {}
+    }, 60);
+  }
 };
 window.prgEdit = function () {
   const ids = prgSel();
@@ -11190,6 +11254,12 @@ function prgLiveFields(p2, sess) {
     ${sel("النطاق", "pgvScope", scopes, p2.scopeKind || "closed", "المفتوحُ يمضي حتى يوقفه المشرف")}
     ${sel("الانتقال بين المستويات", "pgvTrans", trans, p2.defTransition || "approve",
           "افتراضٌ للمستويات الجديدة")}
+    ${sel("كيفية حساب المراجعة", "pgvRevCalc",
+          typeof PRG_REVIEW_CALC !== "undefined" ? PRG_REVIEW_CALC : [],
+          p2.reviewCalc || "cumulative", "")}
+    ${sel("ما بقي من الواجب", "pgvLeft",
+          typeof PRG_LEFTOVER !== "undefined" ? PRG_LEFTOVER : [],
+          p2.leftover || "carry", "الأوجهُ التي لم تُسمَّع: تُلاحَق أم تسقط")}
     <div class="sp-field"><label for="pgvRepMode">التكرار</label>
       <div class="prgv-rep">
         <select id="pgvRepMode" class="sp-sel"
@@ -11219,6 +11289,8 @@ window.prgLiveSet = function (pid, id) {
   else if (id === "pgvTrans")    rec.defTransition = v;
   else if (id === "pgvRepMode")  rec.repeatMode = v;
   else if (id === "pgvRepTimes") rec.repeatTimes = Math.min(10, Math.max(1, Number(v) || 1));
+  else if (id === "pgvRevCalc")  rec.reviewCalc = v;
+  else if (id === "pgvLeft")     rec.leftover = v;
   else return;
   if (id === "pgvRepTimes") { const n = document.getElementById("pgvRepTimes");
     if (n) n.value = rec.repeatTimes; }
@@ -11236,6 +11308,223 @@ window.prgLiveSess = function (pid, btn) {
   Promise.resolve(persistSet("programs", rec)).then(function (okv) {
     if (okv !== false) showToast("حُفظت الفترات اليومية", "success");
   });
+};
+
+/* =========================================================================
+   واجبات البرنامج — أربعةٌ أساسيةٌ تُسمّى وتُرتَّب وتُشترط وتُمنع
+   -------------------------------------------------------------------------
+   كانت أنواعُ الواجبات إعداداً عاماً للنظام كلِّه (dutyTypes)، فلا يملك
+   برنامجٌ أن يُسمّي واجبَه ولا أن يُسقطه ولا أن يزيد عليه. تُضبط هنا
+   داخل البرنامج نفسِه: الاسمُ واللونُ، والترتيبُ تصاعديٌّ بالألزم،
+   والارتباطُ التراتبيُّ («لا يُفتح إلا بعد») والمنعُ البرمجيُّ («يمنع ما
+   بعده»)، ونطاقٌ اختياريٌّ لكلِّ واجبٍ يخرج به عن نطاق البرنامج.
+   تُحفظ في سجلّ البرنامج (duties) فلا تمسّ الإعدادَ العام.
+   ========================================================================= */
+const PRG_DUTY_BASE = [
+  { k: "hifz",    name: "حفظ جديد", color: "#e05252" },
+  { k: "review",  name: "مراجعة",   color: "#2f8f6f" },
+  { k: "tathbit", name: "تثبيت",    color: "#c9a227" },
+  { k: "tilawah", name: "تلاوة",    color: "#3b82c4" }
+];
+
+function prgDutiesOf(p2) {
+  const saved = p2 && Array.isArray(p2.duties) && p2.duties.length ? p2.duties : null;
+  const list = saved
+    ? saved.map(d => Object.assign({}, d))
+    : PRG_DUTY_BASE.map((d, i) => Object.assign({}, d,
+        { order: i + 1, required: true, blocks: false, needsId: "", scope: null }));
+  list.forEach((d, i) => {
+    if (!d.k) d.k = "d" + Date.now() + i;
+    if (!Number(d.order)) d.order = i + 1;
+  });
+  return list.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+}
+
+function prgDutiesCardHtml(p2) {
+  if (!p2 || p2.system === true) return "";
+  const pid = jsAttr(String(p2.id));
+  const list = prgDutiesOf(p2);
+  const nameOf = k => { const d = list.find(x => String(x.k) === String(k)); return d ? (d.name || "—") : ""; };
+
+  const rows = list.map((d, i) => {
+    const k = jsAttr(String(d.k));
+    const sc = d.scope && d.scope.on ? d.scope : null;
+    const others = list.filter(x => String(x.k) !== String(d.k));
+    return `<div class="pdu-row" data-k="${esc(d.k)}">
+      <div class="pdu-top">
+        <span class="pdu-n">${toArabicDigits(i + 1)}</span>
+        <input type="color" class="pdu-color" value="${esc(d.color || "#888888")}"
+          title="لون ملاحظات المصحف لهذا الواجب"
+          onchange="window.prgDutySet('${pid}','${k}','color',this.value)">
+        <input class="pdu-name" value="${esc(d.name || "")}" placeholder="اسم الواجب"
+          onchange="window.prgDutySet('${pid}','${k}','name',this.value)">
+        <button type="button" class="row-btn" title="أعلى"
+          onclick="window.prgDutyMove('${pid}','${k}',-1)">${ic("arrowUp", 14)}</button>
+        <button type="button" class="row-btn" title="أسفل"
+          onclick="window.prgDutyMove('${pid}','${k}',1)">${ic("arrowDown", 14)}</button>
+        <button type="button" class="row-btn pdu-del" title="حذف"
+          onclick="window.prgDutyDel('${pid}','${k}')">${ic("x", 14)}</button>
+      </div>
+      <div class="pdu-opts">
+        <label class="pdu-chk"><input type="checkbox"${d.required !== false ? " checked" : ""}
+          onchange="window.prgDutySet('${pid}','${k}','required',this.checked)"><span>إلزامي</span></label>
+        <label class="pdu-chk"><input type="checkbox"${d.blocks ? " checked" : ""}
+          onchange="window.prgDutySet('${pid}','${k}','blocks',this.checked)"><span>يمنع ما بعده</span></label>
+        <div class="pdu-f"><label>لا يُفتح إلا بعد</label>
+          <select onchange="window.prgDutySet('${pid}','${k}','needsId',this.value)">
+            <option value="">— بلا اشتراط —</option>
+            ${others.map(o => `<option value="${esc(o.k)}"${String(d.needsId || "") === String(o.k)
+              ? " selected" : ""}>${esc(o.name || "—")}</option>`).join("")}
+          </select></div>
+        <label class="pdu-chk"><input type="checkbox"${sc ? " checked" : ""}
+          onchange="window.prgDutyScope('${pid}','${k}',this.checked)"><span>نطاق خاص</span></label>
+      </div>
+      <div class="pdu-sched">
+        <div class="pdu-schedrow"><label>أيام الواجب</label>
+          <div class="pdu-chips">${DOW.map(n => `<button type="button"
+            class="prg-sess${(d.days || DOW).indexOf(n) > -1 ? " on" : ""}"
+            onclick="window.prgDutyDay('${pid}','${k}','${esc(n)}',this)">${esc(n)}</button>`).join("")}</div></div>
+        <div class="pdu-schedrow"><label>فتراته</label>
+          <div class="pdu-chips">${PRG_SESSIONS.map(n => `<button type="button"
+            class="prg-sess${(d.sess || prgSessionsOf(p2)).indexOf(n) > -1 ? " on" : ""}"
+            onclick="window.prgDutySess('${pid}','${k}','${esc(n)}',this)">${esc(n)}</button>`).join("")}</div></div>
+      </div>
+      ${sc ? `<div class="pdu-scope">
+        <div class="pdu-f"><label>يبدأ من</label>
+          <select data-lvbsur="1" onfocus="window.lvbFillSur(this)"
+            onchange="window.prgDutySet('${pid}','${k}','scopeFrom',this.value)">
+            <option value="${esc(sc.fromS || 1)}" selected>${esc(lvbSurahName(sc.fromS || 1))}</option>
+          </select></div>
+        <div class="pdu-f"><label>ينتهي بـ</label>
+          <select data-lvbsur="1" onfocus="window.lvbFillSur(this)"
+            onchange="window.prgDutySet('${pid}','${k}','scopeTo',this.value)">
+            <option value="${esc(sc.toS || 114)}" selected>${esc(lvbSurahName(sc.toS || 114))}</option>
+          </select></div>
+      </div>` : ""}
+    </div>`;
+  }).join("");
+
+  return `<section class="sp-card sp-wide2" id="prgDutiesCard">
+    <div class="sp-cardhead">${ic("doc", 17)}
+      <div><h3>واجبات البرنامج</h3>
+        <p>الترتيبُ تصاعديٌّ بالألزم — يُسمّى الواجبُ ويُحذف ويُزاد عليه</p></div>
+      <span class="sp-count">${toArabicDigits(list.length)}</span></div>
+    <div class="pdu-wrap">${rows}</div>
+    <div class="pdu-foot">
+      <button type="button" class="btn btn-soft btn-sm"
+        onclick="window.prgDutyAdd('${pid}')">${ic("plus", 14)} إضافة واجب</button>
+      <small class="muted">اللونُ هو لونُ ملاحظات المصحف لهذا الواجب</small>
+    </div>
+  </section>`;
+}
+
+function prgDutyRec(pid) {
+  return (DB.programs || []).find(x => String(x.id) === String(pid)) || null;
+}
+
+function prgDutyCommit(rec, msg) {
+  Promise.resolve(persistSet("programs", rec)).then(function (okv) {
+    if (okv !== false && msg) showToast(msg, "success");
+  });
+}
+
+function prgDutyRedraw(pid) {
+  const rec = prgDutyRec(pid);
+  const sec = document.getElementById("prgDutiesCard");
+  if (!rec || !sec) return;
+  const box = document.createElement("div");
+  box.innerHTML = prgDutiesCardHtml(rec);
+  const fresh = box.firstElementChild;
+  if (fresh) sec.parentNode.replaceChild(fresh, sec);
+}
+
+window.prgDutySet = function (pid, k, field, v) {
+  const rec = prgDutyRec(pid); if (!rec) return;
+  const list = prgDutiesOf(rec);
+  const d = list.find(x => String(x.k) === String(k)); if (!d) return;
+  if (field === "name")          d.name = String(v || "").trim() || d.name;
+  else if (field === "color")    d.color = String(v || "");
+  else if (field === "required") d.required = !!v;
+  else if (field === "blocks")   d.blocks = !!v;
+  else if (field === "needsId")  d.needsId = String(v || "");
+  else if (field === "scopeFrom") { d.scope = d.scope || { on: true }; d.scope.fromS = Number(v) || 1; }
+  else if (field === "scopeTo")   { d.scope = d.scope || { on: true }; d.scope.toS = Number(v) || 114; }
+  else return;
+  rec.duties = list;
+  prgDutyCommit(rec, "حُفظ");
+  if (field === "name") prgDutyRedraw(pid);   /* الاشتراطُ يعرض الاسمَ الجديد */
+};
+
+/* جدولةُ أيام الواجب وفتراته — لكلِّ واجبٍ أيامُه لا أيامُ البرنامج وحدها */
+window.prgDutyDay = function (pid, k, day, btn) {
+  const rec = prgDutyRec(pid); if (!rec) return;
+  const list = prgDutiesOf(rec);
+  const d = list.find(x => String(x.k) === String(k)); if (!d) return;
+  const cur2 = Array.isArray(d.days) ? d.days.slice() : DOW.slice();
+  const i = cur2.indexOf(day);
+  if (i > -1) cur2.splice(i, 1); else cur2.push(day);
+  d.days = DOW.filter(n => cur2.indexOf(n) > -1);
+  if (btn) btn.classList.toggle("on", d.days.indexOf(day) > -1);
+  rec.duties = list;
+  prgDutyCommit(rec, "");
+};
+
+window.prgDutySess = function (pid, k, name, btn) {
+  const rec = prgDutyRec(pid); if (!rec) return;
+  const list = prgDutiesOf(rec);
+  const d = list.find(x => String(x.k) === String(k)); if (!d) return;
+  const cur2 = Array.isArray(d.sess) ? d.sess.slice() : prgSessionsOf(rec).slice();
+  const i = cur2.indexOf(name);
+  if (i > -1) cur2.splice(i, 1); else cur2.push(name);
+  d.sess = PRG_SESSIONS.filter(n => cur2.indexOf(n) > -1);
+  if (btn) btn.classList.toggle("on", d.sess.indexOf(name) > -1);
+  rec.duties = list;
+  prgDutyCommit(rec, "");
+};
+
+window.prgDutyScope = function (pid, k, on) {
+  const rec = prgDutyRec(pid); if (!rec) return;
+  const list = prgDutiesOf(rec);
+  const d = list.find(x => String(x.k) === String(k)); if (!d) return;
+  d.scope = on ? { on: true, fromS: (d.scope && d.scope.fromS) || 1, toS: (d.scope && d.scope.toS) || 114 } : null;
+  rec.duties = list;
+  prgDutyCommit(rec, "");
+  prgDutyRedraw(pid);
+};
+
+window.prgDutyMove = function (pid, k, dir) {
+  const rec = prgDutyRec(pid); if (!rec) return;
+  const list = prgDutiesOf(rec);
+  const i = list.findIndex(x => String(x.k) === String(k));
+  const j = i + (Number(dir) || 0);
+  if (i < 0 || j < 0 || j >= list.length) return;
+  const t = list[i]; list[i] = list[j]; list[j] = t;
+  list.forEach((x, n) => { x.order = n + 1; });
+  rec.duties = list;
+  prgDutyCommit(rec, "");
+  prgDutyRedraw(pid);
+};
+
+window.prgDutyDel = function (pid, k) {
+  const rec = prgDutyRec(pid); if (!rec) return;
+  const list = prgDutiesOf(rec).filter(x => String(x.k) !== String(k));
+  if (!list.length) { showToast("لا بدّ من واجبٍ واحدٍ على الأقل", "warn"); return; }
+  /* الاشتراطُ على واجبٍ محذوف يُسقط، وإلا بقي واجبٌ لا يُفتح أبداً */
+  list.forEach(x => { if (String(x.needsId) === String(k)) x.needsId = ""; });
+  list.forEach((x, n) => { x.order = n + 1; });
+  rec.duties = list;
+  prgDutyCommit(rec, "حُذف الواجب");
+  prgDutyRedraw(pid);
+};
+
+window.prgDutyAdd = function (pid) {
+  const rec = prgDutyRec(pid); if (!rec) return;
+  const list = prgDutiesOf(rec);
+  list.push({ k: "d" + Date.now(), name: "واجب جديد", color: "#8a8f98",
+              order: list.length + 1, required: true, blocks: false, needsId: "", scope: null });
+  rec.duties = list;
+  prgDutyCommit(rec, "أُضيف واجب");
+  prgDutyRedraw(pid);
 };
 
 window.lvlView = function (id) {
@@ -11313,6 +11602,8 @@ window.lvlView = function (id) {
             : prgLiveFields(p2, sess)}
           </div>
         </section>
+
+        ${prgDutiesCardHtml(p2)}
 
         ${dedCardHtml(p2)}
 
@@ -11903,7 +12194,8 @@ function lvbLoad(pid, lvls) {
   LVB.rows = (lvls || []).map(function (lv) {
     return {
       id: String(lv.id), rec: lv, name: lv.name || "", saved: true,
-      pillars: lv.pillars ? JSON.parse(JSON.stringify(lv.pillars)) : null
+      pillars: lv.pillars ? JSON.parse(JSON.stringify(lv.pillars)) : null,
+      ovr: lv.ovr ? JSON.parse(JSON.stringify(lv.ovr)) : null
     };
   });
 }
@@ -11961,6 +12253,83 @@ function lvbPillarCard(rid, def) {
   </div>`;
 }
 
+/* =========================================================================
+   إعداداتُ البرنامج في رأس المستوى — تُورَّث وتُخصَّص
+   -------------------------------------------------------------------------
+   يُفتح المستوى فتُرى إعداداتُ برنامجه في أعلاه: النطاق والانتقال والتكرار.
+   وهي موروثةٌ ما لم تُخصَّص، فإن غُيّرت في مستوىً كُتبت فيه وحدَه ولم
+   يتأثّر سواه — ويظهر عليها وسمُ «مخصَّص» وزرُّ ردٍّ إلى إعداد البرنامج.
+   ========================================================================= */
+function lvbPrgOf() {
+  return (DB.programs || []).find(x => String(x.id) === String(LVB.pid)) || {};
+}
+
+/* قيمةُ إعدادٍ لمستوى: المخصَّصُ فيه، وإلا فالموروثُ من البرنامج */
+function lvbOvr(row, key) {
+  const o = row && row.ovr ? row.ovr : null;
+  if (o && Object.prototype.hasOwnProperty.call(o, key)) return { v: o[key], own: true };
+  const pr = lvbPrgOf();
+  const d = { scopeKind: pr.scopeKind || "closed",
+              defTransition: pr.defTransition || "approve",
+              repeatMode: pr.repeatMode || "",
+              repeatTimes: Number(pr.repeatTimes) || 1 };
+  return { v: d[key], own: false };
+}
+
+function lvbPrgHead(row) {
+  const scopes = typeof PRG_SCOPES !== "undefined" ? PRG_SCOPES : [];
+  const trans  = typeof LV_TRANSITIONS !== "undefined" ? LV_TRANSITIONS : [];
+  const reps   = typeof REPEAT_MODES !== "undefined" ? REPEAT_MODES : [];
+  const rid = row.id;
+
+  const fld = (label, key, opts) => {
+    const st = lvbOvr(row, key);
+    return `<div class="lvb-f">
+      <label>${esc(label)}
+        ${st.own ? `<span class="lvb-own">مخصَّص</span>
+          <button type="button" class="lvb-reset"
+            onclick="window.lvbOvrClear('${jsAttr(rid)}','${key}')">ردّ</button>` : ""}</label>
+      <select onchange="window.lvbOvrSet('${jsAttr(rid)}','${key}',this.value)">
+        ${opts.map(o => `<option value="${esc(o.k)}"${String(o.k) === String(st.v)
+          ? " selected" : ""}>${esc(o.h)}</option>`).join("")}
+      </select></div>`;
+  };
+
+  const times = lvbOvr(row, "repeatTimes");
+  return `<div class="lvb-prg">
+    <div class="lvb-prghead">${ic("info", 14)}
+      <strong>إعدادات البرنامج</strong>
+      <span class="muted">موروثةٌ من «${esc(lvbPrgOf().name || "البرنامج")}» — غيّرها هنا لهذا المستوى وحدَه</span></div>
+    <div class="lvb-prggrid">
+      ${fld("النطاق", "scopeKind", scopes)}
+      ${fld("الانتقال بين المستويات", "defTransition", trans)}
+      ${fld("التكرار", "repeatMode", reps)}
+      <div class="lvb-f"><label>عدد المرات
+        ${times.own ? `<span class="lvb-own">مخصَّص</span>
+          <button type="button" class="lvb-reset"
+            onclick="window.lvbOvrClear('${jsAttr(rid)}','repeatTimes')">ردّ</button>` : ""}</label>
+        <input type="number" min="1" max="10" dir="ltr" value="${esc(times.v)}"
+          onchange="window.lvbOvrSet('${jsAttr(rid)}','repeatTimes',this.value)"></div>
+    </div></div>`;
+}
+
+window.lvbOvrSet = function (rid, key, val) {
+  const row = lvbRow(rid);
+  row.ovr = row.ovr || {};
+  row.ovr[key] = key === "repeatTimes"
+    ? Math.min(10, Math.max(1, Number(val) || 1)) : String(val);
+  row.saved = false;
+  lvbRedraw();
+};
+
+window.lvbOvrClear = function (rid, key) {
+  const row = lvbRow(rid);
+  if (row.ovr) { delete row.ovr[key];
+    if (!Object.keys(row.ovr).length) row.ovr = null; }
+  row.saved = false;
+  lvbRedraw();
+};
+
 function lvbRow(rid) {
   return LVB.rows.find(r => String(r.id) === String(rid)) || { id: rid, pillars: {} };
 }
@@ -11986,6 +12355,7 @@ function lvbCard(row, n) {
       <div class="lvb-f lvb-wide"><label>اسم المستوى</label>
         <input value="${esc(row.name || "")}" placeholder="مثال: المستوى التمهيدي"
           oninput="window.lvbName('${jsAttr(row.id)}',this.value)"></div>
+      ${lvbPrgHead(row)}
       ${LVB_PILLARS.map(d => lvbPillarCard(row.id, d)).join("")}
       <div class="lvb-saverow">
         <span class="muted">احفظ المستوى ليُضاف إلى البرنامج</span>
@@ -12065,7 +12435,7 @@ function lvbRedraw() {
 
 window.lvbAdd = function () {
   LVB.rows.push({ id: "lv" + Date.now() + "-" + LVB.rows.length, rec: null,
-                  name: "", saved: false, pillars: null });
+                  name: "", saved: false, pillars: null, ovr: null });
   LVB.open = LVB.rows[LVB.rows.length - 1].id;
   lvbRedraw();
 };
@@ -12146,6 +12516,7 @@ window.lvbSaveAll = function () {
     rec.order = i + 1;
     rec.programId = String(LVB.pid);
     rec.pillars = r.pillars || {};
+    rec.ovr = r.ovr || null;
     if (!r.rec) {
       if (!Array.isArray(DB.levels)) DB.levels = [];
       DB.levels.push(rec); r.rec = rec;

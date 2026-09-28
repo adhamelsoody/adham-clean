@@ -9616,3 +9616,78 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
   text-align: center; padding: 12px 8px; font-weight: 700;
   border: 1.5px solid #dfe6e6; border-radius: 11px; font-family: var(--ff); font-size: 15px;
 }
+
+/* إعداداتُ البرنامج في رأس المستوى — موروثةٌ تُخصَّص */
+.lvb-prg { border: 1.5px dashed #cfdcdc; border-radius: 12px; padding: 13px 14px;
+           background: #fbfdfd; margin-bottom: 4px; }
+.lvb-prghead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.lvb-prghead strong { font-size: 13.5px; color: #0f6f72; }
+.lvb-prghead .muted { font-size: 11.5px; }
+.lvb-prggrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.lvb-prggrid .lvb-f label { display: flex; align-items: center; gap: 6px; }
+.lvb-own { font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 999px;
+           background: #fdf2e2; color: #b07914; }
+.lvb-reset { border: 0; background: none; cursor: pointer; padding: 0;
+             font-family: var(--ff); font-size: 11px; font-weight: 700; color: #0f6f72;
+             text-decoration: underline; }
+
+/* =========================================================================
+   واجبات البرنامج — الاسمُ واللونُ والترتيبُ والاشتراطُ في صفٍّ واحد
+   يُضبط الواجبُ في مكانه داخل البرنامج، فلا حاجةَ لفتح شاشة الإعدادات.
+   ========================================================================= */
+.pdu-wrap { display: flex; flex-direction: column; gap: 10px; padding: 4px 16px 12px; }
+.pdu-row {
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 12px; background: var(--surface-2, transparent);
+}
+.pdu-top { display: flex; align-items: center; gap: 8px; }
+.pdu-n {
+  width: 22px; height: 22px; flex-shrink: 0; border-radius: 7px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11.5px; font-weight: 700; background: var(--chip-bg, rgba(0,0,0,.05));
+  color: var(--text-faint);
+}
+.pdu-color {
+  width: 28px; height: 28px; flex-shrink: 0; padding: 0; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 8px; background: none;
+}
+.pdu-name {
+  flex: 1 1 auto; min-width: 0; height: 32px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--input-bg, transparent); color: inherit;
+  font: inherit; font-size: 13.5px;
+}
+.pdu-row .row-btn { flex-shrink: 0; }
+.pdu-del { color: var(--danger); }
+.pdu-opts {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px;
+  margin-top: 9px;
+}
+.pdu-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
+.pdu-chk input { width: 15px; height: 15px; }
+.pdu-f { display: flex; flex-direction: column; gap: 4px; min-width: 165px; }
+.pdu-f > label { font-size: 11px; color: var(--text-faint); }
+.pdu-f > select {
+  height: 30px; padding: 0 8px; font: inherit; font-size: 12.5px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--input-bg, transparent); color: inherit;
+}
+.pdu-scope {
+  display: flex; flex-wrap: wrap; gap: 10px 14px;
+  margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--line);
+}
+.pdu-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 0 16px 14px; flex-wrap: wrap;
+}
+.pdu-foot small { font-size: 11px; }
+
+/* جدولةُ الواجب — أيامُه وفتراتُه داخل صفّه */
+.pdu-sched { margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--line); }
+.pdu-schedrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pdu-schedrow + .pdu-schedrow { margin-top: 7px; }
+.pdu-schedrow > label {
+  font-size: 11px; color: var(--text-faint); width: 66px; flex-shrink: 0;
+}
+.pdu-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pdu-chips .prg-sess { font-size: 11.5px; padding: 3px 9px; }
