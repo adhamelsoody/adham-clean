@@ -9477,3 +9477,30 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
 #spRevQtyBox  .sp-step button:first-child { border-radius: 0 11px 11px 0; }
 #spHifzQtyBox .sp-step button:last-child,
 #spRevQtyBox  .sp-step button:last-child { border-radius: 11px 0 0 11px; }
+
+/* ============================================================
+   صورةُ المنشأة مكانَ شعار «ذات» في القائمة الجانبية
+   ------------------------------------------------------------
+   شعارُ «ذات» رسمٌ شفّافٌ يُحتوى بحجمه (contain). وصورةُ المنشأة
+   فوتوغرافيّةٌ بأبعادٍ مختلفة، فتُقصّ في مربّعٍ (cover) لئلّا
+   تتمدّد أو تترك فراغاً حولها.
+
+   المحدِّدُ مرفوعٌ بـ#sidebar و!important لأنّ القواعد السابقة
+   تفرض contain و«بلا زوايا» بمحدِّدٍ فيه معرّف — ولولا رفعُه
+   لبقيت الصورةُ محتواةً في إطارٍ فارغٍ من حولها.
+   ============================================================ */
+#sidebar .brand .brand-logo-wrap.brand-has-photo,
+.sidebar .brand .brand-logo-wrap.brand-has-photo {
+  padding: 0 !important;
+  overflow: hidden;
+}
+#sidebar .brand .brand-logo-wrap.brand-has-photo .brand-logo-img,
+.sidebar .brand .brand-logo-wrap.brand-has-photo .brand-logo-img {
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1;
+  max-height: none;
+  object-fit: cover !important;
+  border-radius: var(--r-md) !important;
+  display: block;
+}

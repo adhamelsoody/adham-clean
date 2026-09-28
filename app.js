@@ -1781,6 +1781,54 @@ function adminDashboard() {
 /* فرز المساجد: الكل · تابع لمجمع · مستقل · مجمع بعينه */
 /* المنشأةُ التي دخلها المستخدم — محفوظةٌ في الجلسة من زرّ «دخول»، تُقرأ
    في كلّ صفحةٍ لأن STATE يبدأ من جديد مع كلّ انتقال. */
+/* =========================================================================
+   شعارُ المنشأة مكانَ شعار النظام
+   -------------------------------------------------------------------------
+   القائمةُ الجانبية تحمل شعار «ذات» ثابتاً في كلّ صفحة. فمن كان داخل مسجدٍ
+   أو مجمّعٍ له صورة، عُرضت صورتُه مكانَه — فيعرف أينَ هو من نظرة. ومن لا
+   صورةَ لمنشأته، أو كان خارج أيّ منشأة، بقي شعارُ «ذات» كما هو.
+
+   الصورةُ من حقل photo في سجلّ المنشأة — وهو الحقلُ نفسُه المعروضُ في
+   بطاقتها، فلا حقلَ جديد ولا نموذجَ يُعدَّل.
+   ========================================================================= */
+function brandFacility() {
+  const find = (coll, id) => id
+    ? (Array.isArray(DB[coll]) ? DB[coll] : []).find(x => x && String(x.id) === String(id))
+    : null;
+
+  /* أوّلاً: المنشأةُ التي دخلناها من شاشة المنشآت */
+  const fc = typeof facCtx === "function" ? facCtx() : null;
+  if (fc && fc.id) {
+    const r = find(fc.coll === "complexes" ? "complexes" : "mosques", fc.id);
+    if (r) return r;
+  }
+  /* ثمّ منشأةُ الحساب نفسِه: مسجدُه أوّلاً فهو الأخصّ، ثمّ مجمّعُه */
+  const u = (STATE && STATE.user) || {};
+  return find("mosques", u.mosqueId) || find("complexes", u.complexId) || null;
+}
+
+function brandLogoSync() {
+  const wrap = document.querySelector(".brand .brand-logo-wrap");
+  if (!wrap) return;
+  const img = wrap.querySelector(".brand-logo-img");
+  if (!img) return;
+
+  /* الأصلُ يُحفظ مرّةً فيُرجَع إليه متى زالت الصورة */
+  if (!img.dataset.zatSrc) img.dataset.zatSrc = img.getAttribute("src") || "";
+
+  const f = brandFacility();
+  const photo = f && f.photo ? String(f.photo) : "";
+  const want = photo || img.dataset.zatSrc;
+  if (img.getAttribute("src") !== want) img.setAttribute("src", want);
+
+  /* صورةُ المنشأة تُقصّ في إطارها، وشعارُ «ذات» يبقى على حاله */
+  wrap.classList.toggle("brand-has-photo", !!photo);
+  img.style.display = "";
+  const fb = wrap.querySelector(".brand-fallback");
+  if (fb) fb.style.display = "none";
+  img.setAttribute("alt", photo ? (f.name || "شعار المنشأة") : "شعار ذات القرآنية");
+}
+
 function facCtx() {
   try {
     var raw = sessionStorage.getItem("__facCtx");
@@ -26807,6 +26855,8 @@ function runPeriodicScans(force) {
 }
 
 function mount() {
+  /* شعارُ المنشأة في القائمة الجانبية — يتبع ما نحن داخله */
+  try { brandLogoSync(); } catch (e) {}
   /* الفحوص الثقيلة كلّ دقيقتين — والشارات مع كلّ رسم لأنها خفيفة */
   try { runPeriodicScans(); } catch (e) {}
   /* مغادرةُ المصحف تُغلق مستمعَه اللحظيّ */
