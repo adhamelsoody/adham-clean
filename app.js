@@ -11842,10 +11842,10 @@ function lvbAyahBox(rid, k, side) {
       <span>${side === "from" ? "يبدأ من" : "ينتهي بـ"}</span></div>
     <div class="lvb-posrow">
       <div class="lvb-f"><label>السورة</label>
-        <select id="${id}_s" onchange="window.lvbSet('${jsAttr(rid)}','${k}','${side}S',this.value)">
-          ${list.length
-            ? list.map(x => `<option value="${x.i}"${Number(x.i) === Number(sur) ? " selected" : ""}>${esc(x.n)}</option>`).join("")
-            : `<option value="${esc(sur)}">${esc(lvbSurahName(sur))}</option>`}
+        <select id="${id}_s" data-lvbsur="1"
+          onfocus="window.lvbFillSur(this)"
+          onchange="window.lvbSet('${jsAttr(rid)}','${k}','${side}S',this.value)">
+          <option value="${esc(sur)}" selected>${esc(lvbSurahName(sur))}</option>
         </select></div>
       <div class="lvb-f"><label>الآية (من ${toArabicDigits(lvxSurahAyahs(sur) || 7)})</label>
         <div class="lvb-step">
@@ -11951,7 +11951,37 @@ function lvbSection(pid, lvls) {
 /* صفحةُ البرنامج لوحةٌ مفتوحةٌ بـopenPanel لا صفحةٌ يرسمها mount — فإعادةُ
    الرسم تكون بإعادة فتحها. كان النداءُ mount() فتُرسم الصفحةُ الخلفية
    وتبقى اللوحةُ على حالها: يُضغط «إضافة مستوى» فلا يظهر شيء. */
+/* =====================================================================
+   قوائمُ السور تُملأ عند أوّل لمسة
+   ---------------------------------------------------------------------
+   أربعُ قوائمَ في البطاقة المفتوحة × مئةٍ وأربعَ عشرةَ سورة = ٤٥٦ عنصراً
+   تُبنى مع كلّ إعادة رسم — وهي كلفةُ اللاجّ المحسوس عند إضافة مستوى.
+   تُرسم القائمةُ الآن بخيارها المختار وحدَه، وتُملأ كاملةً حين يلمسها
+   المستخدم، مرّةً واحدةً لكلّ قائمة.
+   ===================================================================== */
+window.lvbFillSur = function (el) {
+  if (!el || el.dataset.full === "1") return;
+  const list = (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : [];
+  if (!list.length) return;
+  const cur2 = String(el.value || "");
+  el.innerHTML = list.map(x =>
+    '<option value="' + x.i + '"' + (String(x.i) === cur2 ? " selected" : "") +
+    ">" + esc(x.n) + "</option>").join("");
+  el.value = cur2;
+  el.dataset.full = "1";
+};
+
 function lvbRedraw() {
+  /* الأرخصُ أوّلاً: يُستبدل قسمُ المستويات وحدَه في مكانه. وإعادةُ فتح
+     اللوحة كلِّها تبني جداولَ الطلاب والخطط وبطاقاتِ الأركان من جديد —
+     كلفةٌ لا داعيَ لها عند إضافة مستوى، ومعها يقفز التمرير إلى أعلى. */
+  const sec = document.querySelector("#panelRoot .lvb-sec");
+  if (sec && LVB.pid && String(LVB.loaded) === String(LVB.pid)) {
+    const box = document.createElement("div");
+    box.innerHTML = lvbSection(LVB.pid, []);
+    const fresh = box.firstElementChild;
+    if (fresh) { sec.parentNode.replaceChild(fresh, sec); return; }
+  }
   if (typeof window.lvlView === "function" && LVB.pid) { window.lvlView(LVB.pid); return; }
   if (typeof mount === "function") mount();
 }
