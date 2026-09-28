@@ -11948,15 +11948,23 @@ function lvbSection(pid, lvls) {
 }
 
 /* ---- أفعالُ المحرِّر ---- */
+/* صفحةُ البرنامج لوحةٌ مفتوحةٌ بـopenPanel لا صفحةٌ يرسمها mount — فإعادةُ
+   الرسم تكون بإعادة فتحها. كان النداءُ mount() فتُرسم الصفحةُ الخلفية
+   وتبقى اللوحةُ على حالها: يُضغط «إضافة مستوى» فلا يظهر شيء. */
+function lvbRedraw() {
+  if (typeof window.lvlView === "function" && LVB.pid) { window.lvlView(LVB.pid); return; }
+  if (typeof mount === "function") mount();
+}
+
 window.lvbAdd = function () {
   LVB.rows.push({ id: "lv" + Date.now() + "-" + LVB.rows.length, rec: null,
                   name: "", saved: false, pillars: null });
   LVB.open = LVB.rows[LVB.rows.length - 1].id;
-  mount();
+  lvbRedraw();
 };
 window.lvbOpen = function (rid) {
   LVB.open = String(LVB.open) === String(rid) ? "" : String(rid);
-  mount();
+  lvbRedraw();
 };
 window.lvbName = function (rid, v) {
   const r = lvbRow(rid); r.name = String(v || ""); r.saved = false;
@@ -11969,7 +11977,7 @@ window.lvbMove = function (rid, d) {
   if (i < 0 || j < 0 || j >= LVB.rows.length) return;
   const t = LVB.rows[i]; LVB.rows[i] = LVB.rows[j]; LVB.rows[j] = t;
   LVB.rows.forEach(r => { r.saved = false; });
-  mount();
+  lvbRedraw();
 };
 window.lvbDel = function (rid) {
   const i = LVB.rows.findIndex(r => String(r.id) === String(rid));
@@ -11979,15 +11987,15 @@ window.lvbDel = function (rid) {
   if (r.rec) { try { persistDelete("levels", r.rec.id); } catch (e) {}
     const k = (DB.levels || []).findIndex(x => String(x.id) === String(r.rec.id));
     if (k > -1) DB.levels.splice(k, 1); }
-  mount();
+  lvbRedraw();
 };
 window.lvbPTog = function (rid, k) {
   const r = lvbRow(rid); const v = lvbPillar(r, k);
-  v.on = !v.on; r.saved = false; mount();
+  v.on = !v.on; r.saved = false; lvbRedraw();
 };
 window.lvbKid = function (rid, k, kid) {
   const r = lvbRow(rid); const v = lvbPillar(r, k);
-  v.kids[kid] = !v.kids[kid]; r.saved = false; mount();
+  v.kids[kid] = !v.kids[kid]; r.saved = false; lvbRedraw();
 };
 window.lvbSet = function (rid, k, field, val) {
   const r = lvbRow(rid); const v = lvbPillar(r, k);
@@ -12017,12 +12025,12 @@ window.lvbSaveLevel = function (rid) {
   if (!String(r.name || "").trim()) { showToast("اكتب اسم المستوى أوّلاً", "warn"); return; }
   r.saved = true; LVB.open = "";
   showToast("أُضيف «" + r.name + "» — اضغط «حفظ وإنهاء» لحفظه", "success");
-  mount();
+  lvbRedraw();
 };
 
 window.lvbSaveAll = function () {
   const bad = LVB.rows.find(r => !String(r.name || "").trim());
-  if (bad) { showToast("كل مستوى يحتاج اسماً", "warn"); LVB.open = bad.id; mount(); return; }
+  if (bad) { showToast("كل مستوى يحتاج اسماً", "warn"); LVB.open = bad.id; lvbRedraw(); return; }
   let n = 0;
   LVB.rows.forEach(function (r, i) {
     const rec = r.rec || { id: r.id, programId: LVB.pid, program: (recByName
@@ -12038,15 +12046,15 @@ window.lvbSaveAll = function () {
     persistSet("levels", rec); r.saved = true; n++;
   });
   showToast("حُفظ البرنامج و" + toArabicDigits(n) + " من مستوياته", "success");
-  LVB.open = ""; mount();
+  LVB.open = ""; lvbRedraw();
 };
 
 window.lvbBack = function () {
   const un = LVB.rows.filter(r => !r.saved).length;
   if (un) { showToast("لديك " + toArabicDigits(un) + " غير محفوظ — احفظ أو تابع", "warn"); }
   LVB.loaded = "";
-  if (typeof STATE !== "undefined") { STATE.prog = ""; }
-  mount();
+  try { closePanel(); } catch (e) {}
+  if (typeof mount === "function") mount();
 };
 
 window.dedLevelAdd = function (pid) {
