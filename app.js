@@ -11306,13 +11306,10 @@ window.lvlView = function (id) {
           </section>`;
         })() : ""}
 
-        <section class="sp-card sp-wide2" data-lvprog="${esc(p2.id)}">
+        ${fixed ? `<section class="sp-card sp-wide2" data-lvprog="${esc(p2.id)}">
           <div class="sp-cardhead">${ic("layers", 17)}
-            <div><h3>المستويات</h3><p>${fixed ? "النطاق القرآني لكلٍّ وعدد طلابه"
-              : toArabicDigits(lvls.length) + " مستويات – أضف مستوى ثم احفظه لإضافته للبرنامج"}</p></div>
-            <span class="sp-count">${toArabicDigits(lvls.length)}</span>
-            ${!fixed && lvls.length ? `<button class="btn btn-primary btn-sm ded-lvadd"
-              onclick="window.dedLevelAdd('${jsAttr(p2.id)}')">${ic("plus", 15)} إضافة مستوى</button>` : ""}</div>
+            <div><h3>المستويات</h3><p>النطاق القرآني لكلٍّ وعدد طلابه</p></div>
+            <span class="sp-count">${toArabicDigits(lvls.length)}</span></div>
           ${lvls.length ? `<div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
             <thead><tr><th>#</th><th>المستوى</th><th>النطاق</th><th>الانتقال</th><th>الطلاب</th><th></th></tr></thead>
             <tbody>${lvls.map((lv, n) => `<tr>
@@ -11324,15 +11321,8 @@ window.lvlView = function (id) {
               <td><button class="btn btn-ghost btn-sm"
                 onclick="window.lvDetail('${jsAttr(lv.id)}')">التفاصيل</button></td>
             </tr>`).join("")}</tbody></table></div></div>`
-            : fixed ? `<div class="qg-empty">لا مستويات مسجَّلة لهذا البرنامج</div>`
-            : `<div class="ded-lvempty">
-                <span class="ded-lvico">${ic("layers", 22)}</span>
-                <strong>لا توجد مستويات بعد</strong>
-                <span>ابدأ بإضافة المستوى الأول لهذا البرنامج</span>
-                <button class="btn btn-primary" onclick="window.dedLevelAdd('${jsAttr(p2.id)}')">${ic("plus", 16)} إضافة مستوى</button>
-              </div>`}
-          ${!fixed ? `<div class="ded-saved">كل التغييرات محفوظة</div>` : ""}
-        </section>
+            : `<div class="qg-empty">لا مستويات مسجَّلة لهذا البرنامج</div>`}
+        </section>` : lvbSection(p2.id, lvls)}
 
         <section class="sp-card sp-wide2">
           <div class="sp-cardhead">${ic("users", 17)}
@@ -11773,6 +11763,292 @@ window.dedSave = function () {
 };
 
 /* زرّ «إضافة مستوى» في صفحة البرنامج: يفتح نموذج المستوى الموجود نفسه */
+
+/* =========================================================================
+   محرِّرُ المستويات داخل صفحة البرنامج
+   -------------------------------------------------------------------------
+   كان المستوى نافذةً بحقولٍ مجرّدة، وأركانُ الحفظ والمراجعة والتلاوة
+   مضبوطةً للبرنامج كلِّه. فصار لكلّ مستوىً أركانُه: يُفتح في الصفحة
+   نفسِها، ويُضبط كلُّ ركنٍ بنطاقه، ثمّ يُحفظ البرنامجُ ومستوياتُه دفعةً
+   واحدة بزرّ «حفظ وإنهاء».
+
+   المستوياتُ المحفوظةُ قبل هذا لا تحمل pillars، فتُشتقّ لها من ضبط
+   البرنامج عند أوّل فتح — فلا يفقد برنامجٌ قائمٌ شيئاً ولا يُكتب في
+   القاعدة ما لم يُحفظ قصداً.
+   ========================================================================= */
+const LVB = { pid: "", rows: [], open: "", loaded: "" };
+
+const LVB_PILLARS = [
+  { k: "hifz",    h: "حفظ",    icon: "doc",     tone: "lvb-hifz",
+    kidsOf: "حفظ",   kids: [["tathbit", "تثبيت"], ["tathbitCum", "تثبيت تراكمي"],
+                            ["tilawahNext", "تلاوة الدرس القادم"]] },
+  { k: "review",  h: "مراجعة", icon: "refresh", tone: "lvb-rev",
+    kidsOf: "مراجعة", kids: [["reviewExtra", "مراجعة إضافية"], ["reviewCum", "مراجعة تراكمية"]] },
+  { k: "tilawah", h: "تلاوة",  icon: "chat",    tone: "lvb-til", kids: [] }
+];
+
+/* ضبطُ ركنٍ لمستوى: المحفوظُ أوّلاً، فإن لم يكن فمن ضبط البرنامج */
+function lvbPillar(row, k) {
+  row.pillars = row.pillars || {};
+  if (!row.pillars[k]) {
+    let on = false;
+    try {
+      const c = typeof sysPillarCfg === "function" ? sysPillarCfg(LVB.pid, k) : null;
+      on = !!(c && c.on);
+    } catch (e) { on = false; }
+    row.pillars[k] = { on: on, fromS: 1, fromA: 1, toS: 1, toA: 1, kids: {} };
+  }
+  const v = row.pillars[k];
+  if (!v.kids) v.kids = {};
+  return v;
+}
+
+function lvbSurahName(i) {
+  if (typeof surahName === "function") { const n = surahName(i); if (n) return n; }
+  if (typeof QSURAHS !== "undefined" && QSURAHS) {
+    const s = QSURAHS.find(x => Number(x.i) === Number(i));
+    if (s) return s.n;
+  }
+  return Number(i) === 1 ? "الفاتحة" : "سورة " + toArabicDigits(i || 1);
+}
+
+function lvbRangeChip(v) {
+  return esc(lvbSurahName(v.fromS)) + " : " + toArabicDigits(v.fromA || 1) +
+         " ← " + esc(lvbSurahName(v.toS)) + " : " + toArabicDigits(v.toA || 1);
+}
+
+/* صفوفُ المحرِّر: تُبنى مرّةً لكلّ برنامجٍ من سجلّاته المحفوظة */
+function lvbLoad(pid, lvls) {
+  if (LVB.loaded === String(pid)) return;
+  LVB.loaded = String(pid);
+  LVB.pid = String(pid);
+  LVB.open = "";
+  LVB.rows = (lvls || []).map(function (lv) {
+    return {
+      id: String(lv.id), rec: lv, name: lv.name || "", saved: true,
+      pillars: lv.pillars ? JSON.parse(JSON.stringify(lv.pillars)) : null
+    };
+  });
+}
+
+function lvbAyahBox(rid, k, side) {
+  const v = lvbPillar(lvbRow(rid), k);
+  const sur = side === "from" ? v.fromS : v.toS;
+  const ay  = side === "from" ? (v.fromA || 1) : (v.toA || 1);
+  const id  = "lvb_" + rid + "_" + k + "_" + side;
+  const list = (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : [];
+  return `<div class="lvb-pos">
+    <div class="lvb-poshead">${ic(side === "from" ? "target" : "flag", 13)}
+      <span>${side === "from" ? "يبدأ من" : "ينتهي بـ"}</span></div>
+    <div class="lvb-posrow">
+      <div class="lvb-f"><label>السورة</label>
+        <select id="${id}_s" onchange="window.lvbSet('${jsAttr(rid)}','${k}','${side}S',this.value)">
+          ${list.length
+            ? list.map(x => `<option value="${x.i}"${Number(x.i) === Number(sur) ? " selected" : ""}>${esc(x.n)}</option>`).join("")
+            : `<option value="${esc(sur)}">${esc(lvbSurahName(sur))}</option>`}
+        </select></div>
+      <div class="lvb-f"><label>الآية (من ${toArabicDigits(lvxSurahAyahs(sur) || 7)})</label>
+        <div class="lvb-step">
+          <button type="button" onclick="window.lvbAyah('${jsAttr(rid)}','${k}','${side}',1)">+</button>
+          <input id="${id}_a" type="number" min="1" value="${toArabicDigits ? (ay || 1) : 1}"
+            oninput="window.lvbSet('${jsAttr(rid)}','${k}','${side}A',this.value)">
+          <button type="button" onclick="window.lvbAyah('${jsAttr(rid)}','${k}','${side}',-1)">−</button>
+        </div></div>
+    </div></div>`;
+}
+
+function lvbPillarCard(rid, def) {
+  const v = lvbPillar(lvbRow(rid), def.k);
+  const body = def.k === "tilawah" ? "" : `
+    <div class="lvb-pbody">
+      <div class="lvb-posgrid">
+        ${lvbAyahBox(rid, def.k, "from")}
+        <span class="lvb-arrow">${ic("arrowLeft", 16)}</span>
+        ${lvbAyahBox(rid, def.k, "to")}
+      </div>
+      ${def.kids.length ? `<div class="lvb-kids">
+        <span class="lvb-kidlbl">${ic("plan", 13)} تُفعل تلقائياً مع ${esc(def.kidsOf)}:</span>
+        ${def.kids.map(kd => `<button type="button" class="lvb-kid${v.kids[kd[0]] ? " on" : ""}"
+          onclick="window.lvbKid('${jsAttr(rid)}','${def.k}','${kd[0]}')">${esc(kd[1])}</button>`).join("")}
+      </div>` : ""}
+    </div>`;
+  return `<div class="lvb-p ${def.tone}${v.on ? " on" : ""}">
+    <div class="lvb-phead">
+      <span class="lvb-pico">${ic(def.icon, 16)}</span>
+      <strong>${esc(def.h)}</strong>
+      <button type="button" class="lvb-sw${v.on ? " on" : ""}"
+        onclick="window.lvbPTog('${jsAttr(rid)}','${def.k}')"><span></span></button>
+      ${def.k === "tilawah" ? "" : `<span class="lvb-chip">${lvbRangeChip(v)}</span>`}
+    </div>
+    ${body}
+  </div>`;
+}
+
+function lvbRow(rid) {
+  return LVB.rows.find(r => String(r.id) === String(rid)) || { id: rid, pillars: {} };
+}
+
+function lvbCard(row, n) {
+  const open = String(LVB.open) === String(row.id);
+  return `<div class="lvb-card${open ? " open" : ""}" data-lvb="${esc(row.id)}">
+    <div class="lvb-head">
+      <div class="lvb-ord">
+        <button type="button" onclick="window.lvbMove('${jsAttr(row.id)}',-1)">${ic("arrowUp", 12)}</button>
+        <span>${toArabicDigits(n + 1)}</span>
+        <button type="button" onclick="window.lvbMove('${jsAttr(row.id)}',1)">${ic("arrowDown", 12)}</button>
+      </div>
+      <strong class="lvb-title">${esc(row.name || "مستوى بدون اسم")}</strong>
+      ${row.saved ? "" : `<span class="lvb-unsaved">غير محفوظ</span>`}
+      <div class="lvb-acts">
+        <button type="button" onclick="window.lvbOpen('${jsAttr(row.id)}')"
+          title="${open ? "طيّ" : "فتح"}">${ic(open ? "arrowUp" : "arrowDown", 15)}</button>
+        <button type="button" onclick="window.lvbDel('${jsAttr(row.id)}')" title="حذف">${ic("x", 15)}</button>
+      </div>
+    </div>
+    ${open ? `<div class="lvb-body">
+      <div class="lvb-f lvb-wide"><label>اسم المستوى</label>
+        <input value="${esc(row.name || "")}" placeholder="مثال: المستوى التمهيدي"
+          oninput="window.lvbName('${jsAttr(row.id)}',this.value)"></div>
+      ${LVB_PILLARS.map(d => lvbPillarCard(row.id, d)).join("")}
+      <div class="lvb-saverow">
+        <span class="muted">احفظ المستوى ليُضاف إلى البرنامج</span>
+        <button type="button" class="btn btn-primary"
+          onclick="window.lvbSaveLevel('${jsAttr(row.id)}')">${ic("check", 15)} حفظ المستوى</button>
+      </div>
+    </div>` : ""}
+  </div>`;
+}
+
+function lvbSection(pid, lvls) {
+  lvbLoad(pid, lvls);
+  const un = LVB.rows.filter(r => !r.saved).length;
+  return `<section class="sp-card sp-wide2 lvb-sec" data-lvprog="${esc(pid)}">
+    <div class="sp-cardhead">${ic("layers", 17)}
+      <div><h3>المستويات</h3><p>${toArabicDigits(LVB.rows.length)} مستويات – أضف مستوى ثم احفظه لإضافته للبرنامج</p></div>
+      <button class="btn btn-primary btn-sm ded-lvadd"
+        onclick="window.lvbAdd()">${ic("plus", 15)} إضافة مستوى</button></div>
+
+    ${LVB.rows.length
+      ? `<div class="lvb-list">${LVB.rows.map((r, n) => lvbCard(r, n)).join("")}</div>`
+      : `<div class="ded-lvempty">
+           <span class="ded-lvico">${ic("layers", 22)}</span>
+           <strong>لا توجد مستويات بعد</strong>
+           <span>ابدأ بإضافة المستوى الأول لهذا البرنامج</span>
+           <button class="btn btn-primary" onclick="window.lvbAdd()">${ic("plus", 16)} إضافة مستوى</button>
+         </div>`}
+
+    <div class="lvb-foot">
+      <button class="btn btn-primary lvb-done" onclick="window.lvbSaveAll()">حفظ وإنهاء</button>
+      <button class="btn btn-ghost" onclick="window.lvbBack()">رجوع</button>
+      <span class="lvb-state">${un
+        ? (un === 1 ? "مستوى واحد غير محفوظ" : toArabicDigits(un) + " مستويات غير محفوظة")
+        : "كل التغييرات محفوظة"}</span>
+    </div>
+  </section>`;
+}
+
+/* ---- أفعالُ المحرِّر ---- */
+window.lvbAdd = function () {
+  LVB.rows.push({ id: "lv" + Date.now() + "-" + LVB.rows.length, rec: null,
+                  name: "", saved: false, pillars: null });
+  LVB.open = LVB.rows[LVB.rows.length - 1].id;
+  mount();
+};
+window.lvbOpen = function (rid) {
+  LVB.open = String(LVB.open) === String(rid) ? "" : String(rid);
+  mount();
+};
+window.lvbName = function (rid, v) {
+  const r = lvbRow(rid); r.name = String(v || ""); r.saved = false;
+  const t = document.querySelector('[data-lvb="' + rid + '"] .lvb-title');
+  if (t) t.textContent = r.name || "مستوى بدون اسم";
+};
+window.lvbMove = function (rid, d) {
+  const i = LVB.rows.findIndex(r => String(r.id) === String(rid));
+  const j = i + d;
+  if (i < 0 || j < 0 || j >= LVB.rows.length) return;
+  const t = LVB.rows[i]; LVB.rows[i] = LVB.rows[j]; LVB.rows[j] = t;
+  LVB.rows.forEach(r => { r.saved = false; });
+  mount();
+};
+window.lvbDel = function (rid) {
+  const i = LVB.rows.findIndex(r => String(r.id) === String(rid));
+  if (i < 0) return;
+  const r = LVB.rows[i];
+  LVB.rows.splice(i, 1);
+  if (r.rec) { try { persistDelete("levels", r.rec.id); } catch (e) {}
+    const k = (DB.levels || []).findIndex(x => String(x.id) === String(r.rec.id));
+    if (k > -1) DB.levels.splice(k, 1); }
+  mount();
+};
+window.lvbPTog = function (rid, k) {
+  const r = lvbRow(rid); const v = lvbPillar(r, k);
+  v.on = !v.on; r.saved = false; mount();
+};
+window.lvbKid = function (rid, k, kid) {
+  const r = lvbRow(rid); const v = lvbPillar(r, k);
+  v.kids[kid] = !v.kids[kid]; r.saved = false; mount();
+};
+window.lvbSet = function (rid, k, field, val) {
+  const r = lvbRow(rid); const v = lvbPillar(r, k);
+  v[field] = /A$/.test(field) ? Math.max(1, Number(val) || 1) : Number(val) || 1;
+  r.saved = false;
+  const chip = document.querySelector('[data-lvb="' + rid + '"] .lvb-p.' +
+    (LVB_PILLARS.find(x => x.k === k) || {}).tone + ' .lvb-chip');
+  if (chip) chip.innerHTML = lvbRangeChip(v);
+};
+window.lvbAyah = function (rid, k, side, d) {
+  const v = lvbPillar(lvbRow(rid), k);
+  const f = side + "A";
+  const max = lvxSurahAyahs(side === "from" ? v.fromS : v.toS) || 9999;
+  v[f] = Math.min(max, Math.max(1, (Number(v[f]) || 1) + d));
+  lvbRow(rid).saved = false;
+  const inp = document.getElementById("lvb_" + rid + "_" + k + "_" + side + "_a");
+  if (inp) inp.value = v[f];
+  const chip = document.querySelector('[data-lvb="' + rid + '"] .lvb-p.' +
+    (LVB_PILLARS.find(x => x.k === k) || {}).tone + ' .lvb-chip');
+  if (chip) chip.innerHTML = lvbRangeChip(v);
+};
+
+/* «حفظ المستوى»: يُضاف إلى القائمة بلا كتابةٍ في القاعدة — والكتابةُ
+   كلُّها في «حفظ وإنهاء» كما طُلب. */
+window.lvbSaveLevel = function (rid) {
+  const r = lvbRow(rid);
+  if (!String(r.name || "").trim()) { showToast("اكتب اسم المستوى أوّلاً", "warn"); return; }
+  r.saved = true; LVB.open = "";
+  showToast("أُضيف «" + r.name + "» — اضغط «حفظ وإنهاء» لحفظه", "success");
+  mount();
+};
+
+window.lvbSaveAll = function () {
+  const bad = LVB.rows.find(r => !String(r.name || "").trim());
+  if (bad) { showToast("كل مستوى يحتاج اسماً", "warn"); LVB.open = bad.id; mount(); return; }
+  let n = 0;
+  LVB.rows.forEach(function (r, i) {
+    const rec = r.rec || { id: r.id, programId: LVB.pid, program: (recByName
+      ? ((cur("programs") || []).find(p => String(p.id) === String(LVB.pid)) || {}).name : "") || "" };
+    rec.name = r.name;
+    rec.order = i + 1;
+    rec.programId = String(LVB.pid);
+    rec.pillars = r.pillars || {};
+    if (!r.rec) {
+      if (!Array.isArray(DB.levels)) DB.levels = [];
+      DB.levels.push(rec); r.rec = rec;
+    }
+    persistSet("levels", rec); r.saved = true; n++;
+  });
+  showToast("حُفظ البرنامج و" + toArabicDigits(n) + " من مستوياته", "success");
+  LVB.open = ""; mount();
+};
+
+window.lvbBack = function () {
+  const un = LVB.rows.filter(r => !r.saved).length;
+  if (un) { showToast("لديك " + toArabicDigits(un) + " غير محفوظ — احفظ أو تابع", "warn"); }
+  LVB.loaded = "";
+  if (typeof STATE !== "undefined") { STATE.prog = ""; }
+  mount();
+};
+
 window.dedLevelAdd = function (pid) {
   if (isSysProgram(pid)) return;
   /* نموذجُ المستوى يبني قائمتَي السور من QSURAHS، وصفحةُ البرنامج قد تُفتح
