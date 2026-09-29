@@ -9779,3 +9779,28 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
 @media (max-width: 720px) {
   .lvb-qd { grid-template-columns: 1fr; }
 }
+
+/* حقلُ الآية صار قائمةً بعدد آيات السورة — تأخذ شكلَ العدّاد نفسَه */
+.lvb-step select {
+  width: 86px; text-align: center; text-align-last: center;
+  border: 1.5px solid #dfe6e6; border-inline: 0; border-radius: 0;
+  padding: 10px 4px; font-weight: 800; font-family: var(--ff);
+  background: #fff; color: inherit; appearance: none; cursor: pointer;
+}
+
+/* =========================================================================
+   طيُّ بطاقات صفحة البرنامج — سهمٌ في الرأس يفتح التفاصيل ويغلقها
+   ========================================================================= */
+.prgv-fold {
+  margin-inline-start: auto; flex-shrink: 0;
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: transparent; color: inherit; cursor: pointer;
+  transition: transform .16s, background .12s, color .12s;
+  transform: rotate(180deg);            /* مطويّ: السهم إلى أسفل */
+}
+.prgv-fold.on { transform: rotate(0deg); }   /* مفتوح: السهم إلى أعلى */
+.prgv-fold:hover { background: rgba(47, 143, 111, .1); color: #2f8f6f; }
+.sp-card.folded > *:not(.sp-cardhead) { display: none; }
+.sp-card.folded .sp-cardhead { margin-bottom: 0; border-bottom: 0; }
+.sp-card.folded { padding-bottom: 0; }

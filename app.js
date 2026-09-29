@@ -11538,7 +11538,7 @@ function prgDutyRedraw(pid) {
   const box = document.createElement("div");
   box.innerHTML = prgDutiesCardHtml(rec);
   const fresh = box.firstElementChild;
-  if (fresh) sec.parentNode.replaceChild(fresh, sec);
+  if (fresh) { sec.parentNode.replaceChild(fresh, sec); prgvFolds(); }
 }
 
 window.prgDutySet = function (pid, k, field, v) {
@@ -11630,6 +11630,52 @@ window.prgDutyAdd = function (pid) {
   prgDutyRedraw(pid);
 };
 
+/* =========================================================================
+   طيُّ بطاقات صفحة البرنامج — سهمٌ يفتح التفاصيل ويغلقها
+   -------------------------------------------------------------------------
+   الصفحةُ صارت طويلة: بيانات، وواجبات، ودرجة التزام، ومستويات، وطلاب.
+   يُضاف سهمٌ إلى رأس كلّ بطاقة، والبطاقاتُ مطويّةٌ ابتداءً إلا المستويات
+   — فهي موضعُ العمل. والحالةُ تُحفظ في الجلسة فلا يُعاد الفتحُ مع كلّ
+   إعادة رسم. الإضافةُ بعد الرسم لا داخلَه، فتشمل كلَّ بطاقةٍ دون أن
+   تُعدَّل الدوالُّ التي تبنيها.
+   ========================================================================= */
+const PRGV_FOLD = {};          /* المفتاح → مطويّ؟ */
+function prgvKey(sec) {
+  if (sec.id) return sec.id;
+  if (sec.classList.contains("lvb-sec")) return "lvbSec";
+  const h = sec.querySelector(".sp-cardhead h3");
+  return h ? "h:" + (h.textContent || "").trim() : "";
+}
+
+window.prgvFold = function (key, btn) {
+  const sec = btn && btn.closest(".sp-card"); if (!sec) return;
+  const on = !sec.classList.contains("folded");
+  sec.classList.toggle("folded", on);
+  btn.classList.toggle("on", !on);
+  PRGV_FOLD[key] = on;
+};
+
+function prgvFolds() {
+  const root = document.getElementById("panelRoot"); if (!root) return;
+  [].slice.call(root.querySelectorAll(".sp-card")).forEach(function (sec) {
+    const head = sec.querySelector(".sp-cardhead"); if (!head) return;
+    const key = prgvKey(sec); if (!key) return;
+    if (PRGV_FOLD[key] === undefined) PRGV_FOLD[key] = key !== "lvbSec";
+    let btn = head.querySelector(".prgv-fold");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "prgv-fold";
+      btn.title = "إظهار التفاصيل أو إخفاؤها";
+      btn.innerHTML = ic("arrowUp", 15);
+      btn.setAttribute("onclick", "window.prgvFold('" + jsAttr(key) + "',this)");
+      head.appendChild(btn);
+    }
+    sec.classList.toggle("folded", !!PRGV_FOLD[key]);
+    btn.classList.toggle("on", !PRGV_FOLD[key]);
+  });
+}
+
 window.lvlView = function (id) {
   const p2 = cur("programs").find(x => String(x.id) === String(id)) ||
              sysPrograms().find(x => String(x.id) === String(id));
@@ -11680,10 +11726,11 @@ window.lvlView = function (id) {
         <div class="sp-acts">
           ${fixed && isTopAdmin() ? `<button class="sp-act" title="إعداد الأركان"
             onclick="window.sysPrgSetup('${jsAttr(p2.id)}')">${ic("settings", 17)}</button>` : ""}
+          ${/* زرُّ «تعديل البرنامج» أُزيل من الرأس بطلبٍ صريح: لم يبقَ إلا
+               الإعداداتُ والإغلاق. والتعديلُ نفسُه باقٍ في جدول البرامج
+               (زرُّ القلم في صفّ البرنامج → window.prgForm) */ ""}
           ${!fixed ? `<button class="sp-act" title="الإعدادات العامة"
             onclick="window.prgGenOpen('${jsAttr(p2.id)}')">${ic("settings", 17)}</button>` : ""}
-          ${!fixed ? `<button class="sp-act" title="تعديل البرنامج"
-            onclick="window.prgForm('${jsAttr(p2.id)}')">${ic("edit", 17)}</button>` : ""}
           <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
         </div>
       </div>
@@ -11820,6 +11867,7 @@ window.lvlView = function (id) {
         ${String(id) === SARD_ID ? sardPanel() : ""}
       </div>
     </aside>`);
+  prgvFolds();   /* أسهمُ الطيّ تُضاف بعد الرسم لكلّ بطاقة */
 };
 
 /* =========================================================================
@@ -11929,9 +11977,22 @@ function dedRefreshView(pid) {
 }
 
 /* بطاقة «درجة الالتزام وتقييم الأداء» في صفحة البرنامج */
+/* =========================================================================
+   صلاحيةُ ضبط درجة الالتزام والتقييم
+   -------------------------------------------------------------------------
+   كانت على مدير النظام وحدَه، فلا يضبطها من يدير المسجد ولا من يشرف على
+   حلقاته وهما أعرفُ بطلابه. صارت لثلاثة: مدير النظام، ومدير المسجد،
+   والمشرف.
+   ========================================================================= */
+function canDedSetup() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  return isTopAdmin() || r === "mosqueManager" || r === "supervisor";
+}
+const DED_DENY = "الضبط من صلاحية مدير النظام أو مدير المسجد أو المشرف";
+
 function dedCardHtml(p2) {
   if (!p2 || String(p2.id) === SARD_ID) return "";
-  const can = isTopAdmin();
+  const can = canDedSetup();
   const c = dedCfgOf(p2.id);
   const commit = dedCommitOf(p2);
   const cutH = k => (DED_CUTS.find(x => x.k === k) || {}).h || "—";
@@ -11979,7 +12040,7 @@ function dedCardHtml(p2) {
       </div>
     </div>
     ${summary}
-    <div class="ded-saved">${can ? "كل التغييرات محفوظة" : "الضبط من صلاحية مدير النظام"}</div>
+    <div class="ded-saved">${can ? "كل التغييرات محفوظة" : DED_DENY}</div>
   </section>`;
 }
 
@@ -11991,7 +12052,7 @@ function dedPersistSettings() {
 }
 
 window.dedCommitSet = function (pid, value) {
-  if (!isTopAdmin()) { showToast("الضبط من صلاحية مدير النظام", "warn"); return; }
+  if (!canDedSetup()) { showToast(DED_DENY, "warn"); return; }
   if (!SYS_COMMIT.some(x => x.k === value)) return;
   const p2 = dedFindProgram(pid);
   if (!p2) return;
@@ -12028,7 +12089,7 @@ window.dedCommitSet = function (pid, value) {
 };
 
 window.dedModeSet = function (pid, mode) {
-  if (!isTopAdmin()) { showToast("الضبط من صلاحية مدير النظام", "warn"); return; }
+  if (!canDedSetup()) { showToast(DED_DENY, "warn"); return; }
   if (mode === "custom") { window.dedOpen(pid); return; }
 
   const c = dedCfgOf(pid);
@@ -12132,7 +12193,7 @@ function dedRedraw() {
 }
 
 window.dedOpen = function (pid) {
-  if (!isTopAdmin()) { showToast("الضبط من صلاحية مدير النظام", "warn"); return; }
+  if (!canDedSetup()) { showToast(DED_DENY, "warn"); return; }
   const p2 = dedFindProgram(pid);
   if (!p2) return;
   DED.pid = String(pid);
@@ -12194,7 +12255,7 @@ window.dedAct = function (key, on) {
 };
 
 window.dedSave = function () {
-  if (!isTopAdmin()) { showToast("الضبط من صلاحية مدير النظام", "warn"); return; }
+  if (!canDedSetup()) { showToast(DED_DENY, "warn"); return; }
   if (!DED.draft || !DED.pid) return;
 
   /* التحقّق قبل الكتابة: شرطٌ بلا قيمةٍ صحيحة أو بلا إجراء لا يعني شيئاً */
@@ -12362,9 +12423,11 @@ function lvbAyahBox(rid, k, side) {
       <div class="lvb-f"><label>الآية${mx ? " (من " + toArabicDigits(mx) + ")" : ""}</label>
         <div class="lvb-step">
           <button type="button" onclick="window.lvbAyah('${jsAttr(rid)}','${k}','${side}',1)">+</button>
-          <input id="${id}_a" type="number" min="1"${mx ? ` max="${mx}"` : ""}
-            value="${toArabicDigits ? (ay || 1) : 1}"
-            oninput="window.lvbSet('${jsAttr(rid)}','${k}','${side}A',this.value)">
+          <select id="${id}_a" data-lvbay="1" data-max="${mx || 0}"
+            onfocus="window.lvbFillAyah(this)"
+            onchange="window.lvbSet('${jsAttr(rid)}','${k}','${side}A',this.value)">
+            <option value="${esc(ay || 1)}" selected>${esc(toArabicDigits(ay || 1))}</option>
+          </select>
           <button type="button" onclick="window.lvbAyah('${jsAttr(rid)}','${k}','${side}',-1)">−</button>
         </div></div>
     </div></div>`;
@@ -12683,6 +12746,29 @@ function lvbSection(pid, lvls) {
    تُرسم القائمةُ الآن بخيارها المختار وحدَه، وتُملأ كاملةً حين يلمسها
    المستخدم، مرّةً واحدةً لكلّ قائمة.
    ===================================================================== */
+/* =========================================================================
+   آياتُ السورة — قائمةٌ بعددها لا حقلٌ مفتوح
+   -------------------------------------------------------------------------
+   كان حقلَ رقمٍ حرّاً: تُكتب فيه ٩٩٩ للفاتحة فيُقبَل. صار قائمةً من آيةٍ
+   إلى آخر آيةٍ في السورة المختارة، تُملأ عند اللمس (فالبقرة وحدها ٢٨٦
+   خياراً — لا تُبنى مع كلّ رسم)، ومع كلِّ تبديلِ سورةٍ تُبنى من جديد.
+   ========================================================================= */
+window.lvbFillAyah = function (el) {
+  if (!el) return;
+  const max = Number(el.getAttribute("data-max")) || 0;
+  if (!max) { lvbEnsureSurahs(function () { lvbRedraw(); }); return; }
+  if (el.dataset.full === String(max)) return;
+  const cur2 = String(el.value || "1");
+  let h = "";
+  for (let i = 1; i <= max; i++) {
+    h += '<option value="' + i + '"' + (String(i) === cur2 ? " selected" : "") +
+         ">" + esc(toArabicDigits(i)) + "</option>";
+  }
+  el.innerHTML = h;
+  el.value = cur2;
+  el.dataset.full = String(max);
+};
+
 window.lvbFillSur = function (el) {
   if (!el || el.dataset.full === "1") return;
   const list = (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : [];
@@ -12703,7 +12789,7 @@ function lvbRedraw() {
     const box = document.createElement("div");
     box.innerHTML = lvbSection(LVB.pid, []);
     const fresh = box.firstElementChild;
-    if (fresh) { sec.parentNode.replaceChild(fresh, sec); return; }
+    if (fresh) { sec.parentNode.replaceChild(fresh, sec); prgvFolds(); return; }
   }
   if (typeof window.lvlView === "function" && LVB.pid) { window.lvlView(LVB.pid); return; }
   if (typeof mount === "function") mount();
@@ -12753,7 +12839,13 @@ window.lvbKid = function (rid, k, kid) {
 };
 window.lvbSet = function (rid, k, field, val) {
   const r = lvbRow(rid); const v = lvbPillar(r, k);
-  v[field] = /A$/.test(field) ? Math.max(1, Number(val) || 1) : Number(val) || 1;
+  if (/A$/.test(field)) {
+    /* الآيةُ لا تتجاوز آياتِ سورتها مهما كُتب */
+    const mx = lvxSurahAyahs(field === "fromA" ? v.fromS : v.toS) || 0;
+    let n = Math.max(1, Number(val) || 1);
+    if (mx) n = Math.min(mx, n);
+    v[field] = n;
+  } else v[field] = Number(val) || 1;
   r.saved = false;
   /* تبديلُ السورة يغيّر سقفَ الآية: تُقصّ القيمةُ المتجاوزة ويُعاد الرسم
      ليُحدَّث السقفُ المعروض — أمّا الآيةُ فتُكتب بلا رسمٍ حفظاً للتركيز. */
@@ -12775,7 +12867,11 @@ window.lvbAyah = function (rid, k, side, d) {
   v[f] = Math.min(max, Math.max(1, (Number(v[f]) || 1) + d));
   lvbRow(rid).saved = false;
   const inp = document.getElementById("lvb_" + rid + "_" + k + "_" + side + "_a");
-  if (inp) inp.value = v[f];
+  if (inp) {
+    /* القائمةُ قد تكون بخيارها الواحد: تُملأ أوّلاً وإلا لم تقبل القيمة */
+    if (inp.tagName === "SELECT") window.lvbFillAyah(inp);
+    inp.value = v[f];
+  }
   const chip = document.querySelector('[data-lvb="' + rid + '"] .lvb-p.' +
     (LVB_PILLARS.find(x => x.k === k) || {}).tone + ' .lvb-chip');
   if (chip) chip.innerHTML = lvbRangeChip(v);
