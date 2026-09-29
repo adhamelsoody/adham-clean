@@ -209,6 +209,40 @@ function noteCard(html) {
   return `<div class="note-card">${ic("info", 22)}<div>${html}</div></div>`;
 }
 
+/* =========================================================================
+   تأكيدُ الحذف — بوابةٌ واحدةٌ لكلّ زرّ حذفٍ كان يحذف بنقرة
+   -------------------------------------------------------------------------
+   بعضُ أزرار الحذف كانت تسأل، وبعضُها يحذف فوراً — والنقرةُ الخاطئة تُذهب
+   واجباً أو مستوىً أو قاعدةً بلا رجعة. تُوضع هنا بوابةٌ واحدة: يُستدعى
+   المعالجُ نفسُه مرّةً ثانيةً بعد التأكيد، فلا يُعاد كتابةُ منطق الحذف.
+   ========================================================================= */
+let DEL_ASK = null;      /* الفعلُ المنتظر تأكيده */
+let DEL_OK  = false;     /* صحيحٌ أثناء التنفيذ بعد التأكيد وحدَه */
+
+function askDelete(what, again) {
+  DEL_ASK = function () {
+    DEL_OK = true;
+    try { again(); } finally { DEL_OK = false; }
+  };
+  openModal("تأكيد الحذف", "",
+    noteCard(`سيتم حذف <strong>${esc(String(what || "هذا العنصر"))}</strong> نهائياً.`),
+    `<button class="btn btn-danger" data-action="del-ask-yes">حذف نهائي</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+}
+
+/* يُوضع أوّلَ كلّ معالجِ حذف: يسأل ثمّ يُعيد النداء، أو يمضي إن أُكِّد */
+function needDelOk(what, again) {
+  if (DEL_OK) return true;
+  askDelete(what, again);
+  return false;
+}
+
+window.delAskYes = function () {
+  const f = DEL_ASK; DEL_ASK = null;
+  try { closeModal(); } catch (e) {}
+  if (typeof f === "function") f();
+};
+
 
 
 /* =========================================================
@@ -6736,6 +6770,7 @@ window.xrAdd = function () {
   mount();
 };
 window.xrRuleDel = function (id) {
+  if (!needDelOk("هذه القاعدة", function () { window.xrRuleDel(id); })) return;
   const i = (DB.rewardRules || []).findIndex(x => String(x.id) === String(id));
   if (i > -1) { DB.rewardRules.splice(i, 1); persistDelete("rewardRules", id); }
   showToast("حُذفت القاعدة", "success"); mount();
@@ -7002,6 +7037,7 @@ window.qbAdd = function () {
   mount();
 };
 window.qbDel = function (id) {
+  if (!needDelOk("هذا السؤال", function () { window.qbDel(id); })) return;
   const i = (DB.questions || []).findIndex(x => String(x.id) === String(id));
   if (i > -1) { DB.questions.splice(i, 1); persistDelete("questions", id); }
   showToast("حُذف السؤال", "success"); mount();
@@ -7392,6 +7428,7 @@ window.xsupSave = function () {
   closeModal(); mount();
 };
 window.xsupDel = function (id) {
+  if (!needDelOk("هذا المشرف", function () { window.xsupDel(id); })) return;
   const i = (DB.examSupervisors || []).findIndex(x => String(x.id) === String(id));
   if (i > -1) { DB.examSupervisors.splice(i, 1); persistDelete("examSupervisors", id); }
   delete XSUP.chosen[id]; xsupPersist();
@@ -7765,6 +7802,7 @@ window.xctStatus = function (to) {
   showToast((to === "فعال" ? "فُعِّل " : "أُوقف ") + ids.length + " نموذج", "success"); mount();
 };
 window.xctDel = function (id) {
+  if (!needDelOk("هذه اللجنة", function () { window.xctDel(id); })) return;
   const i = (DB.certTemplates || []).findIndex(x => String(x.id) === String(id));
   if (i > -1) { DB.certTemplates.splice(i, 1); persistDelete("certTemplates", id); }
   delete XCT.sel[id];
@@ -11610,8 +11648,12 @@ window.prgDutyMove = function (pid, k, dir) {
 
 window.prgDutyDel = function (pid, k) {
   const rec = prgDutyRec(pid); if (!rec) return;
-  const list = prgDutiesOf(rec).filter(x => String(x.k) !== String(k));
+  const all = prgDutiesOf(rec);
+  const list = all.filter(x => String(x.k) !== String(k));
   if (!list.length) { showToast("لا بدّ من واجبٍ واحدٍ على الأقل", "warn"); return; }
+  const nm = (all.find(x => String(x.k) === String(k)) || {}).name || "هذا الواجب";
+  if (!needDelOk("الواجب «" + nm + "»",
+    function () { window.prgDutyDel(pid, k); })) return;
   /* الاشتراطُ على واجبٍ محذوف يُسقط، وإلا بقي واجبٌ لا يُفتح أبداً */
   list.forEach(x => { if (String(x.needsId) === String(k)) x.needsId = ""; });
   list.forEach((x, n) => { x.order = n + 1; });
@@ -12823,6 +12865,10 @@ window.lvbDel = function (rid) {
   const i = LVB.rows.findIndex(r => String(r.id) === String(rid));
   if (i < 0) return;
   const r = LVB.rows[i];
+  /* المستوى المحفوظ يُحذف من قاعدة البيانات أيضاً — فالسؤالُ أوجب */
+  if (!needDelOk("المستوى «" + (r.name || "بدون اسم") + "»" +
+      (r.rec ? " وما فيه من إعدادات" : ""),
+      function () { window.lvbDel(rid); })) return;
   LVB.rows.splice(i, 1);
   if (r.rec) { try { persistDelete("levels", r.rec.id); } catch (e) {}
     const k = (DB.levels || []).findIndex(x => String(x.id) === String(r.rec.id));
@@ -14262,6 +14308,8 @@ window.asgPartDo = function (closeIt) {
 };
 
 window.asgPartDrop = function (asgIdStr, i) {
+  if (!needDelOk("هذا الجزء من الواجب",
+    function () { window.asgPartDrop(asgIdStr, i); })) return;
   const a = (cur("assignments") || []).find(x => String(x.id) === String(asgIdStr));
   if (!a || !Array.isArray(a.parts)) return;
   a.parts.splice(i, 1);
@@ -16829,6 +16877,7 @@ window.procAdd = function (track) {
 };
 
 window.procDel = function (track, i) {
+  if (!needDelOk("هذا الإجراء", function () { window.procDel(track, i); })) return;
   const s = DB.settings || {};
   if (!s.procedures || !Array.isArray(s.procedures[track])) return;
   s.procedures[track].splice(i, 1);
@@ -19781,6 +19830,8 @@ window.dutyDel = function (id) {
   const i = (DB.dutyTypes || []).findIndex(x => String(x.id) === String(id));
   if (i < 0) return;
   const nm = DB.dutyTypes[i].name || "";
+  if (!needDelOk("نوع الواجب «" + nm + "»",
+    function () { window.dutyDel(id); })) return;
   DB.dutyTypes.splice(i, 1);
   try { persistDelete("dutyTypes", id); } catch (e) {}
   showToast("حُذف " + nm, "success");
@@ -32057,6 +32108,7 @@ window.attCustomAdd = function () {
   mount();
 };
 window.attCustomDel = function (k) {
+  if (!needDelOk("هذه الحالة", function () { window.attCustomDel(k); })) return;
   if (!cfgCanEdit()) return;
   const s = DB.settings || (DB.settings = {});
   s.attCustom = (s.attCustom || []).filter(x => String(x.k) !== String(k));
@@ -32852,6 +32904,7 @@ document.addEventListener("click", (e) => {
     case "sct-supers-save": window.sctSupersSave();  break;
     case "sct-del-do":      window.sctDeleteDo();    break;
     case "prg-save":        window.prgSave();        break;
+    case "del-ask-yes":     window.delAskYes();      break;
     case "prg-del-do":      window.prgDeleteDo();    break;
     case "xct-save":        window.xctSave();        break;
     case "xsup-save":       window.xsupSave();       break;
