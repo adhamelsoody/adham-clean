@@ -12242,7 +12242,7 @@ window.dedSave = function () {
    البرنامج عند أوّل فتح — فلا يفقد برنامجٌ قائمٌ شيئاً ولا يُكتب في
    القاعدة ما لم يُحفظ قصداً.
    ========================================================================= */
-const LVB = { pid: "", rows: [], open: "", loaded: "" };
+const LVB = { pid: "", rows: [], open: "", cfg: "", loaded: "" };
 
 const LVB_PILLARS = [
   { k: "hifz",    h: "حفظ",    icon: "doc",     tone: "lvb-hifz",
@@ -12400,7 +12400,8 @@ function lvbPrgHead(row) {
       <span class="muted">موروثةٌ من «${esc(lvbPrgOf().name || "البرنامج")}» — غيّرها هنا لهذا المستوى وحدَه</span></div>
     <div class="lvb-prggrid">
       ${fld("النطاق", "scopeKind", scopes)}
-      ${fld("الانتقال بين المستويات", "defTransition", trans)}
+      ${/* «الانتقال» صار زرّاً مستقلاً أعلاه (lvbTransBox) بالمفتاح نفسِه
+           defTransition — فلا يُعرض هنا مرّتين */ ""}
       ${fld("التكرار", "repeatMode", reps)}
       <div class="lvb-f"><label>عدد المرات
         ${times.own ? `<span class="lvb-own">مخصَّص</span>
@@ -12410,6 +12411,53 @@ function lvbPrgHead(row) {
           onchange="window.lvbOvrSet('${jsAttr(rid)}','repeatTimes',this.value)"></div>
     </div></div>`;
 }
+
+/* =========================================================================
+   اعتمادُ الانتقال إلى المستوى التالي — زرٌّ لا قائمةٌ منسدلة
+   -------------------------------------------------------------------------
+   السؤالُ ثنائيٌّ في العمل: أيمضي الطالبُ وحدَه، أم ينتظر اعتمادَ المشرف؟
+   فيُعرض أزراراً ظاهرةً لا خياراً مطويّاً في قائمة. والمفتاحُ المكتوبُ هو
+   defTransition نفسُه، و«باختبار» باقٍ كما كان.
+   ========================================================================= */
+function lvbTransBox(row) {
+  const rid = row.id;
+  const st = lvbOvr(row, "defTransition");
+  const trans = typeof LV_TRANSITIONS !== "undefined" ? LV_TRANSITIONS : [];
+  const cur2 = String(st.v || "approve");
+  const d = (trans.find(x => String(x.k) === cur2) || {}).d || "";
+  return `<div class="lvb-trans">
+    <div class="lvb-transhead">${ic("swap", 14)}
+      <strong>اعتماد الانتقال إلى المستوى التالي</strong>
+      ${st.own ? `<span class="lvb-own">مخصَّص</span>
+        <button type="button" class="lvb-reset"
+          onclick="window.lvbOvrClear('${jsAttr(rid)}','defTransition')">ردّ</button>`
+        : `<span class="muted">موروثٌ من البرنامج</span>`}</div>
+    <div class="lvb-segs">
+      ${trans.map(t => `<button type="button" class="lvb-seg${cur2 === String(t.k) ? " on" : ""}"
+        data-t="${esc(t.k)}"
+        onclick="window.lvbOvrSet('${jsAttr(rid)}','defTransition','${esc(t.k)}')"
+        >${esc(t.h)}</button>`).join("")}
+    </div>
+    ${d ? `<small class="muted">${esc(d)}</small>` : ""}
+  </div>`;
+}
+
+/* إعداداتُ المستوى المفتوح وحدَه — تُفتح بزرٍّ ولا تُعرض دائماً */
+function lvbLevelCfg(row) {
+  return `<div class="lvb-cfg">
+    <div class="lvb-cfghead">${ic("settings", 14)}
+      <strong>إعدادات هذا المستوى وحدَه</strong>
+      <span class="muted">لا تمسّ بقيةَ المستويات — والعامُّ في صفحة البرنامج</span></div>
+    ${lvbTransBox(row)}
+    ${lvbPrgHead(row)}
+  </div>`;
+}
+
+window.lvbCfg = function (rid) {
+  LVB.cfg = String(LVB.cfg) === String(rid) ? "" : String(rid);
+  if (LVB.cfg && String(LVB.open) !== String(rid)) LVB.open = String(rid);
+  lvbRedraw();
+};
 
 window.lvbOvrSet = function (rid, key, val) {
   const row = lvbRow(rid);
@@ -12434,6 +12482,7 @@ function lvbRow(rid) {
 
 function lvbCard(row, n) {
   const open = String(LVB.open) === String(row.id);
+  const cfgOn = open && String(LVB.cfg) === String(row.id);
   return `<div class="lvb-card${open ? " open" : ""}" data-lvb="${esc(row.id)}">
     <div class="lvb-head">
       <div class="lvb-ord">
@@ -12444,6 +12493,9 @@ function lvbCard(row, n) {
       <strong class="lvb-title">${esc(row.name || "مستوى بدون اسم")}</strong>
       ${row.saved ? "" : `<span class="lvb-unsaved">غير محفوظ</span>`}
       <div class="lvb-acts">
+        <button type="button" class="lvb-cfgbtn${cfgOn ? " on" : ""}"
+          onclick="window.lvbCfg('${jsAttr(row.id)}')"
+          title="إعدادات هذا المستوى">${ic("settings", 15)}</button>
         <button type="button" onclick="window.lvbOpen('${jsAttr(row.id)}')"
           title="${open ? "طيّ" : "فتح"}">${ic(open ? "arrowUp" : "arrowDown", 15)}</button>
         <button type="button" onclick="window.lvbDel('${jsAttr(row.id)}')" title="حذف">${ic("x", 15)}</button>
@@ -12453,7 +12505,7 @@ function lvbCard(row, n) {
       <div class="lvb-f lvb-wide"><label>اسم المستوى</label>
         <input value="${esc(row.name || "")}" placeholder="مثال: المستوى التمهيدي"
           oninput="window.lvbName('${jsAttr(row.id)}',this.value)"></div>
-      ${lvbPrgHead(row)}
+      ${cfgOn ? lvbLevelCfg(row) : ""}
       ${LVB_PILLARS.map(d => lvbPillarCard(row.id, d)).join("")}
       <div class="lvb-saverow">
         <span class="muted">احفظ المستوى ليُضاف إلى البرنامج</span>
@@ -12539,6 +12591,7 @@ window.lvbAdd = function () {
 };
 window.lvbOpen = function (rid) {
   LVB.open = String(LVB.open) === String(rid) ? "" : String(rid);
+  if (String(LVB.cfg) !== String(LVB.open)) LVB.cfg = "";   /* إعداداتُ مستوىً لا تبقى على آخر */
   lvbRedraw();
 };
 window.lvbName = function (rid, v) {
@@ -12622,7 +12675,7 @@ window.lvbSaveAll = function () {
     persistSet("levels", rec); r.saved = true; n++;
   });
   showToast("حُفظ البرنامج و" + toArabicDigits(n) + " من مستوياته", "success");
-  LVB.open = ""; lvbRedraw();
+  LVB.open = ""; LVB.cfg = ""; lvbRedraw();
 };
 
 window.lvbBack = function () {

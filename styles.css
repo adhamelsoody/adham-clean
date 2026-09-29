@@ -9717,3 +9717,38 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
 }
 .pgen-chk { padding-bottom: 5px; }
 .pgen-bits { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* =========================================================================
+   إعداداتُ المستوى المفتوح — زرٌّ يفتحها، وأزرارٌ لاعتماد الانتقال
+   كان الانتقالُ قائمةً منسدلةً داخل «إعدادات البرنامج» الظاهرة دائماً؛
+   صار زرّاً ظاهراً داخل درجٍ يُفتح لهذا المستوى وحدَه.
+   ========================================================================= */
+.lvb-cfgbtn.on { background: var(--brand-soft, rgba(47,143,111,.14)); color: #2f8f6f; }
+.lvb-cfg {
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px; margin-bottom: 12px; grid-column: 1 / -1;
+}
+.lvb-cfghead {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-size: 13px; margin-bottom: 10px;
+}
+.lvb-cfghead .muted { font-size: 11px; font-weight: 400; }
+.lvb-trans { margin-bottom: 12px; }
+.lvb-transhead {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-size: 12.5px; margin-bottom: 8px;
+}
+.lvb-transhead .muted { font-size: 11px; font-weight: 400; }
+.lvb-segs { display: flex; flex-wrap: wrap; gap: 8px; }
+.lvb-seg {
+  flex: 1 1 140px; min-height: 36px; padding: 0 12px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: transparent; color: inherit;
+  font: inherit; font-size: 13px; font-weight: 600;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.lvb-seg:hover { border-color: #2f8f6f; }
+.lvb-seg.on {
+  background: rgba(47, 143, 111, .12); border-color: #2f8f6f; color: #2f8f6f;
+}
+.lvb-trans > small { display: block; margin-top: 7px; font-size: 11px; }
