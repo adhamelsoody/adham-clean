@@ -9752,3 +9752,7 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
   background: rgba(47, 143, 111, .12); border-color: #2f8f6f; color: #2f8f6f;
 }
 .lvb-trans > small { display: block; margin-top: 7px; font-size: 11px; }
+
+/* الإعداداتُ العامة صارت في نافذةٍ يفتحها زرُّ رأس اللوحة، لا بطاقةً في المتن */
+#prgGenCard .pgen-box { padding: 12px 0; }
+#prgGenCard .pgen-box:first-child { padding-top: 0; }

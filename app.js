@@ -11339,12 +11339,9 @@ function prgGeneralCardHtml(p2) {
   const g = prgDailyOf(p2);
   const on = prgSessionsOf(p2);
 
-  return `<section class="sp-card sp-wide2" id="prgGenCard">
-    <div class="sp-cardhead">${ic("settings", 17)}
-      <div><h3>الإعدادات العامة</h3>
-        <p>تنطبق على كلّ المستويات — لا تُخصَّص في مستوىً دون غيره</p></div>
-      <span class="pgen-tag">عامّ لكلّ المستويات</span></div>
-
+  /* كانت بطاقةً في متن الصفحة؛ صارت تُفتح بزرِّ الإعدادات في رأس اللوحة
+     إلى جوار زرَّي التعديل والإغلاق. المحتوى والمفاتيحُ كما هي. */
+  return `<div id="prgGenCard">
     <div class="pgen-box">
       <div class="pgen-h">${ic("calendar", 15)} فترات البرنامج</div>
       <div class="prg-sessions" id="pgvSessions">
@@ -11377,7 +11374,7 @@ function prgGeneralCardHtml(p2) {
     </div>
 
     <div class="pgen-box pgen-links">
-      <div class="pgen-h">${ic("info", 15)} وبقيةُ العامّ في موضعه أدناه</div>
+      <div class="pgen-h">${ic("info", 15)} وبقيةُ العامّ في صفحة البرنامج</div>
       <div class="pgen-bits">
         <span class="pil-bit">درجة الالتزام</span>
         <span class="pil-bit">تقييم الأداء</span>
@@ -11386,8 +11383,19 @@ function prgGeneralCardHtml(p2) {
       </div>
       <small class="muted">الأوّلان في «درجة الالتزام وتقييم الأداء»، والآخران في «واجبات البرنامج» — وكلُّها عامّة</small>
     </div>
-  </section>`;
+  </div>`;
 }
+
+/* زرُّ الإعدادات في رأس اللوحة يفتحها — لا تُعرض في متن الصفحة */
+window.prgGenOpen = function (pid) {
+  const rec = (cur("programs") || []).find(x => String(x.id) === String(pid))
+           || (DB.programs || []).find(x => String(x.id) === String(pid));
+  if (!rec) return;
+  openModal("الإعدادات العامة للبرنامج",
+    "تنطبق على كلّ المستويات — لا تُخصَّص في مستوىً دون غيره",
+    prgGeneralCardHtml(rec),
+    `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+};
 
 window.prgDailySet = function (pid, field, v) {
   const rec = prgDutyRec(pid); if (!rec) return;
@@ -11672,6 +11680,8 @@ window.lvlView = function (id) {
         <div class="sp-acts">
           ${fixed && isTopAdmin() ? `<button class="sp-act" title="إعداد الأركان"
             onclick="window.sysPrgSetup('${jsAttr(p2.id)}')">${ic("settings", 17)}</button>` : ""}
+          ${!fixed ? `<button class="sp-act" title="الإعدادات العامة"
+            onclick="window.prgGenOpen('${jsAttr(p2.id)}')">${ic("settings", 17)}</button>` : ""}
           ${!fixed ? `<button class="sp-act" title="تعديل البرنامج"
             onclick="window.prgForm('${jsAttr(p2.id)}')">${ic("edit", 17)}</button>` : ""}
           <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
@@ -11698,8 +11708,8 @@ window.lvlView = function (id) {
           </div>
         </section>
 
-        ${prgGeneralCardHtml(p2)}
-
+        ${/* «الإعدادات العامة» انتقلت من هنا إلى زرِّ الإعدادات في رأس
+             اللوحة (prgGenOpen) — لم تُحذف */ ""}
         ${prgDutiesCardHtml(p2)}
 
         ${dedCardHtml(p2)}
