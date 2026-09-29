@@ -11461,10 +11461,10 @@ window.prgDailySet = function (pid, field, v) {
    تُحفظ في سجلّ البرنامج (duties) فلا تمسّ الإعدادَ العام.
    ========================================================================= */
 const PRG_DUTY_BASE = [
-  { k: "hifz",    name: "حفظ جديد", color: "#e05252" },
-  { k: "review",  name: "مراجعة",   color: "#2f8f6f" },
+  { k: "hifz",    name: "حفظ جديد", color: "#0f6f72" },
+  { k: "review",  name: "مراجعة",   color: "#f59c1a" },
   { k: "tathbit", name: "تثبيت",    color: "#c9a227" },
-  { k: "tilawah", name: "تلاوة",    color: "#3b82c4" }
+  { k: "tilawah", name: "تلاوة",    color: "#86b7c6" }
 ];
 
 function prgDutiesOf(p2) {
@@ -12501,7 +12501,13 @@ function lvbCfgOf(row, k, kid) {
   v.kidsCfg = v.kidsCfg || {};
   if (!v.kidsCfg[kid]) v.kidsCfg[kid] = {
     qtyType: "كمية مرنة", qty: "وجه", dir: String(lvbPrgOf().direction || "forward") };
-  return v.kidsCfg[kid];
+  const c = v.kidsCfg[kid];
+  /* الفرعُ ذو النطاق: يبدأ من الفاتحة إلى آخر المصحف حتى يُحدَّد */
+  if (!c.mode) c.mode = "range";
+  if (!c.fromS) { c.fromS = 1; c.fromA = 1; }
+  if (!c.toS)   { c.toS = 114; c.toA = 1; }
+  if (c.linkK === undefined) c.linkK = "";
+  return c;
 }
 
 window.lvbCfgSet = function (rid, k, kid, field, val) {
@@ -12512,10 +12518,41 @@ window.lvbCfgSet = function (rid, k, kid, field, val) {
   } else if (field === "qty") {
     c.qty = qtyIsNum(c.qtyType) ? Math.max(1, Number(val) || 1) : String(val || "");
   } else if (field === "dir") c.dir = String(val || "forward");
+  else if (field === "mode")  c.mode  = String(val || "range");
+  else if (field === "linkK") c.linkK = String(val || "");
+  else if (/^(from|to)[SA]$/.test(field)) {
+    if (/A$/.test(field)) {
+      const mx = lvxSurahAyahs(field === "fromA" ? c.fromS : c.toS) || 0;
+      let n = Math.max(1, Number(val) || 1);
+      if (mx) n = Math.min(mx, n);
+      c[field] = n;
+    } else {
+      c[field] = Number(val) || 1;
+      const side = field === "fromS" ? "fromA" : "toA";
+      const mx = lvxSurahAyahs(c[field]) || 0;
+      if (mx && Number(c[side]) > mx) c[side] = mx;
+    }
+  }
   else return;
   const r0 = lvbRow(rid);
   if (k === "hifz" && !kid) lvbSyncAhead(r0);   /* مقدارُ التلاوة يتبع الحفظ */
   r0.saved = false;
+  lvbRedraw();
+};
+
+/* عددُ دروس التثبيت */
+window.lvbLessonsSet = function (rid, k, val) {
+  const r = lvbRow(rid); const v = lvbPillar(r, k);
+  v.lessons = Math.max(1, Number(val) || 1);
+  r.saved = false;
+  const chip = document.querySelector('[data-lvb="' + rid + '"] .lvb-p.' +
+    lvbToneOf(k) + ' .lvb-chip');
+  if (chip) chip.textContent = toArabicDigits(v.lessons) + " دروس";
+};
+window.lvbLessons = function (rid, k, d) {
+  const r = lvbRow(rid); const v = lvbPillar(r, k);
+  v.lessons = Math.max(1, (Number(v.lessons) || 1) + d);
+  r.saved = false;
   lvbRedraw();
 };
 
@@ -12577,6 +12614,8 @@ function lvbPillarDefs() {
       h: d.name || (base ? base.h : "واجب"),
       icon: base ? base.icon : "doc",
       tone: base ? base.tone : "lvb-oth",
+      /* لونُ الواجب من «واجبات البرنامج» — فلكلّ ركنٍ لونُه ولو كان جديداً */
+      color: d.color || "",
       kids: base ? base.kids : [],
       kidsOf: base ? base.kidsOf : (d.name || "")
     };
@@ -12629,11 +12668,118 @@ function lvbSyncAhead(row) {
   if (Number(v.toS) < Number(v.fromS)) { v.toS = v.fromS; v.toA = v.fromA; }
 }
 
+/* وسمُ «تلاوة الدرس القادم»: موضعُها ومقدارُها من الحفظ لا من ضبطٍ مستقلّ */
+function lvbNextChip(rid) {
+  const row = lvbRow(rid);
+  const h = lvbPillar(row, "hifz");
+  const c = lvbAheadCalc(row);
+  const q = qtyIsNum(c.qtyType)
+    ? toArabicDigits(Number(c.qty) || 1) + " " + (QTY_NUM_LABEL[c.qtyType] || c.qtyType)
+    : String(c.qty || "");
+  return `<span class="pil-bit">يبدأ من ${esc(lvbSurahName(c.fromS))} : ${toArabicDigits(c.fromA)}</span>
+    <span class="pil-bit">بمقدار ${esc(q)}</span>
+    <span class="pil-bit">${esc(((typeof PRG_DIRS !== "undefined" ? PRG_DIRS : [])
+      .find(x => String(x.k) === String(h.dir || "forward")) || {}).h || "تصاعدي")}</span>`;
+}
+
+/* =========================================================================
+   المراجعةُ الإضافية — إمّا نطاقٌ تختاره، وإمّا مربوطةٌ بواجبٍ آخر
+   -------------------------------------------------------------------------
+   سُئل عنها: أتريدها بنطاق؟ فإن نعم فمن أين إلى أين، وبأيّ كميةٍ واتجاه.
+   وإن لا فتُربط بواجبٍ آخر — كالمراجعة العامة أو التثبيت — فإذا بلغ ذاك
+   الواجبُ نهايتَه عادت هي من البداية.
+   ========================================================================= */
+function lvbKidAyahBox(rid, k, kid, side) {
+  const c = lvbCfgOf(lvbRow(rid), k, kid);
+  const sur = side === "from" ? c.fromS : c.toS;
+  const ay  = side === "from" ? (c.fromA || 1) : (c.toA || 1);
+  const id  = "lvbk_" + rid + "_" + k + "_" + kid + "_" + side;
+  const mx  = lvxSurahAyahs(sur) || 0;
+  const a   = jsAttr(rid), kk = jsAttr(kid);
+  return `<div class="lvb-pos">
+    <div class="lvb-poshead">${ic(side === "from" ? "target" : "flag", 13)}
+      <span>${side === "from" ? "يبدأ من" : "ينتهي بـ"}</span></div>
+    <div class="lvb-posrow">
+      <div class="lvb-f"><label>السورة</label>
+        <select id="${id}_s" data-lvbsur="1" onfocus="window.lvbFillSur(this)"
+          onchange="window.lvbCfgSet('${a}','${k}','${kk}','${side}S',this.value)">
+          <option value="${esc(sur)}" selected>${esc(toArabicDigits(sur || 1) + " · " +
+            lvbSurahName(sur))}</option>
+        </select></div>
+      <div class="lvb-f"><label>الآية${mx ? " (من " + toArabicDigits(mx) + ")" : ""}</label>
+        <select id="${id}_a" data-lvbay="1" data-max="${mx || 0}"
+          onfocus="window.lvbFillAyah(this)"
+          onchange="window.lvbCfgSet('${a}','${k}','${kk}','${side}A',this.value)">
+          <option value="${esc(ay)}" selected>${esc(toArabicDigits(ay))}</option>
+        </select></div>
+    </div></div>`;
+}
+
+function lvbKidScope(rid, k, kid, title) {
+  const c = lvbCfgOf(lvbRow(rid), k, kid);
+  const a = jsAttr(rid), kk = jsAttr(kid);
+  const linked = c.mode === "link";
+  /* الواجباتُ الأخرى التي يصحّ الربطُ بها — من واجبات البرنامج */
+  const others = lvbPillarDefs().filter(d => String(d.k) !== String(k));
+  const lname = (others.find(d => String(d.k) === String(c.linkK)) || {}).h || "";
+  return `<div class="lvb-kidcfg">
+    <div class="lvb-kidhead">${ic("plan", 13)} <strong>${esc(title)}</strong></div>
+    <div class="lvb-kidmode">
+      <span class="muted">هل تريدها بنطاق؟</span>
+      <button type="button" class="lvb-seg${linked ? "" : " on"}" data-m="range"
+        onclick="window.lvbCfgSet('${a}','${k}','${kk}','mode','range')">نعم — بنطاق محدَّد</button>
+      <button type="button" class="lvb-seg${linked ? " on" : ""}" data-m="link"
+        onclick="window.lvbCfgSet('${a}','${k}','${kk}','mode','link')">لا — مرتبطة بواجب آخر</button>
+    </div>
+    ${linked ? `<div class="lvb-kidlink2">
+        <div class="lvb-f"><label>الواجب المرتبط به</label>
+          <select onchange="window.lvbCfgSet('${a}','${k}','${kk}','linkK',this.value)">
+            <option value="">— اختر الواجب —</option>
+            ${others.map(d => `<option value="${esc(d.k)}"${String(c.linkK) === String(d.k)
+              ? " selected" : ""}>${esc(d.h)}</option>`).join("")}
+          </select></div>
+        <small class="muted">${c.linkK
+          ? "إذا بلغ «" + esc(lname) + "» نهايتَه عادت المراجعةُ الإضافية من البداية"
+          : "اختر الواجب الذي إذا بلغ نهايتَه عادت هذه من البداية"}</small>
+      </div>`
+      : `<div class="lvb-posgrid">
+          ${lvbKidAyahBox(rid, k, kid, "from")}
+          <span class="lvb-arrow">${ic("arrowLeft", 16)}</span>
+          ${lvbKidAyahBox(rid, k, kid, "to")}
+        </div>`}
+    ${lvbQtyDir(rid, k, kid)}
+  </div>`;
+}
+
 function lvbPillarCard(rid, def) {
   const row = lvbRow(rid);
   const v = lvbPillar(row, def.k);
   if (def.k === "tilawah") lvbSyncAhead(row);
   const ahead = def.k === "tilawah" && lvbAheadOn(row);
+  /* التثبيتُ إعادةُ ما حُفظ: لا مدى له ولا مقدار — عددُ دروسٍ وحسب */
+  if (def.k === "tathbit") {
+    if (v.lessons === undefined || v.lessons === null) v.lessons = 1;
+    return `<div class="lvb-p ${def.tone}${v.on ? " on" : ""}">
+      <div class="lvb-phead"${def.color ? ` style="background:${esc(def.color)}"` : ""}>
+        <span class="lvb-pico">${ic(def.icon, 16)}</span>
+        <strong>${esc(def.h || "تثبيت")}</strong>
+        <button type="button" class="lvb-sw${v.on ? " on" : ""}"
+          title="${v.on ? "إلغاء التفعيل" : "تفعيل"}"
+          onclick="window.lvbPTog('${jsAttr(rid)}','${def.k}')"><span></span></button>
+        ${v.on ? `<span class="lvb-chip">${toArabicDigits(Number(v.lessons) || 1)} دروس</span>` : ""}
+      </div>
+      ${v.on ? `<div class="lvb-pbody">
+        <div class="lvb-f lvb-lessons"><label>عدد الدروس</label>
+          <div class="lvb-step">
+            <button type="button" onclick="window.lvbLessons('${jsAttr(rid)}','${def.k}',1)">+</button>
+            <input type="number" min="1" dir="ltr" value="${esc(Number(v.lessons) || 1)}"
+              oninput="window.lvbLessonsSet('${jsAttr(rid)}','${def.k}',this.value)">
+            <button type="button" onclick="window.lvbLessons('${jsAttr(rid)}','${def.k}',-1)">−</button>
+          </div>
+          <small class="muted">كم درساً سابقاً يُعاد تثبيتُه مع درس اليوم</small></div>
+      </div>` : ""}
+    </div>`;
+  }
   /* تفاصيلُ الركن لا تُعرض وهو مطفأ — أُغلق فلا شأن لإعداداته */
   const body = !v.on ? "" : `
     <div class="lvb-pbody">
@@ -12657,18 +12803,27 @@ function lvbPillarCard(rid, def) {
         ${def.kids.map(kd => `<button type="button" class="lvb-kid${v.kids[kd[0]] ? " on" : ""}"
           onclick="window.lvbKid('${jsAttr(rid)}','${def.k}','${kd[0]}')">${esc(kd[1])}</button>`).join("")}
       </div>
-      ${def.kids.filter(kd => v.kids[kd[0]]).map(kd => `<div class="lvb-kidcfg">
-        <div class="lvb-kidhead">${ic("plan", 13)} <strong>${esc(kd[1])}</strong></div>
-        ${lvbQtyDir(rid, def.k, kd[0])}
-      </div>`).join("")}` : ""}
+      ${def.kids.filter(kd => v.kids[kd[0]]).map(kd => kd[0] === "tilawahNext"
+        ? `<div class="lvb-kidcfg lvb-kidlinked">
+            <div class="lvb-kidhead">${ic("swap", 13)} <strong>${esc(kd[1])}</strong>
+              <span class="muted">مربوطةٌ بالحفظ — تأخذ مداه ومقدارَه، فما يُحفظ غداً يُتلى اليوم</span></div>
+            <div class="lvb-kidlink">${lvbNextChip(rid)}</div>
+          </div>`
+        : kd[0] === "reviewExtra"
+        ? lvbKidScope(rid, def.k, kd[0], kd[1])
+        : `<div class="lvb-kidcfg">
+            <div class="lvb-kidhead">${ic("plan", 13)} <strong>${esc(kd[1])}</strong></div>
+            ${lvbQtyDir(rid, def.k, kd[0])}
+          </div>`).join("")}` : ""}
     </div>`;
   return `<div class="lvb-p ${def.tone}${v.on ? " on" : ""}">
-    <div class="lvb-phead">
+    <div class="lvb-phead"${def.color ? ` style="background:${esc(def.color)}"` : ""}>
       <span class="lvb-pico">${ic(def.icon, 16)}</span>
-      <strong>${esc(def.h)}</strong>
+      <strong>${esc(def.h || "واجب")}</strong>
       <button type="button" class="lvb-sw${v.on ? " on" : ""}"
+        title="${v.on ? "إلغاء التفعيل" : "تفعيل"}"
         onclick="window.lvbPTog('${jsAttr(rid)}','${def.k}')"><span></span></button>
-      ${v.on ? `<span class="lvb-chip">${lvbRangeChip(v)}</span>` : ""}
+      ${v.on && def.k !== "tathbit" ? `<span class="lvb-chip">${lvbRangeChip(v)}</span>` : ""}
     </div>
     ${body}
   </div>`;

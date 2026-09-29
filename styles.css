@@ -9821,3 +9821,20 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
 /* ركنٌ لا لون له في القائمة الثابتة — يأخذ حياداً */
 .lvb-p.lvb-oth .lvb-pico { background: #eef2f3; color: #4a6b6c; }
 .lvb-p.lvb-oth .lvb-poshead { color: #4a6b6c; }
+
+/* ركنٌ بلا نغمةٍ معروفة: الرأسُ يأخذ لونَ واجبه، فلا يبقى أبيضَ على أبيض */
+.lvb-p.lvb-oth .lvb-phead { background: #4a6b6c; }
+.lvb-lessons { max-width: 260px; }
+.lvb-lessons > small { display: block; margin-top: 6px; font-size: 11px; }
+/* «تلاوة الدرس القادم» مربوطةٌ بالحفظ: تُعرض ولا تُضبط */
+.lvb-kidlinked { border-style: solid; border-color: rgba(59, 130, 196, .45); }
+.lvb-kidhead .muted { flex-basis: 100%; font-size: 11px; font-weight: 400; }
+.lvb-kidlink { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* المراجعةُ الإضافية: نطاقٌ أو ارتباطٌ بواجبٍ آخر */
+.lvb-kidmode { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 10px; }
+.lvb-kidmode .muted { font-size: 11.5px; }
+.lvb-kidmode .lvb-seg { flex: 0 1 auto; min-height: 32px; font-size: 12.5px; }
+.lvb-kidlink2 { margin-bottom: 10px; }
+.lvb-kidlink2 .lvb-f { max-width: 320px; }
+.lvb-kidlink2 > small { display: block; margin-top: 7px; font-size: 11px; }
