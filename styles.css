@@ -9804,3 +9804,20 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
 .sp-card.folded > *:not(.sp-cardhead) { display: none; }
 .sp-card.folded .sp-cardhead { margin-bottom: 0; border-bottom: 0; }
 .sp-card.folded { padding-bottom: 0; }
+
+/* =========================================================================
+   التلاوةُ المربوطة بالحفظ — شريطُ ربطٍ، وحقولٌ مقفلةٌ ما دام الربطُ قائماً
+   ========================================================================= */
+.lvb-ahead {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; margin-bottom: 11px;
+  border: 1px dashed var(--line); border-radius: 10px;
+}
+.lvb-ahead.on { border-style: solid; border-color: #3b82c4; background: rgba(59, 130, 196, .07); }
+.lvb-aheadtxt { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12.5px; }
+.lvb-aheadtxt .muted { font-size: 11px; font-weight: 400; flex-basis: 100%; }
+.lvb-ahead .lvb-sw { margin-inline-start: auto; flex-shrink: 0; }
+.lvb-locked { opacity: .62; pointer-events: none; }
+/* ركنٌ لا لون له في القائمة الثابتة — يأخذ حياداً */
+.lvb-p.lvb-oth .lvb-pico { background: #eef2f3; color: #4a6b6c; }
+.lvb-p.lvb-oth .lvb-poshead { color: #4a6b6c; }

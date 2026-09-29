@@ -11771,8 +11771,9 @@ window.lvlView = function (id) {
           ${/* زرُّ «تعديل البرنامج» أُزيل من الرأس بطلبٍ صريح: لم يبقَ إلا
                الإعداداتُ والإغلاق. والتعديلُ نفسُه باقٍ في جدول البرامج
                (زرُّ القلم في صفّ البرنامج → window.prgForm) */ ""}
-          ${!fixed ? `<button class="sp-act" title="الإعدادات العامة"
-            onclick="window.prgGenOpen('${jsAttr(p2.id)}')">${ic("settings", 17)}</button>` : ""}
+          ${/* زرُّ الإعدادات أُزيل من الرأس بطلبٍ صريح؛ «الإعدادات العامة»
+               عادت بطاقةً في المتن ولها سهمُ طيّ كبقيّة البطاقات، ودالّةُ
+               window.prgGenOpen باقيةٌ تفتحها نافذةً عند الحاجة. */ ""}
           <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
         </div>
       </div>
@@ -11797,8 +11798,14 @@ window.lvlView = function (id) {
           </div>
         </section>
 
-        ${/* «الإعدادات العامة» انتقلت من هنا إلى زرِّ الإعدادات في رأس
-             اللوحة (prgGenOpen) — لم تُحذف */ ""}
+        ${prgGeneralCardHtml(p2) ? `<section class="sp-card sp-wide2">
+          <div class="sp-cardhead">${ic("settings", 17)}
+            <div><h3>الإعدادات العامة</h3>
+              <p>تنطبق على كلّ المستويات — لا تُخصَّص في مستوىً دون غيره</p></div>
+            <span class="pgen-tag">عامّ لكلّ المستويات</span></div>
+          ${prgGeneralCardHtml(p2)}
+        </section>` : ""}
+
         ${prgDutiesCardHtml(p2)}
 
         ${dedCardHtml(p2)}
@@ -12408,9 +12415,9 @@ function lvbEnsureSurahs(after) {
 
 /* خيارُ السورة: رقمُها واسمُها وعددُ آياتها — ليُعرف مداها قبل الاختيار */
 function lvbSurOpt(x, cur2) {
+  /* عددُ الآيات كان هنا ثمّ حُذف: حقلُ الآية المجاور يقول مداها */
   return '<option value="' + x.i + '"' + (String(x.i) === String(cur2) ? " selected" : "") +
-         ">" + esc(toArabicDigits(x.i) + " · " + x.n +
-                   (Number(x.a) ? " · " + toArabicDigits(x.a) + " آية" : "")) + "</option>";
+         ">" + esc(toArabicDigits(x.i) + " · " + x.n) + "</option>";
 }
 
 function lvbSurahName(i) {
@@ -12459,7 +12466,7 @@ function lvbAyahBox(rid, k, side) {
           onchange="window.lvbSet('${jsAttr(rid)}','${k}','${side}S',this.value)">
           ${list.length
             ? `<option value="${esc(sur)}" selected>${esc(toArabicDigits(sur || 1) + " · " +
-                 lvbSurahName(sur) + (mx ? " · " + toArabicDigits(mx) + " آية" : ""))}</option>`
+                 lvbSurahName(sur))}</option>`
             : `<option value="${esc(sur)}" selected>${esc(lvbSurahName(sur))}</option>`}
         </select></div>
       <div class="lvb-f"><label>الآية${mx ? " (من " + toArabicDigits(mx) + ")" : ""}</label>
@@ -12506,14 +12513,18 @@ window.lvbCfgSet = function (rid, k, kid, field, val) {
     c.qty = qtyIsNum(c.qtyType) ? Math.max(1, Number(val) || 1) : String(val || "");
   } else if (field === "dir") c.dir = String(val || "forward");
   else return;
-  lvbRow(rid).saved = false;
+  const r0 = lvbRow(rid);
+  if (k === "hifz" && !kid) lvbSyncAhead(r0);   /* مقدارُ التلاوة يتبع الحفظ */
+  r0.saved = false;
   lvbRedraw();
 };
 
 window.lvbCfgNum = function (rid, k, kid, d) {
-  const c = lvbCfgOf(lvbRow(rid), k, kid || "");
+  const r0 = lvbRow(rid);
+  const c = lvbCfgOf(r0, k, kid || "");
   c.qty = Math.max(1, (Number(c.qty) || 1) + d);
-  lvbRow(rid).saved = false;
+  if (k === "hifz" && !kid) lvbSyncAhead(r0);
+  r0.saved = false;
   lvbRedraw();
 };
 
@@ -12548,18 +12559,99 @@ function lvbQtyDir(rid, k, kid) {
   </div>`;
 }
 
+/* =========================================================================
+   أركانُ المستوى تُبنى من واجبات البرنامج لا من قائمةٍ ثابتة
+   -------------------------------------------------------------------------
+   كانت ثلاثةً محفورةً في الكود: حفظ ومراجعة وتلاوة. فمن زاد واجباً في
+   «واجبات البرنامج» أو سمّاه باسمٍ آخر لم يجد له أثراً في المستوى. تُشتقّ
+   الآن من تلك الواجبات بترتيبها — فإن كانت خمسةً ظهرت تفاصيلُ الخمسة،
+   والمعروفةُ منها (حفظ · مراجعة · تلاوة) تحتفظ بلونها وفروعها.
+   ========================================================================= */
+function lvbPillarDefs() {
+  const duties = prgDutiesOf(lvbPrgOf());
+  if (!duties.length) return LVB_PILLARS;
+  return duties.map(function (d) {
+    const base = LVB_PILLARS.find(x => String(x.k) === String(d.k)) || null;
+    return {
+      k: String(d.k),
+      h: d.name || (base ? base.h : "واجب"),
+      icon: base ? base.icon : "doc",
+      tone: base ? base.tone : "lvb-oth",
+      kids: base ? base.kids : [],
+      kidsOf: base ? base.kidsOf : (d.name || "")
+    };
+  });
+}
+
+function lvbToneOf(k) {
+  const d = lvbPillarDefs().find(x => String(x.k) === String(k));
+  return d ? d.tone : "lvb-oth";
+}
+
+/* =========================================================================
+   التلاوةُ تسبق الحفظ بمقداره
+   -------------------------------------------------------------------------
+   الدرسُ يُتلى قبل أن يُحفظ: فتلاوةُ اليوم هي ما سيُحفظ غداً. تُربط تلاوةُ
+   المستوى بحفظه فتبدأ من حيث انتهى، وتأخذ مقدارَه نفسَه. والربطُ يُفكّ
+   بنقرةٍ لمن أراد تلاوةً مستقلّة.
+   ========================================================================= */
+function lvbAheadOn(row) {
+  const v = lvbPillar(row, "tilawah");
+  return v.ahead !== false;      /* مربوطةٌ ما لم تُفكّ */
+}
+
+/* موضعُ التلاوة المشتقّ: يبدأ بعد آخر الحفظ، وبمقدار الحفظ نفسِه */
+function lvbAheadCalc(row) {
+  const h = lvbPillar(row, "hifz");
+  const mx = lvxSurahAyahs(h.toS) || 0;
+  let s = Number(h.toS) || 1, a = (Number(h.toA) || 1) + 1;
+  if (mx && a > mx) { a = 1; s = Math.min(114, s + 1); }
+  return { fromS: s, fromA: a, qtyType: h.qtyType || "كمية مرنة", qty: h.qty };
+}
+
+window.lvbAheadTog = function (rid) {
+  const row = lvbRow(rid);
+  const v = lvbPillar(row, "tilawah");
+  v.ahead = !lvbAheadOn(row);
+  row.saved = false;
+  lvbSyncAhead(row);
+  lvbRedraw();
+};
+
+/* تُكتب القيمُ المشتقّة في الركن نفسِه ليُحفظ بها لا بقيمٍ قديمة */
+function lvbSyncAhead(row) {
+  if (!row || !row.pillars || !row.pillars.tilawah) return;
+  if (!lvbAheadOn(row)) return;
+  const v = row.pillars.tilawah;
+  const c = lvbAheadCalc(row);
+  v.fromS = c.fromS; v.fromA = c.fromA;
+  v.qtyType = c.qtyType; v.qty = c.qty;
+  if (Number(v.toS) < Number(v.fromS)) { v.toS = v.fromS; v.toA = v.fromA; }
+}
+
 function lvbPillarCard(rid, def) {
   const row = lvbRow(rid);
   const v = lvbPillar(row, def.k);
+  if (def.k === "tilawah") lvbSyncAhead(row);
+  const ahead = def.k === "tilawah" && lvbAheadOn(row);
   /* تفاصيلُ الركن لا تُعرض وهو مطفأ — أُغلق فلا شأن لإعداداته */
   const body = !v.on ? "" : `
     <div class="lvb-pbody">
-      <div class="lvb-posgrid">
+      ${def.k === "tilawah" ? `<div class="lvb-ahead${ahead ? " on" : ""}">
+        <div class="lvb-aheadtxt">${ic("swap", 14)}
+          <strong>التلاوة تسبق الحفظ بمقداره</strong>
+          <span class="muted">${ahead
+            ? "تبدأ من بعد آخر الحفظ وتأخذ مقدارَه — ما سيُحفظ غداً يُتلى اليوم"
+            : "مفكوكةٌ الآن: تُضبط بمداها ومقدارها كسائر الأركان"}</span></div>
+        <button type="button" class="lvb-sw${ahead ? " on" : ""}"
+          onclick="window.lvbAheadTog('${jsAttr(rid)}')"><span></span></button>
+      </div>` : ""}
+      <div class="lvb-posgrid${ahead ? " lvb-locked" : ""}">
         ${lvbAyahBox(rid, def.k, "from")}
         <span class="lvb-arrow">${ic("arrowLeft", 16)}</span>
         ${lvbAyahBox(rid, def.k, "to")}
       </div>
-      ${lvbQtyDir(rid, def.k, "")}
+      <div class="${ahead ? "lvb-locked" : ""}">${lvbQtyDir(rid, def.k, "")}</div>
       ${def.kids.length ? `<div class="lvb-kids">
         <span class="lvb-kidlbl">${ic("plan", 13)} تُفعل تلقائياً مع ${esc(def.kidsOf)}:</span>
         ${def.kids.map(kd => `<button type="button" class="lvb-kid${v.kids[kd[0]] ? " on" : ""}"
@@ -12737,7 +12829,7 @@ function lvbCard(row, n) {
         <input value="${esc(row.name || "")}" placeholder="مثال: المستوى التمهيدي"
           oninput="window.lvbName('${jsAttr(row.id)}',this.value)"></div>
       ${cfgOn ? lvbLevelCfg(row) : ""}
-      ${LVB_PILLARS.map(d => lvbPillarCard(row.id, d)).join("")}
+      ${lvbPillarDefs().map(d => lvbPillarCard(row.id, d)).join("")}
       <div class="lvb-saverow">
         <span class="muted">احفظ المستوى ليُضاف إلى البرنامج</span>
         <button type="button" class="btn btn-primary"
@@ -12893,6 +12985,7 @@ window.lvbSet = function (rid, k, field, val) {
     v[field] = n;
   } else v[field] = Number(val) || 1;
   r.saved = false;
+  if (k === "hifz") lvbSyncAhead(r);   /* التلاوةُ المربوطة تتبع الحفظ */
   /* تبديلُ السورة يغيّر سقفَ الآية: تُقصّ القيمةُ المتجاوزة ويُعاد الرسم
      ليُحدَّث السقفُ المعروض — أمّا الآيةُ فتُكتب بلا رسمٍ حفظاً للتركيز. */
   if (field === "fromS" || field === "toS") {
@@ -12903,7 +12996,7 @@ window.lvbSet = function (rid, k, field, val) {
     return;
   }
   const chip = document.querySelector('[data-lvb="' + rid + '"] .lvb-p.' +
-    (LVB_PILLARS.find(x => x.k === k) || {}).tone + ' .lvb-chip');
+    lvbToneOf(k) + ' .lvb-chip');
   if (chip) chip.innerHTML = lvbRangeChip(v);
 };
 window.lvbAyah = function (rid, k, side, d) {
@@ -12919,7 +13012,7 @@ window.lvbAyah = function (rid, k, side, d) {
     inp.value = v[f];
   }
   const chip = document.querySelector('[data-lvb="' + rid + '"] .lvb-p.' +
-    (LVB_PILLARS.find(x => x.k === k) || {}).tone + ' .lvb-chip');
+    lvbToneOf(k) + ' .lvb-chip');
   if (chip) chip.innerHTML = lvbRangeChip(v);
 };
 
@@ -12943,6 +13036,7 @@ window.lvbSaveAll = function () {
     rec.name = r.name;
     rec.order = i + 1;
     rec.programId = String(LVB.pid);
+    lvbSyncAhead(r);                  /* التلاوةُ المربوطة تُحفظ بقيمها المشتقّة */
     rec.pillars = r.pillars || {};
     rec.ovr = r.ovr || null;
     if (!r.rec) {
