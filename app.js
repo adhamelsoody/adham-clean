@@ -12279,6 +12279,37 @@ function lvbPillar(row, k) {
   return v;
 }
 
+/* =========================================================================
+   فهرسُ السور — يُحمَّل قبل رسم المستويات لا بعده
+   -------------------------------------------------------------------------
+   كانت القائمةُ تُملأ عند أوّل لمسةٍ من QSURAHS، وهو null حتى يُحمَّل من
+   window.Quran.surahs(). فمن فتح المستويات قبل تحميله وجد خياراً واحداً:
+   «الفاتحة» بدايةً ونهاية، ولا سورةَ غيرها. يُحمَّل هنا مرّةً واحدةً ثمّ
+   يُعاد الرسم، ويُستدعى أيضاً عند اللمس احتياطاً.
+   ========================================================================= */
+let LVB_SUR_WAIT = false;
+function lvbEnsureSurahs(after) {
+  if (typeof QSURAHS !== "undefined" && QSURAHS && QSURAHS.length) return true;
+  if (LVB_SUR_WAIT) return false;
+  if (typeof window.Quran === "undefined" || !window.Quran.surahs) return false;
+  LVB_SUR_WAIT = true;
+  window.Quran.surahs()
+    .then(function (list) {
+      QSURAHS = list; LVB_SUR_WAIT = false;
+      if (typeof after === "function") { after(); return; }
+      if (LVB.pid) lvbRedraw();
+    })
+    .catch(function () { LVB_SUR_WAIT = false; });
+  return false;
+}
+
+/* خيارُ السورة: رقمُها واسمُها وعددُ آياتها — ليُعرف مداها قبل الاختيار */
+function lvbSurOpt(x, cur2) {
+  return '<option value="' + x.i + '"' + (String(x.i) === String(cur2) ? " selected" : "") +
+         ">" + esc(toArabicDigits(x.i) + " · " + x.n +
+                   (Number(x.a) ? " · " + toArabicDigits(x.a) + " آية" : "")) + "</option>";
+}
+
 function lvbSurahName(i) {
   if (typeof surahName === "function") { const n = surahName(i); if (n) return n; }
   if (typeof QSURAHS !== "undefined" && QSURAHS) {
@@ -12314,6 +12345,7 @@ function lvbAyahBox(rid, k, side) {
   const ay  = side === "from" ? (v.fromA || 1) : (v.toA || 1);
   const id  = "lvb_" + rid + "_" + k + "_" + side;
   const list = (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : [];
+  const mx = lvxSurahAyahs(sur) || 0;
   return `<div class="lvb-pos">
     <div class="lvb-poshead">${ic(side === "from" ? "target" : "flag", 13)}
       <span>${side === "from" ? "يبدأ من" : "ينتهي بـ"}</span></div>
@@ -12322,32 +12354,116 @@ function lvbAyahBox(rid, k, side) {
         <select id="${id}_s" data-lvbsur="1"
           onfocus="window.lvbFillSur(this)"
           onchange="window.lvbSet('${jsAttr(rid)}','${k}','${side}S',this.value)">
-          <option value="${esc(sur)}" selected>${esc(lvbSurahName(sur))}</option>
+          ${list.length
+            ? `<option value="${esc(sur)}" selected>${esc(toArabicDigits(sur || 1) + " · " +
+                 lvbSurahName(sur) + (mx ? " · " + toArabicDigits(mx) + " آية" : ""))}</option>`
+            : `<option value="${esc(sur)}" selected>${esc(lvbSurahName(sur))}</option>`}
         </select></div>
-      <div class="lvb-f"><label>الآية (من ${toArabicDigits(lvxSurahAyahs(sur) || 7)})</label>
+      <div class="lvb-f"><label>الآية${mx ? " (من " + toArabicDigits(mx) + ")" : ""}</label>
         <div class="lvb-step">
           <button type="button" onclick="window.lvbAyah('${jsAttr(rid)}','${k}','${side}',1)">+</button>
-          <input id="${id}_a" type="number" min="1" value="${toArabicDigits ? (ay || 1) : 1}"
+          <input id="${id}_a" type="number" min="1"${mx ? ` max="${mx}"` : ""}
+            value="${toArabicDigits ? (ay || 1) : 1}"
             oninput="window.lvbSet('${jsAttr(rid)}','${k}','${side}A',this.value)">
           <button type="button" onclick="window.lvbAyah('${jsAttr(rid)}','${k}','${side}',-1)">−</button>
         </div></div>
     </div></div>`;
 }
 
+/* =========================================================================
+   مقدارُ الركن واتجاهُه — لكلّ ركنٍ وكلّ فرعٍ منه
+   -------------------------------------------------------------------------
+   كان الركنُ مدىً وحسب: من آيةٍ إلى آية. والمدى لا يقول كم يُؤخذ في
+   اليوم ولا من أيّ طرفٍ يُبدأ. يُضاف هنا المقدارُ (نوعُه وقيمتُه بالقوائم
+   نفسِها التي في الخطط) والاتجاهُ (بقائمة PRG_DIRS نفسِها)، ويرث الاتجاهُ
+   اتجاهَ البرنامج ما لم يُغيَّر.
+   ========================================================================= */
+function lvbCfgOf(row, k, kid) {
+  const v = lvbPillar(row, k);
+  if (!kid) {
+    if (!v.qtyType) v.qtyType = "كمية مرنة";
+    if (v.qty === undefined || v.qty === null) v.qty = "وجه";
+    if (!v.dir) v.dir = String(lvbPrgOf().direction || "forward");
+    return v;
+  }
+  v.kidsCfg = v.kidsCfg || {};
+  if (!v.kidsCfg[kid]) v.kidsCfg[kid] = {
+    qtyType: "كمية مرنة", qty: "وجه", dir: String(lvbPrgOf().direction || "forward") };
+  return v.kidsCfg[kid];
+}
+
+window.lvbCfgSet = function (rid, k, kid, field, val) {
+  const c = lvbCfgOf(lvbRow(rid), k, kid || "");
+  if (field === "qtyType") {
+    c.qtyType = String(val || "");
+    c.qty = qtyIsNum(c.qtyType) ? 1 : (qtyListFor(c.qtyType)[0] || "");
+  } else if (field === "qty") {
+    c.qty = qtyIsNum(c.qtyType) ? Math.max(1, Number(val) || 1) : String(val || "");
+  } else if (field === "dir") c.dir = String(val || "forward");
+  else return;
+  lvbRow(rid).saved = false;
+  lvbRedraw();
+};
+
+window.lvbCfgNum = function (rid, k, kid, d) {
+  const c = lvbCfgOf(lvbRow(rid), k, kid || "");
+  c.qty = Math.max(1, (Number(c.qty) || 1) + d);
+  lvbRow(rid).saved = false;
+  lvbRedraw();
+};
+
+function lvbQtyDir(rid, k, kid) {
+  const c = lvbCfgOf(lvbRow(rid), k, kid || "");
+  const a = jsAttr(rid), kk = jsAttr(kid || "");
+  const types = typeof SYS_QTY_TYPES !== "undefined" ? SYS_QTY_TYPES : ["كمية مرنة"];
+  const dirs  = typeof PRG_DIRS !== "undefined" ? PRG_DIRS : [{ k: "forward", h: "تصاعدي" }];
+  const num = qtyIsNum(c.qtyType);
+  return `<div class="lvb-qd">
+    <div class="lvb-f"><label>نوع المقدار</label>
+      <select onchange="window.lvbCfgSet('${a}','${k}','${kk}','qtyType',this.value)">
+        ${types.map(t => `<option value="${esc(t)}"${String(c.qtyType) === t
+          ? " selected" : ""}>${esc(t)}</option>`).join("")}
+      </select></div>
+    <div class="lvb-f"><label>${esc(num ? (QTY_NUM_LABEL[c.qtyType] || "العدد") : "المقدار")}</label>
+      ${num ? `<div class="lvb-step">
+          <button type="button" onclick="window.lvbCfgNum('${a}','${k}','${kk}',1)">+</button>
+          <input type="number" min="1" dir="ltr" value="${esc(Number(c.qty) || 1)}"
+            oninput="window.lvbCfgSet('${a}','${k}','${kk}','qty',this.value)">
+          <button type="button" onclick="window.lvbCfgNum('${a}','${k}','${kk}',-1)">−</button>
+        </div>`
+        : `<select onchange="window.lvbCfgSet('${a}','${k}','${kk}','qty',this.value)">
+            ${qtyListFor(c.qtyType).map(q => `<option value="${esc(q)}"${String(c.qty) === q
+              ? " selected" : ""}>${esc(q)}</option>`).join("")}
+          </select>`}</div>
+    <div class="lvb-f"><label>الاتجاه</label>
+      <select onchange="window.lvbCfgSet('${a}','${k}','${kk}','dir',this.value)">
+        ${dirs.map(d => `<option value="${esc(d.k)}"${String(c.dir) === String(d.k)
+          ? " selected" : ""}>${esc(d.h)}</option>`).join("")}
+      </select></div>
+  </div>`;
+}
+
 function lvbPillarCard(rid, def) {
-  const v = lvbPillar(lvbRow(rid), def.k);
-  const body = def.k === "tilawah" ? "" : `
+  const row = lvbRow(rid);
+  const v = lvbPillar(row, def.k);
+  /* تفاصيلُ الركن لا تُعرض وهو مطفأ — أُغلق فلا شأن لإعداداته */
+  const body = !v.on ? "" : `
     <div class="lvb-pbody">
       <div class="lvb-posgrid">
         ${lvbAyahBox(rid, def.k, "from")}
         <span class="lvb-arrow">${ic("arrowLeft", 16)}</span>
         ${lvbAyahBox(rid, def.k, "to")}
       </div>
+      ${lvbQtyDir(rid, def.k, "")}
       ${def.kids.length ? `<div class="lvb-kids">
         <span class="lvb-kidlbl">${ic("plan", 13)} تُفعل تلقائياً مع ${esc(def.kidsOf)}:</span>
         ${def.kids.map(kd => `<button type="button" class="lvb-kid${v.kids[kd[0]] ? " on" : ""}"
           onclick="window.lvbKid('${jsAttr(rid)}','${def.k}','${kd[0]}')">${esc(kd[1])}</button>`).join("")}
-      </div>` : ""}
+      </div>
+      ${def.kids.filter(kd => v.kids[kd[0]]).map(kd => `<div class="lvb-kidcfg">
+        <div class="lvb-kidhead">${ic("plan", 13)} <strong>${esc(kd[1])}</strong></div>
+        ${lvbQtyDir(rid, def.k, kd[0])}
+      </div>`).join("")}` : ""}
     </div>`;
   return `<div class="lvb-p ${def.tone}${v.on ? " on" : ""}">
     <div class="lvb-phead">
@@ -12355,7 +12471,7 @@ function lvbPillarCard(rid, def) {
       <strong>${esc(def.h)}</strong>
       <button type="button" class="lvb-sw${v.on ? " on" : ""}"
         onclick="window.lvbPTog('${jsAttr(rid)}','${def.k}')"><span></span></button>
-      ${def.k === "tilawah" ? "" : `<span class="lvb-chip">${lvbRangeChip(v)}</span>`}
+      ${v.on ? `<span class="lvb-chip">${lvbRangeChip(v)}</span>` : ""}
     </div>
     ${body}
   </div>`;
@@ -12528,6 +12644,7 @@ function lvbCard(row, n) {
 
 function lvbSection(pid, lvls) {
   lvbLoad(pid, lvls);
+  lvbEnsureSurahs();   /* الفهرسُ أوّلاً وإلا لم تظهر إلا الفاتحة */
   const un = LVB.rows.filter(r => !r.saved).length;
   return `<section class="sp-card sp-wide2 lvb-sec" data-lvprog="${esc(pid)}">
     <div class="sp-cardhead">${ic("layers", 17)}
@@ -12569,11 +12686,10 @@ function lvbSection(pid, lvls) {
 window.lvbFillSur = function (el) {
   if (!el || el.dataset.full === "1") return;
   const list = (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : [];
-  if (!list.length) return;
+  /* الفهرسُ لم يصل بعد: يُطلب ثمّ تُملأ القائمةُ نفسُها حين يصل */
+  if (!list.length) { lvbEnsureSurahs(function () { lvbRedraw(); }); return; }
   const cur2 = String(el.value || "");
-  el.innerHTML = list.map(x =>
-    '<option value="' + x.i + '"' + (String(x.i) === cur2 ? " selected" : "") +
-    ">" + esc(x.n) + "</option>").join("");
+  el.innerHTML = list.map(x => lvbSurOpt(x, cur2)).join("");
   el.value = cur2;
   el.dataset.full = "1";
 };
@@ -12639,6 +12755,15 @@ window.lvbSet = function (rid, k, field, val) {
   const r = lvbRow(rid); const v = lvbPillar(r, k);
   v[field] = /A$/.test(field) ? Math.max(1, Number(val) || 1) : Number(val) || 1;
   r.saved = false;
+  /* تبديلُ السورة يغيّر سقفَ الآية: تُقصّ القيمةُ المتجاوزة ويُعاد الرسم
+     ليُحدَّث السقفُ المعروض — أمّا الآيةُ فتُكتب بلا رسمٍ حفظاً للتركيز. */
+  if (field === "fromS" || field === "toS") {
+    const side = field === "fromS" ? "fromA" : "toA";
+    const max = lvxSurahAyahs(v[field]) || 0;
+    if (max && Number(v[side]) > max) v[side] = max;
+    lvbRedraw();
+    return;
+  }
   const chip = document.querySelector('[data-lvb="' + rid + '"] .lvb-p.' +
     (LVB_PILLARS.find(x => x.k === k) || {}).tone + ' .lvb-chip');
   if (chip) chip.innerHTML = lvbRangeChip(v);
