@@ -34823,9 +34823,22 @@ window.archiveOverrideDo = function (on) {
    مكتوبٍ سلفاً — فنقلُ مستندٍ من مسجدٍ إلى آخر عملٌ مقصودٌ لا أثرٌ جانبيّ.
    ========================================================================= */
 const SCOPE_FREE = ["settings", "users", "auditLog", "sysAlerts", "msgOutbox"];
+/* =========================================================================
+   المنشأةُ لا تُبصَم بنطاق من كتبها
+   -------------------------------------------------------------------------
+   كان المسجدُ والمجمّعُ يمرّان على البصم كأيّ مستند: فمسجدٌ بلا مجمّع
+   (وهي الحالُ الطبيعيةُ للمسجد المستقلّ) يُكتب فيه complexId من مجمّعِ
+   من حفظه — فينتقل المسجدُ إلى مجمّعٍ لم ينقله إليه أحد. ومن حفظه من
+   جهازٍ آخر بحسابٍ آخر نقله إلى مجمّعٍ ثالث. وهذا سببُ «المساجد تتغير
+   من مجمّع إلى آخر وحدها».
+   موضعُ المنشأة في الشجرة يُحدَّد بالنقل المقصود وحدَه (mvcApply)، ولا
+   يُستنتج من حافظها.
+   ========================================================================= */
+const SCOPE_SELF = ["mosques", "complexes"];
 
 function scopeStamp(coll, data) {
   if (!data || SCOPE_FREE.indexOf(String(coll)) > -1) return data;
+  if (SCOPE_SELF.indexOf(String(coll)) > -1) return data;
 
   const u = (STATE && STATE.user) || {};
   if (isTopAdmin(u)) return data;              /* المالكُ والمديرُ بلا نطاق */
@@ -35359,13 +35372,11 @@ window.syncMyScope = function (force) {
     }
   }
 
-  /* المجمّع للجميع: بدونه لا يُحصر أحد */
-  /* لا يُكتب complexId لمن لم يكن له: STATE.complexId يتغيّر بتبديل المجمّع
-     في الشاشة، فكتابتُه تحصر المدير في أوّل مجمّعٍ فتحه — ويُرفض بعدها كلّ
-     ما هو في غيره. الحصر يُسند من صفحة المستخدمين قصداً لا يُستنتج. */
-  if (!rec.complexId && STATE.complexId && !isTopAdmin(rec)) {
-    patch.complexId = String(STATE.complexId);
-  }
+  /* لا يُكتب complexId استنتاجاً البتّة: STATE.complexId هو المجمّعُ
+     المفتوحُ في الشاشة، ويختلف من جهازٍ لآخر ومن جلسةٍ لأخرى. فكتابتُه
+     كانت تحصر الحسابَ في أوّل مجمّعٍ فُتح على ذلك الجهاز، فيرى صاحبُه
+     على الحاسوب غيرَ ما يرى على الهاتف. الحصرُ يُسند من صفحة المستخدمين
+     قصداً — وقد كان التعليقُ يقول هذا والكودُ يفعل خلافَه. */
 
   if (!Object.keys(patch).length && !force) return Promise.resolve(false);
 
@@ -35374,6 +35385,43 @@ window.syncMyScope = function (force) {
 };
 
 /* نطاق معلّمٍ بعينه — يُنادى عند إسناد حلقة أو تغيير معلّمها */
+/* =========================================================================
+   تقريرُ النطاق — يُقارَن بين جهازٍ وآخر
+   -------------------------------------------------------------------------
+   حين تختلف البياناتُ بين الحاسوب والهاتف فالسببُ نطاقُ الحساب أو المجمّعُ
+   المفتوح، لا البياناتُ نفسُها. يُطبع هنا ما يحدّد ما يراه هذا الجهاز:
+   يُنادى من الطرفية بـ scopeReport() في الجهازين ويُقارَن الناتجان.
+   ========================================================================= */
+window.scopeReport = function () {
+  const u = (STATE && STATE.user) || {};
+  const mos = (Array.isArray(DB.mosques) ? DB.mosques : []);
+  const cxs = (Array.isArray(DB.complexes) ? DB.complexes : []);
+  const nameOf = id => (cxs.find(c => String(c.id) === String(id)) || {}).name || "—";
+  const out = {
+    الحساب: { المعرّف: u.uid || u.id || "", الاسم: u.name || "", الدور: u.role || "",
+              مسجده: u.mosqueId || "", مجمّعه: u.complexId || "",
+              مساجده: u.mosqueIds || [], مجمّعاته: u.complexIds || [] },
+    "المجمّع المفتوح في هذه الشاشة": STATE.complexId || "",
+    الأعداد: {}, "المساجد ومجمّعاتها": []
+  };
+  ["complexes", "mosques", "circles", "students", "teachers",
+   "programs", "levels", "plans"].forEach(function (k) {
+    out.الأعداد[k] = {
+      "في الذاكرة": (Array.isArray(DB[k]) ? DB[k].length : 0),
+      "بعد التصفية": (typeof cur === "function" ? (cur(k) || []).length : 0)
+    };
+  });
+  mos.forEach(function (m) {
+    out["المساجد ومجمّعاتها"].push({
+      المسجد: m.name || "", المعرّف: m.id,
+      complexId: m.complexId || "(بلا مجمّع)", المجمّع: m.complexId ? nameOf(m.complexId) : "—"
+    });
+  });
+  try { console.table(out["المساجد ومجمّعاتها"]); } catch (e) {}
+  try { console.log(JSON.stringify(out, null, 2)); } catch (e) {}
+  return out;
+};
+
 window.syncTeacherScope = function (teacherId) {
   const t = (cur("teachers") || []).find(x => String(x.id) === String(teacherId));
   if (!t) return;
