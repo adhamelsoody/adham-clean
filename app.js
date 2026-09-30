@@ -11718,6 +11718,24 @@ function prgvFolds() {
   });
 }
 
+/* عددا المستويات والطلاب في الجدول: يُضغطان فيُفتح البرنامجُ على بطاقتهما
+   — كانا رقمين لا يُنقر عليهما، والصفُّ كلُّه يفتح الصفحةَ من أعلاها. */
+window.lvlViewAt = function (id, what) {
+  window.lvlView(id);
+  setTimeout(function () {
+    const head = what === "students" ? "طلاب البرنامج" : "المستويات";
+    const sec = [].slice.call(document.querySelectorAll("#panelRoot .sp-card"))
+      .find(function (x) {
+        const h = x.querySelector(".sp-cardhead h3");
+        return h && h.textContent.trim() === head;
+      });
+    if (!sec) return;
+    const btn = sec.querySelector(".prgv-fold");
+    if (sec.classList.contains("folded") && btn) btn.click();
+    try { sec.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {}
+  }, 80);
+};
+
 window.lvlView = function (id) {
   const p2 = cur("programs").find(x => String(x.id) === String(id)) ||
              sysPrograms().find(x => String(x.id) === String(id));
@@ -12365,14 +12383,13 @@ window.dedSave = function () {
 const LVB = { pid: "", rows: [], open: "", cfg: "", loaded: "" };
 
 const LVB_PILLARS = [
+  /* زرّا الحفظ: «تثبيت» ومعه عددُ دروسه، و«تلاوة الدرس القادم» المربوطة
+     به. و«تثبيت تراكمي» أُلغي من الصفّ بطلبٍ صريح. */
   { k: "hifz",    h: "حفظ",    icon: "doc",     tone: "lvb-hifz",
-    kidsOf: "حفظ",   kids: [["tathbitCum", "تثبيت تراكمي"],
+    kidsOf: "حفظ",   kids: [["tathbit", "تثبيت"],
                             ["tilawahNext", "تلاوة الدرس القادم"]] },
-  /* «تثبيت» كان ركناً مستقلاً وزرّاً تحت الحفظ؛ نُقل إلى جوار «مراجعة
-     تراكمية»: زرُّ تفعيلٍ وإلغاءٍ بلا تفاصيل */
   { k: "review",  h: "مراجعة", icon: "refresh", tone: "lvb-rev",
-    kidsOf: "مراجعة", kids: [["reviewExtra", "مراجعة إضافية"], ["reviewCum", "مراجعة تراكمية"],
-                             ["tathbit", "تثبيت"]] },
+    kidsOf: "مراجعة", kids: [["reviewExtra", "مراجعة إضافية"], ["reviewCum", "مراجعة تراكمية"]] },
   { k: "tilawah", h: "تلاوة",  icon: "chat",    tone: "lvb-til", kids: [] }
 ];
 
@@ -12521,6 +12538,7 @@ window.lvbCfgSet = function (rid, k, kid, field, val) {
   } else if (field === "qty") {
     c.qty = qtyIsNum(c.qtyType) ? Math.max(1, Number(val) || 1) : String(val || "");
   } else if (field === "dir") c.dir = String(val || "forward");
+  else if (field === "lessons") c.lessons = Math.max(1, Number(val) || 1);
   else if (field === "mode")  c.mode  = String(val || "range");
   else if (field === "linkK") c.linkK = String(val || "");
   else if (/^(from|to)[SA]$/.test(field)) {
@@ -12610,7 +12628,9 @@ function lvbQtyDir(rid, k, kid) {
 /* واجباتٌ لا تُرسم أركاناً في المستوى: صارت أزراراً تحت أركانها */
 const LVB_AS_KID = ["tathbit"];
 /* أزرارٌ تُفعَّل وتُلغى بلا تفاصيل */
-const LVB_KID_PLAIN = ["tathbit"];
+const LVB_KID_PLAIN = [];
+/* أزرارٌ تفاصيلُها عددُ دروسٍ لا غير */
+const LVB_KID_LESSONS = ["tathbit"];
 
 function lvbPillarDefs() {
   const duties = prgDutiesOf(lvbPrgOf()).filter(d => LVB_AS_KID.indexOf(String(d.k)) < 0);
@@ -12723,6 +12743,32 @@ function lvbKidAyahBox(rid, k, kid, side) {
     </div></div>`;
 }
 
+/* التثبيتُ فرعاً: تفاصيلُه عددُ دروسٍ يُعاد تثبيتُها، لا مدىً ولا مقدار */
+function lvbKidLessons(rid, k, kid, title) {
+  const c = lvbCfgOf(lvbRow(rid), k, kid);
+  if (c.lessons === undefined || c.lessons === null) c.lessons = 1;
+  const a = jsAttr(rid), kk = jsAttr(kid);
+  return `<div class="lvb-kidcfg">
+    <div class="lvb-kidhead">${ic("plan", 13)} <strong>${esc(title)}</strong></div>
+    <div class="lvb-f lvb-lessons"><label>عدد الدروس</label>
+      <div class="lvb-step">
+        <button type="button" onclick="window.lvbKidLessonStep('${a}','${k}','${kk}',1)">+</button>
+        <input type="number" min="1" dir="ltr" value="${esc(Number(c.lessons) || 1)}"
+          oninput="window.lvbCfgSet('${a}','${k}','${kk}','lessons',this.value)">
+        <button type="button" onclick="window.lvbKidLessonStep('${a}','${k}','${kk}',-1)">−</button>
+      </div>
+      <small class="muted">كم درساً سابقاً يُعاد تثبيتُه مع درس اليوم</small></div>
+  </div>`;
+}
+
+window.lvbKidLessonStep = function (rid, k, kid, d) {
+  const r = lvbRow(rid);
+  const c = lvbCfgOf(r, k, kid);
+  c.lessons = Math.max(1, (Number(c.lessons) || 1) + d);
+  r.saved = false;
+  lvbRedraw();
+};
+
 function lvbKidScope(rid, k, kid, title) {
   const c = lvbCfgOf(lvbRow(rid), k, kid);
   const a = jsAttr(rid), kk = jsAttr(kid);
@@ -12821,6 +12867,8 @@ function lvbPillarCard(rid, def) {
               <span class="muted">مربوطةٌ بالحفظ — تأخذ مداه ومقدارَه، فما يُحفظ غداً يُتلى اليوم</span></div>
             <div class="lvb-kidlink">${lvbNextChip(rid)}</div>
           </div>`
+        : LVB_KID_LESSONS.indexOf(kd[0]) > -1
+        ? lvbKidLessons(rid, def.k, kd[0], kd[1])
         : kd[0] === "reviewExtra"
         ? lvbKidScope(rid, def.k, kd[0], kd[1])
         : `<div class="lvb-kidcfg">
@@ -20231,8 +20279,12 @@ function setPanelLevels() {
           <td><span class="lv-type">${BOOK}${esc(r.type || "برنامج قرآني")}</span></td>
           <td class="${sys ? "lv-sys" : "lv-own"}">${esc(r.owner || "—")}</td>
           <td><span class="lv-pill ${on ? "on" : "off"}"><i></i>${on ? "فعال" : "متوقف"}</span></td>
-          <td><span class="lv-num">${lvlCount(r.id)}</span></td>
-          <td><span class="lv-num">${lvlStudents(r.id)}</span></td>
+          <td><button type="button" class="lv-num lv-numbtn" title="عرض مستويات البرنامج"
+            onclick="event.stopPropagation(); window.lvlViewAt('${jsAttr(r.id)}','levels')"
+            >${lvlCount(r.id)}</button></td>
+          <td><button type="button" class="lv-num lv-numbtn" title="عرض طلاب البرنامج"
+            onclick="event.stopPropagation(); window.lvlViewAt('${jsAttr(r.id)}','students')"
+            >${lvlStudents(r.id)}</button></td>
           <td class="pt-actions">
             <button class="row-btn" onclick="${sys ? `window.lvlView('${jsAttr(r.id)}')` : `window.prgForm('${jsAttr(r.id)}')`}"
               title="${sys ? "عرض" : "تعديل"}">${sys ? EYE : PEN}</button>

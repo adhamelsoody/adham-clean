@@ -9844,3 +9844,7 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
    ========================================================================= */
 .lvb-p[style*="--lvb-tone"] .lvb-kid.on { background: var(--lvb-tone); color: #fff; }
 .lvb-p[style*="--lvb-tone"] .lvb-pico { background: rgba(255, 255, 255, .22); color: #fff; }
+
+/* عددا المستويات والطلاب في جدول البرامج: زرّان يفتحان البرنامج على بطاقتهما */
+.lv-numbtn { border: 0; cursor: pointer; font: inherit; }
+.lv-numbtn:hover { outline: 1.5px solid currentColor; outline-offset: 1px; }
