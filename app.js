@@ -10010,6 +10010,51 @@ window.prgDelete = function () {
     `<button class="btn btn-danger" data-action="prg-del-do">حذف نهائي</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 };
+/* =========================================================================
+   حذفُ برنامجٍ من صفّه — بتنبيهٍ يذكر ما سيفقد ارتباطَه
+   ========================================================================= */
+window.prgRowDelete = function (id) {
+  const r = (DB.programs || []).find(x => String(x.id) === String(id)) ||
+            prgRows().find(x => String(x.id) === String(id));
+  if (!r) return;
+  if (isSysProgram(id) || r.system === true) {
+    showToast("البرامج المثبَّتة من النظام لا تُحذف", "warn"); return;
+  }
+  if (!isTopAdmin() && !isMgrRole(myRoleNow())) {
+    showToast("الحذف من صلاحية الإدارة", "warn"); return;
+  }
+
+  const lvlsN  = (DB.levels || []).filter(x => String(x.programId) === String(id)).length;
+  const plansN = (DB.plans  || []).filter(x => String(x.programId) === String(id)).length;
+  const studsN = new Set((DB.plans || [])
+    .filter(x => String(x.programId) === String(id))
+    .map(x => String(x.studentId))).size;
+
+  const warn = (lvlsN || plansN)
+    ? `<p style="margin-top:10px">ويرتبط به: ` +
+      [lvlsN  ? `<strong>${toArabicDigits(lvlsN)}</strong> مستوى` : "",
+       plansN ? `<strong>${toArabicDigits(plansN)}</strong> خطة` : "",
+       studsN ? `<strong>${toArabicDigits(studsN)}</strong> طالباً` : ""]
+        .filter(Boolean).join(" · ") +
+      ` — لا تُحذف، لكنّها تفقد ارتباطَها بالبرنامج فلا تظهر تحته.</p>`
+    : "";
+
+  openModal("تأكيد حذف البرنامج", esc(r.name || ""),
+    noteCard(`سيُحذف البرنامج <strong>${esc(r.name || "")}</strong> نهائياً.${warn}`),
+    `<button class="btn btn-danger" onclick="window.prgRowDeleteDo('${jsAttr(id)}')">حذف نهائي</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.prgRowDeleteDo = function (id) {
+  const i = (DB.programs || []).findIndex(x => String(x.id) === String(id));
+  const nm = i > -1 ? (DB.programs[i].name || "") : "";
+  if (i > -1) { DB.programs.splice(i, 1); persistDelete("programs", id); }
+  if (PRG && PRG.sel) delete PRG.sel[String(id)];
+  closeModal();
+  showToast("حُذف البرنامج" + (nm ? " «" + nm + "»" : ""), "success");
+  mount();
+};
+
 window.prgDeleteDo = function () {
   const ids = prgSel();
   ids.forEach(id => {
@@ -10424,6 +10469,12 @@ window.cfgMosqueResetDo = function () {
 
 /* شريطٌ أعلى الإعدادات لمدير المسجد: ما يعدّله خاصٌّ بمسجده */
 function cfgMosqueBanner() {
+  /* أُزيلت اللافتةُ بطلبٍ صريح: كانت تشغل صدرَ الإعدادات بلا فائدة.
+     الدالّةُ باقيةٌ ومنادياتُها كما هي، وتُعيد فراغاً. */
+  return "";
+}
+
+function cfgMosqueBannerOld() {
   const r = ((STATE && STATE.user) || {}).role || "";
   if (r !== "mosqueManager" && r !== "supervisor") return "";
   const m = typeof planScopeMosque === "function" ? planScopeMosque() : null;
@@ -20144,7 +20195,7 @@ function setPanelDuties() {
 }
 
 window.dutyDel = function (id) {
-  if (!isTopAdmin() && !isMgrRole(myRole())) { showToast("الحذف من صلاحية الإدارة", "warn"); return; }
+  if (!isTopAdmin() && !isMgrRole(myRoleNow())) { showToast("الحذف من صلاحية الإدارة", "warn"); return; }
   const i = (DB.dutyTypes || []).findIndex(x => String(x.id) === String(id));
   if (i < 0) return;
   const nm = DB.dutyTypes[i].name || "";
@@ -20296,6 +20347,10 @@ function setPanelLevels() {
           <td class="pt-actions">
             <button class="row-btn" onclick="${sys ? `window.lvlView('${jsAttr(r.id)}')` : `window.prgForm('${jsAttr(r.id)}')`}"
               title="${sys ? "عرض" : "تعديل"}">${sys ? EYE : PEN}</button>
+            ${/* حذفُ البرنامج من صفّه: كان الحذفُ بالتحديد ثمّ زرِّ الشريط،
+                 فلا يجده من يعمل في الصفّ. والمثبَّتُ من النظام لا يُحذف. */ ""}
+            ${fixed ? "" : `<button class="row-btn rb-del" onclick="window.prgRowDelete('${jsAttr(r.id)}')"
+              title="حذف البرنامج">${ic("trash", 14)}</button>`}
             ${fixed && canPlanSetup() ? `<button class="row-btn" onclick="window.sysPrgSetup('${jsAttr(r.id)}')"
               title="ضبط الأركان">${GEAR}</button>` : ""}
             ${fixed && isTopAdmin() ? `<button class="row-btn" onclick="window.sysPrgToggle('${jsAttr(r.id)}')"
@@ -21370,7 +21425,7 @@ function arcArchived() {
 }
 
 window.arcRun = function () {
-  if (!canDo("settings-core") && !isTopAdmin() && !isMgrRole(myRole())) {
+  if (!canDo("settings-core") && !isTopAdmin() && !isMgrRole(myRoleNow())) {
     showToast("الأرشفة من صلاحية الإدارة", "warn"); return;
   }
   const list = arcCandidates();
@@ -34926,6 +34981,12 @@ const SCOPE_FREE = ["settings", "users", "auditLog", "sysAlerts", "msgOutbox"];
    يُستنتج من حافظها.
    ========================================================================= */
 const SCOPE_SELF = ["mosques", "complexes"];
+
+/* دورُ صاحب الجلسة — كان الكودُ ينادي myRole() وهي معرّفةٌ في auth.js
+   و shell.js لا في app.js، فترمي ReferenceError عند أوّل استدعاء. */
+function myRoleNow() {
+  return String(((STATE && STATE.user) || {}).role || "");
+}
 
 function scopeStamp(coll, data) {
   if (!data || SCOPE_FREE.indexOf(String(coll)) > -1) return data;
