@@ -20515,7 +20515,10 @@ window.trmSave = function () {
       noteCard(`<p>هل تريد ترحيل البيانات من <strong>${esc(act.name || "")}</strong>
         إلى <strong>${esc(r.name)}</strong>؟</p>
         <p style="margin-top:8px">يُفتح معالج الترحيل لتختار المعلّمين والطلاب والحلقات،
-        وعند التنفيذ تُفعَّل الفترة الجديدة وتُؤرشف السابقة للقراءة فقط.</p>`),
+        وعند التنفيذ تُفعَّل الفترة الجديدة وتُؤرشف السابقة للقراءة فقط.</p>
+        <p style="margin-top:8px">واخترتَ «لاحقاً»؟ الفترةُ الجديدة تبدأ فارغة (طلاب ٠ ·
+        معلّمون ٠ · حلقات ٠)، ويبقى زرُّ <strong>«ترحيل إليها»</strong> في صفّها
+        بجدول الفترات الدراسية — تفتحه متى شئت.</p>`),
       `<button class="btn btn-primary" onclick="window.trmMigrate('${jsAttr(r.id)}')">نعم، افتح معالج الترحيل</button>
        <button class="btn btn-ghost" data-action="close-modal">لاحقاً</button>`);
   }
@@ -20834,10 +20837,32 @@ window.trmMigrate = function (toId) {
   }
 
   const act = activeTerm();
-  MIG.from = act ? String(act.id) : String(terms[0].id);
-  MIG.to = String((terms.find(t => String(t.id) === String(toId || "") && String(t.id) !== MIG.from) ||
-                  terms.find(t => String(t.id) !== MIG.from && !t.archived && !t.parallel) ||
-                  terms.find(t => String(t.id) !== MIG.from) || terms[0]).id);
+  /* =======================================================================
+     الوجهةُ هي المطلوبة، والمصدرُ ما عداها
+     -----------------------------------------------------------------------
+     كان المصدرُ يُثبَّت على الفترة النشطة والوجهةُ تُحسب بعده. والفترةُ
+     الجديدةُ تصير هي النشطةَ بتاريخها، فينقلب الاتجاه: تُرحَّل منها وهي
+     فارغة. فإن طُلبت وجهةٌ بعينها ثُبّتت أوّلاً، ثمّ اختير المصدرُ من
+     سواها: النشطةُ إن لم تكن هي، وإلا فآخرُ فترةٍ فيها طلاب.
+     ======================================================================= */
+  const want = String(toId || "");
+  const dst = terms.find(t => String(t.id) === want);
+  if (dst) {
+    MIG.to = String(dst.id);
+    const others = terms.filter(t => String(t.id) !== MIG.to);
+    const withStudents = others.filter(t =>
+      (DB.students || []).some(x => String(x.termId || "") === String(t.id)));
+    const pickFrom =
+      (act && String(act.id) !== MIG.to ? act : null) ||
+      withStudents[withStudents.length - 1] ||
+      others.filter(t => !t.parallel)[others.filter(t => !t.parallel).length - 1] ||
+      others[others.length - 1];
+    MIG.from = String((pickFrom || others[0] || terms[0]).id);
+  } else {
+    MIG.from = act ? String(act.id) : String(terms[0].id);
+    MIG.to = String((terms.find(t => String(t.id) !== MIG.from && !t.archived && !t.parallel) ||
+                    terms.find(t => String(t.id) !== MIG.from) || terms[0]).id);
+  }
   MIG.pick = {};
   MIG.dest = {};
 
@@ -21425,7 +21450,7 @@ function setPanelTerms() {
     </div>
 
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable tm-table">
-      <thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th>الأيام</th><th>المالك</th><th>الحالة</th></tr></thead>
+      <thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th>الأيام</th><th>المالك</th><th>الحالة</th><th>الترحيل</th></tr></thead>
       <tbody id="tmBody">${rows.length ? rows.map(r => {
         const own = trmOwn(r), now = trmIsNow(r);
         return `<tr data-id="${r.id}"${own ? ' class="tm-own"' : ""}>
@@ -21437,9 +21462,17 @@ function setPanelTerms() {
           <td class="pt-num">${trmDays(r.from, r.to)}</td>
           <td class="tm-owner">${esc(r.owner || "جهتك")}</td>
           <td>${now ? '<span class="tm-now">الحالية</span>' : '<span class="tm-dash">–</span>'}</td>
+          <td>${/* زرُّ ترحيلٍ لكلّ فترة: من أنشأ فترةً واختار «لاحقاً» كان
+                   يفقد المعالجَ ولا سبيل إليه، فتبقى الفترة فارغةً بلا
+                   طلابٍ ولا معلّمين ولا حلقات. */ ""}${own
+            ? `<button type="button" class="btn btn-ghost btn-sm"
+                onclick="window.trmMigrate('${jsAttr(r.id)}')"
+                title="اختر من يُرحَّل إلى «${esc(r.name || "")}»"
+                >${ic("swap", 14)} ترحيل إليها</button>`
+            : '<span class="tm-dash">–</span>'}</td>
         </tr>`;
       }).join("")
-      : `<tr><td colspan="6" class="rep-empty">
+      : `<tr><td colspan="7" class="rep-empty">
           <svg viewBox="0 0 24 24" width="50" height="50" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <ellipse cx="10" cy="5.5" rx="7" ry="2.8"/><path d="M3 5.5v5c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8v-5"/>
             <path d="M3 10.5v5c0 1.5 3.1 2.8 7 2.8 .6 0 1.2 0 1.8-.1"/>
