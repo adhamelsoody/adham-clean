@@ -11463,13 +11463,16 @@ window.prgDailySet = function (pid, field, v) {
 const PRG_DUTY_BASE = [
   { k: "hifz",    name: "حفظ جديد", color: "#0f6f72" },
   { k: "review",  name: "مراجعة",   color: "#f59c1a" },
-  { k: "tathbit", name: "تثبيت",    color: "#c9a227" },
-  { k: "tilawah", name: "تلاوة",    color: "#86b7c6" }
+  { k: "tathbit", name: "تثبيت",    color: "#c9a227" }
 ];
+/* «تلاوة» أُزيلت بطلبٍ صريح: لا تُعرض واجباً ولا ركناً. وما حُفظ في
+   السجلّات القديمة يبقى كما هو ولا يُمحى — يُستثنى من العرض وحسب. */
+const PRG_DUTY_HIDDEN = ["tilawah"];
 
 function prgDutiesOf(p2) {
-  const saved = p2 && Array.isArray(p2.duties) && p2.duties.length ? p2.duties : null;
-  const list = saved
+  const saved = p2 && Array.isArray(p2.duties) && p2.duties.length
+    ? p2.duties.filter(d => PRG_DUTY_HIDDEN.indexOf(String(d && d.k)) < 0) : null;
+  const list = saved && saved.length
     ? saved.map(d => Object.assign({}, d))
     : PRG_DUTY_BASE.map((d, i) => Object.assign({}, d,
         { order: i + 1, required: true, blocks: false, needsId: "", scope: null }));
@@ -11816,14 +11819,9 @@ window.lvlView = function (id) {
           </div>
         </section>
 
-        ${prgGeneralCardHtml(p2) ? `<section class="sp-card sp-wide2">
-          <div class="sp-cardhead">${ic("settings", 17)}
-            <div><h3>الإعدادات العامة</h3>
-              <p>تنطبق على كلّ المستويات — لا تُخصَّص في مستوىً دون غيره</p></div>
-            <span class="pgen-tag">عامّ لكلّ المستويات</span></div>
-          ${prgGeneralCardHtml(p2)}
-        </section>` : ""}
-
+        ${/* «الإعدادات العامة» أُزيلت من الصفحة بطلبٍ صريح. الفتراتُ اليومية
+             تبقى في نموذج البرنامج (pgSessions)، والشرطُ اليوميّ للتجاوز
+             محفوظٌ في السجلّ (dailyPass) ولم يُمسّ. */ ""}
         ${prgDutiesCardHtml(p2)}
 
         ${dedCardHtml(p2)}
@@ -12388,9 +12386,9 @@ const LVB_PILLARS = [
   { k: "hifz",    h: "حفظ",    icon: "doc",     tone: "lvb-hifz",
     kidsOf: "حفظ",   kids: [["tathbit", "تثبيت"],
                             ["tilawahNext", "تلاوة الدرس القادم"]] },
+  /* «مراجعة تراكمية» و«تلاوة» أُزيلتا بطلبٍ صريح */
   { k: "review",  h: "مراجعة", icon: "refresh", tone: "lvb-rev",
-    kidsOf: "مراجعة", kids: [["reviewExtra", "مراجعة إضافية"], ["reviewCum", "مراجعة تراكمية"]] },
-  { k: "tilawah", h: "تلاوة",  icon: "chat",    tone: "lvb-til", kids: [] }
+    kidsOf: "مراجعة", kids: [["reviewExtra", "مراجعة إضافية"]] }
 ];
 
 /* ضبطُ ركنٍ لمستوى: المحفوظُ أوّلاً، فإن لم يكن فمن ضبط البرنامج */
