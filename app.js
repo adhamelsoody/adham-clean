@@ -9795,86 +9795,25 @@ window.prgForm = function (id) {
      اسم الجهة في الإعدادات، فيتبع النظام هويّته لا هويّة غيره. */
   const orgName = ((DB.settings || {}).orgName || "النظام").trim() || "النظام";
   const owners = [orgName].concat(cur("complexes").concat(cur("mosques")).map(f => f.name).filter(Boolean));
+  /* =======================================================================
+     النموذجُ اسمٌ وحالةٌ لا غير — بطلبٍ صريح
+     -----------------------------------------------------------------------
+     كان يحمل وحدةَ القياس والاتجاهَ والمدّةَ والتكرارَ والنطاقَ والانتقالَ
+     وحسابَ المراجعة وما بقي من الواجب والفتراتِ وسياسةَ التعويض. أُخرجت
+     كلُّها من هنا ولم تُحذف من السجلّ: تُضبط في صفحة البرنامج (بيانات
+     البرنامج وواجباته ودرجة الالتزام)، وما لا يُعرض يبقى كما حُفظ لأنّ
+     prgSave يقرأ القيمةَ القديمة حين يغيب حقلُها.
+     ======================================================================= */
   openModal(r ? "تعديل البرنامج" : "إضافة برنامج", "",
     `<input type="hidden" id="pgId" value="${r ? esc(r.id) : ""}">
      <div class="form-grid">
       <div class="field full"><label>اسم البرنامج <span class="req">*</span></label>
         <input id="pgName" value="${r ? esc(r.name || "") : ""}" placeholder="مثال: إنجازي لحفظ القرآن"></div>
-      <div class="field"><label>نوع البرنامج</label>
-        <select id="pgType">${PRG_TYPES.map(t =>
-          `<option value="${esc(t)}"${r && r.type === t ? " selected" : ""}>${esc(t)}</option>`).join("")}</select></div>
-      <div class="field"><label>الحالة</label>
+      <div class="field full"><label>الحالة</label>
         <select id="pgStatus">
           <option value="فعال"${!r || r.status !== "متوقف" ? " selected" : ""}>فعال</option>
           <option value="متوقف"${r && r.status === "متوقف" ? " selected" : ""}>متوقف</option>
         </select></div>
-
-      <!-- إعدادات الخطة: البرنامج يحكم خطط طلابه، وكان بلا أيٍّ منها -->
-      <div class="field"><label>وحدة القياس</label>
-        <select id="pgUnit">${PRG_UNITS.map(u =>
-          `<option value="${esc(u)}"${(r ? r.unit : "وجه") === u ? " selected" : ""}>${esc(u)}</option>`).join("")}</select></div>
-      <div class="field"><label>اتجاه الخطة</label>
-        <select id="pgDir">${PRG_DIRS.map(d =>
-          `<option value="${esc(d.k)}"${(r ? r.direction : "forward") === d.k ? " selected" : ""}>${esc(d.h)}</option>`).join("")}</select></div>
-      <div class="field"><label>المدة (أسابيع)</label>
-        <input id="pgWeeks" type="number" min="0" value="${r ? esc(r.weeks || "") : ""}" placeholder="اختياري"></div>
-
-      <!-- حسابُ المراجعة ومصيرُ ما بقي من الواجب -->
-      <div class="field"><label>كيفية حساب المراجعة</label>
-        <select id="pgRevCalc">${PRG_REVIEW_CALC.map(x =>
-          `<option value="${esc(x.k)}"${(r ? (r.reviewCalc || "cumulative") : "cumulative") === x.k
-            ? " selected" : ""}>${esc(x.h)}</option>`).join("")}</select></div>
-      <div class="field"><label>ما بقي من الواجب</label>
-        <select id="pgLeft">${PRG_LEFTOVER.map(x =>
-          `<option value="${esc(x.k)}"${(r ? (r.leftover || "carry") : "carry") === x.k
-            ? " selected" : ""}>${esc(x.h)}</option>`).join("")}</select>
-        <small style="font-size:11px;color:var(--text-faint)">
-          الأوجهُ التي لم تُسمَّع: تُلاحَق أم تسقط</small></div>
-
-      <!-- التكرار: قاعدةٌ تمنع تجاوز السورة قبل إعادتها -->
-      <div class="field"><label>التكرار</label>
-        <select id="pgRepMode">${REPEAT_MODES.map(m =>
-          `<option value="${esc(m.k)}"${(r ? (r.repeatMode || "") : "") === m.k
-            ? " selected" : ""}>${esc(m.h)}</option>`).join("")}</select></div>
-      <div class="field"><label>عدد المرات</label>
-        <input id="pgRepTimes" type="number" min="1" max="10" dir="ltr"
-          value="${r ? esc(r.repeatTimes || 1) : 1}">
-        <small style="font-size:11px;color:var(--text-faint)">
-          يُعاد بعد بلوغ آخر السورة أو المستوى</small></div>
-
-      <!-- نطاقُ البرنامج: مفتوحٌ بلا نهاية، أو محدَّدٌ ببداية ونهاية -->
-      <div class="field"><label>النطاق</label>
-        <select id="pgScope">${PRG_SCOPES.map(x =>
-          `<option value="${esc(x.k)}"${(r ? (r.scopeKind || "closed") : "closed") === x.k
-            ? " selected" : ""}>${esc(x.h)}</option>`).join("")}</select>
-        <small style="font-size:11px;color:var(--text-faint)">
-          المفتوحُ يمضي حتى يوقفه المشرف</small></div>
-
-      <!-- طريقةُ الانتقال: تُورَّث للمستويات التي تُضاف بعدها -->
-      <div class="field"><label>الانتقال بين المستويات</label>
-        <select id="pgTrans">${(typeof LV_TRANSITIONS !== "undefined" ? LV_TRANSITIONS : []).map(x =>
-          `<option value="${esc(x.k)}"${(r ? (r.defTransition || "approve") : "approve") === x.k
-            ? " selected" : ""}>${esc(x.h)}</option>`).join("")}</select>
-        <small style="font-size:11px;color:var(--text-faint)">
-          افتراضٌ للمستويات الجديدة — يُعدَّل في كلٍّ منها</small></div>
-
-      <!-- الفتراتُ اليومية: مواعيدُ انعقاد الحلقة -->
-      <div class="field full"><label>الفترات اليومية</label>
-        <div class="prg-sessions" id="pgSessions">
-          ${PRG_SESSIONS.map(n => `<button type="button" data-s="${esc(n)}"
-            class="prg-sess${prgSessionsOf(r).indexOf(n) > -1 ? " on" : ""}"
-            onclick="window.prgSessionToggle(this,'${esc(n)}')">${esc(n)}</button>`).join("")}
-        </div></div>
-
-      <!-- سياسةُ التعويض الافتراضية: تُنسخ إلى planRules عند إنشاء الخطة -->
-      <div class="field full"><label>سياسة التعويض الافتراضية</label>
-        <div class="prg-rules" id="pgRules">
-          ${(typeof PLAN_RULE_DEFS !== "undefined" ? PLAN_RULE_DEFS : []).map(d =>
-            `<label class="prg-rule"><input type="checkbox" data-k="${esc(d.k)}"
-              ${prgRulesOf(r)[d.k] ? "checked" : ""}><span>${esc(d.h)}</span></label>`).join("")}
-        </div>
-        <small style="font-size:11px;color:var(--text-faint)">
-          تُنسخ إلى كلّ خطّةٍ تُنشأ بهذا البرنامج، وتُعدَّل فيها بعد ذلك</small></div>
      </div>`,
     `<button class="btn btn-primary" data-action="prg-save">${r ? "حفظ" : "إضافة"}</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
@@ -9916,25 +9855,50 @@ window.prgSave = function () {
   const id = val("#pgId");
   /* السجلُّ القائم — يُقرأ قبل بناء البيانات ليُحفظ مالكُه كما هو */
   const prev = id ? DB.programs.find(x => String(x.id) === String(id)) : null;
-  const data = { name, type: val("#pgType") || PRG_TYPES[0],
+  /* النموذجُ لم يعد يحمل إلا الاسمَ والحالة. فما غاب حقلُه يُقرأ من
+     السجلّ القائم — وإلا كُتب فوقَ ضبطٍ لم يُسأل عنه أصلاً. */
+  const keep = (sel, was, dflt) => {
+    const el = document.querySelector(sel);
+    if (el) return null;                       /* الحقلُ حاضر: تُقرأ قيمتُه */
+    return (prev && was !== undefined && was !== null && was !== "") ? was : dflt;
+  };
+  const pick = (sel, key, dflt, cast) => {
+    const k = keep(sel, prev ? prev[key] : undefined, dflt);
+    if (k !== null) return k;
+    const v = val(sel);
+    return cast ? cast(v) : (v || dflt);
+  };
+
+  const data = { name,
+                 type: pick("#pgType", "type", PRG_TYPES[0]),
                  /* المالكُ لم يعد يُسأل عنه: يُنسب البرنامجُ لمسجد مُنشئه
                     تلقائياً — أو لمجمّعه إن لم يكن له مسجد. والقديمُ يُبقى
                     على مالكه فلا تتغيّر نسبةُ برنامجٍ قائم. */
                  owner: (prev && prev.owner) || prgAutoOwner(),
                  mosqueId: (prev && prev.mosqueId) || prgAutoMosque(),
-                 status: val("#pgStatus") || "فعال",
-                 unit: val("#pgUnit") || PRG_UNITS[0],
-                 direction: val("#pgDir") || "forward",
-                 weeks: Number(val("#pgWeeks")) || 0,
-                 reviewCalc: val("#pgRevCalc") || "cumulative",
-                 leftover: val("#pgLeft") || "carry",
-                 repeatMode: val("#pgRepMode") || "",
-                 repeatTimes: Math.max(1, Number(val("#pgRepTimes")) || 1),
-                 scopeKind: val("#pgScope") || "closed",
-                 defTransition: val("#pgTrans") || "approve",
-                 sessions: [].slice.call(document.querySelectorAll("#pgSessions .prg-sess.on"))
-                              .map(b => b.dataset.s),
+                 status: val("#pgStatus") || (prev && prev.status) || "فعال",
+                 unit: pick("#pgUnit", "unit", PRG_UNITS[0]),
+                 direction: pick("#pgDir", "direction", "forward"),
+                 weeks: pick("#pgWeeks", "weeks", 0, v => Number(v) || 0),
+                 reviewCalc: pick("#pgRevCalc", "reviewCalc", "cumulative"),
+                 leftover: pick("#pgLeft", "leftover", "carry"),
+                 repeatMode: (function () {
+                   const k = keep("#pgRepMode", prev ? prev.repeatMode : undefined, "");
+                   return k !== null ? k : val("#pgRepMode") || "";
+                 })(),
+                 repeatTimes: pick("#pgRepTimes", "repeatTimes", 1,
+                   v => Math.max(1, Number(v) || 1)),
+                 scopeKind: pick("#pgScope", "scopeKind", "closed"),
+                 defTransition: pick("#pgTrans", "defTransition", "approve"),
+                 sessions: (function () {
+                   if (!document.querySelector("#pgSessions"))
+                     return (prev && Array.isArray(prev.sessions)) ? prev.sessions : [];
+                   return [].slice.call(document.querySelectorAll("#pgSessions .prg-sess.on"))
+                            .map(b => b.dataset.s);
+                 })(),
                  defRules: (function () {
+                   if (!document.querySelector("#pgRules"))
+                     return (prev && prev.defRules) || prgRulesOf(prev);
                    const o = {};
                    [].slice.call(document.querySelectorAll("#pgRules input[data-k]"))
                      .forEach(c => { o[c.dataset.k] = !!c.checked; });
@@ -10430,7 +10394,9 @@ function cfgMosqueBanner() {
     ${ic("mosque", 16)}
     <span>تعدّل إعدادات <strong>${esc(m.name || "مسجدك")}</strong> — تعلو الإعدادات العامة ولا تمسّ المساجد الأخرى${
       n ? " · " + toArabicDigits(n) + " إعداداً مخصّصاً" : ""}.</span>
-    ${n ? `<button type="button" class="btn btn-ghost btn-sm" onclick="window.cfgMosqueReset()">إعادة للعام</button>` : ""}
+    ${/* زرُّ «إعادة للعام» أُزيل بطلبٍ صريح: كان يُعيد إعدادات المسجد إلى
+         العامّة بنقرةٍ واحدة، والنقرةُ الخاطئةُ تُذهب ضبطَ البرامج. ودالّةُ
+         window.cfgMosqueReset باقيةٌ ولم تُحذف. */ ""}
   </div>`;
 }
 
@@ -13167,6 +13133,7 @@ window.lvbMove = function (rid, d) {
   LVB.rows.forEach(r => { r.saved = false; });
   lvbRedraw();
 };
+/* حذفُ مستوىً ينقص العددَ في الجدول كذلك */
 window.lvbDel = function (rid) {
   const i = LVB.rows.findIndex(r => String(r.id) === String(rid));
   if (i < 0) return;
@@ -13180,6 +13147,7 @@ window.lvbDel = function (rid) {
     const k = (DB.levels || []).findIndex(x => String(x.id) === String(r.rec.id));
     if (k > -1) DB.levels.splice(k, 1); }
   lvbRedraw();
+  if (r.rec && typeof mount === "function") mount();
 };
 window.lvbPTog = function (rid, k) {
   const r = lvbRow(rid); const v = lvbPillar(r, k);
@@ -13261,6 +13229,9 @@ window.lvbSaveAll = function () {
   });
   showToast("حُفظ البرنامج و" + toArabicDigits(n) + " من مستوياته", "success");
   LVB.open = ""; LVB.cfg = ""; lvbRedraw();
+  /* الجدولُ خلف اللوحة يعرض عددَ المستويات والطلاب: يُعاد رسمُه ليظهر
+     الجديدُ في الخارج لا في اللوحة وحدها */
+  if (typeof mount === "function") mount();
 };
 
 window.lvbBack = function () {
