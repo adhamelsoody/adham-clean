@@ -9610,14 +9610,19 @@ window.setSec = function (k) {
   if (typeof setSecAllowed === "function" && !setSecAllowed(k)) k = "main";
  SET.sec = k; mount(); };
 window.setSave = function () {
-  const cx = cur("complexes").find(c => String(c.id) === String(STATE.complexId)) || cur("complexes")[0];
+  const fac = setFacRec();
+  const cx = fac.rec;
   const name = (val("#stName") || "").trim();
   if (!name) { showToast("اسم الفرع مطلوب", "warn"); return; }
-  if (cx) {
-    cx.name = name;
-    cx.manager = val("#stManager") || "";
-    persistSet("complexes", cx);
+  if (!cx) {
+    /* لا يُكتب في منشأةٍ مُلتقَطة: حسابٌ بلا منشأةٍ لا يعدّل بيانات فرعٍ
+       لا يملكه — وكان يدوس أوّلَ مجمّعٍ في القائمة */
+    showToast("حسابك غير مرتبط بمنشأة — لا تُحفظ بيانات الفرع", "warn");
+    return;
   }
+  cx.name = name;
+  cx.manager = val("#stManager") || "";
+  persistSet(fac.coll, cx);
   if (!DB.settings) DB.settings = {};
   DB.settings.calendar = val("#stCal") || "هجري";
   persistSet("settings", Object.assign({ id: "general" }, DB.settings));
@@ -9663,8 +9668,42 @@ function setField(label, id, value, type, opts) {
   </div>`;
 }
 
+/* =========================================================================
+   منشأةُ «بيانات الفرع» — من نطاق الحساب لا من الشاشة
+   -------------------------------------------------------------------------
+   كانت تُقرأ هكذا:
+     cur("complexes").find(c => c.id === STATE.complexId) || cur("complexes")[0]
+   و STATE.complexId هو المجمّعُ المفتوحُ في تلك الشاشة، يختلف من جهازٍ
+   لآخر ومن جلسةٍ لأخرى؛ وإن لم يطابق أُخذ **أوّلُ مجمّعٍ في القائمة**.
+   فالحاسوبُ يعرض مجمّعاً والهاتفُ آخر بالحساب نفسِه — وهذا سببُ اختلاف
+   «اسم الفرع» بين الجهازين. والأسوأ أنّ الحفظ كان يكتب في تلك المنشأة
+   المُلتقَطة عشوائياً فيدوس اسمَ منشأةٍ أخرى.
+   تُحسم الآن من نطاق الحساب: مديرُ المسجد يعدّل مسجدَه، ومديرُ المجمّع
+   مجمّعَه، والمديرُ العام المجمّعَ المفتوح كما كان.
+   ========================================================================= */
+function setFacRec() {
+  const m = typeof planScopeMosque === "function" ? planScopeMosque() : null;
+  if (m) return { coll: "mosques", rec: m };
+
+  const sc = typeof userScopeOf === "function" ? userScopeOf() : null;
+  const cid = sc && !sc.deny
+    ? String(sc.complexId || (Array.isArray(sc.complexIds) ? sc.complexIds[0] : "") || "")
+    : "";
+  const list = cur("complexes") || [];
+  if (cid) {
+    const c = list.find(x => String(x.id) === cid);
+    return c ? { coll: "complexes", rec: c } : { coll: "complexes", rec: null };
+  }
+  /* المديرُ العام وحدَه يتبع المجمّعَ المفتوح، ولا يُلتقط أوّلُ القائمة لغيره */
+  if (typeof isTopAdmin === "function" && isTopAdmin()) {
+    const c = list.find(x => String(x.id) === String(STATE.complexId)) || list[0] || null;
+    return { coll: "complexes", rec: c };
+  }
+  return { coll: "complexes", rec: null };
+}
+
 function setPanelMain() {
-  const cx = cur("complexes").find(c => String(c.id) === String(STATE.complexId)) || cur("complexes")[0] || {};
+  const cx = (setFacRec().rec) || {};
   const cal = (DB.settings || {}).calendar || "هجري";
   const CAM = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A1.5 1.5 0 014.5 7h2.7l1.2-2h6.2l1.2 2h2.7A1.5 1.5 0 0120 8.5v9A1.5 1.5 0 0118.5 19h-14A1.5 1.5 0 013 17.5z"/><circle cx="11.5" cy="12.6" r="3.4"/></svg>';
 
@@ -20505,15 +20544,29 @@ window.trmSave = function () {
   const r = { id: "tm" + Date.now(), name, from, to, owner: me, parallel };
   DB.terms.push(r); persistSet("terms", r);
   showToast("أُضيفت الفترة", "success");
-  closeModal(); mount();
+  closeModal();
+
+  /* =======================================================================
+     الفترةُ الجديدة تُعتمد فور إنشائها
+     -----------------------------------------------------------------------
+     كانت تُنشأ غيرَ نشطة، فيراها صاحبُها «للقراءة فقط» ولا يُدخل فيها
+     بيانات، ثمّ يعود العرضُ إلى الفترة السابقة فتبدو كأنّها اختفت.
+     تُفعَّل الآن بمجرّد حفظ إعداداتها: الأساسيةُ تُصبح النشطةَ وتُؤرشف
+     السابقة، والموازيةُ تُفتح للعمل بجوارها.
+     ======================================================================= */
+  try { window.trmActivateDo(r.id); } catch (e) { mount(); }
 
   /* المواصفات: «عند إنشاء دورة جديدة يتيح النظام خيار استيراد البيانات من
      دورة سابقة». الموازيةُ لا تُرحَّل إليها — تعمل بجوار النشطة. */
-  const act = activeTerm();
+  const prev = (DB.terms || []).find(t => t && t.archivedAt && String(t.id) !== String(r.id) &&
+    Math.abs(Date.now() - Number(t.archivedAt || 0)) < 5000);
+  const act = prev || activeTerm();
   if (!parallel && act && String(act.id) !== String(r.id)) {
     openModal("ترحيل البيانات", r.name,
-      noteCard(`<p>هل تريد ترحيل البيانات من <strong>${esc(act.name || "")}</strong>
-        إلى <strong>${esc(r.name)}</strong>؟</p>
+      noteCard(`<p>الفترةُ <strong>${esc(r.name)}</strong> صارت الفترةَ النشطة —
+        تُدخَل فيها البيانات مباشرةً.</p>
+        <p style="margin-top:8px">هل تريد ترحيل البيانات من <strong>${esc(act.name || "")}</strong>
+        إليها؟</p>
         <p style="margin-top:8px">يُفتح معالج الترحيل لتختار المعلّمين والطلاب والحلقات،
         وعند التنفيذ تُفعَّل الفترة الجديدة وتُؤرشف السابقة للقراءة فقط.</p>
         <p style="margin-top:8px">واخترتَ «لاحقاً»؟ الفترةُ الجديدة تبدأ فارغة (طلاب ٠ ·
