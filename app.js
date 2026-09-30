@@ -20541,6 +20541,9 @@ window.trmSave = function () {
     return;
   }
 
+  /* الفترةُ النشطةُ قبل الإنشاء — تُقرأ الآن لا بعدَه، فبعدَ التفعيل تصير
+     الجديدةُ هي النشطةَ ولا يُعرف من كان قبلها */
+  const wasAct = activeTerm();
   const r = { id: "tm" + Date.now(), name, from, to, owner: me, parallel };
   DB.terms.push(r); persistSet("terms", r);
   showToast("أُضيفت الفترة", "success");
@@ -20554,26 +20557,25 @@ window.trmSave = function () {
      تُفعَّل الآن بمجرّد حفظ إعداداتها: الأساسيةُ تُصبح النشطةَ وتُؤرشف
      السابقة، والموازيةُ تُفتح للعمل بجوارها.
      ======================================================================= */
-  try { window.trmActivateDo(r.id); } catch (e) { mount(); }
+  try { window.trmActivateDo(r.id, true); } catch (e) { mount(); }
 
   /* المواصفات: «عند إنشاء دورة جديدة يتيح النظام خيار استيراد البيانات من
      دورة سابقة». الموازيةُ لا تُرحَّل إليها — تعمل بجوار النشطة. */
-  const prev = (DB.terms || []).find(t => t && t.archivedAt && String(t.id) !== String(r.id) &&
-    Math.abs(Date.now() - Number(t.archivedAt || 0)) < 5000);
-  const act = prev || activeTerm();
+  const act = (wasAct && String(wasAct.id) !== String(r.id)) ? wasAct : activeTerm();
   if (!parallel && act && String(act.id) !== String(r.id)) {
     openModal("ترحيل البيانات", r.name,
       noteCard(`<p>الفترةُ <strong>${esc(r.name)}</strong> صارت الفترةَ النشطة —
         تُدخَل فيها البيانات مباشرةً.</p>
-        <p style="margin-top:8px">هل تريد ترحيل البيانات من <strong>${esc(act.name || "")}</strong>
-        إليها؟</p>
+        <p style="margin-top:8px"><strong>والترحيلُ اختياريّ.</strong>
+        هل تريد ترحيل البيانات من <strong>${esc(act.name || "")}</strong> إليها؟</p>
         <p style="margin-top:8px">يُفتح معالج الترحيل لتختار المعلّمين والطلاب والحلقات،
         وعند التنفيذ تُفعَّل الفترة الجديدة وتُؤرشف السابقة للقراءة فقط.</p>
-        <p style="margin-top:8px">واخترتَ «لاحقاً»؟ الفترةُ الجديدة تبدأ فارغة (طلاب ٠ ·
-        معلّمون ٠ · حلقات ٠)، ويبقى زرُّ <strong>«ترحيل إليها»</strong> في صفّها
-        بجدول الفترات الدراسية — تفتحه متى شئت.</p>`),
+        <p style="margin-top:8px">واخترتَ «لا، ابدأ فارغة»؟ تبدأ الفترةُ بلا طلابٍ ولا
+        معلّمين ولا حلقات، و<strong>لا تُؤرشف الفترةُ السابقة</strong> فتبقى بياناتُها
+        في متناولك. ويبقى زرُّ <strong>«ترحيل إليها»</strong> في صفّها بجدول الفترات
+        الدراسية — تفتحه متى شئت.</p>`),
       `<button class="btn btn-primary" onclick="window.trmMigrate('${jsAttr(r.id)}')">نعم، افتح معالج الترحيل</button>
-       <button class="btn btn-ghost" data-action="close-modal">لاحقاً</button>`);
+       <button class="btn btn-ghost" data-action="close-modal">لا، ابدأ فارغة</button>`);
   }
 };
 window.trmDelete = function (id) {
@@ -20840,7 +20842,9 @@ window.trmActivate = function (id) {
     `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
 };
 
-window.trmActivateDo = function (id) {
+/* keepPrev: تُفعَّل الجديدةُ ولا تُؤرشف السابقة — تُستعمل عند إنشاء فترة،
+   فالترحيلُ اختياريٌّ ولا يصحّ أن يُقفل القديمُ قبل أن يقرّر صاحبُه. */
+window.trmActivateDo = function (id, keepPrev) {
   if (!Array.isArray(DB.terms)) return;
   const target = DB.terms.find(x => String(x.id) === String(id));
   if (!target) return;
@@ -20855,7 +20859,8 @@ window.trmActivateDo = function (id) {
       t.active = true; t.archived = false; t.activatedAt = Date.now();
     } else if (t.active === true && !target.parallel && !t.parallel) {
       /* الأساسيةُ الجديدة تؤرشف الأساسيةَ السابقة — والموازيةُ تبقى */
-      t.active = false; t.archived = true; t.archivedAt = Date.now(); archived++;
+      t.active = false;
+      if (!keepPrev) { t.archived = true; t.archivedAt = Date.now(); archived++; }
     } else {
       return;
     }
