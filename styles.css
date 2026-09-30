@@ -9838,3 +9838,9 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
 .lvb-kidlink2 { margin-bottom: 10px; }
 .lvb-kidlink2 .lvb-f { max-width: 320px; }
 .lvb-kidlink2 > small { display: block; margin-top: 7px; font-size: 11px; }
+
+/* =========================================================================
+   أزرارُ الفروع تأخذ لونَ ركنها — فتتناسق ألوانُ الحفظ والمراجعة وغيرِهما
+   ========================================================================= */
+.lvb-p[style*="--lvb-tone"] .lvb-kid.on { background: var(--lvb-tone); color: #fff; }
+.lvb-p[style*="--lvb-tone"] .lvb-pico { background: rgba(255, 255, 255, .22); color: #fff; }

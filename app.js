@@ -12366,10 +12366,13 @@ const LVB = { pid: "", rows: [], open: "", cfg: "", loaded: "" };
 
 const LVB_PILLARS = [
   { k: "hifz",    h: "حفظ",    icon: "doc",     tone: "lvb-hifz",
-    kidsOf: "حفظ",   kids: [["tathbit", "تثبيت"], ["tathbitCum", "تثبيت تراكمي"],
+    kidsOf: "حفظ",   kids: [["tathbitCum", "تثبيت تراكمي"],
                             ["tilawahNext", "تلاوة الدرس القادم"]] },
+  /* «تثبيت» كان ركناً مستقلاً وزرّاً تحت الحفظ؛ نُقل إلى جوار «مراجعة
+     تراكمية»: زرُّ تفعيلٍ وإلغاءٍ بلا تفاصيل */
   { k: "review",  h: "مراجعة", icon: "refresh", tone: "lvb-rev",
-    kidsOf: "مراجعة", kids: [["reviewExtra", "مراجعة إضافية"], ["reviewCum", "مراجعة تراكمية"]] },
+    kidsOf: "مراجعة", kids: [["reviewExtra", "مراجعة إضافية"], ["reviewCum", "مراجعة تراكمية"],
+                             ["tathbit", "تثبيت"]] },
   { k: "tilawah", h: "تلاوة",  icon: "chat",    tone: "lvb-til", kids: [] }
 ];
 
@@ -12604,8 +12607,13 @@ function lvbQtyDir(rid, k, kid) {
    الآن من تلك الواجبات بترتيبها — فإن كانت خمسةً ظهرت تفاصيلُ الخمسة،
    والمعروفةُ منها (حفظ · مراجعة · تلاوة) تحتفظ بلونها وفروعها.
    ========================================================================= */
+/* واجباتٌ لا تُرسم أركاناً في المستوى: صارت أزراراً تحت أركانها */
+const LVB_AS_KID = ["tathbit"];
+/* أزرارٌ تُفعَّل وتُلغى بلا تفاصيل */
+const LVB_KID_PLAIN = ["tathbit"];
+
 function lvbPillarDefs() {
-  const duties = prgDutiesOf(lvbPrgOf());
+  const duties = prgDutiesOf(lvbPrgOf()).filter(d => LVB_AS_KID.indexOf(String(d.k)) < 0);
   if (!duties.length) return LVB_PILLARS;
   return duties.map(function (d) {
     const base = LVB_PILLARS.find(x => String(x.k) === String(d.k)) || null;
@@ -12719,8 +12727,11 @@ function lvbKidScope(rid, k, kid, title) {
   const c = lvbCfgOf(lvbRow(rid), k, kid);
   const a = jsAttr(rid), kk = jsAttr(kid);
   const linked = c.mode === "link";
-  /* الواجباتُ الأخرى التي يصحّ الربطُ بها — من واجبات البرنامج */
-  const others = lvbPillarDefs().filter(d => String(d.k) !== String(k));
+  /* الواجباتُ الأخرى التي يصحّ الربطُ بها — من واجبات البرنامج كلِّها،
+     بما فيها ما صار زرّاً لا ركناً (كالتثبيت) */
+  const others = prgDutiesOf(lvbPrgOf())
+    .filter(d => String(d.k) !== String(k))
+    .map(d => ({ k: String(d.k), h: d.name || "واجب" }));
   const lname = (others.find(d => String(d.k) === String(c.linkK)) || {}).h || "";
   return `<div class="lvb-kidcfg">
     <div class="lvb-kidhead">${ic("plan", 13)} <strong>${esc(title)}</strong></div>
@@ -12803,7 +12814,8 @@ function lvbPillarCard(rid, def) {
         ${def.kids.map(kd => `<button type="button" class="lvb-kid${v.kids[kd[0]] ? " on" : ""}"
           onclick="window.lvbKid('${jsAttr(rid)}','${def.k}','${kd[0]}')">${esc(kd[1])}</button>`).join("")}
       </div>
-      ${def.kids.filter(kd => v.kids[kd[0]]).map(kd => kd[0] === "tilawahNext"
+      ${def.kids.filter(kd => v.kids[kd[0]] && LVB_KID_PLAIN.indexOf(kd[0]) < 0)
+        .map(kd => kd[0] === "tilawahNext"
         ? `<div class="lvb-kidcfg lvb-kidlinked">
             <div class="lvb-kidhead">${ic("swap", 13)} <strong>${esc(kd[1])}</strong>
               <span class="muted">مربوطةٌ بالحفظ — تأخذ مداه ومقدارَه، فما يُحفظ غداً يُتلى اليوم</span></div>
@@ -12816,7 +12828,8 @@ function lvbPillarCard(rid, def) {
             ${lvbQtyDir(rid, def.k, kd[0])}
           </div>`).join("")}` : ""}
     </div>`;
-  return `<div class="lvb-p ${def.tone}${v.on ? " on" : ""}">
+  return `<div class="lvb-p ${def.tone}${v.on ? " on" : ""}"${def.color
+      ? ` style="--lvb-tone:${esc(def.color)}"` : ""}>
     <div class="lvb-phead"${def.color ? ` style="background:${esc(def.color)}"` : ""}>
       <span class="lvb-pico">${ic(def.icon, 16)}</span>
       <strong>${esc(def.h || "واجب")}</strong>
