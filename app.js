@@ -35129,16 +35129,29 @@ function facilityFilter(coll, raw) {
   const mqs = sc.mosqueIds  && sc.mosqueIds.length  ? sc.mosqueIds  : (sc.mosqueId  ? [sc.mosqueId]  : []);
   const cxs = sc.complexIds && sc.complexIds.length ? sc.complexIds : (sc.complexId ? [sc.complexId] : []);
 
+  /* =======================================================================
+     مديرُ المسجد لا يتّسع نطاقُه إلى مجمّعه
+     -----------------------------------------------------------------------
+     كان المجمّعُ يُوسّع الرؤيةَ دائماً: فمن أُسنِد إلى مسجدٍ وحمل حسابُه
+     معرّفَ مجمّعه — وهو يُكتب تلقائياً أو يُشتقّ من سجلّه — رأى كلَّ ما في
+     المجمّع: طلابَ المساجد الأخرى ومعلّميها وحلقاتها. ومديرُ المسجد
+     مسؤولٌ عن مسجده وحدَه.
+     التوسيعُ بالمجمّع يبقى لمن المجمّعُ نطاقُه أصلاً: مديرُ المجمّع،
+     والمالكُ والمديرُ إن أُسنِد إليهما.
+     ======================================================================= */
+  const uRole = ((STATE && STATE.user) || {}).role || "";
+  const cxWide = (mqs.length && !isComplexMgr(uRole) && !isTopAdmin()) ? [] : cxs;
+
   /* مساجدُ المجمّعات المُسنَدة تُضاف إلى المساجد المُسنَدة مباشرةً */
   const mqAll = mqs.slice();
   (Array.isArray(DB.mosques) ? DB.mosques : []).forEach(m => {
     if (!m) return;
-    if (cxs.indexOf(String(m.complexId || "")) > -1 &&
+    if (cxWide.indexOf(String(m.complexId || "")) > -1 &&
         mqAll.indexOf(String(m.id)) < 0) mqAll.push(String(m.id));
   });
 
   const inScope = x => mqAll.indexOf(String(x.mosqueId  || "")) > -1 ||
-                       cxs.indexOf(String(x.complexId || "")) > -1;
+                       cxWide.indexOf(String(x.complexId || "")) > -1;
 
   /* حلقاتُ النطاق — تُحسب مرّةً ويُنسب بها ما لا مسجدَ له */
   const cids = (Array.isArray(DB.circles) ? DB.circles : [])
@@ -35167,7 +35180,7 @@ function facilityFilter(coll, raw) {
       return userScopeIds(u).some(k => {
         const p = String(k).split(":");
         return p[0] === "mosque"  ? mqAll.indexOf(p[1]) > -1
-             : p[0] === "complex" ? cxs.indexOf(p[1]) > -1 : false;
+             : p[0] === "complex" ? cxWide.indexOf(p[1]) > -1 : false;
       });
     });
   }
