@@ -307,6 +307,18 @@ service cloud.firestore {
     match /settings/{docId} {
       allow read:  if canRead();
       allow write: if isAdmin();
+
+      /* «إدارة الصلاحيات» — فُتحت لكلّ معلّمٍ بطلبٍ صريح من الإدارة.
+         ومحصورةٌ في مستندٍ واحدٍ اسمُه teacherPerms لا يحمل إلا مفاتيحَ
+         الصلاحيات: فلا يصل المعلّمُ إلى بقيّة الإعدادات، ولا يستطيع أن
+         يدسّ معها حقلاً آخر. والقواعدُ تُدمج بـ OR، فهذا البلوك يضيف
+         ولا يوسّع ما سواه.
+
+         ⚠ أثرُها المقصود: المعلّمُ يستطيع رفعَ قيدٍ وُضع عليه — وعلى
+         زملائه، فالمستندُ واحدٌ لكلّ المعلّمين. */
+      allow write: if docId == "teacherPerms"
+                   && isTeacher()
+                   && request.resource.data.keys().hasOnly(['id', 'teacherPerms']);
     }
 
 

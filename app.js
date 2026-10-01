@@ -280,7 +280,10 @@ const NAV = {
     { id: "plans", label: "خطط الطلاب", icon: "plan" },
     { id: "mushaf", label: "المصحف التفاعلي", icon: "book" },
     { id: "delays", label: "المتأخرات والتعويض", icon: "clock" },
-    { id: "approve", label: "اعتماد الحلقة", icon: "checkCircle" }
+    { id: "approve", label: "اعتماد الحلقة", icon: "checkCircle" },
+    /* «إدارة الصلاحيات» فُتحت للمعلّم بطلبٍ صريح، وشاشةُ الإعدادات هي
+       موضعُها. ولا يرى فيها غيرَها: SET_DENIED.teacher يحجب ما سواها. */
+    { id: "settings", label: "إدارة الصلاحيات", icon: "settings" }
     /* الرسائل في زرّ الشريط العلويّ لا في القائمة: شاشةٌ كاملةٌ لها
        تزاحمُ صندوقَ الرسائل نفسَه — وكلاهما يفعل الشيء ذاته. */
   ],
@@ -4722,6 +4725,34 @@ function permsDefaults() {
 
 /* صلاحيةُ الضبط: قاعدةُ الخادم تقصر الكتابة في settings على المدير */
 function canPermsSetup() { return typeof isTopAdmin === "function" && isTopAdmin(); }
+
+/* =========================================================================
+   الافتراضيُّ العامُّ للصلاحيات — شاشة «إدارة الصلاحيات» في الإعدادات
+   -------------------------------------------------------------------------
+   كانت الصلاحياتُ تُضبط في بطاقة كلّ معلّمٍ وحدَها، فمن أراد قاعدةً تسري
+   على الجميع فتحها واحداً واحداً.
+
+   تُحفظ هنا في settings.teacherPerms، ويقرأها teacherCan بعد صلاحية
+   الحساب نفسِه: ما ضُبط في بطاقة المعلّم صراحةً يغلب، وما لم يُضبط يرث
+   هذا الافتراضيَّ، وما لم يُذكر في الاثنين فمسموح — فلا يُفاجأ معلّمٌ قائم
+   بقفل صلاحيةٍ لم تُعطَّل.
+   ========================================================================= */
+function permsDefaults() {
+  return ((DB.settings || {}).teacherPerms) || {};
+}
+
+/* صلاحيةُ الضبط: مديرُ النظام، والمعلّمُ بطلبٍ صريح من الإدارة.
+   -------------------------------------------------------------------------
+   وهي مطابقةٌ لقاعدة الخادم حرفاً بحرف (firestore.rules ← match /settings):
+     allow write: if isAdmin();
+     allow write: if docId == "teacherPerms" && isTeacher() && …
+   ومديرُ المسجد والمشرف خارجَهما عمداً: لو فُتحت لهما هنا وحدَهما لرأيا
+   رسالةَ نجاحٍ ثمّ يردّ الخادمُ الكتابةَ فتعود القيمةُ كما كانت — وشاشةٌ
+   تكذب أسوأُ من شاشةٍ تمنع. توسيعُها إليهما يبدأ من القاعدة لا من هنا. */
+function canPermsSetup() {
+  if (typeof isTopAdmin === "function" && isTopAdmin()) return true;
+  return (typeof myRoleNow === "function" ? myRoleNow() : "") === "teacher";
+}
 
 function permsField(u, hidden) {
   const p = (u && u.perms) || {};
@@ -9657,9 +9688,16 @@ const SET_SECTIONS = [
   { k: "prayer",   h: "مواقيت الصلاة" }
 ];
 
+/* أوّلُ قسمٍ مسموحٍ لصاحب الجلسة — كان البديلُ «الرئيسية» دائماً، وهي
+   ممنوعةٌ على المعلّم، فكان يقع على شاشة منعٍ لا مخرجَ منها. */
+function setSecFirst() {
+  const list = typeof setSections === "function" ? setSections() : [];
+  return (list[0] || { k: "main" }).k;
+}
+
 window.setSec = function (k) {
   /* من بقي على تبويبٍ مُنع منه بعدَ تغيّر دوره يُنقل إلى الرئيسية */
-  if (typeof setSecAllowed === "function" && !setSecAllowed(k)) k = "main";
+  if (typeof setSecAllowed === "function" && !setSecAllowed(k)) k = setSecFirst();
  SET.sec = k; mount(); };
 window.setSave = function () {
   const fac = setFacRec();
@@ -20202,6 +20240,73 @@ window.permDefSet = function (k, val2) {
   mount();
 };
 
+/* =========================================================================
+   لوحةُ «إدارة الصلاحيات» — الافتراضيُّ العامُّ لكلّ المعلّمين
+   -------------------------------------------------------------------------
+   القائمةُ هي TEACHER_PERMS نفسُها التي في بطاقة المعلّم، لا نسخةً ثانيةً
+   منها: ما يُضاف هناك يظهر هنا من تلقائه.
+   ========================================================================= */
+function setPanelPerms() {
+  const g = permsDefaults();
+  const on = k => g[k] !== false;
+  const edit = canPermsSetup();
+  const total = TEACHER_PERMS.filter(x => x.k).length;
+  const offN = TEACHER_PERMS.filter(x => x.k && !on(x.k)).length;
+
+  return `<div class="pm-wrap">
+    <div class="tm-top">
+      <strong class="tm-title">إدارة الصلاحيات</strong>
+    </div>
+
+    <div class="tm-info">${ic("info", 18)}
+      <span>هذا هو الافتراضيُّ العامُّ لكلّ المعلّمين — المستندُ واحدٌ، فما يُغيَّر
+      هنا يسري على الجميع. وما ضُبط في بطاقة معلّمٍ بعينه يغلب هذا الضبط
+      لذلك المعلّم وحدَه.
+      ${edit ? "" : "<b>العرضُ هنا للاطلاع — الضبطُ من صلاحية الإدارة والمعلّمين.</b>"}</span>
+    </div>
+
+    <div class="pm-sum">
+      <span class="pm-pill on"><b>${toArabicDigits(total - offN)}</b> مفعّلة</span>
+      <span class="pm-pill off"><b>${toArabicDigits(offN)}</b> معطّلة</span>
+    </div>
+
+    <div class="perm-box pm-box">${TEACHER_PERMS.map(item => {
+      if (item.g) return `<div class="perm-group">${esc(item.g)}</div>`;
+      return `<label class="perm-row ${on(item.k) ? "on" : ""}${edit ? "" : " pm-ro"}">
+        <input type="checkbox" data-permdef="${esc(item.k)}" ${on(item.k) ? "checked" : ""}
+          ${edit ? "" : "disabled"} onchange="window.permDefSet('${jsAttr(item.k)}', this.checked)">
+        <span class="perm-txt">
+          <strong>${esc(item.h)}</strong>
+          ${item.d ? `<span class="perm-d">${esc(item.d)}</span>` : ""}
+        </span>
+        <span class="perm-state">${on(item.k) ? "مفعّلة" : "معطّلة"}</span>
+      </label>`;
+    }).join("")}</div>
+  </div>`;
+}
+
+window.permDefSet = function (k, val2) {
+  if (!canPermsSetup()) {
+    showToast("ضبطُ الصلاحيات العامّة من صلاحية الإدارة والمعلّمين", "warn");
+    mount(); return;
+  }
+  if (!DB.settings) DB.settings = {};
+  const g = Object.assign({}, permsDefaults());
+  g[String(k)] = !!val2;
+  DB.settings.teacherPerms = g;
+
+  /* يُكتب في مستندٍ مستقلٍّ لا يحمل إلا هذه المفاتيح — لا في كتلة
+     الإعدادات كلِّها كما تفعل بقيّةُ الشاشات. قاعدةُ الخادم تفتح هذا
+     المستندَ وحدَه للمعلّم، فلو كُتبت الكتلةُ كاملةً لاستطاع المعلّمُ أن
+     يدوس كلَّ إعدادات النظام معها. ولأن loadSettings يدمج مستنداتِ
+     settings جميعاً، يبقى DB.settings.teacherPerms مقروءاً كما كان. */
+  persistSet("settings", { id: "teacherPerms", teacherPerms: g });
+
+  const item = TEACHER_PERMS.find(x => String(x.k) === String(k)) || {};
+  showToast((val2 ? "فُعّلت " : "عُطّلت ") + (item.h || ""), "success");
+  mount();
+};
+
 function setPanelMushaf() {
   const w = reciteWeights();
   return `<div class="lv-wrap">
@@ -21791,7 +21896,11 @@ function setPanelOther(k) {
    والدوران الجديدان يريان المالَ بقرار الإدارة، فليسا هنا. */
 const SET_DENIED = {
   supervisor: ["payroll", "supcat"],
-  donor:      ["payroll", "supcat", "procs", "msgs", "terms", "perms"]
+  donor:      ["payroll", "supcat", "procs", "msgs", "terms", "perms"],
+  /* المعلّمُ يرى «إدارة الصلاحيات» وحدَها: فُتحت له بطلبٍ صريح، ولا شأنَ
+     له ببقيّة الإعدادات — بيانات المنشأة والفترات والبرامج والمصحف. */
+  teacher:    ["main", "levels", "terms", "supcat", "mushaf",
+               "procs", "payroll", "msgs", "prayer"]
 };
 
 function setSections() {
@@ -21808,7 +21917,7 @@ function setSecAllowed(k) {
 function adminSettingsNew() {
   /* التبويبُ المحفوظ قد يكون ممنوعاً على الداخل الجديد: يُصحَّح قبل الرسم
      فلا يجد شاشةَ منعٍ في وجهه أوّلَ ما يفتح الإعدادات. */
-  if (!setSecAllowed(SET.sec)) SET.sec = "main";
+  if (!setSecAllowed(SET.sec)) SET.sec = setSecFirst();
 
   return `<div class="page">
     ${pageHead("الإعدادات", "", backArrow())}
@@ -27998,6 +28107,9 @@ const PAGES = {
   "teacher/dashboard": teacherDashboard, "teacher/today": teacherToday, "teacher/attendance": teacherAttendance,
   "teacher/recite": teacherRecite, "teacher/plans": teacherPlans, "teacher/delays": teacherDelays,
   "teacher/approve": teacherApprove,
+  /* شاشةُ الإعدادات نفسُها، لا نسخةٌ ثانيةٌ منها: SET_DENIED.teacher يحجب
+     عن المعلّم كلَّ أقسامها إلا «إدارة الصلاحيات». */
+  "teacher/settings": adminSettings,
   "student/dashboard": studentDashboard, "student/today": studentToday, "student/tomorrow": studentTomorrow,
   "student/progress": studentProgress, "student/attendance": studentAttendance, "student/results": studentResults,
   "student/notifications": studentNotifications,
@@ -37150,7 +37262,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-2235";
+  var APP_BUILD = "20261002-2305";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
