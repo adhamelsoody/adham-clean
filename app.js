@@ -20801,10 +20801,28 @@ window.trmViewSet = function (id, silent) {
 
 /* خيارات قائمة «الفترة» في الشريط العلوي — يقرؤها topbar-dates.js */
 window.trmViewOptions = function () {
-  const terms = (cur("terms") || []).slice()
+  const all = (cur("terms") || []).slice()
     .sort((a, b) => String(b.from || "").localeCompare(String(a.from || "")));
-  if (!terms.length) return null;
+  if (!all.length) return null;
   const cur2 = viewTermId();
+
+  /* قائمةُ الشريط: الفعّالةُ وحدَها — النشطةُ والموازية. كانت تعرض كلَّ
+     فترةٍ سُجِّلت يوماً: المؤرشفةَ والمنتهيةَ ومسوَّداتِ التجربة، فيطول
+     الشريطُ بما لا يُعمل عليه.
+
+     والمؤرشفةُ لا تدخل القائمةَ بحالٍ — ولو كانت هي المعروضة: طُلب منعُها
+     صراحةً. واسمُها يبقى على الزرّ وحدَه فيعلم صاحبُه ما يُعرض له.
+
+     وتُستدرك المعروضةُ غيرُ المؤرشفة فتبقى في القائمة ولو لم تكن فعّالة،
+     وإلّا عرض الزرُّ اسماً لا وجودَ له في قائمته. وإن خلت القائمةُ عُرضت
+     غيرُ المؤرشفة، فإن لم تكن فالكلُّ — فلا يُترك الشريطُ بلا خيار.
+
+     ولم تُحذف ميزةُ عرض الفترات القديمة: زرُّ «عرض» بجانب كلّ فترةٍ في
+     صفحة «الفترات الدراسية والأرشيف» يفتحها كما كان. */
+  const open2 = all.filter(t => t.archived !== true);
+  const live = open2.filter(t =>
+    t.active === true || String(t.id) === String(cur2));
+  const terms = live.length ? live : (open2.length ? open2 : all);
   const items = terms.map(t => ({
     id: String(t.id),
     label: (t.name || "—") + (t.active === true && t.archived !== true
@@ -37018,7 +37036,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261001-0640";
+  var APP_BUILD = "20261001-0650";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
