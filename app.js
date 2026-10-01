@@ -4751,7 +4751,9 @@ function permsDefaults() {
    تكذب أسوأُ من شاشةٍ تمنع. توسيعُها إليهما يبدأ من القاعدة لا من هنا. */
 function canPermsSetup() {
   if (typeof isTopAdmin === "function" && isTopAdmin()) return true;
-  return (typeof myRoleNow === "function" ? myRoleNow() : "") === "teacher";
+  const r = typeof myRoleNow === "function" ? myRoleNow() : "";
+  if (typeof isMgrRole === "function" && isMgrRole(r)) return true;
+  return r === "teacher";
 }
 
 function permsField(u, hidden) {
@@ -20778,6 +20780,14 @@ function trmOwn(r) {
 }
 const trmRows = () => cur("terms").slice().sort((a, b) => String(a.from).localeCompare(String(b.from)));
 
+/* من يحذف فترةً مؤرشفة: مديرُ النظام ومديرُ المنشأة — طلبته الإدارة
+   لمدير المسجد. والمعلّمُ وغيرُه لا يَرَون الزرَّ أصلاً. */
+function trmCanDelete() {
+  if (typeof isTopAdmin === "function" && isTopAdmin()) return true;
+  const r = typeof myRoleNow === "function" ? myRoleNow() : "";
+  return typeof isMgrRole === "function" && isMgrRole(r);
+}
+
 window.trmForm = function (id) {
   const r = id ? trmRows().find(x => String(x.id) === String(id)) : null;
   if (r && !trmOwn(r)) { showToast("فترات الجهات الأعلى للعرض فقط", "warn"); return; }
@@ -20828,7 +20838,12 @@ window.trmSave = function () {
   /* الفترةُ النشطةُ قبل الإنشاء — تُقرأ الآن لا بعدَه، فبعدَ التفعيل تصير
      الجديدةُ هي النشطةَ ولا يُعرف من كان قبلها */
   const wasAct = activeTerm();
-  const r = { id: "tm" + Date.now(), name, from, to, owner: me, parallel };
+  /* fresh: تبدأ الفترةُ خاليةً — لا طلابَ ولا معلّمين ولا حلقات حتى
+     يُرحَّل إليها أو يُسجَّل فيها جديد. كانت الفترةُ الجديدة تعرض بياناتِ
+     ما قبلها كلَّها لأنّ السجلّات غيرَ الموسومة تظهر في كلّ فترة، فلا
+     يُفرَّق بين فترةٍ وأخرى. والوسمُ على الفترة لا على السجلّات، فلا
+     تتأثّر الفتراتُ القائمةُ بشيء. */
+  const r = { id: "tm" + Date.now(), name, from, to, owner: me, parallel, fresh: true };
   DB.terms.push(r); persistSet("terms", r);
   showToast("أُضيفت الفترة", "success");
   closeModal();
@@ -20865,6 +20880,11 @@ window.trmSave = function () {
 window.trmDelete = function (id) {
   const r = trmRows().find(x => String(x.id) === String(id));
   if (r && !trmOwn(r)) { showToast("فترات الجهات الأعلى للعرض فقط", "warn"); return; }
+
+  /* تأكيدُ الحذف — كان يحذف بضغطةٍ واحدة، والفترةُ لا تُستردّ */
+  if (!needDelOk("الفترة «" + ((r && r.name) || "") + "»",
+                 function () { window.trmDelete(id); })) return;
+
   const i = (DB.terms || []).findIndex(x => String(x.id) === String(id));
   if (i > -1) { DB.terms.splice(i, 1); persistDelete("terms", id); }
   closeModal();
@@ -21052,9 +21072,38 @@ window.trmViewOptions = function () {
    حدَّ فترتين. والسجلُّ القديم الذي لا وسم له ولا يقع في نطاق أي فترة يبقى
    ظاهراً — إخفاؤه يُفقِد بياناتٍ لا تُنسب إلى شيء. */
 const TERM_VIEW_COLLS = ["attendance", "recitations"];
+/* =========================================================================
+   الفترةُ التي تبدأ خالية
+   -------------------------------------------------------------------------
+   السجلّاتُ لا تحمل وسمَ فترةٍ إلا إذا رُحِّلت أو أُنشئت في فترةٍ موسومة،
+   وغيرُ الموسوم يظهر في كلّ فترة — فالفترةُ الجديدة كانت تُفتح على طلاب
+   ما قبلها ومعلّميهم وحلقاتهم، ومن اختار «ابدأ فارغة» لم يجدها فارغة.
+
+   الفترةُ المنشأة بعد هذا التعديل تحمل fresh، ولا يُعرض فيها إلا ما وُسم
+   بها صراحةً: ما رُحِّل إليها، وما أُنشئ وهي فترةُ العمل. والفتراتُ
+   القائمةُ قبلها لا وسمَ لها، فتبقى تعرض كلَّ شيء كما كانت — فلا تختفي
+   بياناتُ أحد.
+   ========================================================================= */
+const TERM_FRESH_COLLS = ["students", "teachers", "circles", "plans"];
+
+function termIsFresh(t) { return !!(t && t.fresh === true); }
+
+/* هل يخصُّ السجلُّ هذه الفترة؟ termId أو عضويةُ termIds */
+function recInTerm(x, tid) {
+  if (!x || !tid) return false;
+  if (String(x.termId || "") === String(tid)) return true;
+  const ids = Array.isArray(x.termIds) ? x.termIds : [];
+  return ids.map(String).indexOf(String(tid)) > -1;
+}
+
 let TERM_VIEW_OFF = false;
 
 function termViewFilter(coll, list) {
+  if (!TERM_VIEW_OFF && TERM_FRESH_COLLS.indexOf(coll) > -1) {
+    const tid = viewTermId();
+    const t = tid ? (DB.terms || []).find(x => String(x.id) === String(tid)) : null;
+    if (termIsFresh(t)) return (list || []).filter(x => recInTerm(x, tid));
+  }
   if (TERM_VIEW_OFF || TERM_VIEW_COLLS.indexOf(coll) === -1) return list;
   const tid = viewTermId();
   if (!tid) return list;
@@ -21829,7 +21878,15 @@ function setPanelTerms() {
                 onclick="window.trmMigrate('${jsAttr(r.id)}')"
                 title="اختر من يُرحَّل إلى «${esc(r.name || "")}»"
                 >${ic("swap", 14)} ترحيل إليها</button>`
-            : '<span class="tm-dash">–</span>'}</td>
+            : '<span class="tm-dash">–</span>'}${
+          /* حذفُ الفترة المؤرشفة من صفّها: طلبته الإدارة ليتخلّص مديرُ
+             المسجد من فتراتٍ انتهت. والمؤرشفةُ وحدَها — فالعاملةُ لا
+             تُحذف بزرٍّ في جدول. والتأكيدُ في trmDelete لا هنا. */
+          (own && r.archived === true && trmCanDelete())
+            ? ` <button type="button" class="row-btn rb-del"
+                 onclick="window.trmDelete('${jsAttr(r.id)}')"
+                 title="حذف الفترة المؤرشفة">${ic("trash", 14)}</button>`
+            : ""}</td>
         </tr>`;
       }).join("")
       : `<tr><td colspan="7" class="rep-empty">
@@ -35304,6 +35361,18 @@ function persistSet(coll, obj) {
     }
   } catch (e) {}
 
+  /* وسمُ الفترة التي تبدأ خالية: ما يُسجَّل وهي فترةُ العمل يُنسب إليها،
+     وإلّا كُتب بلا وسمٍ فلم يظهر فيها — وهي لا تعرض إلا الموسوم بها.
+     والسجلُّ غيرُ الموسوم الواصلُ إلى هنا جديدٌ بالضرورة: القديمُ غيرُ
+     الموسوم لا يُعرض في الفترة الخالية فلا سبيل إلى تعديله منها. */
+  try {
+    if (typeof TERM_FRESH_COLLS !== "undefined" &&
+        TERM_FRESH_COLLS.indexOf(coll) > -1 && !obj.termId) {
+      const _t = typeof activeTerm === "function" ? activeTerm() : null;
+      if (typeof termIsFresh === "function" && termIsFresh(_t)) obj.termId = String(_t.id);
+    }
+  } catch (e) {}
+
   const data = scopeStamp(coll, Object.assign({}, obj));
   if (data._o == null) data._o = Date.now();
   /* تُرجِع وعداً ليتمكّن النداء من انتظار نتيجة الكتابة قبل إعلان النجاح.
@@ -37262,7 +37331,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-2305";
+  var APP_BUILD = "20261002-0255";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

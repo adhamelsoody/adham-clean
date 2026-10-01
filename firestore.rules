@@ -317,7 +317,7 @@ service cloud.firestore {
          ⚠ أثرُها المقصود: المعلّمُ يستطيع رفعَ قيدٍ وُضع عليه — وعلى
          زملائه، فالمستندُ واحدٌ لكلّ المعلّمين. */
       allow write: if docId == "teacherPerms"
-                   && isTeacher()
+                   && (isTeacher() || isManager())
                    && request.resource.data.keys().hasOnly(['id', 'teacherPerms']);
     }
 
