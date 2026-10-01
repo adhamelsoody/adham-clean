@@ -342,7 +342,11 @@ window.SHELL_MODE = true;
              groups: { reports: "*", stats: "*", move: ["move-requests"] } },
 
     complexManager: {
-      top: ["dashboard", "mosques", "supervisors", "admissions", "programs", "settings"],
+      /* «البرامج والمناهج» أُزيل من القائمة الجانبية بطلب الإدارة: ضبطُه
+         يقع في الإعدادات ← «البرامج والخطط», فبندان يقودان إلى موضعٍ واحد.
+         وتعريفُه في NAV_ADMIN وصفحتُه programs.html باقيان، وإعادتُه إلى
+         القائمة كلمةٌ واحدة: "programs" في هذا السطر. */
+      top: ["dashboard", "mosques", "supervisors", "admissions", "settings"],
       /* اسمُ الصفحة يختلف باختلاف من ينظر إليها: صفحةُ المشرفين نفسُها
          هي «مدراء المساجد» في عين مدير المجمّع. */
       labels: { supervisors: "مدراء المساجد" },
@@ -368,7 +372,9 @@ window.SHELL_MODE = true;
       /* «المستخدمون والحسابات» أُزيل: إدارةُ الحسابات ليست من عمل مدير
          المسجد. و«تقارير المنشآت» و«إحصائيات المنشآت» أُزيلتا كذلك —
          شأنُ من يشرف على أكثر من منشأة، ومديرُ المسجد له منشأةٌ واحدة. */
-      top: ["dashboard", "students", "circles", "teachers", "programs", "settings"],
+      /* «البرامج والمناهج» أُزيل من القائمة — ضبطُه في الإعدادات ← «البرامج
+         والخطط». وتعريفُه وصفحتُه باقيان، وإعادتُه كلمةٌ واحدة هنا. */
+      top: ["dashboard", "students", "circles", "teachers", "settings"],
       labels: { teachers: "المعلمين والمشرفين" },
       groups: {
         reports: ["reports-students", "reports-circles", "reports-recitation"],
