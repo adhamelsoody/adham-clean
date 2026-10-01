@@ -9848,3 +9848,33 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
 /* عددا المستويات والطلاب في جدول البرامج: زرّان يفتحان البرنامج على بطاقتهما */
 .lv-numbtn { border: 0; cursor: pointer; font: inherit; }
 .lv-numbtn:hover { outline: 1.5px solid currentColor; outline-offset: 1px; }
+
+/* =========================================================================
+   إدارة الصلاحيات — لوحة الافتراضيّ العامّ في الإعدادات
+   -------------------------------------------------------------------------
+   الصناديقُ والصفوف تستعمل .perm-box و.perm-row القائمتين في بطاقة المعلّم
+   فلا يُكرَّر تنسيقُها. وهنا ما تختصّ به اللوحةُ وحدَها: العدّادان في
+   أعلاها، وارتفاعُها الحرُّ داخل صفحة الإعدادات بدل ارتفاع حقلٍ في نموذج،
+   وحالةُ العرض للاطلاع حين لا يملك الداخلُ ضبطَها.
+   ========================================================================= */
+.pm-wrap { display: flex; flex-direction: column; gap: 14px; }
+
+.pm-sum { display: flex; gap: 10px; flex-wrap: wrap; }
+.pm-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+  border: 1px solid var(--line, #e3e8ea);
+  background: var(--card, #fff); color: var(--ink, #1d2b2c);
+}
+.pm-pill b { font-size: 15px; font-weight: 800; }
+.pm-pill.on  { border-color: #0f6f72; color: #0f6f72; }
+.pm-pill.off { border-color: #d8dde0; color: #7b878a; }
+
+/* صندوقُ الحقل في النموذج محدودُ الارتفاع بالتمرير، وهنا الصفحةُ كلُّها
+   للقائمة فلا معنى لحبسها في إطارٍ يُمرَّر داخله. */
+.pm-box { max-height: none; overflow: visible; }
+
+/* للاطلاع فقط: يبقى المقروءُ واضحاً ويذهب إيحاءُ القابلية للنقر */
+.perm-row.pm-ro { cursor: default; opacity: .85; }
+.perm-row.pm-ro:hover { background: inherit; }

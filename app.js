@@ -4642,6 +4642,19 @@ function facPickValue(id) {
    ========================================================================= */
 
 const TEACHER_PERMS = [
+  /* الطلاب — مجموعةٌ أُضيفت بطلب الإدارة. و«إضافة طالب» نُقلت إليها من
+     «إدارة الحلقة» ليجتمع ما يخصُّ الطالب في موضعٍ واحد، ومفتاحُها
+     addStudent كما هو فلا ينكسر ما حُفظ في الحسابات. */
+  { g: "الطلاب" },
+  { k: "addStudent",  h: "إضافة طالب",
+    d: "ضمُّ طالبٍ جديد للحلقة دون الرجوع لقسم القبول والتسجيل" },
+  { k: "editStudent", h: "تعديل بيانات الطالب",
+    d: "الاسم وبيانات التواصل وما يتبعها" },
+  { k: "moveStudent", h: "حذف الطالب أو نقله",
+    d: "إذا اعتمدت الإدارة ذلك" },
+  { k: "viewStudent", h: "الاطلاع على بيانات الطالب",
+    d: "تعطيلُها يحجب بطاقةَ الطالب عن المعلّم" },
+
   { g: "التحضير والتعديل" },
   { k: "attLate",     h: "التحضير بعد انتهاء وقت الحلقة",
     d: "تعطيلها يمنع فتح شاشة التحضير بعد وقت الحلقة الرسمي" },
@@ -4652,9 +4665,14 @@ const TEACHER_PERMS = [
   { k: "editPlan",    h: "وضع الواجبات وتعديل مسار الخطة",
     d: "تحديد موضع الحفظ والمراجعة والمقدار لكل طالب" },
   /* المواصفات: «تغيير مسار خطة الطالب — وتشمل ثلاث صلاحيات فرعية» */
-  { k: "planStart",   h: "تغيير موضع البداية للواجب", d: "فرعيّةٌ من تعديل المسار" },
+  { k: "planStart",   h: "تعديل «آية من»", d: "موضعُ بداية الواجب — فرعيّةٌ من تعديل المسار" },
   { k: "planQty",     h: "تغيير عدد الأوجه أو الأسطر المحددة", d: "فرعيّةٌ من تعديل المسار" },
-  { k: "planEnd",     h: "تغيير موضع النهاية للواجب", d: "تعطيلُ الثلاث: المعلّم ملتزمٌ حرفياً بالخطة المبرمجة" },
+  { k: "planEnd",     h: "تعديل «آية إلى»", d: "موضعُ نهاية الواجب — تعطيلُ الثلاث: المعلّم ملتزمٌ حرفياً بالخطة المبرمجة" },
+  { k: "viewPlan",    h: "الاطلاع على الخطة",
+    d: "تعطيلُها يحجب مسارَ الخطة عن المعلّم ويُبقي التحضير" },
+  { k: "recite",      h: "تسجيل التسميع", d: "رصدُ ما سمّعه الطالب وأخطائه" },
+  { k: "splitDuty",   h: "تقسيم واجب لأكثر من جلسة",
+    d: "توزيعُ الواجب الواحد على جلستين أو أكثر" },
   { k: "extraDuty",   h: "إضافة واجبات وتسميعات طارئة",
     d: "خارج نطاق الخطة الأساسية للطالب" },
 
@@ -4663,8 +4681,7 @@ const TEACHER_PERMS = [
     d: "تعطيلها يجعل تأشير الأيام الماضية غير قابل للتغيير" },
 
   { g: "إدارة الحلقة" },
-  { k: "addStudent",  h: "ضمّ طالب جديد للحلقة",
-    d: "دون الرجوع لقسم القبول والتسجيل" },
+  /* «ضمّ طالب جديد» نُقل إلى مجموعة «الطلاب» في صدر القائمة بالمفتاح نفسِه */
   { k: "freezeStudent", h: "إيقاف أو تجميد طالب",
     d: "لأسباب تأديبية أو انقطاع" },
   { k: "circleSettings", h: "تعديل إعدادات الحلقة",
@@ -4672,8 +4689,39 @@ const TEACHER_PERMS = [
 
   { g: "التواصل" },
   { k: "room",        h: "إنشاء غرفة تسميع عن بُعد", d: "" },
-  { k: "chat",        h: "إرسال إشعارات ومحادثات", d: "" }
+  { k: "chat",        h: "إرسال إشعارات ومحادثات", d: "" },
+  { k: "msgStudents", h: "مراسلة الطلاب", d: "رسالةٌ خاصّةٌ لطالبٍ أو لوليّ أمره" },
+  { k: "msgAdmin",    h: "مراسلة الإدارة", d: "مخاطبةُ المشرف أو مدير المسجد" },
+  { k: "msgCircle",   h: "إرسال رسالة عامة للحلقة", d: "تصل طلابَ الحلقة جميعاً" },
+
+  { g: "التحفيز" },
+  { k: "points",      h: "إضافة نقاط للطلاب", d: "منحُ نقاط التحفيز والمكافآت" },
+
+  { g: "الاختبارات" },
+  { k: "examRequest", h: "طلب اختبار", d: "رفعُ طلب اختبارٍ لطالبٍ أنهى مقرَّره" },
+
+  { g: "التقارير" },
+  { k: "viewReports", h: "الاطلاع على تقارير معينة", d: "تقاريرُ حلقته وطلابه" },
+  { k: "viewRating",  h: "الاطلاع على تقييم الإدارة", d: "ما رصدته الإدارةُ من تقييمٍ لأدائه" }
 ];
+
+/* =========================================================================
+   الافتراضيُّ العامُّ للصلاحيات — شاشة «إدارة الصلاحيات» في الإعدادات
+   -------------------------------------------------------------------------
+   كانت الصلاحياتُ تُضبط في بطاقة كلّ معلّمٍ وحدَها، فمن أراد قاعدةً تسري
+   على الجميع فتحها واحداً واحداً.
+
+   تُحفظ هنا في settings.teacherPerms، ويقرأها teacherCan بعد صلاحية
+   الحساب نفسِه: ما ضُبط في بطاقة المعلّم صراحةً يغلب، وما لم يُضبط يرث
+   هذا الافتراضيَّ، وما لم يُذكر في الاثنين فمسموح — فلا يُفاجأ معلّمٌ قائم
+   بقفل صلاحيةٍ لم تُعطَّل.
+   ========================================================================= */
+function permsDefaults() {
+  return ((DB.settings || {}).teacherPerms) || {};
+}
+
+/* صلاحيةُ الضبط: قاعدةُ الخادم تقصر الكتابة في settings على المدير */
+function canPermsSetup() { return typeof isTopAdmin === "function" && isTopAdmin(); }
 
 function permsField(u, hidden) {
   const p = (u && u.perms) || {};
@@ -9599,6 +9647,7 @@ const SET_SECTIONS = [
   { k: "levels",   h: "البرامج والخطط" },
   { k: "terms",    h: "الفترات الدراسية والأرشيف" },
   { k: "supcat",   h: "تصنيفات المشرفين" },
+  { k: "perms",    h: "إدارة الصلاحيات" },
   { k: "mushaf",   h: "المصحف والتقييم" },
   { k: "procs",    h: "الإجراءات التدرّجية" },
   /* «مسيّرات الرواتب» أُزيل من قائمة الإعدادات بطلب الإدارة: شاشةٌ لا
@@ -20092,6 +20141,67 @@ function setPanelPrayer() {
   </div>`;
 }
 
+/* =========================================================================
+   لوحةُ «إدارة الصلاحيات» — الافتراضيُّ العامُّ لكلّ المعلّمين
+   -------------------------------------------------------------------------
+   القائمةُ هي TEACHER_PERMS نفسُها التي في بطاقة المعلّم، لا نسخةً ثانيةً
+   منها: ما يُضاف هناك يظهر هنا من تلقائه.
+   ========================================================================= */
+function setPanelPerms() {
+  const g = permsDefaults();
+  const on = k => g[k] !== false;
+  const edit = canPermsSetup();
+  const total = TEACHER_PERMS.filter(x => x.k).length;
+  const offN = TEACHER_PERMS.filter(x => x.k && !on(x.k)).length;
+
+  return `<div class="pm-wrap">
+    <div class="tm-top">
+      <strong class="tm-title">إدارة الصلاحيات</strong>
+    </div>
+
+    <div class="tm-info">${ic("info", 18)}
+      <span>هذا هو الافتراضيُّ العامُّ لكلّ المعلّمين. وما ضُبط في بطاقة معلّمٍ
+      بعينه يغلب هذا الضبط لذلك المعلّم وحدَه.
+      ${edit ? "" : "<b>العرضُ هنا للاطلاع — الضبطُ من صلاحية مدير النظام.</b>"}</span>
+    </div>
+
+    <div class="pm-sum">
+      <span class="pm-pill on"><b>${toArabicDigits(total - offN)}</b> مفعّلة</span>
+      <span class="pm-pill off"><b>${toArabicDigits(offN)}</b> معطّلة</span>
+    </div>
+
+    <div class="perm-box pm-box">${TEACHER_PERMS.map(item => {
+      if (item.g) return `<div class="perm-group">${esc(item.g)}</div>`;
+      return `<label class="perm-row ${on(item.k) ? "on" : ""}${edit ? "" : " pm-ro"}">
+        <input type="checkbox" data-permdef="${esc(item.k)}" ${on(item.k) ? "checked" : ""}
+          ${edit ? "" : "disabled"} onchange="window.permDefSet('${jsAttr(item.k)}', this.checked)">
+        <span class="perm-txt">
+          <strong>${esc(item.h)}</strong>
+          ${item.d ? `<span class="perm-d">${esc(item.d)}</span>` : ""}
+        </span>
+        <span class="perm-state">${on(item.k) ? "مفعّلة" : "معطّلة"}</span>
+      </label>`;
+    }).join("")}</div>
+  </div>`;
+}
+
+window.permDefSet = function (k, val2) {
+  if (!canPermsSetup()) {
+    showToast("ضبطُ الصلاحيات العامّة من صلاحية مدير النظام", "warn");
+    mount(); return;
+  }
+  if (!DB.settings) DB.settings = {};
+  const g = Object.assign({}, permsDefaults());
+  g[String(k)] = !!val2;
+  DB.settings.teacherPerms = g;
+  DB.settings.id = DB.settings.id || "app";
+  persistSet("settings", DB.settings);
+
+  const item = TEACHER_PERMS.find(x => String(x.k) === String(k)) || {};
+  showToast((val2 ? "فُعّلت " : "عُطّلت ") + (item.h || ""), "success");
+  mount();
+};
+
 function setPanelMushaf() {
   const w = reciteWeights();
   return `<div class="lv-wrap">
@@ -21681,7 +21791,7 @@ function setPanelOther(k) {
    والدوران الجديدان يريان المالَ بقرار الإدارة، فليسا هنا. */
 const SET_DENIED = {
   supervisor: ["payroll", "supcat"],
-  donor:      ["payroll", "supcat", "procs", "msgs", "terms"]
+  donor:      ["payroll", "supcat", "procs", "msgs", "terms", "perms"]
 };
 
 function setSections() {
@@ -21710,7 +21820,7 @@ function adminSettingsNew() {
       </aside>
       <section class="st-main">${!setSecAllowed(SET.sec)
         ? financeDenied(SET.sec === "payroll" ? "مسيّرات الرواتب" : "تصنيفات المشرفين")
-        : SET.sec === "main" ? setPanelMain() : SET.sec === "programs" ? setPanelPrograms() : SET.sec === "levels" ? setPanelLevels() : SET.sec === "duties" ? setPanelDuties() : SET.sec === "supcat" ? setPanelSupcat() : SET.sec === "terms" ? setPanelTerms() : SET.sec === "mushaf" ? setPanelMushaf() : SET.sec === "procs" ? setPanelProcedures() : SET.sec === "payroll" ? setPanelPayroll() : SET.sec === "msgs" ? setPanelMessages() : SET.sec === "prayer" ? setPanelPrayer() : setPanelOther(SET.sec)}</section>
+        : SET.sec === "main" ? setPanelMain() : SET.sec === "programs" ? setPanelPrograms() : SET.sec === "levels" ? setPanelLevels() : SET.sec === "duties" ? setPanelDuties() : SET.sec === "supcat" ? setPanelSupcat() : SET.sec === "perms" ? setPanelPerms() : SET.sec === "terms" ? setPanelTerms() : SET.sec === "mushaf" ? setPanelMushaf() : SET.sec === "procs" ? setPanelProcedures() : SET.sec === "payroll" ? setPanelPayroll() : SET.sec === "msgs" ? setPanelMessages() : SET.sec === "prayer" ? setPanelPrayer() : setPanelOther(SET.sec)}</section>
     </div>
   </div>`;
 }
@@ -25539,7 +25649,11 @@ function teacherCan(k) {
   const u = (STATE && STATE.user) || {};
   if (u.role === "admin" || isMgrRole(u.role)) return true;
   const p = u.perms || {};
-  return p[k] !== false;
+  /* ما ضُبط في بطاقة المعلّم صراحةً يغلب، وما لم يُضبط يرث الافتراضيَّ
+     العامَّ من «إدارة الصلاحيات»، وما لم يُذكر في الاثنين فمسموح. */
+  if (p[k] !== undefined) return p[k] !== false;
+  const g = typeof permsDefaults === "function" ? permsDefaults() : {};
+  return g[k] !== false;
 }
 
 /* حقول الواجب التي كانت تُحفظ في خانة الانتظار */
@@ -37036,7 +37150,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261001-0650";
+  var APP_BUILD = "20261002-2210";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
