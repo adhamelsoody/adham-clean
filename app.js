@@ -3273,7 +3273,7 @@ function builderStep(s) {
 
   if (s === 1) {
     return `<h3 class="bstep-title">اختر البرنامج والمستوى</h3><p class="bstep-sub">يحدّد البرنامج اتجاه الخطة الافتراضي وقواعد الانتقال.</p>
-      <div class="grid g-2 stagger" style="margin-bottom:16px">${cur("programs").map(p => `<label class="pick-card wide ${B.program === p.name ? "sel" : ""}">
+      <div class="grid g-2 stagger" style="margin-bottom:16px">${prgPickList(B.program).map(p => `<label class="pick-card wide ${B.program === p.name ? "sel" : ""}">
         <input type="radio" name="bprogram" value="${esc(p.name)}" ${B.program === p.name ? "checked" : ""} hidden>
         <div class="kpi-ico t-gold" style="margin:0">${ic("layers", 20)}</div>
         <div><strong>${esc(p.name)}</strong><div class="muted" style="font-size:11.5px">${p.levels} مستوى · اتجاه ${esc(p.direction)} · انتقال ${esc(p.transition)}</div></div>
@@ -11183,6 +11183,17 @@ function sysPrograms() {
 function programsForPick() {
   return sysPrograms().filter(x => x.status === "فعال")
     .concat((cur("programs") || []).filter(x => (x.status || "فعال") === "فعال"));
+}
+
+/* برامجُ المدير المعروضةُ للاختيار: الفعّالةُ وحدَها — إيقافُ البرنامج
+   معناه ألّا يُسنَد إليه أحدٌ جديد، وكانت القوائمُ تعرض الموقوفَ كالفعّال.
+
+   ويبقى المحفوظُ معروضاً في سجلِّه وإن أُوقف بعد إسناده: لو حُذف من
+   القائمة قُرئ الحقلُ فارغاً فدُهست قيمةُ الطالب عند أوّل حفظ. */
+function prgPickList(keep) {
+  const k = String(keep || "").trim();
+  return (cur("programs") || []).filter(p =>
+    (p.status || "فعال") === "فعال" || (k && p.name === k));
 }
 
 function isSysProgram(id) {
@@ -25705,7 +25716,7 @@ function modalDuty(studentId) {
         fromS: p.rFromS, fromA: p.rFromA, toS: p.rToS, toA: p.rToA })}
 
       <div class="field"><label>البرنامج</label>
-        <select id="dt_program">${(cur("programs").length ? cur("programs").map(x => x.name) : ["—"]).map(x =>
+        <select id="dt_program">${(prgPickList(p.program).length ? prgPickList(p.program).map(x => x.name) : ["—"]).map(x =>
           `<option ${x === p.program ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
       <div class="field"><label>المستوى</label>
         <select id="dt_level">${["المستوى الأول", "المستوى الثاني", "المستوى الثالث", "مخصص"].map(x =>
@@ -30386,7 +30397,7 @@ function modalEditStudent(id) {
       <div class="field"><label>أيام الحضور</label><input id="es_days" value="${esc(s.days)}"></div>
       <div class="field"><label>البرنامج القرآني</label>
         <select id="es_program" onchange="window.stuProgChanged('es_program','es_level')">${
-          cur("programs").length ? cur("programs").map(p => `<option ${p.name === s.program ? "selected" : ""}>${esc(p.name)}</option>`).join("") : `<option>—</option>`}</select></div>
+          prgPickList(s.program).length ? prgPickList(s.program).map(p => `<option ${p.name === s.program ? "selected" : ""}>${esc(p.name)}</option>`).join("") : `<option>—</option>`}</select></div>
       ${levelField("es_level", s.program, s.levelId || "", s.level || "")}
       <div class="field"><label>الحالة</label><select id="es_status"><option ${s.status === "نشط" ? "selected" : ""}>نشط</option><option ${s.status !== "نشط" ? "selected" : ""}>متوقف</option></select></div>
 
@@ -37004,7 +37015,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261001-0150";
+  var APP_BUILD = "20261001-0520";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
