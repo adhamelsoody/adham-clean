@@ -34607,6 +34607,11 @@ function persistFail(where, coll, err, rec) {
   window.addEventListener("load", function () {
     navigator.serviceWorker.register(base + "sw.js")
       .then(function (reg) {
+        /* عاملٌ منتظرٌ من نشرةٍ سابقة: `updatefound` لا يُطلق له — فقد وقع
+           قبل فتح الصفحة. والتطبيقُ المثبَّت يبقى على عاملٍ منتظرٍ أياماً
+           فلا يُعرض لصاحبه شريط. فيُفتَّش عليه حالاً لا بالحدث وحده. */
+        if (reg.waiting && navigator.serviceWorker.controller) swUpdateBar(reg);
+
         /* نسخةٌ جديدة تنتظر: تُعرض دعوةٌ للتحديث بدل فرضه على عملٍ جارٍ */
         reg.addEventListener("updatefound", function () {
           const sw = reg.installing;
@@ -36986,7 +36991,23 @@ if (typeof window !== "undefined") {
   "use strict";
   if (typeof window === "undefined" || typeof fetch !== "function") return;
 
-  var CURRENT = null, SHOWN = false;
+  /* =======================================================================
+     رقمُ البناء المدفون في هذا الملفّ — يُرفع مع version.json في كلّ نشر
+     -----------------------------------------------------------------------
+     كان الأساسُ يُقرأ من الخادم في أوّل فحص: `if (CURRENT === null)
+     { CURRENT = d.build; return; }` — فيُسجَّل رقمُ الخادم أساساً أيّاً كان
+     الملفُّ العاملُ في المتصفّح. فعميلٌ يُشغّل بناءً قديماً يُقارن رقمَ
+     الخادم برقم الخادم نفسِه فيجدهما متساويين، فلا يظهر له شريطُ التحديث
+     أبداً مهما نُشر — وهو سببُ أن يرى الناشرُ التعديلَ ولا يراه العميل:
+     تطبيقٌ مثبَّتٌ لا يُغلق فلا تُعاد الصفحةُ، ولا شريطَ يدعوه لإعادتها.
+
+     والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
+     إلى من حُبس على القديم من أوّل فحص.
+     ======================================================================= */
+  var APP_BUILD = "20261001-0150";
+
+  var CURRENT = APP_BUILD, SHOWN = false;
+  window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
 
   function verUrl() {
     var base = location.pathname.indexOf("/admin/") > -1 ? "../" : "";
@@ -37046,7 +37067,6 @@ if (typeof window !== "undefined") {
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d || !d.build) return;
-        if (CURRENT === null) { CURRENT = d.build; return; }
         if (d.build !== CURRENT) { CURRENT = d.build; banner(); }
       })
       .catch(function () { /* بلا اتصال — نتجاهل بهدوء */ });
