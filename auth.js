@@ -680,8 +680,21 @@ window.SHELL_MODE = true;
         /* الأدوار الإدارية الأربعة — كانت البوابة تعرف دورين فيُطرد
            مديرُ المجمّع ومديرُ المسجد إلى index.html بلا سبب ظاهر. */
         var ADMIN_ROLES = ["admin", "owner", "supervisor", "complexManager", "mosqueManager"];
-        const isAdmin = d.active !== false && ADMIN_ROLES.indexOf(d.role) > -1;
-        if (!isAdmin) { safeGo("/index.html", "حسابك ليس إدارياً"); return; }
+        /* =================================================================
+           index.html واجهةُ الجميع لا الإدارةِ وحدَها
+           -----------------------------------------------------------------
+           كان غيرُ الإداريّ يُردّ إلى /index.html — وهي هذه الصفحةُ نفسُها،
+           فتُعيد الكرّةَ وتردّه ثانيةً حتى يقطع حارسُ التحويل الدورةَ
+           بشاشة «تعذّر إكمال تسجيل الدخول». فالمعلّمُ والطالبُ ووليُّ الأمر
+           والداعم لا يدخلون أبداً، مع أنّ هذه واجهتُهم: NAV فيها قوائمُهم،
+           و allowedIface() في app.js هو من يحصر كلَّ دورٍ في واجهته.
+
+           فالبوّابةُ هنا تُفرّق بين أمرين لا بين دورٍ ودور:
+             • الحسابُ الموقوف أو المجهولُ دورُه → إلى login.html، فلا دورة.
+             • ما سواه يُقلع، وتحصرُه allowedIface() وقواعدُ الخادم. */
+        const ROLE_OK = ADMIN_ROLES.concat(["teacher", "student", "parent", "donor"]);
+        if (d.active === false) { safeGo("/login.html", "حسابك موقوف — راجع الإدارة"); return; }
+        if (ROLE_OK.indexOf(d.role) < 0) { safeGo("/login.html", "دور حسابك غير معروف"); return; }
         /* mosqueId و complexId يمرَّران ليعمل حصر النطاق في cur() */
         try { sessionStorage.removeItem("__nav"); } catch (e) {}
         boot({
