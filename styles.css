@@ -10246,3 +10246,38 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 }
 :root[data-theme="dark"] .rcv-head,
 :root[data-theme="dark"] .mus-duty { background: #16302f; border-color: #1f4746; }
+
+/* =========================================================================
+   إعداداتُ المعلم — بياناتُه وصورتُه وحسابُه
+   -------------------------------------------------------------------------
+   صفوفُ عرضٍ لا نموذجَ تعديل: البياناتُ تُعرض كما حفظتها الإدارة، والصورةُ
+   وحدَها يبدّلها بصلاحيتها. وأزرارُ الحساب تستعمل .tst-tool القائمة.
+   ========================================================================= */
+.tsg-list { display: flex; flex-direction: column; }
+.tsg-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 2px; border-bottom: 1px solid var(--line, #e3e8ea); font-size: 13px;
+}
+.tsg-row:last-child { border-bottom: 0; }
+.tsg-row span { color: #7b878a; }
+.tsg-row strong { font-weight: 700; }
+
+.tsg-photo { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.tsg-ava {
+  flex: 0 0 auto; width: 76px; height: 76px; border-radius: 50%;
+  overflow: hidden; display: grid; place-items: center;
+  background: #eaf5f5; color: #0f6f72; font-size: 22px; font-weight: 700;
+  border: 1px solid var(--line, #e3e8ea);
+}
+.tsg-ava img { width: 100%; height: 100%; object-fit: cover; }
+.tst-tool.tsg-out { color: #b4231f; border-color: #f0d2d1; }
+.tst-tool.tsg-out:hover { background: #fdf2f2; border-color: #e5b4b2; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tsg-ava { background: #142726; border-color: #1f4746; }
+  :root:not([data-theme="light"]) .tsg-row { border-color: #1f4746; }
+  :root:not([data-theme="light"]) .tst-tool.tsg-out:hover { background: #2a1615; }
+}
+:root[data-theme="dark"] .tsg-ava { background: #142726; border-color: #1f4746; }
+:root[data-theme="dark"] .tsg-row { border-color: #1f4746; }
+:root[data-theme="dark"] .tst-tool.tsg-out:hover { background: #2a1615; }

@@ -4706,7 +4706,11 @@ const TEACHER_PERMS = [
 
   { g: "التقارير" },
   { k: "viewReports", h: "الاطلاع على تقارير معينة", d: "تقاريرُ حلقته وطلابه" },
-  { k: "viewRating",  h: "الاطلاع على تقييم الإدارة", d: "ما رصدته الإدارةُ من تقييمٍ لأدائه" }
+  { k: "viewRating",  h: "الاطلاع على تقييم الإدارة", d: "ما رصدته الإدارةُ من تقييمٍ لأدائه" },
+
+  { g: "الحساب" },
+  { k: "editPhoto",   h: "تغيير الصورة الشخصية", d: "رفعُ صورته أو إزالتها من إعداداته" },
+  { k: "changePass",  h: "تغيير كلمة المرور", d: "طلبُ رابط تعيينٍ جديدٍ إلى بريده" }
 ];
 
 /* =========================================================================
@@ -24370,6 +24374,7 @@ const NOTIF_KINDS = {
   circleMoved:  { h: "نقل إلى حلقة",     icon: "swap",        tone: "ok"   },
   accountEdited:{ h: "تعديل بيانات الحساب", icon: "person",   tone: "info" },
   circleEdited: { h: "تحديث بيانات الحلقة", icon: "book",     tone: "info" },
+  studentEdited:{ h: "تعديل بيانات طالب",  icon: "person",     tone: "info" },
   info:         { h: "تنبيه",            icon: "bell",        tone: "info" }
 };
 
@@ -24510,6 +24515,13 @@ window.tchCheckInDo = function () {
   rec.circleName = c ? (c.name || "") : "";
   rec.status = val("#ciStatus", "حاضر");
   rec.note = (val("#ciNote") || "").trim();
+  /* نطاقُ السجلّ من الحلقة: بدونه يسقط من cur() عند الحسابات المحصورة —
+     فلا يرى المعلّمُ تحضيرَ نفسِه، فيُسأل «الدخول دون تحضير» وقد سجّله،
+     ولا يُحسب في تقريره. */
+  if (c) {
+    if (c.mosqueId) rec.mosqueId = c.mosqueId;
+    if (c.complexId != null) rec.complexId = c.complexId;
+  }
   rec.ts = Date.now();
   if (!Array.isArray(DB.attendance)) DB.attendance = [];
   if (!old) DB.attendance.push(rec);
@@ -24523,6 +24535,11 @@ window.tchCheckInDo = function () {
    تقرير المعلم — حضورُه هو وغيابُه وتأخّرُه
    ========================================================================= */
 function teacherReport() {
+  if (!teacherCan("viewReports")) {
+    return `<div class="page">${pageHead("تقرير المعلم", "")}
+      <div class="card">${emptyState("الاطلاعُ على التقارير غيرُ مفعَّلٍ لحسابك",
+        "الصلاحيةُ تُمنح من «إدارة الصلاحيات».")}</div></div>`;
+  }
   const sid = tchStaffId();
   const recs = (cur("attendance") || []).filter(a => a && a.staffId &&
     String(a.staffId) === sid);
@@ -24961,6 +24978,9 @@ function tstuStudent() {
 }
 
 window.tcrcOpenStudent = function (id) {
+  if (!teacherCan("viewStudent")) {
+    showToast("صلاحيةُ الاطلاع على بيانات الطالب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
   TSTU.id = String(id || "");
   TSTU.tab = "plan";
   TSTU.day = "";
@@ -24982,6 +25002,11 @@ window.tstuMsg = function () {
 };
 
 function teacherStudent() {
+  if (!teacherCan("viewStudent")) {
+    return `<div class="page">${pageHead("الطالب", "", backArrow())}
+      <div class="card">${emptyState("الاطلاعُ على بيانات الطالب غيرُ مفعَّلٍ لحسابك",
+        "الصلاحيةُ تُمنح من «إدارة الصلاحيات».")}</div></div>`;
+  }
   const st = tstuStudent();
   if (!st) {
     return `<div class="page">${pageHead("الطالب", "", backArrow())}
@@ -25003,6 +25028,11 @@ function teacherStudent() {
     ${/* نقاطُ التحفيز: «قابلةٌ للتحكم من خلال صلاحيات الإدارة» */
       teacherCan("points") ? `<button type="button" class="tst-tool"
       onclick="window.tstuPoints()">${ic("star", 16)} إضافة نقاط تحفيزية</button>` : ""}
+    ${/* تعديلُ بيانات الطالب ونقلُه: مفتاحاهما في «إدارة الصلاحيات» */
+      teacherCan("editStudent") ? `<button type="button" class="tst-tool"
+      onclick="window.tstuEdit()">${ic("edit", 16)} تعديل بيانات الطالب</button>` : ""}
+    ${teacherCan("moveStudent") ? `<button type="button" class="tst-tool"
+      onclick="window.tstuMove()">${ic("swap", 16)} نقل الطالب</button>` : ""}
   </div>`;
 
   const plan = !canPlan
@@ -25817,10 +25847,39 @@ window.recvSave = function () {
     if (STATE.page !== "student") { if (typeof go === "function") go("student"); }
     setTimeout(function () { window.tstuDuty(nx.id); }, 120);
   } else {
-    showToast("اعتُمد التسميع — لا واجباتٍ أخرى", "success");
-    mount();
+    /* «الانتقال إلى الطالب التالي» — آخرُ خطوةٍ في تسلسل الوثيقة: من فرغت
+       واجباتُه يُنتقل إلى من بعده في الحلقة بالترتيب الأبجديّ ممّن له
+       واجبٌ معلَّق، فلا يعود المعلّمُ إلى القائمة في كلّ طالب. */
+    const nxSt = recvNextStudent(a);
+    if (nxSt) {
+      showToast("اعتُمد التسميع — الطالبُ التالي: " + (nxSt.name || ""), "success");
+      MUSD.asgId = ""; MUSD.kind = ""; MUSD.name = "";
+      TSTU.id = String(nxSt.id); TSTU.day = "";
+      if (STATE.page !== "student") { if (typeof go === "function") go("student"); }
+      else mount();
+    } else {
+      showToast("اعتُمد التسميع — لا واجباتٍ أخرى", "success");
+      mount();
+    }
   }
 };
+
+/* الطالبُ التالي في الحلقة ممّن له واجبٌ معلَّقٌ في اليوم نفسِه */
+function recvNextStudent(a) {
+  if (!a) return null;
+  const c = (cur("circles") || []).find(x => String(x.id) === String(a.circleId || ""));
+  const list = typeof tcrcStudents === "function" ? tcrcStudents(c || { id: a.circleId }) : [];
+  if (!list.length) return null;
+  const i = list.findIndex(s => String(s.id) === String(a.studentId));
+  const pend = s => (cur("assignments") || []).some(x => x &&
+    String(x.studentId) === String(s.id) && String(x.date) === String(a.date) &&
+    x.status === "pending");
+  for (let k = 1; k <= list.length; k++) {
+    const s = list[(Math.max(i, 0) + k) % list.length];
+    if (String(s.id) !== String(a.studentId) && pend(s)) return s;
+  }
+  return null;
+}
 
 /* =========================================================================
    نقاطُ التحفيز في صفحة الطالب — بصلاحية الإدارة
@@ -25860,6 +25919,289 @@ function tmsgCircleId() {
   return list.length ? String(list[0].id) : "";
 }
 window.tmsgCircle = function (id) { TMSG.circleId = String(id || ""); mount(); };
+
+/* =========================================================================
+   تعديلُ بيانات الطالب ونقلُه — بصلاحيتَيهما
+   -------------------------------------------------------------------------
+   مفتاحا editStudent و moveStudent كانا مُعلَنَين في «إدارة الصلاحيات» ولا
+   يقرؤهما كود. والنقلُ بين حلقات المعلّم نفسِه، ويُسجَّل في moveLog كما
+   تفعل شاشةُ الإدارة. والحذفُ النهائيُّ يبقى للإدارة: هنا إيقافُ الطالب
+   وهو مرجوعٌ عنه، فلا يُفقد سجلُّ سنواتٍ بنقرةٍ من شاشة حلقة.
+   ========================================================================= */
+window.tstuEdit = function () {
+  const st = tstuStudent();
+  if (!st) return;
+  if (!teacherCan("editStudent")) {
+    showToast("صلاحيةُ تعديل بيانات الطالب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const lvs = (cur("levels") || []);
+  openModal("تعديل بيانات الطالب", esc(st.name || ""),
+    `<div class="form-grid">
+      <div class="field full"><label>الاسم <span class="req">*</span></label>
+        <input id="tse_name" value="${esc(st.name || "")}"></div>
+      <div class="field"><label>تاريخ الميلاد</label>
+        <input id="tse_birth" type="date" value="${esc(st.birth || "")}"></div>
+      <div class="field"><label>رقم الهوية</label>
+        <input id="tse_idno" inputmode="numeric" value="${esc(st.idNo || "")}"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      <div class="field"><label>جوال الطالب</label>
+        <input id="tse_phone" type="tel" inputmode="numeric" value="${esc(st.phone || "")}"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      <div class="field"><label>جوال وليّ الأمر</label>
+        <input id="tse_parent" type="tel" inputmode="numeric"
+          value="${esc(st.parent === "—" ? "" : (st.parent || ""))}"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      <div class="field"><label>المستوى</label>
+        <select id="tse_level"><option value="">—</option>${lvs.map(l =>
+          `<option value="${jsAttr(l.id)}"${String(l.id) === String(st.levelId || "")
+            ? " selected" : ""}>${esc(l.name || "—")}</option>`).join("")}</select></div>
+      <div class="field"><label>الحالة</label>
+        <select id="tse_status">${["نشط", "متوقف"].map(x =>
+          `<option${x === (st.status || "نشط") ? " selected" : ""}>${x}</option>`).join("")}</select></div>
+    </div>
+    ${noteCard("ما لا يظهر هنا لا يُمَسّ — يبقى كما سجّلته الإدارة.")}`,
+    `<button class="btn btn-primary" onclick="window.tstuEditSave()">${
+      ic("check", 16)} حفظ</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.tstuEditSave = function () {
+  const st = tstuStudent();
+  if (!st) return;
+  if (!teacherCan("editStudent")) {
+    showToast("صلاحيةُ تعديل بيانات الطالب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const nm = val("#tse_name");
+  if (!nm) { showToast("اسم الطالب مطلوب", "warn"); return; }
+  st.name = nm;
+  st.birth = val("#tse_birth", "");
+  const age = typeof ageFromBirth === "function" ? ageFromBirth(st.birth) : null;
+  st.age = age == null ? (st.age || "—") : String(age);
+  st.idNo = val("#tse_idno", "");
+  st.phone = val("#tse_phone", "");
+  const pr = val("#tse_parent", "");
+  if (pr) st.parent = pr;
+  const lv = val("#tse_level", "");
+  st.levelId = lv; st.level = lv ? lvNameById(lv) : (st.level || "");
+  st.status = val("#tse_status", "نشط");
+  st.active = st.status === "نشط";
+  persistSet("students", st);
+  closeModal();
+  showToast("حُفظت بياناتُ «" + nm + "»", "success");
+  mount();
+};
+
+window.tstuMove = function () {
+  const st = tstuStudent();
+  if (!st) return;
+  if (!teacherCan("moveStudent")) {
+    showToast("صلاحيةُ نقل الطالب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const mine = (typeof tchMyCircles === "function" ? tchMyCircles() : [])
+    .filter(c => String(c.id) !== String(st.circleId || ""));
+  openModal("نقل الطالب", esc(st.name || ""),
+    mine.length
+      ? `<div class="form-grid">
+          <div class="field full"><label>إلى حلقة</label>
+            <select id="tsm_to">${mine.map(c =>
+              `<option value="${jsAttr(c.id)}">${esc(c.name || "—")}</option>`).join("")}</select></div>
+          <div class="field full"><label>السبب</label>
+            <input id="tsm_why" placeholder="اختياري — يُسجَّل في سجلّ النقل"></div>
+        </div>
+        ${noteCard("النقلُ بين حلقاتك وحدَها، ويُسجَّل في سجلّ النقل باسمك.")}`
+      : noteCard("لا حلقةَ أخرى في نطاقك يُنقل إليها."),
+    mine.length
+      ? `<button class="btn btn-primary" onclick="window.tstuMoveDo()">نقل</button>
+         <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`
+      : `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+};
+
+window.tstuMoveDo = function () {
+  const st = tstuStudent();
+  if (!st) return;
+  if (!teacherCan("moveStudent")) {
+    showToast("صلاحيةُ نقل الطالب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const to = val("#tsm_to", "");
+  const c = (cur("circles") || []).find(x => String(x.id) === String(to));
+  if (!c) { showToast("اختر الحلقة", "warn"); return; }
+  const from = st.circle || "";
+  st.circleId = String(c.id);
+  st.circle = c.name || "";
+  st.teacher = c.teacher || st.teacher || "";
+  st.teacherId = c.teacherId ? String(c.teacherId) : (st.teacherId || "");
+  if (c.mosqueId) { st.mosqueId = c.mosqueId; st.mosque = c.mosque || st.mosque || ""; }
+  if (c.complexId != null) st.complexId = c.complexId;
+  persistSet("students", st);
+
+  /* سجلُّ النقل: بالشكل الذي تكتبه شاشةُ الترحيل — طالبٌ وسببٌ وفاعل */
+  try {
+    const u = (STATE && STATE.user) || {};
+    const log = {
+      id: "mv" + Date.now(), kind: "students",
+      studentId: String(st.id), student: st.name || "",
+      from: from, to: c.name || "", count: 1,
+      reason: val("#tsm_why") || "نقلٌ من تطبيق المعلم",
+      by: u.name || u.email || "", ts: Date.now(), date: todayISO(),
+      mosqueId: st.mosqueId || "", complexId: st.complexId != null ? st.complexId : "",
+      termId: typeof activeTermId === "function" ? activeTermId() : ""
+    };
+    if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
+    DB.moveLog.push(log);
+    persistSet("moveLog", log);
+  } catch (e) {}
+
+  /* ومعلّمُ الحلقة الجديدة يُنبَّه: طالبٌ أُضيف إلى حلقته */
+  try {
+    if (c.teacherId) notifyUser(c.teacherId, "studentAdded",
+      "نُقل الطالبُ «" + (st.name || "") + "» إلى حلقة «" + (c.name || "") + "».");
+  } catch (e) {}
+
+  closeModal();
+  showToast("نُقل «" + (st.name || "") + "» إلى " + (c.name || ""), "success");
+  mount();
+};
+
+/* =========================================================================
+   إعداداتُ المعلم — النافذةُ الرابعةُ في شريطه
+   -------------------------------------------------------------------------
+   «تظهر فيها بياناتُ المعلم: الاسمُ والبياناتُ الأساسيةُ وبياناتُ الحساب
+   والصورةُ الشخصية»، والصورةُ بصلاحية editPhoto، وتغييرُ كلمة المرور
+   بصلاحية changePass، وتسجيلُ الخروج. وكان المعلّمُ يُفتح له شاشةُ
+   إعدادات الإدارة ولا يرى فيها من بياناته شيئاً.
+   ========================================================================= */
+function teacherSettings() {
+  const u = (STATE && STATE.user) || {};
+  const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
+  const canPhoto = teacherCan("editPhoto");
+  const canPass  = teacherCan("changePass");
+
+  if (!t) {
+    return `<div class="page">${pageHead("الإعدادات", esc(u.name || ""))}
+      <div class="card">${emptyState("لم يُربط حسابك بسجلّ معلّم",
+        "راجع الإدارة لربط حسابك، فتظهر بياناتُك هنا.")}</div>
+      <div class="card" style="margin-top:12px">
+        <div class="tst-tools"><button type="button" class="tst-tool"
+          onclick="window.tchLogout()">تسجيل الخروج</button></div>
+      </div></div>`;
+  }
+
+  const c = (cur("circles") || []).find(x => String(x.id) === String(t.circleId || ""));
+  const rows = [
+    ["الاسم", t.name || "—"],
+    ["رقم الجوال", t.phone || "—"],
+    ["رقم الهوية", t.idNo || "—"],
+    ["المؤهل", t.qual || "—"],
+    ["التخصص", t.spec || "—"],
+    ["تاريخ المباشرة", t.startDate || "—"],
+    ["المسجد", t.mosque || "—"],
+    ["الحلقة", (c && c.name) || t.circle || "—"],
+    ["الحالة", t.status || (t.active === false ? "متوقف" : "نشط")]
+  ].map(([k, v]) => `<div class="tsg-row"><span>${esc(k)}</span>
+      <strong>${esc(String(v))}</strong></div>`).join("");
+
+  const acc = [
+    ["اسم المستخدم", t.username || u.email || "—"],
+    ["الدور", "معلّم"]
+  ].map(([k, v]) => `<div class="tsg-row"><span>${esc(k)}</span>
+      <strong dir="auto">${esc(String(v))}</strong></div>`).join("");
+
+  return `<div class="page">
+    ${pageHead("الإعدادات", esc(t.name || ""))}
+
+    <div class="card">
+      <div class="section-head"><h3>الصورة الشخصية</h3></div>
+      <div class="tsg-photo">
+        <div class="tsg-ava">${t.photo
+          ? `<img src="${esc(t.photo)}" alt="">`
+          : `<span>${initials(t.name)}</span>`}</div>
+        ${canPhoto ? `<div class="tst-tools">
+          <button type="button" class="tst-tool"
+            onclick="document.getElementById('tsg_input').click()">${t.photo ? "تغيير الصورة" : "إضافة صورة"}</button>
+          ${t.photo ? `<button type="button" class="tst-tool"
+            onclick="window.pfClear('teachers','${jsAttr(t.id)}')">إزالة</button>` : ""}
+        </div>
+        <input type="file" id="tsg_input" accept="image/*" style="display:none"
+          onchange="window.pfPick(this, 'teachers', '${jsAttr(t.id)}')">`
+        : noteCard("تغييرُ الصورة غيرُ مسموحٍ لحسابك — من الإدارة.")}
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="section-head"><h3>البيانات الأساسية</h3></div>
+      <div class="tsg-list">${rows}</div>
+      ${noteCard("تعديلُ هذه البيانات من الإدارة — وما تراه هنا هو المحفوظُ في سجلّك.")}
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="section-head"><h3>بيانات الحساب</h3></div>
+      <div class="tsg-list">${acc}</div>
+      <div class="tst-tools" style="margin-top:10px">
+        ${canPass ? `<button type="button" class="tst-tool"
+          onclick="window.tchPassReset()">${ic("lock", 15)} تغيير كلمة المرور</button>` : ""}
+        <button type="button" class="tst-tool tsg-out"
+          onclick="window.tchLogout()">تسجيل الخروج</button>
+      </div>
+      ${canPass ? "" : noteCard("تغييرُ كلمة المرور غيرُ مسموحٍ لحسابك — راجع الإدارة.")}
+    </div>
+  </div>`;
+}
+
+/* تغييرُ كلمة المرور: رابطُ تعيينٍ إلى بريد الحساب — لا كلمةَ مرورٍ تُكتب
+   في الشاشة، ولا تُحفظ في سجلّ. ومن لا بريدَ له يُحوَّل إلى صفحة الاستعادة
+   بالجوال (reset.html) وهي القائمةُ في المشروع. */
+window.tchPassReset = function () {
+  if (!teacherCan("changePass")) {
+    showToast("صلاحيةُ تغيير كلمة المرور غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const u = (STATE && STATE.user) || {};
+  const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
+  const mail = String(u.email || (t && t.username) || "");
+  const real = mail && mail.indexOf("@mirath.id") < 0;
+
+  openModal("تغيير كلمة المرور", esc(mail || ""),
+    real
+      ? noteCard("يُرسل رابطُ تعيين كلمة مرورٍ جديدةٍ إلى <b>" + esc(mail) +
+          "</b>. افتح الرابطَ من بريدك واختر كلمةً جديدة.")
+      : noteCard("حسابُك بلا بريدٍ حقيقيّ، فالتغييرُ يكون بالتحقّق من جوالك " +
+          "في صفحة <b>استعادة كلمة المرور</b>."),
+    real
+      ? `<button class="btn btn-primary" onclick="window.tchPassSend()">إرسال الرابط</button>
+         <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`
+      : `<button class="btn btn-primary" onclick="window.open('/reset.html','_blank')"
+            >فتح صفحة الاستعادة</button>
+         <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.tchPassSend = function () {
+  const u = (STATE && STATE.user) || {};
+  const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
+  const mail = String(u.email || (t && t.username) || "");
+  const a = window.__auth;
+  if (!a || typeof a.sendPasswordResetEmail !== "function") {
+    showToast("خدمةُ البريد غير متاحة الآن — استعمل صفحة الاستعادة", "warn"); return;
+  }
+  a.sendPasswordResetEmail(mail)
+    .then(function () {
+      closeModal();
+      showToast("أُرسل الرابطُ إلى " + mail, "success");
+      try { notifyUser(u.id || u.uid, "passChanged",
+        "طُلب رابطُ تعيين كلمة مرورٍ جديدةٍ لحسابك."); } catch (e) {}
+    })
+    .catch(function (e) {
+      showToast("تعذّر الإرسال: " + ((e && e.message) || ""), "warn");
+    });
+};
+
+window.tchLogout = function () {
+  const a = window.__auth;
+  const go2 = function () {
+    try { sessionStorage.removeItem("__nav"); } catch (e) {}
+    location.href = "/login.html";
+  };
+  if (a && typeof a.signOut === "function") a.signOut().then(go2).catch(go2);
+  else go2();
+};
 
 /* =========================================================================
    بطاقاتُ حلقات المعلّم — صدرُ لوحته
@@ -30053,7 +30395,7 @@ const PAGES = {
   "teacher/approve": teacherApprove,
   /* شاشةُ الإعدادات نفسُها، لا نسخةٌ ثانيةٌ منها: SET_DENIED.teacher يحجب
      عن المعلّم كلَّ أقسامها إلا «إدارة الصلاحيات». */
-  "teacher/settings": adminSettings,
+  "teacher/settings": teacherSettings,
   "teacher/report": teacherReport,
   "teacher/circle": teacherCircle,
   "teacher/student": teacherStudent,
@@ -34531,6 +34873,16 @@ window.stuSave = function (id) {
     if (saved) {
       /* رقمُ الهوية هو هويةُ الدخول: إن تغيّر تبعه حسابُ الطالب */
       try { spSyncLoginId(s, before); } catch (e) {}
+      /* «تغيير بيانات الطالب» — إشعارٌ تلقائيٌّ لمعلّم حلقته، كما نصّت
+         الوثيقةُ على أنّ كلَّ إجراءٍ إداريٍّ مهمٍّ يولّد إشعاراً. */
+      try {
+        const _c = (DB.circles || []).find(x => String(x.id) === String(s.circleId || ""));
+        const _me = String(((STATE && STATE.user) || {}).id || "");
+        if (_c && _c.teacherId && String(_c.teacherId) !== _me) {
+          notifyUser(_c.teacherId, "studentEdited",
+            "حُدِّثت بياناتُ الطالب «" + (s.name || "") + "» في حلقة «" + (_c.name || "") + "».");
+        }
+      } catch (e) {}
       stuDraftReset("");
       try { photoReset("sp_photo"); } catch (e) {}
       showToast("حُفظت بيانات " + (s.name || "الطالب"), "success");
@@ -39278,7 +39630,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-1740";
+  var APP_BUILD = "20261002-1810";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
