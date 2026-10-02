@@ -24515,6 +24515,195 @@ function teacherReport() {
 }
 
 /* =========================================================================
+   شاشةُ الحلقة — إحصاؤها ثمّ طلابُها
+   -------------------------------------------------------------------------
+   تُفتح من بطاقة الحلقة في اللوحة. وقبل الدخول يُسأل المعلّمُ إن لم يكن
+   سجّل تحضيرَه، كما نصّت الوثيقة: «نعم» يدخل، و«لا» يفتح شاشةَ التحضير.
+   ========================================================================= */
+const TCRC = { id: "" };
+
+function tcrcCircle() {
+  const list = tchMyCircles();
+  return list.find(c => String(c.id) === String(TCRC.id)) || list[0] || null;
+}
+
+/* هل سُجِّلت حالةُ الطالب في تحضير اليوم؟ شرطُ التسميع */
+function attRecordedFor(sid) {
+  const st = (cur("students") || []).find(x => String(x.id) === String(sid));
+  const cid = st ? String(st.circleId || "") : "";
+  const m = attMap(typeof attDate === "function" ? attDate() : todayISO(), cid);
+  return !!m[String(sid)];
+}
+
+window.tchOpenCircle = function (id) {
+  TCRC.id = String(id || "");
+  /* بوّابةُ التحضير: السؤالُ مرّةً واحدةً لمن لم يسجّل حضورَه بعد */
+  if (!tchMyAtt(todayISO())) {
+    const c = (cur("circles") || []).find(x => String(x.id) === String(TCRC.id));
+    openModal("الدخول دون تحضير", esc((c && c.name) || ""),
+      noteCard("هل أنت متأكد أنك تريد الدخول إلى الحلقة دون التحضير؟"),
+      `<button class="btn btn-primary" onclick="window.tchEnterCircle()">نعم، ادخل</button>
+       <button class="btn btn-ghost" onclick="window.tchCheckIn()">لا، سجّل تحضيري</button>`);
+    return;
+  }
+  window.tchEnterCircle();
+};
+
+window.tchEnterCircle = function () {
+  try { closeModal(); } catch (e) {}
+  if (typeof go === "function") go("circle");
+  else { STATE.page = "circle"; mount(); }
+};
+
+/* واجباتُ الطالب اليوم — علامةٌ لكلّ واجب، وحالتُها تتغيّر بإتمامه */
+function tcrcDuties(sid) {
+  const d = typeof attDate === "function" ? attDate() : todayISO();
+  return (cur("assignments") || []).filter(a => a &&
+    String(a.studentId) === String(sid) && String(a.date) === String(d));
+}
+
+function tcrcMarks(sid) {
+  const list = tcrcDuties(sid);
+  if (!list.length) return `<span class="tq-none">لا واجبات</span>`;
+  return list.map(a => {
+    const done = a.status === "done";
+    return `<span class="tq-mark${done ? " on" : ""}"
+      title="${esc((a.kindAr || a.k || "واجب") + " — " + (done ? "منجز" : "لم يُنجز"))}"
+      >${ic("check", 13)}</span>`;
+  }).join("");
+}
+
+function teacherCircle() {
+  const c = tcrcCircle();
+  if (!c) {
+    return `<div class="page">${pageHead("الحلقة", "")}
+      <div class="card">${emptyState("لا حلقةَ مفتوحة", "اختر حلقةً من لوحتك.")}</div></div>`;
+  }
+
+  const studs = (cur("students") || []).filter(s =>
+    String(s.circleId || "") === String(c.id) && s.status !== "متوقف");
+  const d = typeof attDate === "function" ? attDate() : todayISO();
+  const map = attMap(d, String(c.id));
+
+  const asg = (cur("assignments") || []).filter(a => a && String(a.date) === String(d) &&
+    studs.some(s => String(s.id) === String(a.studentId)));
+  const left = asg.filter(a => a.status !== "done").length;
+  const pct = asg.length ? Math.round((asg.length - left) / asg.length * 100) : 0;
+  const marked = studs.filter(s => map[String(s.id)]).length;
+
+  /* النقاطُ المتاحة — تُعرض متى كان نظامُ النقاط متاحاً لهذا الحساب */
+  const ptsOn = typeof canDo === "function" ? canDo("points") : false;
+  const pts = ptsOn ? (cur("pointsLog") || []).filter(p => p &&
+    studs.some(s => String(s.id) === String(p.studentId)))
+    .reduce((n, p) => n + (Number(p.points) || 0), 0) : 0;
+
+  const stats = [
+    { t: "t-purple", n: studs.length, h: "الطلاب" },
+    { t: "t-green",  n: toArabicDigits(pct) + "٪", h: "إنجاز الحلقة" },
+    { t: "t-amber",  n: left,         h: "واجبات متبقية" },
+    { t: "t-blue",   n: toArabicDigits(marked) + " / " + toArabicDigits(studs.length),
+      h: "حُضِّروا" }
+  ].concat(ptsOn ? [{ t: "t-gold", n: pts, h: "النقاط المتاحة" }] : [])
+   .map(x => `<div class="facility-card ${x.t}">
+      <div class="fc-num">${typeof x.n === "number" ? toArabicDigits(x.n) : esc(String(x.n))}</div>
+      <div class="fc-body"><span class="fc-label">${esc(x.h)}</span></div>
+    </div>`).join("");
+
+  const rows = studs.map(s => {
+    const r = map[String(s.id)];
+    return `<div class="tq-row">
+      <div class="mini-avatar">${initials(s.name)}</div>
+      <div class="tq-name"><strong>${esc(s.name || "—")}</strong>
+        <small>${esc(s.level || s.circle || "—")}</small></div>
+      <div class="tq-marks">${tcrcMarks(s.id)}</div>
+      <span class="chip ${r ? (ATT_TINT[r.status] || "") : ""}">${
+        r ? esc(attLabel(r.status, r.kind)) : "لم يُسجَّل"}</span>
+    </div>`;
+  }).join("");
+
+  return `<div class="page">
+    ${pageHead(c.name || "الحلقة", c.mosque || complexName(c.complexId) || "", backArrow())}
+    <div class="grid g-4 stagger" style="margin-bottom:14px">${stats}</div>
+    <div class="tq-bar">
+      <button type="button" class="btn btn-primary" onclick="window.tcrcAttOpen()">
+        ${ic("attend", 16)} اعتماد التحضير</button>
+    </div>
+    <div class="tq-list">${rows || `<div class="ntf-empty">لا طلابَ في هذه الحلقة</div>`}</div>
+  </div>`;
+}
+
+/* =========================================================================
+   اعتمادُ تحضير الطلاب — الكلُّ «حاضر» ابتداءً ثمّ يُعدَّل ويُعتمد
+   ========================================================================= */
+const TATT = { sel: {} };
+
+window.tcrcAttOpen = function () {
+  const c = tcrcCircle();
+  if (!c) { showToast("لا حلقةَ مفتوحة", "warn"); return; }
+  const studs = (cur("students") || []).filter(s =>
+    String(s.circleId || "") === String(c.id) && s.status !== "متوقف");
+  if (!studs.length) { showToast("لا طلابَ في الحلقة", "warn"); return; }
+
+  const d = typeof attDate === "function" ? attDate() : todayISO();
+  const map = attMap(d, String(c.id));
+  TATT.sel = {};
+  /* الافتراضُ «حاضر» كما نصّت الوثيقة، وما سُجِّل قبلُ يُحترم */
+  studs.forEach(s => {
+    const r = map[String(s.id)];
+    TATT.sel[String(s.id)] = (r && r.status) || "حاضر";
+  });
+
+  openModal("اعتماد التحضير", esc(c.name || ""),
+    `<div class="tatt-list">${studs.map(s => `<div class="tatt-row" data-sid="${jsAttr(s.id)}">
+      <span class="tatt-name">${esc(s.name || "—")}</span>
+      <span class="tatt-opts">${ATT_STATES.map(st =>
+        `<button type="button" class="tatt-opt ${ATT_TINT[st] || ""}${
+          TATT.sel[String(s.id)] === st ? " on" : ""}"
+          onclick="window.tcrcAttPick(this,'${jsAttr(s.id)}','${jsAttr(st)}')"
+          >${esc(attLabel(st))}</button>`).join("")}</span>
+    </div>`).join("")}</div>`,
+    `<button class="btn btn-primary" onclick="window.tcrcAttSave()">اعتماد التحضير</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.tcrcAttPick = function (btn, sid, st) {
+  TATT.sel[String(sid)] = String(st);
+  const row = btn.closest(".tatt-row");
+  if (row) row.querySelectorAll(".tatt-opt").forEach(b => b.classList.remove("on"));
+  btn.classList.add("on");
+};
+
+window.tcrcAttSave = function () {
+  const c = tcrcCircle();
+  if (!c) return;
+  const d = typeof attDate === "function" ? attDate() : todayISO();
+  const map = attMap(d, String(c.id));
+  let n = 0;
+  if (!Array.isArray(DB.attendance)) DB.attendance = [];
+
+  Object.keys(TATT.sel).forEach(sid => {
+    const st = (cur("students") || []).find(x => String(x.id) === String(sid));
+    if (!st) return;
+    const old = map[String(sid)];
+    const rec = old || { id: "at" + Date.now() + "-" + sid, studentId: String(sid),
+                         date: d, circleId: String(c.id) };
+    rec.student = st.name || "";
+    rec.circle = c.name || "";
+    rec.circleId = String(c.id);
+    rec.status = TATT.sel[sid];
+    rec.by = ((STATE && STATE.user) || {}).email || "";
+    rec.ts = Date.now();
+    if (!old) DB.attendance.push(rec);
+    persistSet("attendance", rec);
+    n++;
+  });
+
+  closeModal();
+  showToast("اعتُمد تحضيرُ " + toArabicDigits(n) + " طالباً", "success");
+  mount();
+};
+
+/* =========================================================================
    بطاقاتُ حلقات المعلّم — صدرُ لوحته
    -------------------------------------------------------------------------
    تنصُّ الوثيقةُ على أن يرى المعلّمُ بعد دخوله حلقاتِه الموكّلةَ إليه وحدَها،
@@ -24558,7 +24747,7 @@ function tchCircleCards() {
                                                  && s.status !== "متوقف").length;
     const pct = tchCirclePct(c.id);
     const fac = c.mosque || complexName(c.complexId) || "—";
-    return `<article class="tc-card">
+    return `<article class="tc-card" onclick="if(!event.target.closest('button')) window.tchOpenCircle('${jsAttr(c.id)}')">
       <div class="tc-head">
         <div class="tc-logo">${c.photo
           ? `<img src="${esc(c.photo)}" alt="">`
@@ -25356,6 +25545,15 @@ function reciteSave() {
   if (!sid) { showToast("اختر الطالب", "warn"); return false; }
   const st = DB.students.find(x => String(x.id) === String(sid));
   if (!st) { showToast("الطالب غير موجود", "warn"); return false; }
+
+  /* الشرطُ الأساسيّ في وثيقة المتطلبات: «لا يستطيع المعلم تسجيل تسميع
+     للطالب إلا بعد تسجيل حالته في التحضير». يُفحص هنا — في بوّابة الحفظ
+     — لا في الزرّ وحدَه، فلا يُتجاوز بنداءٍ مباشر. */
+  if (typeof attRecordedFor === "function" && !attRecordedFor(st.id)) {
+    showToast("سجّل حالةَ «" + (st.name || "الطالب") + "» في التحضير أوّلاً", "warn");
+    return false;
+  }
+
 
   const fS = Number(val("#r_fromS")), fA = Number(val("#r_fromA"));
   const tS = Number(val("#r_toS")),   tA = Number(val("#r_toA"));
@@ -28666,6 +28864,7 @@ const PAGES = {
      عن المعلّم كلَّ أقسامها إلا «إدارة الصلاحيات». */
   "teacher/settings": adminSettings,
   "teacher/report": teacherReport,
+  "teacher/circle": teacherCircle,
   "student/dashboard": studentDashboard, "student/today": studentToday, "student/tomorrow": studentTomorrow,
   "student/progress": studentProgress, "student/attendance": studentAttendance, "student/results": studentResults,
   "student/notifications": studentNotifications,
@@ -37887,7 +38086,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-1500";
+  var APP_BUILD = "20261002-1520";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

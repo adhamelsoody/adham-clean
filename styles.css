@@ -10028,3 +10028,56 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 :root[data-theme="dark"] .ntf-row { background: #142726; }
 :root[data-theme="dark"] .ntf-row.new { background: #16302f; border-color: #1f4746; }
 :root[data-theme="dark"] .ntf-txt small { color: #9fb4b3; }
+
+/* =========================================================================
+   شاشةُ الحلقة في تطبيق المعلم — صفوفُ الطلاب وعلاماتُ الواجبات
+   -------------------------------------------------------------------------
+   كلُّ طالبٍ في صفّ، وبجانب اسمه علامةٌ لكلّ واجبٍ مطلوبٍ منه تتغيّر
+   بإتمامه، كما نصّت وثيقةُ المتطلبات. ونافذةُ اعتماد التحضير تعرض حالاتِ
+   الحضور بمسمّياتِ الإدارة.
+   ========================================================================= */
+.tq-bar { display: flex; justify-content: flex-start; margin-bottom: 12px; }
+.tq-list { display: flex; flex-direction: column; gap: 8px; }
+
+.tq-row {
+  display: flex; align-items: center; gap: 11px; padding: 11px 13px;
+  border: 1px solid var(--line, #e3e8ea); border-radius: 14px;
+  background: var(--card, #fff);
+}
+.tq-name { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tq-name strong { font-size: 14px; font-weight: 700; }
+.tq-name small  { font-size: 12px; color: #7b878a; }
+
+.tq-marks { display: inline-flex; gap: 5px; flex: 0 0 auto; }
+.tq-mark {
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px;
+  background: #f0f3f4; color: #aab6b8; border: 1px solid var(--line, #e3e8ea);
+}
+.tq-mark.on { background: #0f6f72; border-color: #0f6f72; color: #fff; }
+.tq-none { font-size: 12px; color: #9aa6a8; }
+
+/* نافذةُ اعتماد التحضير */
+.tatt-list { display: flex; flex-direction: column; gap: 7px; max-height: 58vh; overflow: auto; }
+.tatt-row {
+  display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+  border-radius: 12px; background: #f7fafa;
+}
+.tatt-name { flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 600; }
+.tatt-opts { display: inline-flex; gap: 5px; flex: 0 0 auto; flex-wrap: wrap; }
+.tatt-opt {
+  border: 1px solid var(--line, #e3e8ea); background: var(--card, #fff);
+  border-radius: 999px; padding: 5px 11px; font-size: 12px; cursor: pointer; color: #5d6b74;
+}
+.tatt-opt.on { background: #0f6f72; border-color: #0f6f72; color: #fff; font-weight: 700; }
+
+@media (max-width: 560px) {
+  .tq-row { flex-wrap: wrap; }
+  .tatt-row { flex-direction: column; align-items: stretch; gap: 7px; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tq-mark  { background: #142726; border-color: #1f4746; color: #6f8584; }
+  :root:not([data-theme="light"]) .tatt-row { background: #142726; }
+}
+:root[data-theme="dark"] .tq-mark  { background: #142726; border-color: #1f4746; color: #6f8584; }
+:root[data-theme="dark"] .tatt-row { background: #142726; }
