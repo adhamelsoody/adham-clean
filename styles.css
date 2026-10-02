@@ -9959,3 +9959,72 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
   color: #0f6f72; font-size: 13.5px; font-weight: 600;
 }
 .urq-new:hover { background: #eaf5f5; }
+
+/* =========================================================================
+   تطبيق المعلم — التنبيهات وزرّ التحضير والشريط السفليّ
+   -------------------------------------------------------------------------
+   خانةُ التنبيهات في أعلى الواجهة، وبجوارها زرُّ التحضير الصغير كما نصّت
+   وثيقةُ المتطلبات. والقائمةُ الجانبية تُخفى في واجهة المعلّم لأنّ التنقّل
+   الرئيسيّ صار بالشريط السفليّ.
+   ========================================================================= */
+.tch-top { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+.tch-top .ntf-box { flex: 1 1 auto; min-width: 0; }
+
+.tch-checkin {
+  flex: 0 0 auto; display: inline-flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 5px; min-width: 92px; padding: 13px 12px;
+  border-radius: 14px; cursor: pointer; font-size: 12.5px; font-weight: 600;
+  border: 1px solid var(--line, #e3e8ea); background: var(--card, #fff); color: #0f6f72;
+}
+.tch-checkin:hover { background: #eaf5f5; }
+.tch-checkin.done { background: #0f6f72; border-color: #0f6f72; color: #fff; }
+
+.ntf-box {
+  border: 1px solid var(--line, #e3e8ea); border-radius: 16px;
+  background: var(--card, #fff); padding: 12px 14px;
+}
+.ntf-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ntf-ttl { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; }
+.ntf-dot {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px;
+  padding: 0 6px; border-radius: 999px; background: #e04b4b; color: #fff;
+  font-size: 11.5px; font-weight: 700;
+}
+.ntf-acts { display: flex; gap: 8px; }
+.ntf-mini {
+  border: 0; background: transparent; cursor: pointer;
+  color: #0f6f72; font-size: 12.5px; font-weight: 600; padding: 4px 6px; border-radius: 8px;
+}
+.ntf-mini:hover { background: #eaf5f5; }
+
+.ntf-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.ntf-row {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%;
+  padding: 10px 11px; border-radius: 12px; cursor: pointer; text-align: start;
+  border: 1px solid transparent; background: #f7fafa; color: inherit;
+}
+.ntf-row.new { border-color: #cfe3e2; background: #eaf5f5; }
+.ntf-ico { flex: 0 0 auto; color: #0f6f72; margin-top: 1px; }
+.ntf-row.nt-warn .ntf-ico { color: #c98a0a; }
+.ntf-row.nt-ok   .ntf-ico { color: #148a52; }
+.ntf-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ntf-txt strong { font-size: 13.5px; font-weight: 700; }
+.ntf-txt small  { font-size: 12.5px; color: #5d6b74; line-height: 1.7; }
+.ntf-time { flex: 0 0 auto; font-size: 11.5px; color: #8e9aa2; }
+.ntf-empty { padding: 14px 4px; text-align: center; color: #8e9aa2; font-size: 13px; }
+
+/* واجهةُ المعلّم: لا قائمةَ جانبية */
+.sidebar.nav-off { display: none; }
+body.nav-off .main { margin-inline-start: 0; width: 100%; }
+
+@media (max-width: 760px) { .tch-top { flex-direction: column; }
+  .tch-checkin { flex-direction: row; width: 100%; } }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ntf-row { background: #142726; }
+  :root:not([data-theme="light"]) .ntf-row.new { background: #16302f; border-color: #1f4746; }
+  :root:not([data-theme="light"]) .ntf-txt small { color: #9fb4b3; }
+}
+:root[data-theme="dark"] .ntf-row { background: #142726; }
+:root[data-theme="dark"] .ntf-row.new { background: #16302f; border-color: #1f4746; }
+:root[data-theme="dark"] .ntf-txt small { color: #9fb4b3; }

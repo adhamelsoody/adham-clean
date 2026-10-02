@@ -5019,7 +5019,16 @@ window.userSave = function () {
   /* ---- تعديل: لا مساس بحساب الدخول ---- */
   if (id) {
     const u = DB.users.find(x => String(x.id) === String(id));
-    if (u) { Object.assign(u, data); persistSet("users", u); syncTeacherRecord(u); syncStudentRecord(u); }
+    if (u) {
+      Object.assign(u, data); persistSet("users", u);
+      syncTeacherRecord(u); syncStudentRecord(u);
+      /* «تم تعديل بيانات حسابك» — لصاحب الحساب لا لمن عدّله */
+      try {
+        const meId = String(((STATE && STATE.user) || {}).id || "");
+        if (String(u.id) !== meId) notifyUser(u.id, "accountEdited",
+          "عدّلت الإدارةُ بياناتِ حسابك.");
+      } catch (e) {}
+    }
     photoReset("us_photo");
     showToast("حُفظت البيانات", "success");
     closeModal(); mount();
@@ -24303,6 +24312,209 @@ window.tmsgSend = function () {
 };
 
 /* =========================================================================
+   تنبيهاتُ المعلّم — خانةٌ في أعلى واجهته
+   -------------------------------------------------------------------------
+   تلقائيةٌ من النظام عند كلّ إجراءٍ إداريٍّ يمسّ المعلّمَ أو حلقتَه أو
+   طلابَه. والأنواعُ في جدولٍ واحد (NOTIF_KINDS): إضافةُ نوعٍ جديدٍ سطرٌ
+   فيه لا غير — وهذا ما تعنيه الوثيقةُ بأن يكون النظامُ قابلاً للتوسّع.
+   ========================================================================= */
+const NOTIF_KINDS = {
+  studentAdded: { h: "طالب جديد",        icon: "users",       tone: "ok"   },
+  passChanged:  { h: "تحديث كلمة المرور", icon: "lock",        tone: "warn" },
+  circleMoved:  { h: "نقل إلى حلقة",     icon: "swap",        tone: "ok"   },
+  accountEdited:{ h: "تعديل بيانات الحساب", icon: "person",   tone: "info" },
+  circleEdited: { h: "تحديث بيانات الحلقة", icon: "book",     tone: "info" },
+  info:         { h: "تنبيه",            icon: "bell",        tone: "info" }
+};
+
+/* كتابةُ تنبيهٍ لمستخدم — بوّابةٌ واحدة لكلّ مُنبِّهٍ في النظام */
+function notifyUser(toId, kind, text, title) {
+  if (!toId) return;
+  const k = NOTIF_KINDS[kind] ? kind : "info";
+  const rec = {
+    id: "nt" + Date.now() + Math.floor(Math.random() * 1000),
+    toId: String(toId), kind: k, type: k,
+    title: title || NOTIF_KINDS[k].h,
+    text: String(text || ""), ts: Date.now(), read: false
+  };
+  if (!Array.isArray(DB.notifications)) DB.notifications = [];
+  DB.notifications.push(rec);
+  try { persistSet("notifications", rec); } catch (e) {}
+  return rec;
+}
+
+/* تنبيهاتُ صاحب الجلسة الموجَّهةُ إليه هو — الأحدثُ أوّلاً.
+   الاسمُ tchNotifs لا myNotifs: تلك قائمةٌ أخرى قائمةٌ في المشروع تجمع
+   ما وُجّه إلى طلاب حلقاته، ولا تُمسّ. */
+function tchNotifs() {
+  const u = (STATE && STATE.user) || {};
+  const keys = [String(u.id || ""), String(u.uid || ""), String(u.teacherId || "")]
+    .filter(Boolean);
+  const rec = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
+  if (rec && rec.id) keys.push(String(rec.id));
+
+  /* تُقرأ من DB لا من cur(): التنبيهُ معنونٌ بـ toId، وهو حصرٌ أضيقُ من
+     النطاق — لا يراه إلا صاحبُه. ومصفاةُ النطاق تُسقط ما لا منشأةَ له،
+     والتنبيهُ لا منشأةَ له أصلاً فكان يسقط كلُّه ولا يصل أحداً. */
+  return (Array.isArray(DB.notifications) ? DB.notifications : [])
+    .filter(n => n && keys.indexOf(String(n.toId || "")) > -1)
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+}
+
+window.notifRead = function (id) {
+  const n = (DB.notifications || []).find(x => String(x.id) === String(id));
+  if (!n || n.read) return;
+  n.read = true;
+  try { persistSet("notifications", n); } catch (e) {}
+  mount();
+};
+
+window.notifReadAll = function () {
+  let k = 0;
+  tchNotifs().forEach(n => { if (!n.read) { n.read = true; k++; try { persistSet("notifications", n); } catch (e) {} } });
+  if (k) showToast("عُلّمت " + toArabicDigits(k) + " تنبيهاً كمقروء", "success");
+  mount();
+};
+
+const NTF = { open: false };
+window.notifToggle = function () { NTF.open = !NTF.open; mount(); };
+
+function tchNotifBox() {
+  const list = tchNotifs();
+  const unread = list.filter(n => !n.read).length;
+  const show = list.slice(0, NTF.open ? 25 : 3);
+
+  return `<div class="ntf-box">
+    <div class="ntf-head">
+      <span class="ntf-ttl">${ic("bell", 18)} التنبيهات
+        ${unread ? `<b class="ntf-dot">${toArabicDigits(unread)}</b>` : ""}</span>
+      <div class="ntf-acts">
+        ${unread ? `<button type="button" class="ntf-mini" onclick="window.notifReadAll()">تعليم الكل مقروءاً</button>` : ""}
+        ${list.length > 3 ? `<button type="button" class="ntf-mini" onclick="window.notifToggle()">${
+          NTF.open ? "طيّ" : "عرض الكل"}</button>` : ""}
+      </div>
+    </div>
+    ${show.length ? `<div class="ntf-list">${show.map(n => {
+      const k = NOTIF_KINDS[n.kind] || NOTIF_KINDS.info;
+      return `<button type="button" class="ntf-row ${n.read ? "" : "new"} nt-${esc(k.tone)}"
+        onclick="window.notifRead('${jsAttr(n.id)}')">
+        <span class="ntf-ico">${ic(k.icon, 16)}</span>
+        <span class="ntf-txt"><strong>${esc(n.title || k.h)}</strong>
+          <small>${esc(n.text || "")}</small></span>
+        <span class="ntf-time">${urqDate(n.ts)}</span>
+      </button>`;
+    }).join("")}</div>`
+    : `<div class="ntf-empty">لا تنبيهات</div>`}
+  </div>`;
+}
+
+/* =========================================================================
+   تحضيرُ المعلّم نفسِه — زرٌّ صغيرٌ بجوار التنبيهات
+   -------------------------------------------------------------------------
+   يختار حلقتَه ثمّ يسجّل حضورَه. والسجلُّ يحمل staffId فيُفرَّق عن حضور
+   الطلاب كما هو عُرفُ المشروع (attvStaff). والإحصاءُ ليس هنا بل في
+   «تقرير المعلم» في الشريط السفليّ، كما نصّت الوثيقة.
+   ========================================================================= */
+function tchStaffId() {
+  const u = (STATE && STATE.user) || {};
+  const rec = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
+  return String((rec && rec.id) || u.teacherId || u.id || u.uid || "");
+}
+
+function tchMyAtt(dateISO) {
+  const sid = tchStaffId();
+  return (cur("attendance") || []).find(a => a && a.staffId &&
+    String(a.staffId) === sid && String(a.date) === String(dateISO)) || null;
+}
+
+window.tchCheckIn = function () {
+  const today = todayISO();
+  const mine = tchMyCircles();
+  const done = tchMyAtt(today);
+
+  openModal("تحضيري اليوم", urqDate(Date.now()),
+    `${done ? noteCard("سُجِّل حضورُك اليوم: <strong>" + esc(done.status || "—") +
+        "</strong>" + (done.circleName ? " — " + esc(done.circleName) : "") +
+        ". والتسجيلُ ثانيةً يستبدله.") : ""}
+     <div class="form-grid">
+      <div class="field full"><label>الحلقة</label>
+        <select id="ciCircle">${mine.length
+          ? mine.map(c => `<option value="${esc(c.id)}"${
+              done && String(done.circleId) === String(c.id) ? " selected" : ""
+            }>${esc(c.name || "—")}</option>`).join("")
+          : `<option value="">— لا حلقاتٍ موكّلةٌ إليك —</option>`}</select></div>
+      <div class="field full"><label>الحالة</label>
+        <select id="ciStatus">${["حاضر", "متأخر", "مستأذن"].map(s =>
+          `<option${done && done.status === s ? " selected" : ""}>${s}</option>`).join("")}</select></div>
+      <div class="field full"><label>ملاحظة</label>
+        <input id="ciNote" value="${done ? esc(done.note || "") : ""}" placeholder="اختياري"></div>
+     </div>`,
+    `<button class="btn btn-primary" onclick="window.tchCheckInDo()">تسجيل حضوري</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.tchCheckInDo = function () {
+  const cid = val("#ciCircle", "");
+  if (!cid) { showToast("لا حلقةَ لتسجيل الحضور فيها", "warn"); return; }
+  const today = todayISO();
+  const c = (cur("circles") || []).find(x => String(x.id) === String(cid));
+  const old = tchMyAtt(today);
+  const rec = old || { id: "sa" + Date.now(), staffId: tchStaffId(), date: today };
+  rec.circleId = String(cid);
+  rec.circleName = c ? (c.name || "") : "";
+  rec.status = val("#ciStatus", "حاضر");
+  rec.note = (val("#ciNote") || "").trim();
+  rec.ts = Date.now();
+  if (!Array.isArray(DB.attendance)) DB.attendance = [];
+  if (!old) DB.attendance.push(rec);
+  persistSet("attendance", rec);
+  closeModal();
+  showToast("سُجِّل حضورُك: " + rec.status, "success");
+  mount();
+};
+
+/* =========================================================================
+   تقرير المعلم — حضورُه هو وغيابُه وتأخّرُه
+   ========================================================================= */
+function teacherReport() {
+  const sid = tchStaffId();
+  const recs = (cur("attendance") || []).filter(a => a && a.staffId &&
+    String(a.staffId) === sid);
+  const n = s => recs.filter(r => r.status === s).length;
+  const present = n("حاضر"), late = n("متأخر"), excused = n("مستأذن"), absent = n("غائب");
+  const total = recs.length;
+  const pct = v => total ? Math.round(v / total * 100) : 0;
+
+  const cards = [
+    { k: "حضور",   v: present, t: "t-green"  },
+    { k: "تأخير",  v: late,    t: "t-amber"  },
+    { k: "استئذان", v: excused, t: "t-blue"   },
+    { k: "غياب",   v: absent,  t: "t-purple" }
+  ].map(x => `<div class="facility-card ${x.t}">
+      <div class="fc-num">${toArabicDigits(x.v)}</div>
+      <div class="fc-body"><span class="fc-label">${x.k}</span>
+        <span class="fc-label">${toArabicDigits(pct(x.v))}٪</span></div>
+    </div>`).join("");
+
+  const rows = recs.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))
+    .slice(0, 60);
+
+  return `<div class="page">
+    ${pageHead("تقرير المعلم", "حضورك وغيابك وتأخرك")}
+    <div class="grid g-4 stagger" style="margin-bottom:16px">${cards}</div>
+    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
+      <thead><tr><th>التاريخ</th><th>الحلقة</th><th>الحالة</th><th>ملاحظة</th></tr></thead>
+      <tbody>${rows.length ? rows.map(r => `<tr>
+        <td class="pt-num">${urqDate(r.ts) !== "—" ? esc(r.date || "—") : esc(r.date || "—")}</td>
+        <td class="pt-name">${esc(r.circleName || "—")}</td>
+        <td><span class="pt-badge">${esc(r.status || "—")}</span></td>
+        <td>${esc(r.note || "—")}</td></tr>`).join("")
+      : `<tr><td colspan="4" class="rep-empty"><span>لا سجلّاتِ حضورٍ بعد</span></td></tr>`}
+      </tbody></table></div></div>
+  </div>`;
+}
+
+/* =========================================================================
    بطاقاتُ حلقات المعلّم — صدرُ لوحته
    -------------------------------------------------------------------------
    تنصُّ الوثيقةُ على أن يرى المعلّمُ بعد دخوله حلقاتِه الموكّلةَ إليه وحدَها،
@@ -24481,6 +24693,14 @@ function teacherDashboard() {
     ${/* رسالةُ الترحيب التي تحدّدها الإدارة — تُعرض ما دامت مكتوبة */ ""}
     ${teacherWelcome() ? `<div class="tc-welcome">${ic("chat", 18)}
       <span>${esc(teacherWelcome())}</span></div>` : ""}
+    ${/* أعلى الواجهة: خانةُ التنبيهات، وبجانبها زرُّ التحضير الصغير */ ""}
+    <div class="tch-top">
+      ${tchNotifBox()}
+      <button type="button" class="tch-checkin${tchMyAtt(todayISO()) ? " done" : ""}"
+        onclick="window.tchCheckIn()">
+        ${ic("attend", 18)}<span>${tchMyAtt(todayISO()) ? "حضوري مسجَّل" : "التحضير"}</span>
+      </button>
+    </div>
     ${/* حلقاتُ المعلّم الموكّلةُ إليه وحدَها — صدرُ اللوحة كما نصّت الوثيقة */ ""}
     ${tchCircleCards()}
     ${teacherProfileCard()}
@@ -28445,6 +28665,7 @@ const PAGES = {
   /* شاشةُ الإعدادات نفسُها، لا نسخةٌ ثانيةٌ منها: SET_DENIED.teacher يحجب
      عن المعلّم كلَّ أقسامها إلا «إدارة الصلاحيات». */
   "teacher/settings": adminSettings,
+  "teacher/report": teacherReport,
   "student/dashboard": studentDashboard, "student/today": studentToday, "student/tomorrow": studentTomorrow,
   "student/progress": studentProgress, "student/attendance": studentAttendance, "student/results": studentResults,
   "student/notifications": studentNotifications,
@@ -28566,11 +28787,14 @@ function renderComplexSelect() {
    والباقي في الدرج كما كان — لا يُفقد شيء.
    ========================================================================= */
 const TABBAR = {
+  /* الأربعةُ التي نصّت عليها الوثيقة. و«حلقة اليوم» و«التحضير» و«التسميع»
+     لم تُحذف — شاشاتُها باقيةٌ في PAGES وفي قائمة NAV.teacher، وإعادتُها
+     إلى الشريط سطرٌ واحدٌ هنا. */
   teacher: [
-    { id: "dashboard", label: "الرئيسية", icon: "grid" },
-    { id: "today",     label: "حلقة اليوم", icon: "book" },
-    { id: "attendance",label: "التحضير",  icon: "attend" },
-    { id: "recite",    label: "التسميع",  icon: "pen" }
+    { id: "dashboard", label: "الرئيسية",     icon: "grid" },
+    { id: "messages",  label: "المحادثات",    icon: "chat" },
+    { id: "report",    label: "تقرير المعلم", icon: "report" },
+    { id: "settings",  label: "الإعدادات",    icon: "settings" }
   ],
   student: [
     { id: "dashboard", label: "الرئيسية", icon: "grid" },
@@ -28586,7 +28810,20 @@ const TABBAR = {
   ]
 };
 
+/* القائمةُ الجانبية (Hamburger) تُخفى حيث يكون التنقّلُ بالشريط السفليّ:
+   نصّت الوثيقةُ على ألّا تُستعمل للتنقّل الرئيسيّ في تطبيق المعلم. وهي
+   إخفاءٌ لا حذف — الشاشاتُ كلُّها باقيةٌ وتُفتح من الشريط ومن الروابط. */
+function hideSideNavFor(iface) {
+  const bar = document.querySelector(".sidebar");
+  const btn = document.getElementById("menuToggle");
+  const off = iface === "teacher";
+  if (bar) bar.classList.toggle("nav-off", off);
+  if (btn) btn.style.display = off ? "none" : "";
+  try { document.body.classList.toggle("nav-off", off); } catch (e) {}
+}
+
 function renderTabBar() {
+  try { hideSideNavFor(STATE.iface); } catch (e) {}
   const el = document.getElementById("tabbar");
   if (!el) return;
 
@@ -34143,6 +34380,14 @@ document.addEventListener("click", (e) => {
             if (c.teacherId) syncTeacherScope(c.teacherId);
           }
         } catch (e) {}
+
+        /* تنبيهُ المعلّمَين: «تم نقلك إلى حلقة أخرى» في وثيقة المتطلبات */
+        try {
+          if (oldTeacherId) notifyUser(oldTeacherId, "circleMoved",
+            "لم تعد حلقةُ «" + (c.name || "") + "» مسنَدةً إليك.");
+          if (c.teacherId) notifyUser(c.teacherId, "circleMoved",
+            "أُسنِدت إليك حلقةُ «" + (c.name || "") + "».");
+        } catch (e) {}
         (DB.students || []).forEach(st => {
           if (String(st.circleId) !== String(c.id) && String(st.circle) !== String(c.name)) return;
           st.teacher = c.teacher; st.teacherId = c.teacherId;
@@ -34151,6 +34396,11 @@ document.addEventListener("click", (e) => {
       }
 
       persistSet("circles", c);
+      /* «تم تعديل أو تحديث بيانات الحلقة» — تنبيهٌ لمعلّمها الحاليّ */
+      try {
+        if (c.teacherId) notifyUser(c.teacherId, "circleEdited",
+          "حُدِّثت بياناتُ حلقة «" + (c.name || "") + "».");
+      } catch (e) {}
       if (synced) showToast("نُقل " + toArabicDigits(synced) + " طالباً إلى المعلّم الجديد", "info");
       closeModal(); mount();
       showToast("تم حفظ تعديلات الحلقة");
@@ -34501,6 +34751,12 @@ document.addEventListener("click", (e) => {
         address: val("#s_addr", ""), health: val("#s_health", ""),
         joinedAt: Date.now() };
       DB.students.push(o); persistSet("students", o); photoReset("s_photo");
+      /* «تم إضافة طالب جديد إلى الحلقة» — تنبيهٌ لمعلّمها */
+      try {
+        const _c = (DB.circles || []).find(x => String(x.id) === String(o.circleId || ""));
+        if (_c && _c.teacherId) notifyUser(_c.teacherId, "studentAdded",
+          "أُضيف الطالبُ «" + (o.name || "") + "» إلى حلقة «" + (_c.name || "") + "».");
+      } catch (e) {}
       closeModal(); renderNav(); mount(); showToast("تمت إضافة الطالب"); break;
     }
     case "save-teacher": {
@@ -37631,7 +37887,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-0425";
+  var APP_BUILD = "20261002-1500";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
