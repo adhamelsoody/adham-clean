@@ -24831,7 +24831,7 @@ window.tcrcAddSave = function () {
    الأساسية: خطة التسميع · طلب اختبار · المراسلة إذا كانت صلاحية التواصل
    مفعلة». والخطّةُ تُعرض كما سجّلتها الإدارةُ — عرضاً لا تعديلاً.
    ========================================================================= */
-const TSTU = { id: "", tab: "plan" };
+const TSTU = { id: "", tab: "plan", day: "" };
 
 function tstuStudent() {
   return (cur("students") || []).find(s => String(s.id) === String(TSTU.id)) || null;
@@ -24840,6 +24840,7 @@ function tstuStudent() {
 window.tcrcOpenStudent = function (id) {
   TSTU.id = String(id || "");
   TSTU.tab = "plan";
+  TSTU.day = "";
   if (typeof go === "function") go("student");
   else { STATE.page = "student"; mount(); }
 };
@@ -24900,24 +24901,26 @@ function teacherStudent() {
       ${p.note ? `<div style="height:12px"></div>${
         noteCard("<strong>ملاحظة للطالب:</strong> " + esc(p.note))}` : ""}
 
-      <div style="height:16px"></div>
-      <div class="section-head"><h3>واجباتُ اليوم</h3></div>
-      <div class="tq-list">${(function () {
-        const list = tcrcDuties(st.id);
-        if (!list.length) return `<div class="ntf-empty">لا واجباتِ اليوم</div>`;
-        return list.map(a => `<div class="tq-row">
-          <div class="tq-name"><strong>${esc(a.kindName || a.kindAr || a.k || "واجب")}</strong>
-            <small>${esc(a.range || a.current || "—")}</small></div>
-          <span class="chip ${a.status === "done" ? "t-green" : "t-amber"}">${
-            a.status === "done" ? "منجز" : "لم يُنجز"}</span>
-        </div>`).join("");
-      })()}</div>`
+      `
     : emptyState("لا توجد خطة لهذا الطالب",
         "لم تُسنَد له خطةٌ بعد — راجع الإدارة."));
+
+  /* الواجباتُ في بطاقتها: تقويمٌ بأيّامه ثمّ شرائطُ واجبات اليوم المختار
+     ونتائجُه — وهي خارج حجب «الاطلاع على الخطة» لأنّها عملُ يومه لا مساره. */
+  const duties = `
+    <div class="section-head"><h3>واجباتُ ${
+      tstuDay() === tstuToday() ? "اليوم" : esc(tstuDay())}</h3></div>
+    ${tstuCalendar(st)}
+    <div style="height:12px"></div>
+    ${tstuDutyCards(st)}
+    ${tstuDayResults(st)}`;
 
   return `<div class="page">
     ${pageHead(st.name || "الطالب", (c && c.name) || st.circle || "", backArrow())}
     ${tools}
+    <div style="height:14px"></div>
+    ${tstuStatCards(st)}
+    <div class="card">${duties}</div>
     <div class="card" style="margin-top:12px">${plan}</div>
   </div>`;
 }
@@ -25031,6 +25034,407 @@ window.tstuExamSave = function () {
   closeModal();
   showToast("أُرسل طلبُ الاختبار إلى الإدارة", "success");
   mount();
+};
+
+/* =========================================================================
+   معلوماتُ الطالب — مؤشّراتُه وإحصاؤه في صدر صفحته
+   -------------------------------------------------------------------------
+   «تظهر في صفحة الطالب معلومات عامة وإحصائيات: مؤشر الإنجاز · عدد
+   التأخرات · مؤشر الالتزام · الإحصائيات الأخرى». كلُّها محسوبةٌ من
+   سجلّاتها لا مخزَّنةٌ: الإنجازُ من تقدّم المستوى، والتأخراتُ من الواجبات
+   غير المسوّاة، والالتزامُ من سجلّ الحضور.
+   ========================================================================= */
+function tstuAttStats(st) {
+  const recs = (cur("attendance") || []).filter(a => a && !a.staffId &&
+    String(a.studentId) === String(st.id));
+  const n = k => recs.filter(a => String(a.status) === k).length;
+  const present = n("حاضر"), late = n("متأخر"), excused = n("مستأذن"), absent = n("غائب");
+  const total = recs.length;
+  return { total, present, late, excused, absent,
+           pct: total ? Math.round((present + late + excused) / total * 100) : 0 };
+}
+
+function tstuStatCards(st) {
+  const plan = typeof planOfStudent === "function" ? planOfStudent(st) : null;
+  const lp = (plan && typeof levelProgress === "function") ? levelProgress(plan) : null;
+  const prog = lp ? Number(lp.pct) || 0 : (Number(st.progress) || 0);
+  const debts = typeof asgDebts === "function" ? asgDebts(st.id).length : 0;
+  const att = tstuAttStats(st);
+  const d = tstuDay();
+  const today = tstuAsgOf(st, d);
+  const done = today.filter(a => a.status === "done").length;
+  const recN = (cur("recitations") || []).filter(r => r &&
+    String(r.studentId) === String(st.id)).length;
+
+  const cards = [
+    { t: "t-green",  n: toArabicDigits(prog) + "٪", h: "مؤشر الإنجاز" },
+    { t: debts ? "t-red" : "t-green", n: debts, h: "عدد التأخرات" },
+    { t: att.pct >= 80 ? "t-green" : "t-amber",
+      n: toArabicDigits(att.pct) + "٪", h: "مؤشر الالتزام" },
+    { t: "t-blue",   n: toArabicDigits(done) + " / " + toArabicDigits(today.length),
+      h: "واجبات اليوم" },
+    { t: "t-purple", n: recN, h: "التسميعات" },
+    { t: "t-amber",  n: att.absent, h: attLabel("غائب") }
+  ];
+  return `<div class="grid g-4 stagger" style="margin-bottom:14px">${cards.map(x =>
+    `<div class="facility-card ${x.t}">
+      <div class="fc-num">${typeof x.n === "number" ? toArabicDigits(x.n) : esc(String(x.n))}</div>
+      <div class="fc-body"><span class="fc-label">${esc(x.h)}</span></div>
+    </div>`).join("")}</div>`;
+}
+
+/* =========================================================================
+   تقويمُ الطالب — واجباتُه حسب الأيام
+   -------------------------------------------------------------------------
+   «يكون اليوم الحالي محددًا بوضوح وتظهر واجباته، ويمكن للمعلم الرجوع إلى
+   الأيام السابقة لمعرفة واجبات اليوم السابق والتقييم الذي أدخله ونتائج
+   التسميع والأخطاء المسجلة، كما يستطيع الانتقال إلى الأيام القادمة».
+   الماضي والحاضر من السجلّ المحفوظ، والقادمُ يُولَّد عرضاً بلا كتابة.
+   ========================================================================= */
+function tstuToday() { return typeof attDate === "function" ? attDate() : todayISO(); }
+function tstuDay() { return TSTU.day || tstuToday(); }
+
+function tstuDayShift(iso, n) {
+  /* الحسابُ بتوقيت UTC وظهراً: الإزاحةُ بالتوقيت المحليّ ثمّ toISOString
+     تُسقط يوماً في المناطق الموجبة — فيرجع «أمس» يومَين. */
+  const d = new Date(String(iso) + "T12:00:00Z");
+  if (isNaN(d.getTime())) return iso;
+  d.setUTCDate(d.getUTCDate() + Number(n || 0));
+  return d.toISOString().slice(0, 10);
+}
+
+window.tstuPickDay = function (iso) { TSTU.day = String(iso || ""); mount(); };
+window.tstuDayStep = function (n) { TSTU.day = tstuDayShift(tstuDay(), Number(n) || 0); mount(); };
+window.tstuDayNow  = function () { TSTU.day = ""; mount(); };
+
+/* واجباتُ يومٍ بعينه: المحفوظُ أوّلاً، والقادمُ توليدٌ للعرض لا للكتابة */
+function tstuAsgOf(st, d) {
+  const stored = (cur("assignments") || []).filter(a => a &&
+    String(a.studentId) === String(st.id) && String(a.date) === String(d));
+  if (stored.length) return stored;
+  if (String(d) >= String(tstuToday()) && typeof todayAssignments === "function") {
+    try { return todayAssignments(st.id, d, false) || []; } catch (e) { return []; }
+  }
+  return [];
+}
+
+function tstuCalendar(st) {
+  const sel = tstuDay(), now = tstuToday();
+  const days = [];
+  for (let i = -3; i <= 3; i++) days.push(tstuDayShift(sel, i));
+  const cells = days.map(d => {
+    const list = tstuAsgOf(st, d);
+    const done = list.filter(a => a.status === "done").length;
+    const cls = (d === sel ? " on" : "") + (d === now ? " today" : "");
+    return `<button type="button" class="tcal-day${cls}" onclick="window.tstuPickDay('${jsAttr(d)}')">
+      <small>${esc(dayNameOf(d) || "")}</small>
+      <strong>${toArabicDigits(Number(String(d).slice(8, 10)))}</strong>
+      <span class="tcal-dots">${list.length
+        ? list.map(a => `<i class="tcal-dot${a.status === "done" ? " ok" : ""}"></i>`).join("")
+        : `<i class="tcal-none"></i>`}</span>
+      ${list.length ? `<em>${toArabicDigits(done)}/${toArabicDigits(list.length)}</em>` : `<em>—</em>`}
+    </button>`;
+  }).join("");
+
+  return `<div class="tcal">
+    <div class="tcal-bar">
+      <button type="button" class="tcal-nav" onclick="window.tstuDayStep(-7)"
+        title="الأسبوع السابق">‹</button>
+      <strong>${esc(sel)}${sel === now ? " · اليوم" : ""}</strong>
+      <button type="button" class="tcal-nav" onclick="window.tstuDayStep(7)"
+        title="الأسبوع القادم">›</button>
+      ${sel !== now ? `<button type="button" class="btn btn-ghost btn-sm"
+        onclick="window.tstuDayNow()">اليوم</button>` : ""}
+    </div>
+    <div class="tcal-strip">${cells}</div>
+  </div>`;
+}
+
+/* =========================================================================
+   بطاقاتُ الواجبات — شرائطُ بمقدارها، وبالضغط تفاصيلُها
+   ========================================================================= */
+function tstuRange(a) {
+  if (!a || !a.fromS) return "";
+  return surahName(a.fromS) + " " + toArabicDigits(a.fromA || 1) +
+    (a.toS ? " — " + surahName(a.toS) + " " + toArabicDigits(a.toA || 1) : "");
+}
+
+function tstuDutyCards(st) {
+  const d = tstuDay();
+  const list = tstuAsgOf(st, d);
+  if (!list.length) {
+    return `<div class="ntf-empty">لا واجباتِ هذا اليوم</div>`;
+  }
+  return `<div class="tdt-list">${list.map(a => {
+    const t = typeof hwType === "function" ? hwType(String(a.kind || "").replace("_makeup", "")) : {};
+    const parts = typeof asgParts === "function" ? asgParts(a) : [];
+    return `<button type="button" class="tdt-card" onclick="window.tstuDuty('${jsAttr(a.id)}')">
+      <span class="tdt-dot" style="background:${esc(t.color || "#4bdee4")}"></span>
+      <span class="tdt-body">
+        <strong>${esc(a.kindName || t.h || "واجب")}</strong>
+        ${a.qty ? `<span class="tdt-qty">${toArabicDigits(a.qty)} ${esc(a.unit || "وجه")}</span>` : ""}
+        ${tstuRange(a) ? `<small>${esc(tstuRange(a))}</small>` : ""}
+        ${parts.length ? `<small class="tdt-parts">${toArabicDigits(asgDoneQty(a))} من ${
+          toArabicDigits(a.qty || 0)} · ${toArabicDigits(parts.length)} جلسة</small>` : ""}
+      </span>
+      <span class="chip ${(typeof ASG_TINT !== "undefined" && ASG_TINT[a.status]) || ""}">${
+        esc((typeof ASG_TEXT !== "undefined" && ASG_TEXT[a.status]) || a.status || "")}${
+        a.score != null ? " · " + toArabicDigits(a.score) + "٪" : ""}</span>
+    </button>`;
+  }).join("")}</div>`;
+}
+
+/* نتائجُ اليوم: التسميعُ وتقييمُه والأخطاءُ المسجَّلة — لليوم المختار */
+function tstuDayResults(st) {
+  const d = tstuDay();
+  const recs = (cur("recitations") || []).filter(r => r &&
+    String(r.studentId) === String(st.id) && String(r.date) === String(d));
+  const marks = (Array.isArray(DB.mushafMarks) ? DB.mushafMarks : []).filter(m => m &&
+    String(m.studentId) === String(st.id) && String(m.date) === String(d));
+  if (!recs.length && !marks.length) return "";
+
+  const byKind = {};
+  marks.forEach(m => { byKind[m.kind || "—"] = (byKind[m.kind || "—"] || 0) + 1; });
+
+  return `<div style="height:14px"></div>
+    <div class="section-head"><h3>نتائجُ ${d === tstuToday() ? "اليوم" : esc(d)}</h3></div>
+    ${recs.length ? `<div class="tdt-list">${recs.map(r => `<div class="tdt-card">
+      <span class="tdt-body">
+        <strong>${esc(r.kind || "تسميع")}</strong>
+        ${r.fromName ? `<small>${esc(r.fromName)} ${toArabicDigits(r.fromA || 1)} — ${
+          esc(r.toName || r.fromName)} ${toArabicDigits(r.toA || 1)}</small>` : ""}
+        <small>الأخطاء: ${toArabicDigits(Number(r.errors) || 0)} · التجويد: ${
+          toArabicDigits(Number(r.tajweed) || 0)}</small>
+      </span>
+      <span class="chip t-green">${esc(r.grade || "—")}${
+        r.score != null ? " · " + toArabicDigits(r.score) + "٪" : ""}</span>
+    </div>`).join("")}</div>` : ""}
+    ${marks.length ? `<div class="chip-list" style="margin-top:10px">${
+      Object.keys(byKind).map(k => `<span class="chip t-amber">${esc(k)}: ${
+        toArabicDigits(byKind[k])}</span>`).join("")}</div>` : ""}`;
+}
+
+/* =========================================================================
+   تفاصيلُ الواجب · تعديلُ مقداره · تقسيمُه على جلسات
+   -------------------------------------------------------------------------
+   «إذا كانت لدى المعلم صلاحية تعديل الواجب يستطيع تعديل مقداره، وإلا ظهر
+   له المقدار المعتمد من الإدارة». والتقسيمُ بصلاحية splitDuty: كلُّ نقرةٍ
+   على «تقسيم» تزيد خانةً فيها من وإلى والمقدار، والمقدارُ الأصليُّ أعلى،
+   والتقييمُ النهائيُّ في الأعلى يُحفظ عند إتمام التقسيمات.
+   ========================================================================= */
+const TSPL = { id: "", rows: 1 };
+
+function tstuAsgById(id) {
+  return (cur("assignments") || []).find(a => String(a.id) === String(id)) ||
+         (Array.isArray(DB.assignments)
+           ? DB.assignments.find(a => String(a.id) === String(id)) : null) || null;
+}
+
+function tsplRow(i, a) {
+  const sOpts = (QSURAHS || []).map(s =>
+    `<option value="${s.i}"${String(s.i) === String(a.fromS || "") ? " selected" : ""}
+      >${s.i}. ${esc(s.n)}</option>`).join("");
+  return `<div class="tspl-row" data-i="${i}">
+    <span class="tspl-n">${toArabicDigits(i + 1)}</span>
+    ${sOpts ? `<select id="sp_fs_${i}" class="tspl-s">${sOpts}</select>
+      <input id="sp_fa_${i}" class="tspl-a" type="number" min="1" dir="ltr" placeholder="من آية">
+      <select id="sp_ts_${i}" class="tspl-s">${sOpts}</select>
+      <input id="sp_ta_${i}" class="tspl-a" type="number" min="1" dir="ltr" placeholder="إلى آية">`
+    : `<span class="muted">جارٍ تحميل فهرس السور…</span>`}
+    <input id="sp_q_${i}" class="tspl-q" type="number" min="0" step="0.5" dir="ltr"
+      placeholder="المقدار">
+  </div>`;
+}
+
+function tsplBox(a) {
+  const done = typeof asgDoneQty === "function" ? asgDoneQty(a) : 0;
+  const left = typeof asgRemain === "function" ? asgRemain(a) : (Number(a.qty) || 0);
+  const parts = typeof asgParts === "function" ? asgParts(a) : [];
+  let rows = "";
+  for (let i = 0; i < TSPL.rows; i++) rows += tsplRow(i, a);
+
+  return `<div class="tspl">
+    <div class="tspl-sum">
+      <span>المقدار الأصليّ: <strong>${toArabicDigits(a.qty || 0)} ${esc(a.unit || "وجه")}</strong></span>
+      <span>سُمّع: <strong>${toArabicDigits(done)}</strong></span>
+      <span>الباقي: <strong>${toArabicDigits(left)}</strong></span>
+    </div>
+    <div class="tspl-final">
+      <label>التقييم النهائي</label>
+      <input id="sp_score" type="number" min="0" max="100" dir="ltr" placeholder="٠ - ١٠٠">
+    </div>
+    ${parts.length ? `<div class="tspl-log">${parts.map((p, i) =>
+      `<span class="chip t-green">جلسة ${toArabicDigits(i + 1)}: ${
+        toArabicDigits(p.qty || 0)}${p.score != null ? " · " + toArabicDigits(p.score) + "٪" : ""}</span>`
+      ).join("")}</div>` : ""}
+    <div id="tsplRows">${rows}</div>
+    <button type="button" class="btn btn-soft btn-sm" onclick="window.tsplAdd()">
+      ${ic("plus", 15)} تقسيم</button>
+  </div>`;
+}
+
+window.tsplAdd = function () {
+  TSPL.rows = Math.min(12, Number(TSPL.rows || 1) + 1);
+  const a = tstuAsgById(TSPL.id);
+  const box = document.getElementById("tsplRows");
+  if (a && box) box.insertAdjacentHTML("beforeend", tsplRow(TSPL.rows - 1, a));
+};
+
+window.tsplSave = function () {
+  const a = tstuAsgById(TSPL.id);
+  if (!a) { showToast("الواجب غير موجود", "warn"); return; }
+  if (!teacherCan("splitDuty")) {
+    showToast("صلاحيةُ تقسيم الواجب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const u = (STATE && STATE.user) || {};
+  const got = [];
+  for (let i = 0; i < TSPL.rows; i++) {
+    const q = Number(val("#sp_q_" + i) || 0);
+    if (!q) continue;
+    got.push({
+      qty: q, score: null, note: "",
+      fromS: Number(val("#sp_fs_" + i) || 0), fromA: Number(val("#sp_fa_" + i) || 0),
+      toS: Number(val("#sp_ts_" + i) || 0),   toA: Number(val("#sp_ta_" + i) || 0),
+      date: tstuToday(), by: u.name || "", ts: Date.now()
+    });
+  }
+  if (!got.length) { showToast("أدخل مقدارَ جلسةٍ واحدةٍ على الأقل", "warn"); return; }
+
+  if (!Array.isArray(a.parts)) a.parts = [];
+  got.forEach(p => a.parts.push(p));
+  a.doneQty  = asgDoneQty(a);
+  a.shortQty = asgRemain(a);
+  persistSet("assignments", a);
+
+  /* التقييمُ النهائيُّ في الأعلى: يُحفظ عند إتمام التقسيمات فيُغلق الواجب */
+  const sc = val("#sp_score", "");
+  if (a.shortQty <= 0 && sc !== "" && typeof window.asgClose === "function") {
+    window.asgClose(a.id, Number(sc));
+  }
+  closeModal();
+  showToast("حُفظت " + toArabicDigits(got.length) + " جلسة", "success");
+  mount();
+};
+
+window.tstuQtySave = function (id) {
+  const a = tstuAsgById(id);
+  if (!a) return;
+  if (!teacherCan("planQty")) {
+    showToast("صلاحيةُ تعديل المقدار غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const q = Number(val("#tsd_qty") || 0);
+  if (!(q > 0)) { showToast("المقدار غير صحيح", "warn"); return; }
+  a.qty = q;
+  a.shortQty = typeof asgRemain === "function" ? asgRemain(a) : 0;
+  persistSet("assignments", a);
+  closeModal();
+  showToast("عُدِّل مقدارُ الواجب", "success");
+  mount();
+};
+
+window.tstuDuty = function (id) {
+  const a = tstuAsgById(id);
+  if (!a) { showToast("الواجب غير موجود", "warn"); return; }
+  if (typeof reciteLoadSurahs === "function") reciteLoadSurahs();
+  TSPL.id = String(id); TSPL.rows = 1;
+  const t = typeof hwType === "function" ? hwType(String(a.kind || "").replace("_makeup", "")) : {};
+  const canQty   = teacherCan("planQty");
+  const canSplit = teacherCan("splitDuty") &&
+    (typeof asgSplittable === "function" ? asgSplittable(a) : false);
+
+  openModal("تفاصيل الواجب", esc(a.kindName || t.h || ""),
+    `<div class="form-grid">
+      <div class="field"><label>نوع الواجب</label>
+        <div class="tsd-val">${esc(a.kindName || t.h || "—")}</div></div>
+      <div class="field"><label>اسم السورة</label>
+        <div class="tsd-val">${a.fromS ? esc(surahName(a.fromS)) : "—"}</div></div>
+      <div class="field"><label>من آية</label>
+        <div class="tsd-val">${a.fromA ? toArabicDigits(a.fromA) : "—"}</div></div>
+      <div class="field"><label>إلى آية</label>
+        <div class="tsd-val">${a.toA ? (a.toS && a.toS !== a.fromS
+          ? esc(surahName(a.toS)) + " " : "") + toArabicDigits(a.toA) : "—"}</div></div>
+      ${canQty ? `<div class="field"><label>المقدار</label>
+        <input id="tsd_qty" type="number" min="0" step="0.5" dir="ltr"
+          value="${Number(a.qty) || 0}"></div>
+        <div class="field"><label>&nbsp;</label>
+          <button type="button" class="btn btn-soft"
+            onclick="window.tstuQtySave('${jsAttr(a.id)}')">${ic("check", 15)} حفظ المقدار</button></div>`
+      : `<div class="field"><label>المقدار المعتمد من الإدارة</label>
+          <div class="tsd-val">${toArabicDigits(a.qty || 0)} ${esc(a.unit || "وجه")}</div></div>`}
+    </div>
+
+    ${a.fromS ? `<button type="button" class="tsd-ayah"
+      onclick="window.tstuMushaf('${jsAttr(a.id)}')">
+      <span class="tsd-ayah-h">${esc(surahName(a.fromS))} – الآية ${toArabicDigits(a.fromA || 1)}</span>
+      <span class="tsd-ayah-t" id="tsdAyah">…</span>
+      <span class="tsd-ayah-go">${ic("book", 15)} افتح في المصحف</span>
+    </button>` : ""}
+
+    ${canSplit ? tsplBox(a)
+      : (typeof asgSplittable === "function" && asgSplittable(a)
+        ? noteCard("صلاحيةُ تقسيم الواجب غيرُ مفعَّلةٍ لحسابك.") : "")}`,
+    canSplit
+      ? `<button class="btn btn-primary" onclick="window.tsplSave()">حفظ الجلسات</button>
+         <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`
+      : `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+
+  /* نصُّ الآية الأولى: يُجلب من محرّك المصحف ثمّ يُوضع في موضعه */
+  if (a.fromS && typeof window.Quran !== "undefined" && window.Quran.range) {
+    window.Quran.range(Number(a.fromS), Number(a.fromA || 1),
+                       Number(a.fromS), Number(a.fromA || 1))
+      .then(rows => {
+        const el = document.getElementById("tsdAyah");
+        if (el && rows && rows[0] && rows[0].w) el.textContent = rows[0].w.join(" ");
+      }).catch(() => {});
+  }
+};
+
+/* =========================================================================
+   المصحفُ من الواجب — وألوانُ الأخطاء بحسب نوع الواجب
+   -------------------------------------------------------------------------
+   «عند الضغط على الآية ينتقل التطبيق مباشرة إلى الصفحة التي توجد فيها»،
+   و«تتحكم الإدارة بألوان الأخطاء حسب نوع الواجب». اللونُ من ضبط الإدارة
+   في «لون الخطأ في المصحف» لكلّ ركن (pillarRule) — فإن لم تحدّده الإدارةُ
+   بقي لونُ نوع الخطأ كما هو.
+   ========================================================================= */
+const MUSD = { asgId: "", kind: "", name: "" };
+
+function musDutyColor(kindOrName) {
+  const k = String(kindOrName || "");
+  if (!k) return "";
+  let c = "";
+  try {
+    const t = typeof hwType === "function" ? hwType(k) : null;
+    const nm = (t && t.k === k) ? (t.h || "") : k;
+    if (typeof pillarRule === "function") {
+      const r = pillarRule(nm) || pillarRule(k);
+      c = (r && r.color) || "";
+    }
+  } catch (e) { c = ""; }
+  return c;
+}
+
+/* نوعُ الواجب لكلّ علامةٍ محفوظة — ليُلوَّن بلونه */
+function studentMarkDuty(st) {
+  const out = {};
+  if (!st) return out;
+  (Array.isArray(DB.mushafMarks) ? DB.mushafMarks : []).forEach(r => {
+    if (!r || String(r.studentId) !== String(st.id)) return;
+    if (r.asgKind) out[r.key] = String(r.asgKind);
+  });
+  return out;
+}
+
+window.tstuMushaf = function (id) {
+  const a = tstuAsgById(id);
+  if (!a) return;
+  MUSD.asgId = String(a.id);
+  MUSD.kind  = String(a.kind || "").replace("_makeup", "");
+  MUSD.name  = String(a.kindName || "");
+  try { closeModal(); } catch (e) {}
+  if (typeof window.reciteOpenMushaf === "function") {
+    window.reciteOpenMushaf(a.studentId, a.fromS, a.fromA || 1);
+  }
 };
 
 /* =========================================================================
@@ -26310,6 +26714,10 @@ function saveMark(st, key, kind) {
     id: id, studentId: String(st.id), student: st.name || "",
     key: String(key), s: Number(parts[0]), a: Number(parts[1]), w: Number(parts[2]),
     kind: kind, date: attDate(),
+    /* نوعُ الواجب الذي جرى التسميعُ عليه — به يُلوَّن الخطأ إن حدّدت
+       الإدارةُ لوناً لركنه. يُوسَم متى فُتح المصحفُ من واجبٍ بعينه. */
+    asgKind: (typeof MUSD !== "undefined" && MUSD.kind) ? String(MUSD.kind) : "",
+    asgId:   (typeof MUSD !== "undefined" && MUSD.asgId) ? String(MUSD.asgId) : "",
     /* وسم الدورة: بدونه تختلط أخطاء فصلٍ بفصل، ولا تُفرز شهادةُ دورةٍ قديمة */
     termId: typeof activeTermId === "function" ? (activeTermId() || termOfDate(attDate())) : "",
     complexId: st.complexId || STATE.complexId, mosqueId: st.mosqueId || "",
@@ -26408,8 +26816,14 @@ function mushafSheet(n) {
       const key = v.s + ":" + v.a + ":" + i;
       const k = m.marks[key];
       const cls = k ? " marked " + musMark(k).cls : "";
-      const ttl = k ? ` title="${esc(musMark(k).h)}"` : "";
-      return `<span class="mus-w${cls}"${ttl} onclick="window.mushafMark('${key}')">${esc(w)}</span>`;
+      /* لونُ الخطأ بحسب نوع الواجب متى حدّدته الإدارةُ لركنه، وإلّا فلونُ
+         نوع الخطأ كما هو — فلا يُفقد تمييزُ النسيان من التشكيل. */
+      const dk = k ? (m.dkind || {})[key] : "";
+      const dc = dk && typeof musDutyColor === "function" ? musDutyColor(dk) : "";
+      const sty = dc ? ` style="background:${esc(dc)}"` : "";
+      const ttl = k ? ` title="${esc(musMark(k).h + (dk && MUSD.name && String(MUSD.kind) === String(dk)
+        ? " — " + MUSD.name : ""))}"` : "";
+      return `<span class="mus-w${cls}"${ttl}${sty} onclick="window.mushafMark('${key}')">${esc(w)}</span>`;
     }).join(" ");
     const hl = m.hl && m.hl === v.s + ":" + v.a ? " mus-hl" : "";
     body += `<span class="mus-ayah${hl}">${words} <span class="mus-num">${toArabicDigits(v.a)}</span></span> `;
@@ -26440,6 +26854,8 @@ function mushafPage() {
   const musSt = mushafStudent();
   try { musLiveSync(musSt ? musSt.id : ""); } catch (e) {}
   m.marks = musSt ? studentMarks(musSt) : (isReader ? {} : m.marks);
+  /* نوعُ الواجب لكلّ علامة — ليُلوَّن الخطأُ بلون ركنه حين تحدّده الإدارة */
+  m.dkind = musSt && typeof studentMarkDuty === "function" ? studentMarkDuty(musSt) : {};
 
   /* الفرشة: الصفحة اليمنى هي الأقدم رقماً لأن القراءة من اليمين لليسار،
      تماماً كالمصحف الورقي المفتوح. الشاشات الضيقة تعرض صفحة واحدة. */
@@ -38417,7 +38833,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-1620";
+  var APP_BUILD = "20261002-1700";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
