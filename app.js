@@ -17609,6 +17609,11 @@ const PTS_REASONS = [
 window.ptsGrant = function (studentId) {
   const st = (cur("students") || []).find(x => String(x.id) === String(studentId));
   if (!st) return;
+  /* «قابلةٌ للتحكم من خلال صلاحيات الإدارة»: المفتاحُ points في إدارة
+     الصلاحيات — والإداريُّ لا تلزمه، teacherCan تُرجع له السماح. */
+  if (typeof teacherCan === "function" && !teacherCan("points")) {
+    showToast("صلاحيةُ إضافة النقاط غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
 
   openModal("منح نقاط — " + (st.name || ""),
     "الرصيد الحالي: " + toArabicDigits(ptsOf(st)) + " نقطة",
@@ -17649,6 +17654,9 @@ window.ptsGrantDo = function () {
   const sid = val("#pg_sid");
   const st = (cur("students") || []).find(x => String(x.id) === String(sid));
   if (!st) return;
+  if (typeof teacherCan === "function" && !teacherCan("points")) {
+    showToast("صلاحيةُ إضافة النقاط غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
 
   const n = Math.round(Number(val("#pg_n")));
   if (!isFinite(n) || n === 0) { showToast("اكتب عدداً غير الصفر", "warn"); return; }
@@ -17668,6 +17676,9 @@ window.ptsGrantDo = function () {
     id: "pt" + Date.now(), studentId: String(st.id), student: st.name || "",
     n, why, by: u.name || u.email || "—", ts: Date.now(),
     date: todayISO(), after: st.points,
+    /* نطاقُ السجلّ من نطاق الطالب: بدونه يسقط من cur() عند كلّ حسابٍ
+       محصورٍ بمسجد — فيُمنح المعلّمُ نقاطاً لا يراها هو ولا مديرُ مسجده. */
+    mosqueId: st.mosqueId || "", complexId: st.complexId != null ? st.complexId : "",
     termId: typeof activeTermId === "function" ? activeTermId() : ""
   };
   if (!Array.isArray(DB.pointsLog)) DB.pointsLog = [];
@@ -20483,6 +20494,10 @@ function setPanelTeacherApp() {
         <button type="button" class="btn btn-primary" onclick="window.twSave()">حفظ الرسالة</button>
       </div>` : ""}
     </div>
+
+    ${/* عناصرُ التقييم والتقرير: ضبطُهما هنا لأنّهما ممّا يظهر للمعلّم */""}
+    ${evalCfgPanel()}
+    ${reptCfgPanel()}
   </div>`;
 }
 
@@ -24146,8 +24161,15 @@ function teacherMessages() {
       </div>`).join("")
     : emptyState("لا رسائل بعد", "ما يصلك من أولياء الأمور أو الإدارة يظهر هنا.");
 
-  /* الإدارة وجهةٌ بلا اختيار: تصل المشرفَ والمدير */
-  const needPick = TMSG.to !== "admin";
+  /* الإدارة وجهةٌ بلا اختيار: تصل المشرفَ والمدير، والحلقةُ تُختار بنفسها */
+  const tabs = tmsgTabs();
+  if (!tabs.length) {
+    return `<div class="page">${pageHead("الرسائل", esc(t.name || ""))}
+      <div class="card">${emptyState("لا محادثاتٍ متاحةٌ لحسابك",
+        "صلاحياتُ المراسلة غيرُ مفعَّلةٍ — راجع الإدارة.")}</div></div>`;
+  }
+  if (!tabs.some(x => x[0] === TMSG.to)) TMSG.to = tabs[0][0];
+  const needPick = TMSG.to !== "admin" && TMSG.to !== "circle";
 
   return `<div class="page">
     ${pageHead("الرسائل", esc(t.name || ""))}
@@ -24161,13 +24183,22 @@ function teacherMessages() {
 
       <div style="padding:0 16px 16px">
         <div class="fac-tabs" style="margin-bottom:14px">
-          ${[["student", "الطلاب", "people"],
-             ["parent",  "أولياء الأمور", "person"],
-             ["admin",   "الإدارة", "shield"]].map(([k, h, i]) =>
+          ${tabs.map(([k, h, i]) =>
             `<button type="button" class="fac-tab${TMSG.to === k ? " on" : ""}"
               onclick="window.tmsgTo('${k}')">${ic(i, 16)}<span>${esc(h)}</span></button>`).join("")}
         </div>
 
+        ${TMSG.to === "circle" ? `
+        <div class="form-grid" style="margin-bottom:9px">
+          <div class="field"><label>الحلقة</label>
+            <select onchange="window.tmsgCircle(this.value)">${
+              (typeof tchMyCircles === "function" ? tchMyCircles() : []).map(c2 =>
+                `<option value="${jsAttr(c2.id)}"${String(c2.id) === tmsgCircleId()
+                  ? " selected" : ""}>${esc(c2.name || "—")}</option>`).join("")}</select></div>
+        </div>
+        ${noteCard("تصل طلابَ الحلقة جميعاً — " + toArabicDigits(
+          (cur("students") || []).filter(x => String(x.circleId || "") === tmsgCircleId() &&
+            x.status !== "متوقف").length) + " طالباً.")}` : ""}
         ${needPick ? `
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px">
           <input class="mig-dest" placeholder="ابحث بالاسم" style="max-width:170px"
@@ -24260,9 +24291,22 @@ window.tmsgSend = function () {
     } catch (e) {}
 
   } else {
-    if (!TMSG.picked.length) { showToast("اختر طالباً واحداً على الأقلّ", "warn"); return; }
+    /* الرسالةُ العامة للحلقة: مستقبلوها طلابُها جميعاً — بصلاحية msgCircle */
+    let picks = TMSG.picked;
+    if (TMSG.to === "circle") {
+      if (!teacherCan("msgCircle")) {
+        showToast("صلاحيةُ الرسالة العامة غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+      }
+      const cid = tmsgCircleId();
+      picks = (cur("students") || []).filter(x => x &&
+        String(x.circleId || "") === String(cid) && x.status !== "متوقف").map(x => String(x.id));
+      if (!picks.length) { showToast("لا طلابَ في الحلقة", "warn"); return; }
+    } else if (!teacherCan("msgStudents")) {
+      showToast("صلاحيةُ مراسلة الطلاب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+    }
+    if (!picks.length) { showToast("اختر طالباً واحداً على الأقلّ", "warn"); return; }
 
-    TMSG.picked.forEach((sid, i) => {
+    picks.forEach((sid, i) => {
       const st = (cur("students") || []).find(x => String(x.id) === String(sid));
       if (!st) return;
 
@@ -24281,7 +24325,9 @@ window.tmsgSend = function () {
         toId,
         studentId: String(st.id), student: st.name || "",
         circleId: String(st.circleId || ""),
-        forParent: TMSG.to === "parent"
+        forParent: TMSG.to === "parent",
+        /* وسمُ الرسالة العامة: تُعرف في السجلّ أنّها للحلقة لا لفرد */
+        circleMsg: TMSG.to === "circle"
       }, base);
 
       if (!Array.isArray(DB.site_messages)) DB.site_messages = [];
@@ -24486,31 +24532,108 @@ function teacherReport() {
   const pct = v => total ? Math.round(v / total * 100) : 0;
 
   const cards = [
-    { k: "حضور",   v: present, t: "t-green"  },
-    { k: "تأخير",  v: late,    t: "t-amber"  },
-    { k: "استئذان", v: excused, t: "t-blue"   },
-    { k: "غياب",   v: absent,  t: "t-purple" }
+    { k: attLabel("حاضر"),   v: present, t: "t-green"  },
+    { k: attLabel("متأخر"),  v: late,    t: "t-amber"  },
+    { k: attLabel("مستأذن"), v: excused, t: "t-blue"   },
+    { k: attLabel("غائب"),   v: absent,  t: "t-purple" }
   ].map(x => `<div class="facility-card ${x.t}">
       <div class="fc-num">${toArabicDigits(x.v)}</div>
-      <div class="fc-body"><span class="fc-label">${x.k}</span>
+      <div class="fc-body"><span class="fc-label">${esc(x.k)}</span>
         <span class="fc-label">${toArabicDigits(pct(x.v))}٪</span></div>
     </div>`).join("");
 
   const rows = recs.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))
     .slice(0, 60);
 
+  /* =====================================================================
+     إحصاءُ الأداء: تسميعاتُه وطلابُه والواجباتُ المنجَزة
+     ---------------------------------------------------------------------
+     نسبةُ التسميع إليه: بـ staffId إن وُسم، وإلّا بحلقته — فالسجلّاتُ
+     القديمةُ بلا وسمٍ لا تسقط من تقريره.
+     ===================================================================== */
+  const mine = typeof tchMyCircles === "function" ? tchMyCircles() : [];
+  const cids = new Set(mine.map(c => String(c.id)));
+  const isMineRec = r => !!r && (String(r.staffId || "") === sid ||
+    (!r.staffId && cids.has(String(r.circleId || ""))));
+  const myRecs = (cur("recitations") || []).filter(isMineRec);
+  const studIds = new Set((cur("students") || [])
+    .filter(s2 => cids.has(String(s2.circleId || ""))).map(s2 => String(s2.id)));
+  const myAsg = (cur("assignments") || []).filter(a => a && studIds.has(String(a.studentId)));
+  const asgDone = myAsg.filter(a => a.status === "done").length;
+  const recStuds = new Set(myRecs.map(r => String(r.studentId))).size;
+
+  const perf = [
+    { t: "t-green",  n: myRecs.length, h: "التسميعات" },
+    { t: "t-blue",   n: recStuds,      h: "طلابٌ سُمّعوا" },
+    { t: "t-amber",  n: asgDone,       h: "واجباتٌ أُنجزت" },
+    { t: "t-purple", n: studIds.size,  h: "طلابي" }
+  ].map(x => `<div class="facility-card ${x.t}">
+      <div class="fc-num">${toArabicDigits(x.n)}</div>
+      <div class="fc-body"><span class="fc-label">${esc(x.h)}</span></div>
+    </div>`).join("");
+
+  /* إحصاءُ الأسبوع: سبعةُ أيّامٍ بتسميعاتها وواجباتها المنجَزة */
+  const today = typeof attDate === "function" ? attDate() : todayISO();
+  const week = [];
+  for (let i2 = 6; i2 >= 0; i2--) {
+    const d2 = typeof tstuDayShift === "function" ? tstuDayShift(today, -i2) : today;
+    week.push({
+      d: d2, nm: dayNameOf(d2) || "",
+      rec: myRecs.filter(r => String(r.date) === d2).length,
+      done: myAsg.filter(a => String(a.date) === d2 && a.status === "done").length
+    });
+  }
+  const wkMax = Math.max(1, Math.max.apply(null, week.map(x => Math.max(x.rec, x.done))));
+  const weekly = `<div class="trw-strip">${week.map(x => `<div class="trw-day">
+      <span class="trw-bars">
+        <i class="trw-bar rec"  style="height:${Math.round(x.rec / wkMax * 100)}%"
+          title="تسميعات: ${toArabicDigits(x.rec)}"></i>
+        <i class="trw-bar done" style="height:${Math.round(x.done / wkMax * 100)}%"
+          title="واجبات منجَزة: ${toArabicDigits(x.done)}"></i>
+      </span>
+      <small>${esc(String(x.nm).slice(0, 3))}</small>
+      <em>${toArabicDigits(x.rec)}</em>
+    </div>`).join("")}</div>
+    <div class="chip-list" style="margin-top:8px">
+      <span class="chip t-green">تسميعاتُ الأسبوع: ${toArabicDigits(
+        week.reduce((t2, x) => t2 + x.rec, 0))}</span>
+      <span class="chip t-amber">واجباتٌ أُنجزت: ${toArabicDigits(
+        week.reduce((t2, x) => t2 + x.done, 0))}</span>
+    </div>`;
+
+  /* إحصاءُ الفترة: الدورةُ النشطةُ كما ضبطتها الإدارة */
+  const tid = typeof activeTermId === "function" ? activeTermId() : "";
+  const term = tid ? (DB.terms || []).find(x => String(x.id) === String(tid)) : null;
+  const inT = r => !tid || (typeof inTerm === "function" ? inTerm(r, tid)
+    : String(r.termId || "") === String(tid));
+  const period = `<div class="chip-list">
+    <span class="chip t-blue">${esc((term && term.name) || "الفترة الحالية")}</span>
+    <span class="chip t-green">تسميعات: ${toArabicDigits(myRecs.filter(inT).length)}</span>
+    <span class="chip t-amber">واجباتٌ أُنجزت: ${toArabicDigits(
+      myAsg.filter(a => a.status === "done" && inT(a)).length)}</span>
+    <span class="chip t-purple">أيّامُ حضوري: ${toArabicDigits(recs.filter(inT).length)}</span>
+  </div>`;
+
+  /* عناصرُ التقرير: ما أظهرته الإدارةُ منها وحدَه */
+  const sec = (k, title, body) => reportOn(k)
+    ? `<div class="card" style="margin-bottom:14px">
+        <div class="section-head"><h3>${esc(title)}</h3></div>${body}</div>` : "";
+
   return `<div class="page">
-    ${pageHead("تقرير المعلم", "حضورك وغيابك وتأخرك")}
-    <div class="grid g-4 stagger" style="margin-bottom:16px">${cards}</div>
-    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
+    ${pageHead("تقرير المعلم", "حضورك وأداؤك مع طلابك")}
+    ${sec("att", "إحصاء الحضور", `<div class="grid g-4 stagger">${cards}</div>`)}
+    ${sec("perf", "إحصاء الأداء", `<div class="grid g-4 stagger">${perf}</div>`)}
+    ${sec("weekly", "إحصاء الأسبوع", weekly)}
+    ${sec("period", "إحصاء الفترة", period)}
+    ${reportOn("attLog") ? `<div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
       <thead><tr><th>التاريخ</th><th>الحلقة</th><th>الحالة</th><th>ملاحظة</th></tr></thead>
       <tbody>${rows.length ? rows.map(r => `<tr>
-        <td class="pt-num">${urqDate(r.ts) !== "—" ? esc(r.date || "—") : esc(r.date || "—")}</td>
+        <td class="pt-num">${esc(r.date || "—")}</td>
         <td class="pt-name">${esc(r.circleName || "—")}</td>
-        <td><span class="pt-badge">${esc(r.status || "—")}</span></td>
+        <td><span class="pt-badge">${esc(attLabel(r.status, r.kind) || "—")}</span></td>
         <td>${esc(r.note || "—")}</td></tr>`).join("")
       : `<tr><td colspan="4" class="rep-empty"><span>لا سجلّاتِ حضورٍ بعد</span></td></tr>`}
-      </tbody></table></div></div>
+      </tbody></table></div></div>` : ""}
   </div>`;
 }
 
@@ -24611,7 +24734,7 @@ function teacherCircle() {
   const ptsOn = typeof canDo === "function" ? canDo("points") : false;
   const pts = ptsOn ? (cur("pointsLog") || []).filter(p => p &&
     studs.some(s => String(s.id) === String(p.studentId)))
-    .reduce((n, p) => n + (Number(p.points) || 0), 0) : 0;
+    .reduce((n, p) => n + (Number(p.n) || 0), 0) : 0;
 
   const stats = [
     { t: "t-purple", n: studs.length, h: "الطلاب" },
@@ -24877,6 +25000,9 @@ function teacherStudent() {
       onclick="window.tstuExamOpen()">${ic("exam", 16)} طلب اختبار</button>` : ""}
     ${canMsg ? `<button type="button" class="tst-tool"
       onclick="window.tstuMsg()">${ic("chat", 16)} المراسلة</button>` : ""}
+    ${/* نقاطُ التحفيز: «قابلةٌ للتحكم من خلال صلاحيات الإدارة» */
+      teacherCan("points") ? `<button type="button" class="tst-tool"
+      onclick="window.tstuPoints()">${ic("star", 16)} إضافة نقاط تحفيزية</button>` : ""}
   </div>`;
 
   const plan = !canPlan
@@ -25373,10 +25499,11 @@ window.tstuDuty = function (id) {
     ${canSplit ? tsplBox(a)
       : (typeof asgSplittable === "function" && asgSplittable(a)
         ? noteCard("صلاحيةُ تقسيم الواجب غيرُ مفعَّلةٍ لحسابك.") : "")}`,
-    canSplit
-      ? `<button class="btn btn-primary" onclick="window.tsplSave()">حفظ الجلسات</button>
-         <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`
-      : `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+    `${a.status === "pending" && teacherCan("recite")
+      ? `<button class="btn btn-primary" onclick="window.recvOpen('${jsAttr(a.id)}')">${
+          ic("check", 16)} تقييم واعتماد التسميع</button>` : ""}
+     ${canSplit ? `<button class="btn btn-soft" onclick="window.tsplSave()">حفظ الجلسات</button>` : ""}
+     <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
 
   /* نصُّ الآية الأولى: يُجلب من محرّك المصحف ثمّ يُوضع في موضعه */
   if (a.fromS && typeof window.Quran !== "undefined" && window.Quran.range) {
@@ -25436,6 +25563,303 @@ window.tstuMushaf = function (id) {
     window.reciteOpenMushaf(a.studentId, a.fromS, a.fromA || 1);
   }
 };
+
+/* =========================================================================
+   عناصرُ تقييم التسميع وعناصرُ تقرير المعلم — تضبطهما الإدارة
+   -------------------------------------------------------------------------
+   «يجب أن تكون الإدارة قادرة على تغيير عناصر التقييم التي تظهر للمعلمين»،
+   و«يجب أن تكون عناصر التقرير قابلة للتحكم من الإدارة». القائمتان في
+   وثيقتَي إعداداتٍ مستقلّتَين (teacherEval · teacherReport) فلا تمسّان
+   سائرَ الإعدادات، والافتراضيُّ ما ضربته الوثيقةُ مثالاً.
+   ========================================================================= */
+const EVAL_DEFAULTS = [
+  { k: "taraddud", h: "عدد الترددات", on: true },
+  { k: "lahn",     h: "اللحون",       on: true },
+  { k: "khata",    h: "عدد الأخطاء",  on: true },
+  { k: "tanbih",   h: "التنبيهات",    on: true }
+];
+
+function evalItems() {
+  const saved = (DB.settings || {}).evalItems;
+  const list = Array.isArray(saved) && saved.length ? saved : EVAL_DEFAULTS;
+  return list.map(x => ({ k: String((x && x.k) || ""), h: String((x && x.h) || ""),
+                          on: !x || x.on !== false })).filter(x => x.k);
+}
+function evalItemsOn() { return evalItems().filter(x => x.on); }
+
+const REPT_DEFAULTS = [
+  { k: "att",      h: "إحصاء الحضور",     on: true },
+  { k: "attLog",   h: "سجلّ الحضور",      on: true },
+  { k: "perf",     h: "إحصاء الأداء",     on: true },
+  { k: "weekly",   h: "إحصاء الأسبوع",    on: true },
+  { k: "period",   h: "إحصاء الفترة",     on: true }
+];
+
+function reportItems() {
+  const saved = (DB.settings || {}).reportItems;
+  const list = Array.isArray(saved) && saved.length ? saved : REPT_DEFAULTS;
+  return list.map(x => ({ k: String((x && x.k) || ""), h: String((x && x.h) || ""),
+                          on: !x || x.on !== false })).filter(x => x.k);
+}
+function reportOn(k) { return reportItems().some(x => x.k === k && x.on); }
+
+/* لوحةُ ضبطهما في إعدادات «تطبيق المعلم» — للإدارة وحدَها */
+function evalCfgPanel() {
+  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const rows = evalItems().map((x, i) => `<tr>
+    <td><input class="pm-in" id="ev_h_${i}" value="${esc(x.h)}" ${edit ? "" : "disabled"}></td>
+    <td><label class="sy-sw"><input type="checkbox" id="ev_on_${i}" ${x.on ? "checked" : ""}
+      ${edit ? "" : "disabled"}><span></span></label></td>
+  </tr>`).join("");
+  return `<div class="sp-card">
+    <div class="sp-cardhead"><div><h3>عناصر تقييم التسميع</h3>
+      <p>ما يظهر للمعلّم في شاشة تقييم الأداء بعد التسميع</p></div></div>
+    <table class="ptable"><thead><tr><th>العنصر</th><th>يظهر</th></tr></thead>
+      <tbody id="evRows">${rows}</tbody></table>
+    ${edit ? `<div class="row-actions" style="margin-top:10px">
+      <button class="btn btn-ghost btn-sm" onclick="window.evCfgAdd()">${ic("plus", 15)} أضف عنصراً</button>
+      <button class="btn btn-primary btn-sm" onclick="window.evCfgSave()">${ic("check", 15)} حفظ العناصر</button>
+    </div>` : ""}
+  </div>`;
+}
+
+window.evCfgAdd = function () {
+  const list = evalItems();
+  list.push({ k: "ev" + Date.now(), h: "عنصرٌ جديد", on: true });
+  DB.settings = DB.settings || {}; DB.settings.evalItems = list;
+  mount();
+};
+
+window.evCfgSave = function () {
+  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+    showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
+  }
+  const list = evalItems().map((x, i) => ({
+    k: x.k, h: (val("#ev_h_" + i) || x.h),
+    on: !!(document.getElementById("ev_on_" + i) || {}).checked
+  }));
+  DB.settings = DB.settings || {}; DB.settings.evalItems = list;
+  persistSet("settings", { id: "teacherEval", evalItems: list });
+  showToast("حُفظت عناصرُ التقييم", "success");
+  mount();
+};
+
+function reptCfgPanel() {
+  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const rows = reportItems().map((x, i) => `<tr>
+    <td>${esc(x.h)}</td>
+    <td><label class="sy-sw"><input type="checkbox" id="rp_on_${i}" ${x.on ? "checked" : ""}
+      ${edit ? "" : "disabled"}><span></span></label></td>
+  </tr>`).join("");
+  return `<div class="sp-card">
+    <div class="sp-cardhead"><div><h3>عناصر تقرير المعلم</h3>
+      <p>ما يراه المعلّم في نافذة «تقرير المعلم»</p></div></div>
+    <table class="ptable"><thead><tr><th>العنصر</th><th>يظهر</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    ${edit ? `<div class="row-actions" style="margin-top:10px">
+      <button class="btn btn-primary btn-sm" onclick="window.reptCfgSave()">${
+        ic("check", 15)} حفظ العناصر</button></div>` : ""}
+  </div>`;
+}
+
+window.reptCfgSave = function () {
+  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+    showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
+  }
+  const list = reportItems().map((x, i) => ({
+    k: x.k, h: x.h, on: !!(document.getElementById("rp_on_" + i) || {}).checked
+  }));
+  DB.settings = DB.settings || {}; DB.settings.reportItems = list;
+  persistSet("settings", { id: "teacherReport", reportItems: list });
+  showToast("حُفظت عناصرُ التقرير", "success");
+  mount();
+};
+
+/* =========================================================================
+   تقييمُ التسميع واعتمادُه
+   -------------------------------------------------------------------------
+   «بعد انتهاء المعلم من التسميع وتسجيل الأخطاء تظهر شاشة تقييم الأداء»،
+   ثمّ «اعتماد التسميع» فتُحفظ النتيجةُ والأخطاءُ والتقييم، وتخضرُّ علامةُ
+   الواجب، وينقص المتبقّي في إحصاء الحلقة، وينتقل إلى الواجب التالي.
+   ========================================================================= */
+const RECV = { asgId: "", grade: "ممتاز" };
+
+/* أخطاءُ المصحف في مدى الواجب — تُقرأ ولا تُكتب يدوياً */
+function recvMarks(a) {
+  const out = { نسيان: 0, تشكيل: 0, تجويد: 0, "تميّز": 0 };
+  if (!a || !a.fromS || typeof marksInRange !== "function") return out;
+  try {
+    marksInRange(a.studentId, a.fromS, a.fromA, a.toS || a.fromS, a.toA || a.fromA,
+                 typeof attDate === "function" ? attDate() : todayISO())
+      .forEach(m => { if (out[m.kind] !== undefined) out[m.kind]++; });
+  } catch (e) {}
+  return out;
+}
+
+/* الواجبُ التالي المعلَّق للطالب في اليوم نفسِه — الحفظ ثمّ التثبيت ثمّ المراجعة */
+function recvNext(a) {
+  if (!a) return null;
+  const order = { hifz: 1, fix: 2, rev: 3, tilawah: 4 };
+  return (cur("assignments") || []).filter(x => x &&
+      String(x.studentId) === String(a.studentId) &&
+      String(x.date) === String(a.date) &&
+      String(x.id) !== String(a.id) && x.status === "pending")
+    .sort((p, q) => (order[String(p.kind).replace("_makeup", "")] || 9) -
+                    (order[String(q.kind).replace("_makeup", "")] || 9))[0] || null;
+}
+
+window.recvOpen = function (asgId) {
+  const a = tstuAsgById(asgId || RECV.asgId || MUSD.asgId);
+  if (!a) { showToast("لا واجبَ مفتوح", "warn"); return; }
+  if (!teacherCan("recite")) {
+    showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  RECV.asgId = String(a.id);
+  RECV.grade = "ممتاز";
+  const st = (cur("students") || []).find(x => String(x.id) === String(a.studentId)) || {};
+  const mk = recvMarks(a);
+  const items = evalItemsOn();
+
+  openModal("تقييم الأداء", esc((st.name || "") + " — " + (a.kindName || "")),
+    `<div class="rcv-head">
+      <span>${esc(a.kindName || "واجب")}</span>
+      ${a.fromS ? `<span>${esc(tstuRange(a))}</span>` : ""}
+      <span>المقدار: ${toArabicDigits(a.qty || 0)} ${esc(a.unit || "وجه")}</span>
+    </div>
+    ${noteCard("أخطاءُ المصحف في هذا المدى: نسيان " + toArabicDigits(mk["نسيان"]) +
+      " · تجويد " + toArabicDigits(mk["تجويد"]) + " · تشكيل " + toArabicDigits(mk["تشكيل"]))}
+    <div class="form-grid">
+      ${items.map(x => `<div class="field"><label>${esc(x.h)}</label>
+        <input id="rcv_${esc(x.k)}" type="number" min="0" dir="ltr" value="0"></div>`).join("")}
+    </div>
+    <div class="field full"><label>التقدير</label>
+      <div class="chip-list" id="rcvGrades">${(typeof RECITE_GRADES !== "undefined"
+        ? RECITE_GRADES : ["ممتاز", "جيد جداً", "جيد", "إعادة"]).map(g =>
+        `<button type="button" class="tatt-opt${g === RECV.grade ? " on" : ""}"
+          onclick="window.recvGrade('${jsAttr(g)}')">${esc(g)}</button>`).join("")}</div></div>
+    <div class="form-grid">
+      <div class="field full"><label>ملاحظة</label>
+        <textarea id="rcv_note" rows="2" placeholder="اختياري"></textarea></div>
+    </div>`,
+    `<button class="btn btn-primary" onclick="window.recvSave()">${
+      ic("check", 16)} اعتماد التسميع</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.recvGrade = function (g) {
+  RECV.grade = String(g || "ممتاز");
+  document.querySelectorAll("#rcvGrades .tatt-opt").forEach(b =>
+    b.classList.toggle("on", b.textContent.trim() === RECV.grade));
+};
+
+window.recvSave = function () {
+  const a = tstuAsgById(RECV.asgId);
+  if (!a) return;
+  if (!teacherCan("recite")) {
+    showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const st = (cur("students") || []).find(x => String(x.id) === String(a.studentId));
+  if (!st) { showToast("الطالب غير موجود", "warn"); return; }
+  /* الشرطُ نفسُه: لا تسميعَ قبل التحضير */
+  if (typeof attRecordedFor === "function" && !attRecordedFor(st.id)) {
+    showToast("سجّل حالةَ «" + (st.name || "الطالب") + "» في التحضير أوّلاً", "warn"); return;
+  }
+
+  const u = (STATE && STATE.user) || {};
+  const mk = recvMarks(a);
+  const vals = {};
+  evalItemsOn().forEach(x => { vals[x.k] = Number(val("#rcv_" + x.k) || 0); });
+  const score = typeof reciteScore === "function" ? reciteScore({ grade: RECV.grade }) : null;
+  const c = (cur("circles") || []).find(x => String(x.id) === String(a.circleId || st.circleId));
+
+  const rec = {
+    id: "r" + Date.now(),
+    date: typeof attDate === "function" ? attDate() : todayISO(),
+    studentId: String(st.id), student: st.name || "",
+    circleId: String(a.circleId || st.circleId || ""),
+    circle: (c && c.name) || st.circle || "",
+    complexId: st.complexId != null ? st.complexId : STATE.complexId,
+    /* نطاقُ المسجد: بدونه يسقط السجلُّ من cur() عند الحسابات المحصورة */
+    mosqueId: st.mosqueId || "",
+    kind: String(a.kindName || "حفظ"),
+    fromS: Number(a.fromS) || 0, fromA: Number(a.fromA) || 0,
+    toS: Number(a.toS) || 0, toA: Number(a.toA) || 0,
+    fromName: a.fromS ? surahName(a.fromS) : "", toName: a.toS ? surahName(a.toS) : "",
+    /* المقدارُ المعتمد للواجب: هو ما سُمّع باعتماد المعلّم */
+    faces: Number(a.qty) || 0, ayahs: 0,
+    grade: RECV.grade, score: score,
+    errors: Number(mk["نسيان"]) || 0, tajweed: Number(mk["تجويد"]) || 0,
+    errSource: "mushaf",
+    /* عناصرُ التقييم كما ضبطتها الإدارة — تُحفظ بمفاتيحها */
+    evalVals: vals,
+    note: val("#rcv_note") || "",
+    asgId: String(a.id),
+    /* نسبةُ التسميع لمعلّمه: التقاريرُ كانت تستنبطها من الحلقة وحدَها */
+    staffId: typeof tchStaffId === "function" ? tchStaffId() : "",
+    termId: typeof activeTermId === "function" ? (activeTermId() || "") : "",
+    by: u.email || "", ts: Date.now()
+  };
+
+  if (!Array.isArray(DB.recitations)) DB.recitations = [];
+  DB.recitations.push(rec);
+  persistSet("recitations", rec);
+
+  /* اعتمادُ الواجب: تخضرُّ علامتُه وينقص المتبقّي في إحصاء الحلقة */
+  try { if (typeof window.asgClose === "function") window.asgClose(a.id, score, rec.id); }
+  catch (e) { console.warn("asgClose:", e); }
+
+  closeModal();
+  const nx = recvNext(a);
+  if (nx) {
+    showToast("اعتُمد التسميع — الواجبُ التالي: " + (nx.kindName || ""), "success");
+    MUSD.asgId = ""; MUSD.kind = ""; MUSD.name = "";
+    TSTU.id = String(a.studentId);
+    if (STATE.page !== "student") { if (typeof go === "function") go("student"); }
+    setTimeout(function () { window.tstuDuty(nx.id); }, 120);
+  } else {
+    showToast("اعتُمد التسميع — لا واجباتٍ أخرى", "success");
+    mount();
+  }
+};
+
+/* =========================================================================
+   نقاطُ التحفيز في صفحة الطالب — بصلاحية الإدارة
+   ========================================================================= */
+window.tstuPoints = function () {
+  const st = tstuStudent();
+  if (!st) return;
+  if (!teacherCan("points")) {
+    showToast("صلاحيةُ إضافة النقاط غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  if (typeof window.ptsGrant === "function") window.ptsGrant(st.id);
+  else showToast("نظامُ النقاط غير متاح", "warn");
+};
+
+/* =========================================================================
+   محادثاتُ المعلم — ما تسمح به الإدارةُ وحدَه
+   -------------------------------------------------------------------------
+   «تظهر فيها جميع المحادثات التي يسمح النظام للمعلم باستخدامها»، ومنها
+   «الرسائل العامة للحلقة إذا منحت الإدارة المعلم صلاحية إرسالها» —
+   والمفاتيحُ msgStudents و msgAdmin و msgCircle في «إدارة الصلاحيات».
+   ========================================================================= */
+function tmsgTabs() {
+  const out = [];
+  if (teacherCan("msgStudents")) {
+    out.push(["student", "الطلاب", "people"]);
+    out.push(["parent", "أولياء الأمور", "person"]);
+  }
+  if (teacherCan("msgAdmin"))  out.push(["admin", "الإدارة", "shield"]);
+  if (teacherCan("msgCircle")) out.push(["circle", "رسالة عامة للحلقة", "people"]);
+  return out;
+}
+
+/* الحلقةُ المختارةُ للرسالة العامة */
+function tmsgCircleId() {
+  const list = typeof tchMyCircles === "function" ? tchMyCircles() : [];
+  if (TMSG.circleId && list.some(c => String(c.id) === String(TMSG.circleId))) return String(TMSG.circleId);
+  return list.length ? String(list[0].id) : "";
+}
+window.tmsgCircle = function (id) { TMSG.circleId = String(id || ""); mount(); };
 
 /* =========================================================================
    بطاقاتُ حلقات المعلّم — صدرُ لوحته
@@ -26310,7 +26734,10 @@ function reciteSave() {
     circleId: rCid,
     circle: (rCirc && rCirc.name) || st.circle || "",
     complexId: st.complexId != null ? st.complexId : STATE.complexId,
+    /* نطاقُ المسجد: بدونه يسقط السجلُّ من cur() فلا يُحسب في التقارير */
+    mosqueId: st.mosqueId || "",
     kind:  val("#r_kind", "حفظ"),
+
     fromS: fS, fromA: fA, toS: tS, toA: tA,
     fromName: nm(fS), toName: nm(tS),
     faces: Number((box && box.dataset.faces) || 0),
@@ -26963,8 +27390,26 @@ function mushafPage() {
     <span class="muted" style="font-size:12px">في المصحف كاملاً</span>
   </div>` : "";
 
+  /* شريطُ الواجب: فُتح المصحفُ من واجبٍ بعينه، فمنه يُعتمد تسميعُه */
+  const dutyBar = (function () {
+    if (typeof MUSD === "undefined" || !MUSD.asgId) return "";
+    const a = typeof tstuAsgById === "function" ? tstuAsgById(MUSD.asgId) : null;
+    if (!a) return "";
+    const stn = (cur("students") || []).find(x => String(x.id) === String(a.studentId));
+    return `<div class="mus-duty">
+      <span class="mus-duty-h">${ic("book", 15)} ${esc(a.kindName || MUSD.name || "واجب")}
+        — ${esc((stn && stn.name) || "")}</span>
+      ${a.fromS ? `<span class="muted">${esc(typeof tstuRange === "function" ? tstuRange(a) : "")}</span>` : ""}
+      ${a.status === "pending" && typeof teacherCan === "function" && teacherCan("recite")
+        ? `<button type="button" class="btn btn-primary btn-sm"
+            onclick="window.recvOpen('${jsAttr(a.id)}')">${ic("check", 15)} تقييم واعتماد التسميع</button>`
+        : `<span class="chip t-green">معتمد</span>`}
+    </div>`;
+  })();
+
   return `${colorVars}<div class="page mus-page-wrap">
     ${top}
+    ${dutyBar}
     ${picker}
     ${filters}
     ${spread}
@@ -38833,7 +39278,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-1700";
+  var APP_BUILD = "20261002-1740";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

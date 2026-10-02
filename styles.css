@@ -10206,3 +10206,43 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 :root[data-theme="dark"] .tdt-card { background: #142726; border-color: #1f4746; }
 :root[data-theme="dark"] .tdt-card:hover { background: #16302f; }
 :root[data-theme="dark"] .tsd-ayah { background: #16302f; border-color: #1f4746; }
+
+/* =========================================================================
+   تقييمُ التسميع · شريطُ الواجب في المصحف · إحصاءُ أسبوع المعلم
+   -------------------------------------------------------------------------
+   شاشةُ التقييم تستعمل .tatt-opt للتقدير فلا يُكرَّر تنسيقُها. وهنا صدرُ
+   النافذة، وشريطُ الواجب أعلى المصحف ليُعتمد التسميعُ من موضع التأشير،
+   وأعمدةُ أسبوع المعلم في تقريره.
+   ========================================================================= */
+.rcv-head {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  padding: 10px 12px; margin-bottom: 10px; border-radius: 12px;
+  background: #f3faf9; border: 1px solid #cfe3e2;
+  font-size: 12.5px; font-weight: 600;
+}
+
+.mus-duty {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 10px; padding: 10px 13px; border-radius: 13px;
+  background: #f3faf9; border: 1px solid #cfe3e2;
+}
+.mus-duty-h { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; }
+.mus-duty .btn { margin-inline-start: auto; }
+
+.trw-strip { display: flex; gap: 8px; align-items: flex-end; }
+.trw-day { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.trw-bars {
+  display: flex; align-items: flex-end; gap: 3px; height: 86px; width: 100%;
+  justify-content: center;
+}
+.trw-bar { width: 9px; border-radius: 5px 5px 0 0; min-height: 3px; background: #0f6f72; }
+.trw-bar.done { background: #d9a01a; }
+.trw-day small { font-size: 11px; color: #7b878a; }
+.trw-day em { font-size: 11px; font-style: normal; color: #0f6f72; font-weight: 700; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .rcv-head,
+  :root:not([data-theme="light"]) .mus-duty { background: #16302f; border-color: #1f4746; }
+}
+:root[data-theme="dark"] .rcv-head,
+:root[data-theme="dark"] .mus-duty { background: #16302f; border-color: #1f4746; }
