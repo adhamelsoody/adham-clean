@@ -8874,22 +8874,6 @@ function selfSignupRequests() {
         mine: false
       };
     });
-      id: "self:" + u.id,
-      userId: u.id,
-      selfSignup: true,
-      name: u.name || "—",
-      username: u.username || u.email || u.loginEmail || "—",
-      phone: u.phone || "—",
-      email: u.email || "",
-      roleKey: u.requestedRole || u.role || "student",
-      roleAr: (USER_ROLES.find(x => x.k === (u.requestedRole || u.role)) || {}).h ||
-              (u.requestedRole === "parent" ? "ولي أمر" :
-               u.requestedRole === "student" ? "طالب" : "—"),
-      facId: u.complexId || u.mosqueId || "",
-      status: "pending",
-      createdAt: u.createdAt || 0,
-      mine: false
-    }));
 }
 
 function urqRows() {
