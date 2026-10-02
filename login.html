@@ -101,6 +101,13 @@
     .forgot { display:block; text-align:center; margin-top:14px; font-size:13px;
             color:#0b7f83; text-decoration:none; }
   .forgot:hover { text-decoration:underline; }
+/* صفُّ «حفظ تسجيل الدخول»: مربّعٌ ونصٌّ في سطرٍ واحد، والنقرُ على النصّ
+   يبدّله — وحقلُ النموذج عموديٌّ فيبدو الصفُّ مكسوراً بلا هذا. */
+.keep-row { flex-direction: row; align-items: center; gap: 9px;
+            cursor: pointer; user-select: none; }
+.keep-row input { width: 17px; height: 17px; accent-color: #0f6f72;
+                  margin: 0; cursor: pointer; flex: 0 0 auto; }
+.keep-row span { font-size: 14px; }
 </style>
 </head>
 <body>
@@ -118,6 +125,13 @@
       <label for="pass">كلمة المرور</label>
       <input type="password" id="pass" required dir="ltr" placeholder="********">
     </div>
+    <!-- حفظُ الدخول: المفعَّل يبقى حسابُه مفتوحاً في الفتحات القادمة بلا
+         إدخالٍ ثانٍ، وغيرُ المفعَّل ينتهي بإغلاق المتصفّح. والافتراضيُّ
+         مفعَّلٌ لأنه سلوكُ النظام قبل هذا الخيار، فلا يتغيّر على أحد. -->
+    <label class="field keep-row" for="keepIn">
+      <input type="checkbox" id="keepIn" checked>
+      <span>حفظ تسجيل الدخول</span>
+    </label>
     <button type="submit" class="btn" id="submitBtn">دخول</button>
     <div class="links">
       <a href="#" id="forgot">نسيت كلمة المرور؟</a>
@@ -276,6 +290,13 @@
     /* فتح صفحة الدخول مباشرةً نقطة بداية نظيفة */
     try { if (!document.referrer) sessionStorage.removeItem("__nav"); } catch (e) {}
 
+    /* اختيارُ «حفظ تسجيل الدخول» يُستعاد كما تركه صاحبُه */
+    try {
+      const k = localStorage.getItem("mirath_keepin");
+      const box = document.getElementById("keepIn");
+      if (box && k !== null) box.checked = k === "1";
+    } catch (e) {}
+
     if (!auth) { showErr("خدمة المصادقة غير مهيّأة."); }
     else {
       // لو مسجّل دخول بالفعل، وجّهه مباشرة
@@ -303,6 +324,16 @@
               }
             } catch (e) { /* بلا صلاحية قراءة؟ نكمل بالبريد الاصطناحي */ }
           }
+          /* حفظُ الدخول من عدمه — يُضبط قبل الدخول لا بعده، فالثباتُ
+             يُقرَّر على الجلسة التي تُفتح. LOCAL يبقى بعد إغلاق المتصفّح،
+             و SESSION ينتهي بإغلاق النافذة. */
+          try {
+            const keep = !!(document.getElementById("keepIn") || {}).checked;
+            const P = firebase.auth.Auth.Persistence;
+            await auth.setPersistence(keep ? P.LOCAL : P.SESSION);
+            try { localStorage.setItem("mirath_keepin", keep ? "1" : "0"); } catch (e) {}
+          } catch (e) { /* متصفّحٌ يمنع التخزين: يُكمَل بالسلوك الافتراضي */ }
+
           await auth.signInWithEmailAndPassword(email, pass);
           // النجاح يتكفّل به onAuthStateChanged → route
         } catch (err) {

@@ -2006,6 +2006,7 @@ function modalEditCircle(id) {
   openModal("تعديل بيانات الحلقة", "عدّل بيانات الحلقة ثم احفظ",
     `<div class="form-grid">
       <div class="field full"><label>اسم الحلقة</label><input id="ec_name" value="${esc(c.name)}"></div>
+      ${photoField("ec_photo", c.photo || "", "شعار الحلقة أو صورتها")}
       ${facTwoFields("ec_cx", "ec_mosque", c.complexId || "", c.mosqueId || "")}
       <!-- المعلم لم يكن في نموذج التعديل: لو غادر معلم الحلقة فلا سبيل
            لتغييره، وهو الحقل الذي يرثه كل طلابها -->
@@ -9681,6 +9682,7 @@ const SET_SECTIONS = [
   { k: "terms",    h: "الفترات الدراسية والأرشيف" },
   { k: "supcat",   h: "تصنيفات المشرفين" },
   { k: "perms",    h: "إدارة الصلاحيات" },
+  { k: "tchapp",   h: "تطبيق المعلم" },
   { k: "mushaf",   h: "المصحف والتقييم" },
   { k: "procs",    h: "الإجراءات التدرّجية" },
   /* «مسيّرات الرواتب» أُزيل من قائمة الإعدادات بطلب الإدارة: شاشةٌ لا
@@ -20309,6 +20311,61 @@ window.permDefSet = function (k, val2) {
   mount();
 };
 
+/* =========================================================================
+   لوحةُ «تطبيق المعلم» — ما تضبطه الإدارةُ لتطبيق المعلّم
+   -------------------------------------------------------------------------
+   أوّلُ ما فيها رسالةُ الترحيب: تنصُّ الوثيقةُ على أن تظهر للمعلّم بعد
+   دخوله وتحدّدها الإدارة. وتُحفظ في مستندٍ مستقلٍّ من settings كغيرها من
+   إعدادات هذه الشاشة، فلا تُكتب كتلةُ الإعدادات كاملةً في كلّ حفظ.
+   ========================================================================= */
+function teacherWelcome() {
+  return String(((DB.settings || {}).teacherWelcome) || "");
+}
+
+function setPanelTeacherApp() {
+  const w = teacherWelcome();
+  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+
+  return `<div class="pm-wrap">
+    <div class="tm-top"><strong class="tm-title">تطبيق المعلم</strong></div>
+
+    <div class="tm-info">${ic("info", 18)}
+      <span>ما تضبطه الإدارةُ هنا يظهر للمعلّمين في تطبيقهم.
+      ${edit ? "" : "<b>العرضُ هنا للاطلاع — الضبطُ من صلاحية مدير النظام.</b>"}</span>
+    </div>
+
+    <div class="sp-card">
+      <div class="sp-cardhead"><div><h3>رسالة الترحيب</h3>
+        <p>تظهر للمعلّم في لوحته بعد تسجيل الدخول</p></div></div>
+      <div class="form-grid">
+        <div class="field full">
+          <label>نصُّ الرسالة</label>
+          <textarea id="twMsg" rows="3" ${edit ? "" : "disabled"}
+            placeholder="مثال: حيّاك الله معلّمنا الفاضل — بارك الله في جهدك مع طلابك."
+            >${esc(w)}</textarea>
+          <div class="hint">اتركه فارغاً فلا تُعرض رسالةٌ أصلاً.</div>
+        </div>
+      </div>
+      ${edit ? `<div class="sp-acts">
+        <button type="button" class="btn btn-primary" onclick="window.twSave()">حفظ الرسالة</button>
+      </div>` : ""}
+    </div>
+  </div>`;
+}
+
+window.twSave = function () {
+  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+    showToast("ضبطُ تطبيق المعلم من صلاحية مدير النظام", "warn"); return;
+  }
+  const el = document.getElementById("twMsg");
+  const txt = String((el && el.value) || "").trim();
+  if (!DB.settings) DB.settings = {};
+  DB.settings.teacherWelcome = txt;
+  persistSet("settings", { id: "teacherApp", teacherWelcome: txt });
+  showToast(txt ? "حُفظت رسالة الترحيب" : "أُزيلت رسالة الترحيب", "success");
+  mount();
+};
+
 function setPanelMushaf() {
   const w = reciteWeights();
   return `<div class="lv-wrap">
@@ -21953,11 +22010,11 @@ function setPanelOther(k) {
    والدوران الجديدان يريان المالَ بقرار الإدارة، فليسا هنا. */
 const SET_DENIED = {
   supervisor: ["payroll", "supcat"],
-  donor:      ["payroll", "supcat", "procs", "msgs", "terms", "perms"],
+  donor:      ["payroll", "supcat", "procs", "msgs", "terms", "perms", "tchapp"],
   /* المعلّمُ يرى «إدارة الصلاحيات» وحدَها: فُتحت له بطلبٍ صريح، ولا شأنَ
      له ببقيّة الإعدادات — بيانات المنشأة والفترات والبرامج والمصحف. */
   teacher:    ["main", "levels", "terms", "supcat", "mushaf",
-               "procs", "payroll", "msgs", "prayer"]
+               "procs", "payroll", "msgs", "prayer", "tchapp"]
 };
 
 function setSections() {
@@ -21986,7 +22043,7 @@ function adminSettingsNew() {
       </aside>
       <section class="st-main">${!setSecAllowed(SET.sec)
         ? financeDenied(SET.sec === "payroll" ? "مسيّرات الرواتب" : "تصنيفات المشرفين")
-        : SET.sec === "main" ? setPanelMain() : SET.sec === "programs" ? setPanelPrograms() : SET.sec === "levels" ? setPanelLevels() : SET.sec === "duties" ? setPanelDuties() : SET.sec === "supcat" ? setPanelSupcat() : SET.sec === "perms" ? setPanelPerms() : SET.sec === "terms" ? setPanelTerms() : SET.sec === "mushaf" ? setPanelMushaf() : SET.sec === "procs" ? setPanelProcedures() : SET.sec === "payroll" ? setPanelPayroll() : SET.sec === "msgs" ? setPanelMessages() : SET.sec === "prayer" ? setPanelPrayer() : setPanelOther(SET.sec)}</section>
+        : SET.sec === "main" ? setPanelMain() : SET.sec === "programs" ? setPanelPrograms() : SET.sec === "levels" ? setPanelLevels() : SET.sec === "duties" ? setPanelDuties() : SET.sec === "supcat" ? setPanelSupcat() : SET.sec === "perms" ? setPanelPerms() : SET.sec === "tchapp" ? setPanelTeacherApp() : SET.sec === "terms" ? setPanelTerms() : SET.sec === "mushaf" ? setPanelMushaf() : SET.sec === "procs" ? setPanelProcedures() : SET.sec === "payroll" ? setPanelPayroll() : SET.sec === "msgs" ? setPanelMessages() : SET.sec === "prayer" ? setPanelPrayer() : setPanelOther(SET.sec)}</section>
     </div>
   </div>`;
 }
@@ -24121,6 +24178,98 @@ window.tmsgSend = function () {
   mount();
 };
 
+/* =========================================================================
+   بطاقاتُ حلقات المعلّم — صدرُ لوحته
+   -------------------------------------------------------------------------
+   تنصُّ الوثيقةُ على أن يرى المعلّمُ بعد دخوله حلقاتِه الموكّلةَ إليه وحدَها،
+   شرائطَ فيها: اسمُ الحلقة واسمُ المجمّع وشعارُها وعددُ طلابها ومؤشّرُ
+   إنجازها وزرُّ إعداداتها.
+
+   والحلقاتُ تُقرأ من cur("circles") وهي مصفّاةٌ بنطاق الحساب أصلاً، ثمّ
+   تُحصر في حلقاته بـ myCircles — فلا يرى حلقةَ غيره ولو كانت في مسجده.
+   ========================================================================= */
+function tchMyCircles() {
+  const list = cur("circles") || [];
+  if (typeof myCircles !== "function") return list;
+
+  /* myCircles يُرجع { ids, names } مجموعتَي Set — لا مصفوفتين */
+  let mine = null;
+  try { mine = myCircles(); } catch (e) { return list; }
+  if (!mine || !mine.ids) return list;
+
+  const has = (set, v) => !!(set && typeof set.has === "function" && set.has(String(v)));
+  return list.filter(c => has(mine.ids, c.id) || has(mine.names, c.name || ""));
+}
+
+/* نسبةُ إنجاز الحلقة: ما سُمِّع من واجبات اليوم فيها */
+function tchCirclePct(cid) {
+  const studs = (cur("students") || []).filter(s => String(s.circleId || "") === String(cid)
+                                                 && s.status !== "متوقف");
+  if (!studs.length) return 0;
+  const map = attMap(todayISO(), String(cid));
+  const done = studs.filter(s => map[String(s.id)]).length;
+  return Math.round(done / studs.length * 100);
+}
+
+function tchCircleCards() {
+  const list = tchMyCircles();
+  if (!list.length) {
+    return `<div class="tc-wrap">${noteCard("لا حلقاتٍ موكّلةً إليك بعد — راجع الإدارة.")}</div>`;
+  }
+
+  return `<div class="tc-wrap"><div class="tc-grid">${list.map(c => {
+    const n   = (cur("students") || []).filter(s => String(s.circleId || "") === String(c.id)
+                                                 && s.status !== "متوقف").length;
+    const pct = tchCirclePct(c.id);
+    const fac = c.mosque || complexName(c.complexId) || "—";
+    return `<article class="tc-card">
+      <div class="tc-head">
+        <div class="tc-logo">${c.photo
+          ? `<img src="${esc(c.photo)}" alt="">`
+          : ic("book", 26)}</div>
+        <div class="tc-ttl">
+          <strong>${esc(c.name || "—")}</strong>
+          <small>${esc(fac)}</small>
+        </div>
+        <button type="button" class="tc-gear" title="إعدادات الحلقة"
+          onclick="window.tchCircleInfo('${jsAttr(c.id)}')">${ic("settings", 18)}</button>
+      </div>
+      <div class="tc-meta">
+        <span class="tc-pill">${ic("users", 14)} ${toArabicDigits(n)} طالب</span>
+        <span class="tc-pill">${ic("check", 14)} ${toArabicDigits(pct)}٪ إنجاز</span>
+      </div>
+      <div class="tc-bar"><span style="width:${pct}%"></span></div>
+    </article>`;
+  }).join("")}</div></div>`;
+}
+
+/* إعداداتُ الحلقة كما يراها المعلّم — عرضٌ لا تعديل، والتعديلُ من الإدارة */
+window.tchCircleInfo = function (id) {
+  const c = (cur("circles") || []).find(x => String(x.id) === String(id));
+  if (!c) { showToast("الحلقة غير موجودة", "warn"); return; }
+
+  const fac = c.mosque || complexName(c.complexId) || "—";
+  const days = Array.isArray(c.days) ? c.days.join(" · ") : String(c.days || "—");
+  const rows = [
+    ["اسم الحلقة", c.name || "—"],
+    ["المجمّع أو المسجد", fac],
+    ["المعلم المسؤول", c.teacher || "—"],
+    ["أيام الحلقة", days || "—"],
+    ["وقت الحلقة", (c.start || "—") + " — " + (c.end || "—")],
+    ["نوع الحلقة", c.type || "—"],
+    ["عدد الطلاب", toArabicDigits((cur("students") || []).filter(s =>
+      String(s.circleId || "") === String(c.id) && s.status !== "متوقف").length)],
+    ["الحالة", c.status || "—"]
+  ];
+
+  openModal("إعدادات الحلقة", esc(c.name || ""),
+    `<div class="tc-info">${rows.map(r => `<div class="tc-irow">
+      <span>${esc(r[0])}</span><strong>${esc(String(r[1]))}</strong></div>`).join("")}
+     </div>
+     ${noteCard("هذه بياناتُ حلقتك كما ضبطتها الإدارة. لتعديلها راجع مدير المسجد.")}`,
+    `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+};
+
 function teacherDashboard() {
   const students = inWorkCircle(cur("students"));
   const circles  = cur("circles");
@@ -24205,6 +24354,11 @@ function teacherDashboard() {
 
   return `<div class="page">
     ${pageHead("لوحة المعلم", "متابعة حلقتك اليومية")}
+    ${/* رسالةُ الترحيب التي تحدّدها الإدارة — تُعرض ما دامت مكتوبة */ ""}
+    ${teacherWelcome() ? `<div class="tc-welcome">${ic("chat", 18)}
+      <span>${esc(teacherWelcome())}</span></div>` : ""}
+    ${/* حلقاتُ المعلّم الموكّلةُ إليه وحدَها — صدرُ اللوحة كما نصّت الوثيقة */ ""}
+    ${tchCircleCards()}
     ${teacherProfileCard()}
 
     <div class="dash-top">
@@ -30283,6 +30437,8 @@ function modalCircle() {
   openModal("إضافة حلقة جديدة", "أدخل بيانات الحلقة",
     `<div class="form-grid">
       ${formField("اسم الحلقة", "full", "مثال: حلقة الإتقان", "c_name")}
+      ${/* شعارُ الحلقة: تحدّده الإدارة ويظهر على بطاقتها في تطبيق المعلّم */ ""}
+      ${photoField("c_photo", "", "شعار الحلقة أو صورتها")}
       ${facTwoFields("c_cx", "c_mosque", "", "")}
       ${formField("المعلم المسؤول", "select", cur("teachers").length ? cur("teachers").map(t => t.name) : ["—"], "c_teacher")}
       ${formField("نوع الحلقة", "select", circleTypeOptions("", STATE.complexId), "c_type")}
@@ -33823,6 +33979,8 @@ document.addEventListener("click", (e) => {
       const name = val("#ec_name", c.name);
       if (!name) { showToast("اسم الحلقة مطلوب", "warn"); break; }
       c.name = name;
+      c.photo = photoVal("ec_photo", c.photo || "");   /* شعارُ الحلقة */
+      photoReset("ec_photo");
       c.type = val("#ec_type", c.type);
       c.days = daysValue("ec_days");
       c.start = val("#ec_start", c.start);
@@ -34149,7 +34307,10 @@ document.addEventListener("click", (e) => {
         endAnchor: val("#c_mode") === "anchor" ? val("#c_endAnchor", "") : "",
         capacity: Number(val("#c_cap")) || 0,
         termId: val("#c_term", ""),
+        /* شعارُ الحلقة — يظهر على بطاقتها في تطبيق المعلّم */
+        photo: photoVal("c_photo", ""),
         status: "لم تعتمد", last: "—" };
+      photoReset("c_photo");
       /* students لم يعد يُخزَّن: كان يُكتب صفراً ولا يُحدَّث أبداً بينما
          الطلاب مرتبطون بـ circleId — يُحسب الآن بـ circleCount. */
       DB.circles.push(o); persistSet("circles", o);
@@ -37331,7 +37492,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-0255";
+  var APP_BUILD = "20261002-0335";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
