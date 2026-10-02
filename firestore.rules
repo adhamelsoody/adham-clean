@@ -236,6 +236,26 @@ service cloud.firestore {
        خارج حلقاته. إغلاقه يحتاج ربط circleIds في ملف المستخدم، وهو ضمن
        مرحلة تقييد الصلاحيات القادمة. */
 
+    /* «ضمّ طالب جديد للحلقة» — زرُّ «+» في شاشة الحلقة بتطبيق المعلّم.
+       إنشاءٌ فقط: التعديلُ والحذفُ يبقيان للإدارة بالقاعدة العامة أعلاه.
+       والمفتاحُ addStudent هو نفسُه في TEACHER_PERMS بـ app.js، وافتراضُه
+       مسموحٌ كما في teacherCan — فإن عطّلته الإدارةُ في بطاقة المعلّم
+       مُنع هنا كما يُخفى الزرُّ هناك. */
+    match /students/{docId} {
+      allow read: if canRead();
+      allow create: if teacherMay('addStudent', true) && scopeOk();
+    }
+
+    /* «طلب اختبار» — يرفعه المعلّم لطالبه فيصل الإدارةَ في أوّل المراحل.
+       إنشاءٌ بمرحلة await-sup وحدَها: لا يرفع طلباً معتمداً ولا موثَّقاً،
+       ولا يعدّل محفوظاً ولا يحذفه. */
+    match /exams/{docId} {
+      allow read: if canRead();
+      allow create: if teacherMay('examRequest', true)
+                    && request.resource.data.stage == 'await-sup'
+                    && request.resource.data.studentId is string;
+    }
+
     match /plans/{docId} {
       allow read: if canRead();
       allow create, update: if teacherMay('plan_edit', true);

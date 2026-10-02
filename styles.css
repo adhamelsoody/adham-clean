@@ -10081,3 +10081,33 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 }
 :root[data-theme="dark"] .tq-mark  { background: #142726; border-color: #1f4746; color: #6f8584; }
 :root[data-theme="dark"] .tatt-row { background: #142726; }
+
+/* =========================================================================
+   صفحةُ الطالب في تطبيق المعلم — أدواتُها وزرُّ ضمّ الطالب
+   -------------------------------------------------------------------------
+   أدواتُ الطالب شريطٌ في أعلى صفحته (خطة التسميع · طلب اختبار · المراسلة)،
+   وصفُّ الطالب في قائمة الحلقة صار يُضغط فيفتحها، فله مؤشّرُ يدٍ وإبرازٌ
+   عند المرور. وأزرارُ نوع الاختبار تستعمل .tatt-opt القائمة فلا تُكرَّر.
+   ========================================================================= */
+.tst-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.tst-tool {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 10px 15px; border-radius: 12px; cursor: pointer;
+  font-size: 13px; font-weight: 700;
+  border: 1px solid var(--line, #e3e8ea);
+  background: var(--card, #fff); color: var(--ink, #1d2b2c);
+}
+.tst-tool.on { background: #0f6f72; border-color: #0f6f72; color: #fff; }
+.tst-tool:hover { border-color: #cfe3e2; }
+
+.tq-click { cursor: pointer; }
+.tq-click:hover { border-color: #cfe3e2; background: #f7fafa; }
+.tq-add { flex: 0 0 auto; }
+.tq-bar { gap: 8px; flex-wrap: wrap; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tst-tool { background: #142726; border-color: #1f4746; }
+  :root:not([data-theme="light"]) .tq-click:hover { background: #142726; }
+}
+:root[data-theme="dark"] .tst-tool { background: #142726; border-color: #1f4746; }
+:root[data-theme="dark"] .tq-click:hover { background: #142726; }

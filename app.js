@@ -24573,6 +24573,14 @@ function tcrcMarks(sid) {
   }).join("");
 }
 
+/* طلابُ الحلقة مرتَّبين أبجدياً — نصَّت الوثيقةُ على هذا الترتيب */
+function tcrcStudents(c) {
+  const list = (cur("students") || []).filter(s =>
+    String(s.circleId || "") === String((c && c.id) || "") && s.status !== "متوقف");
+  return list.sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "ar"));
+}
+
 function teacherCircle() {
   const c = tcrcCircle();
   if (!c) {
@@ -24580,8 +24588,7 @@ function teacherCircle() {
       <div class="card">${emptyState("لا حلقةَ مفتوحة", "اختر حلقةً من لوحتك.")}</div></div>`;
   }
 
-  const studs = (cur("students") || []).filter(s =>
-    String(s.circleId || "") === String(c.id) && s.status !== "متوقف");
+  const studs = tcrcStudents(c);
   const d = typeof attDate === "function" ? attDate() : todayISO();
   const map = attMap(d, String(c.id));
 
@@ -24591,6 +24598,15 @@ function teacherCircle() {
   const pct = asg.length ? Math.round((asg.length - left) / asg.length * 100) : 0;
   const marked = studs.filter(s => map[String(s.id)]).length;
 
+  /* إحصاءُ التحضير بعد اعتماده: الحضورُ والتأخّرُ والغياب. يُحسب من سجلّ
+     اليوم في كلّ رسمٍ للشاشة، فيتجدّد وحدَه بعد «اعتماد التحضير» بلا
+     تخزينٍ ثانٍ — والأسماءُ ما سمّتها الإدارةُ في إعدادات الحضور. */
+  const attCount = st => studs.filter(s => {
+    const r = map[String(s.id)];
+    return !!r && String(r.status) === st;
+  }).length;
+  const nPresent = attCount("حاضر"), nLate = attCount("متأخر"), nAbsent = attCount("غائب");
+
   /* النقاطُ المتاحة — تُعرض متى كان نظامُ النقاط متاحاً لهذا الحساب */
   const ptsOn = typeof canDo === "function" ? canDo("points") : false;
   const pts = ptsOn ? (cur("pointsLog") || []).filter(p => p &&
@@ -24599,6 +24615,9 @@ function teacherCircle() {
 
   const stats = [
     { t: "t-purple", n: studs.length, h: "الطلاب" },
+    { t: "t-green",  n: nPresent, h: attLabel("حاضر") },
+    { t: "t-amber",  n: nLate,    h: attLabel("متأخر") },
+    { t: "t-red",    n: nAbsent,  h: attLabel("غائب") },
     { t: "t-green",  n: toArabicDigits(pct) + "٪", h: "إنجاز الحلقة" },
     { t: "t-amber",  n: left,         h: "واجبات متبقية" },
     { t: "t-blue",   n: toArabicDigits(marked) + " / " + toArabicDigits(studs.length),
@@ -24611,7 +24630,8 @@ function teacherCircle() {
 
   const rows = studs.map(s => {
     const r = map[String(s.id)];
-    return `<div class="tq-row">
+    /* الضغطُ على الطالب يفتح صفحتَه — البندُ الرابعُ في الوثيقة */
+    return `<div class="tq-row tq-click" onclick="window.tcrcOpenStudent('${jsAttr(s.id)}')">
       <div class="mini-avatar">${initials(s.name)}</div>
       <div class="tq-name"><strong>${esc(s.name || "—")}</strong>
         <small>${esc(s.level || s.circle || "—")}</small></div>
@@ -24627,6 +24647,10 @@ function teacherCircle() {
     <div class="tq-bar">
       <button type="button" class="btn btn-primary" onclick="window.tcrcAttOpen()">
         ${ic("attend", 16)} اعتماد التحضير</button>
+      ${/* علامةُ «+» أعلى القائمة: ظهورُها بصلاحيةٍ تمنحها الإدارة وحدَها،
+            فإن مُنعت اختفت — كما نصّت الوثيقة. */
+        teacherCan("addStudent") ? `<button type="button" class="btn btn-soft tq-add"
+        onclick="window.tcrcAddOpen()">${ic("plus", 16)} إضافة طالب</button>` : ""}
     </div>
     <div class="tq-list">${rows || `<div class="ntf-empty">لا طلابَ في هذه الحلقة</div>`}</div>
   </div>`;
@@ -24640,8 +24664,7 @@ const TATT = { sel: {} };
 window.tcrcAttOpen = function () {
   const c = tcrcCircle();
   if (!c) { showToast("لا حلقةَ مفتوحة", "warn"); return; }
-  const studs = (cur("students") || []).filter(s =>
-    String(s.circleId || "") === String(c.id) && s.status !== "متوقف");
+  const studs = tcrcStudents(c);
   if (!studs.length) { showToast("لا طلابَ في الحلقة", "warn"); return; }
 
   const d = typeof attDate === "function" ? attDate() : todayISO();
@@ -24700,6 +24723,313 @@ window.tcrcAttSave = function () {
 
   closeModal();
   showToast("اعتُمد تحضيرُ " + toArabicDigits(n) + " طالباً", "success");
+  mount();
+};
+
+/* =========================================================================
+   ضمُّ طالبٍ إلى الحلقة — بصلاحيةٍ تمنحها الإدارة
+   -------------------------------------------------------------------------
+   «تظهر علامة + أعلى قائمة الطلاب، لكن ظهورها يعتمد على صلاحية تمنحها
+   الإدارة للمعلم». والصلاحيةُ هي addStudent في «إدارة الصلاحيات»، وتُفحص
+   هنا ثانيةً لا في الزرِّ وحدَه. والحقولُ أساسيّةٌ كما نصّت الوثيقة، وما
+   بقي يُورَث من الحلقة: مسجدُها ومجمّعُها ومعلّمُها وأيّامُها.
+   ========================================================================= */
+window.tcrcAddOpen = function () {
+  const c = tcrcCircle();
+  if (!c) { showToast("لا حلقةَ مفتوحة", "warn"); return; }
+  if (!teacherCan("addStudent")) {
+    showToast("صلاحيةُ ضمّ طالبٍ جديد غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const lvs = (cur("levels") || []);
+  const prgs = typeof prgPickList === "function" ? prgPickList(c.program) : (cur("programs") || []);
+
+  openModal("إضافة طالب", esc(c.name || ""),
+    `<div class="form-grid">
+      <div class="field full"><label>اسم الطالب <span class="req">*</span></label>
+        <input id="tsa_name" placeholder="الاسم الثلاثي"></div>
+      <div class="field"><label>نوع التسجيل <span class="req">*</span></label>
+        <select id="tsa_enroll">
+          <option value="">— اختر —</option>
+          <option value="plan">تُنسب لخطة</option>
+          <option value="attend">تحضير فقط</option>
+        </select></div>
+      <div class="field"><label>تاريخ الميلاد</label>
+        <input id="tsa_birth" type="date"></div>
+      <div class="field"><label>رقم الهوية</label>
+        <input id="tsa_idno" inputmode="numeric"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      <div class="field"><label>جوال الطالب</label>
+        <input id="tsa_phone" type="tel" inputmode="numeric"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      <div class="field"><label>جوال وليّ الأمر</label>
+        <input id="tsa_parent" type="tel" inputmode="numeric"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      <div class="field"><label>المستوى</label>
+        <select id="tsa_level"><option value="">—</option>${lvs.map(l =>
+          `<option value="${jsAttr(l.id)}">${esc(l.name || "—")}</option>`).join("")}</select></div>
+      <div class="field"><label>البرنامج</label>
+        <select id="tsa_program">${(prgs.length ? prgs : [{ name: "—" }]).map(p =>
+          `<option${String(p.name) === String(c.program || "") ? " selected" : ""}
+            >${esc(p.name || "—")}</option>`).join("")}</select></div>
+    </div>
+    ${noteCard("يُضَمُّ الطالبُ إلى حلقة «" + esc(c.name || "") +
+      "» ويرث مسجدَها ومعلّمَها وأيّامَها.")}`,
+    `<button class="btn btn-primary" onclick="window.tcrcAddSave()">${ic("check", 16)} حفظ</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.tcrcAddSave = function () {
+  const c = tcrcCircle();
+  if (!c) return;
+  if (!teacherCan("addStudent")) {
+    showToast("صلاحيةُ ضمّ طالبٍ جديد غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const name = val("#tsa_name");
+  if (!name) { showToast("اسم الطالب مطلوب", "warn"); return; }
+  const enroll = val("#tsa_enroll", "");
+  if (!enroll) { showToast("اختر نوع التسجيل: تُنسب لخطة أم تحضير فقط", "warn"); return; }
+  /* السعةُ تُحترم كما في نموذج الإدارة: الحلقةُ المكتملة لا تقبل */
+  if (typeof circleFull === "function" && circleFull(c)) {
+    showToast("حلقة " + (c.name || "") + " مكتملة — راجع الإدارة", "warn"); return;
+  }
+
+  const birth = val("#tsa_birth", "");
+  const lvId  = val("#tsa_level", "");
+  const o = {
+    id: Date.now(), name,
+    complexId: c.complexId != null ? c.complexId : (STATE.complexId || ""),
+    mosque: c.mosque || "", mosqueId: c.mosqueId || "",
+    circle: c.name || "", circleId: String(c.id),
+    teacher: c.teacher || "", teacherId: c.teacherId ? String(c.teacherId) : "",
+    days: c.days || "يومياً",
+    attType: "دوام كامل",
+    birth: birth,
+    age: (function () { const a = ageFromBirth(birth); return a == null ? "—" : String(a); })(),
+    idNo: val("#tsa_idno", ""),
+    phone: val("#tsa_phone", ""),
+    parent: val("#tsa_parent", "") || "—", parentRel: "الأب",
+    program: val("#tsa_program", ""),
+    levelId: lvId, level: lvId ? lvNameById(lvId) : "",
+    enrollType: enroll,
+    progress: 0, delays: 0, status: "نشط",
+    /* مَن ضمَّه: يُعرف في التقارير أنّ المعلّمَ هو من أضافه لا الإدارة */
+    addedBy: ((STATE && STATE.user) || {}).name || "",
+    joinedAt: Date.now()
+  };
+  if (!Array.isArray(DB.students)) DB.students = [];
+  DB.students.push(o);
+  persistSet("students", o);
+  closeModal();
+  showToast("أُضيف الطالبُ «" + name + "» إلى الحلقة", "success");
+  mount();
+};
+
+/* =========================================================================
+   صفحةُ الطالب — أدواتُه في أعلاها ثمّ خطّةُ تسميعه
+   -------------------------------------------------------------------------
+   «عند الضغط على الطالب تظهر صفحة خاصة به. في أعلى الصفحة تظهر الأدوات
+   الأساسية: خطة التسميع · طلب اختبار · المراسلة إذا كانت صلاحية التواصل
+   مفعلة». والخطّةُ تُعرض كما سجّلتها الإدارةُ — عرضاً لا تعديلاً.
+   ========================================================================= */
+const TSTU = { id: "", tab: "plan" };
+
+function tstuStudent() {
+  return (cur("students") || []).find(s => String(s.id) === String(TSTU.id)) || null;
+}
+
+window.tcrcOpenStudent = function (id) {
+  TSTU.id = String(id || "");
+  TSTU.tab = "plan";
+  if (typeof go === "function") go("student");
+  else { STATE.page = "student"; mount(); }
+};
+
+/* المراسلة: الطالبُ محدَّدٌ مسبقاً في شاشة الرسائل القائمة */
+window.tstuMsg = function () {
+  const st = tstuStudent();
+  if (!st) return;
+  if (!teacherCan("msgStudents")) {
+    showToast("صلاحيةُ مراسلة الطلاب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  TMSG.to = "student";
+  TMSG.picked = [String(st.id)];
+  if (typeof go === "function") go("messages");
+  else { STATE.page = "messages"; mount(); }
+};
+
+function teacherStudent() {
+  const st = tstuStudent();
+  if (!st) {
+    return `<div class="page">${pageHead("الطالب", "", backArrow())}
+      <div class="card">${emptyState("لا طالبَ مفتوح", "اختر طالباً من قائمة الحلقة.")}</div></div>`;
+  }
+  const c = (cur("circles") || []).find(x => String(x.id) === String(st.circleId || ""));
+  const canPlan = teacherCan("viewPlan");
+  const canMsg  = teacherCan("msgStudents");
+  const canExam = teacherCan("examRequest");
+  const p = canPlan ? planOfStudent(st) : null;
+
+  const tools = `<div class="tst-tools">
+    <button type="button" class="tst-tool${TSTU.tab === "plan" ? " on" : ""}"
+      onclick="window.tstuTab('plan')">${ic("book", 16)} خطة التسميع</button>
+    ${canExam ? `<button type="button" class="tst-tool"
+      onclick="window.tstuExamOpen()">${ic("exam", 16)} طلب اختبار</button>` : ""}
+    ${canMsg ? `<button type="button" class="tst-tool"
+      onclick="window.tstuMsg()">${ic("chat", 16)} المراسلة</button>` : ""}
+  </div>`;
+
+  const plan = !canPlan
+    ? noteCard("صلاحيةُ الاطلاع على الخطة غيرُ مفعَّلةٍ لحسابك.")
+    : (p ? `
+      <div class="section-head"><h3>خطة التسميع</h3></div>
+      <div class="duty-grid">
+        ${dutyCard("hifz", "t-green", "book", "الحفظ الجديد",
+          p.current ? `<strong class="duty-range">${esc(p.current)}</strong>
+            ${p.amount ? `<div class="duty-sum">المقدار: ${esc(p.amount)} ${esc(p.unit || "")}</div>` : ""}`
+          : `<span class="muted">لم يُحدَّد بعد.</span>`)}
+        ${dutyCard("rev", "t-blue", "list", "المراجعة",
+          p.start ? `<strong class="duty-range">${esc(p.start)}</strong>`
+                  : `<span class="muted">لم تُحدَّد بعد.</span>`)}
+        ${dutyCard("fix", "t-amber", "target", "المستوى",
+          `<strong class="duty-range">${esc(p.level || "—")}</strong>
+           <div class="duty-sum">${esc(p.program || "—")}</div>`)}
+      </div>
+      <div style="height:14px"></div>
+      <div><span class="muted" style="font-size:12px">نسبة الإنجاز</span>
+        ${progressRow(Number(p.progress) || 0)}</div>
+      ${p.note ? `<div style="height:12px"></div>${
+        noteCard("<strong>ملاحظة للطالب:</strong> " + esc(p.note))}` : ""}
+
+      <div style="height:16px"></div>
+      <div class="section-head"><h3>واجباتُ اليوم</h3></div>
+      <div class="tq-list">${(function () {
+        const list = tcrcDuties(st.id);
+        if (!list.length) return `<div class="ntf-empty">لا واجباتِ اليوم</div>`;
+        return list.map(a => `<div class="tq-row">
+          <div class="tq-name"><strong>${esc(a.kindName || a.kindAr || a.k || "واجب")}</strong>
+            <small>${esc(a.range || a.current || "—")}</small></div>
+          <span class="chip ${a.status === "done" ? "t-green" : "t-amber"}">${
+            a.status === "done" ? "منجز" : "لم يُنجز"}</span>
+        </div>`).join("");
+      })()}</div>`
+    : emptyState("لا توجد خطة لهذا الطالب",
+        "لم تُسنَد له خطةٌ بعد — راجع الإدارة."));
+
+  return `<div class="page">
+    ${pageHead(st.name || "الطالب", (c && c.name) || st.circle || "", backArrow())}
+    ${tools}
+    <div class="card" style="margin-top:12px">${plan}</div>
+  </div>`;
+}
+
+window.tstuTab = function (k) { TSTU.tab = String(k || "plan"); mount(); };
+
+/* =========================================================================
+   طلبُ الاختبار — يصل الإدارةَ في «رصد الاختبارات» أوّلَ مراحله
+   -------------------------------------------------------------------------
+   «عند الضغط عليه يرسل النظام طلبًا إلى الإدارة يتضمن: اسم المعلم · اسم
+   الطالب · الحلقة · مقدار الاختبار المطلوب»، والنوعُ عامٌّ أو بمقدارٍ
+   محدَّدٍ من موضعٍ إلى موضع. يُكتب في مجموعة exams بمرحلة await-sup —
+   وهي المرحلةُ التي تعرضها شاشةُ الإدارة «في انتظار تحديد المشرف».
+   ========================================================================= */
+const TXR = { kind: "general" };
+
+window.tstuExamOpen = function () {
+  const st = tstuStudent();
+  if (!st) { showToast("لا طالبَ مفتوح", "warn"); return; }
+  if (!teacherCan("examRequest")) {
+    showToast("صلاحيةُ طلب الاختبار غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  if (typeof reciteLoadSurahs === "function") reciteLoadSurahs();
+  TXR.kind = "general";
+  const c = (cur("circles") || []).find(x => String(x.id) === String(st.circleId || ""));
+  const sOpts = (QSURAHS || []).map(s =>
+    `<option value="${s.i}">${s.i}. ${esc(s.n)}</option>`).join("");
+
+  openModal("طلب اختبار", esc(st.name || ""),
+    `<div class="form-grid">
+      <div class="field full"><label>نوع الاختبار</label>
+        <div class="chip-list" id="txKinds">
+          ${[["general", "اختبار عام"], ["range", "اختبار بمقدار محدَّد"]].map(([k, h]) =>
+            `<button type="button" class="tatt-opt${TXR.kind === k ? " on" : ""}"
+              onclick="window.tstuExamKind('${k}')">${esc(h)}</button>`).join("")}
+        </div></div>
+    </div>
+    <div id="txRange" style="display:none">
+      ${sOpts ? `<div class="form-grid">
+        <div class="field"><label>من سورة</label><select id="tx_fromS">${sOpts}</select></div>
+        <div class="field"><label>من آية</label>
+          <input id="tx_fromA" type="number" min="1" dir="ltr" value="1"></div>
+        <div class="field"><label>إلى سورة</label><select id="tx_toS">${sOpts}</select></div>
+        <div class="field"><label>إلى آية</label>
+          <input id="tx_toA" type="number" min="1" dir="ltr"></div>
+      </div>` : noteCard("جارٍ تحميل فهرس السور — أعد المحاولة بعد لحظة.")}
+    </div>
+    <div class="form-grid">
+      <div class="field full"><label>ملاحظة للإدارة</label>
+        <textarea id="tx_note" rows="2" placeholder="اختياري"></textarea></div>
+    </div>
+    ${noteCard("يصل الطلبُ الإدارةَ باسمك واسم الطالب وحلقة «" +
+      esc((c && c.name) || st.circle || "—") + "» والمقدار المطلوب.")}`,
+    `<button class="btn btn-primary" onclick="window.tstuExamSave()">${
+      ic("check", 16)} إرسال الطلب</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.tstuExamKind = function (k) {
+  TXR.kind = String(k || "general");
+  const box = document.getElementById("txRange");
+  if (box) box.style.display = TXR.kind === "range" ? "" : "none";
+  document.querySelectorAll("#txKinds .tatt-opt").forEach(b =>
+    b.classList.toggle("on", b.getAttribute("onclick").indexOf("'" + TXR.kind + "'") > -1));
+};
+
+window.tstuExamSave = function () {
+  const st = tstuStudent();
+  if (!st) return;
+  if (!teacherCan("examRequest")) {
+    showToast("صلاحيةُ طلب الاختبار غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const c = (cur("circles") || []).find(x => String(x.id) === String(st.circleId || ""));
+  const u = (STATE && STATE.user) || {};
+  const nm = i => (QSURAHS ? (QSURAHS.find(x => x.i === Number(i)) || {}).n || "" : "");
+
+  let scope = "عام", range = {};
+  if (TXR.kind === "range") {
+    const fS = Number(val("#tx_fromS")), fA = Number(val("#tx_fromA"));
+    const tS = Number(val("#tx_toS")),   tA = Number(val("#tx_toA"));
+    if (!fS || !fA || !tS || !tA) { showToast("حدّد المقدار كاملاً", "warn"); return; }
+    if (typeof window.Quran !== "undefined" && !window.Quran.before(fS, fA, tS, tA)) {
+      showToast("نهاية المقدار قبل بدايته", "warn"); return;
+    }
+    range = { fromS: fS, fromA: fA, toS: tS, toA: tA, fromName: nm(fS), toName: nm(tS) };
+    scope = "من " + nm(fS) + " آية " + toArabicDigits(fA) +
+            " إلى " + nm(tS) + " آية " + toArabicDigits(tA);
+  }
+
+  const rec = Object.assign({
+    id: "ex" + Date.now(),
+    studentId: String(st.id), student: st.name || "—",
+    nameEn: st.nameEn || "--", username: st.username || st.email || "—",
+    phone: st.phone || "—", guardian: st.parent || st.guardianPhone || "—",
+    email: st.email || "—", birth: st.birth || "—",
+    circleId: String(st.circleId || ""), circle: (c && c.name) || st.circle || "",
+    /* طالبُ الطلب: المعلّمُ نفسُه — الإدارةُ تراه في السجل */
+    requestedById: String(u.id || ""), requestedBy: u.name || u.email || "—",
+    teacherId: String(st.teacherId || (c && c.teacherId) || ""),
+    teacher: st.teacher || (c && c.teacher) || "",
+    source: "teacher-request",
+    scopeKind: TXR.kind, scope: scope, part: scope,
+    note: val("#tx_note") || "",
+    stage: "await-sup", createdAt: Date.now(),
+    termId: typeof activeTermId === "function" ? activeTermId() : ""
+  }, range);
+
+  if (!Array.isArray(DB.exams)) DB.exams = [];
+  DB.exams.push(rec);
+  persistSet("exams", rec);
+  closeModal();
+  showToast("أُرسل طلبُ الاختبار إلى الإدارة", "success");
   mount();
 };
 
@@ -28865,6 +29195,7 @@ const PAGES = {
   "teacher/settings": adminSettings,
   "teacher/report": teacherReport,
   "teacher/circle": teacherCircle,
+  "teacher/student": teacherStudent,
   "student/dashboard": studentDashboard, "student/today": studentToday, "student/tomorrow": studentTomorrow,
   "student/progress": studentProgress, "student/attendance": studentAttendance, "student/results": studentResults,
   "student/notifications": studentNotifications,
@@ -38086,7 +38417,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-1520";
+  var APP_BUILD = "20261002-1620";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
