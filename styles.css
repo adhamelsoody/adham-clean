@@ -9950,3 +9950,12 @@ body.panel-open #panelRoot:not(:empty) > * { pointer-events: auto; }
 :root[data-theme="dark"] .tc-pill { background: #16302f; color: #cfe3e2; }
 :root[data-theme="dark"] .tc-bar  { background: #16302f; }
 :root[data-theme="dark"] .tc-irow:nth-child(odd) { background: #142726; }
+
+/* زرُّ «طلب إضافة مستخدم» — بجوار زرّ الموافقة في شريط الطلبات */
+.urq-new {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 15px; border-radius: 11px; cursor: pointer;
+  border: 1px solid var(--line, #e3e8ea); background: var(--card, #fff);
+  color: #0f6f72; font-size: 13.5px; font-weight: 600;
+}
+.urq-new:hover { background: #eaf5f5; }

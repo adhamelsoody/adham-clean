@@ -5008,6 +5008,14 @@ window.userSave = function () {
     active: !!(el("usActive") && el("usActive").checked)
   };
 
+
+  /* الحسابُ الذي يُنشأ موقوفاً طلبٌ ينتظر الاعتماد: يُعلَّم بـ pending
+     فيظهر في «طلبات إضافة مستخدم»، وكان يُكتب موقوفاً فلا يراه أحد.
+     والتفعيلُ يمحو العلامة فلا يعود الموقوفُ بعدها «طلباً». */
+  data.pending = !data.active;
+  data.createdByName = ((STATE && STATE.user) || {}).name ||
+                       ((STATE && STATE.user) || {}).email || "الإدارة";
+
   /* ---- تعديل: لا مساس بحساب الدخول ---- */
   if (id) {
     const u = DB.users.find(x => String(x.id) === String(id));
@@ -8816,10 +8824,56 @@ function urqLeft(r) {
    أي شاشة إدارية ويبقى معلّقاً إلى الأبد. تُعرض الآن الحسابات المعلّقة
    كطلبات، ويميّزها الحقل selfSignup.
    ========================================================================= */
+/* تاريخٌ قصيرٌ للجدول — والفارغُ شَرطة لا «1970» */
+function urqDate(ts) {
+  const n = Number(ts) || 0;
+  if (!n) return "—";
+  try { return toArabicDigits(new Date(n).toISOString().slice(0, 10)); }
+  catch (e) { return "—"; }
+}
+
+/* اسمُ منشأة الحساب — مسجدُه وإلا مجمّعُه */
+function urqFacName(u) {
+  const m = (DB.mosques || []).find(x => String(x.id) === String((u && u.mosqueId) || ""));
+  if (m) return m.name || "—";
+  const c = (DB.complexes || []).find(x => String(x.id) === String((u && u.complexId) || ""));
+  return c ? (c.name || "—") : "—";
+}
+
 function selfSignupRequests() {
   return (cur("users") || [])
-    .filter(u => u && u.selfSignup && u.active === false)
-    .map(u => ({
+    /* كان الشرطُ selfSignup وحدَه، فالحسابُ الذي تُنشئه الإدارةُ وتترك
+       «فعّال» بلا تأشير يبقى موقوفاً ولا يظهر في أيّ شاشة — لا يُعتمد
+       ولا يُعلم به. وعلامةُ pending تُكتب عند الإنشاء الموقوف وتُمحى عند
+       البتّ، فلا يعود الموقوفُ بعد تفعيلٍ «طلباً». */
+    .filter(u => u && u.active === false && (u.selfSignup === true || u.pending === true))
+    .map(u => {
+      const roleAr = (USER_ROLES.find(x => x.k === (u.requestedRole || u.role)) || {}).h ||
+              (u.requestedRole === "parent" ? "ولي أمر" :
+               u.requestedRole === "student" ? "طالب" : "—");
+      return {
+        id: "self:" + u.id,
+        userId: u.id,
+        selfSignup: true,
+        name: u.name || "—",
+        username: u.username || u.email || u.loginEmail || "—",
+        phone: u.phone || "—",
+        email: u.email || "",
+        roleKey: u.requestedRole || u.role || "student",
+        roleAr: roleAr,
+        facId: u.complexId || u.mosqueId || "",
+        /* أعمدةُ الجدول: كانت تُقرأ من مفاتيحَ لا وجودَ لها هنا فتظهر
+           شَرَطاتٍ في كلّ صفّ — تُملأ الآن بأسمائها. */
+        as: roleAr,
+        facility: urqFacName(u),
+        by: u.selfSignup === true ? "تسجيل ذاتي" : (u.createdByName || "الإدارة"),
+        date: urqDate(u.createdAt),
+        expires: "—",
+        status: "pending",
+        createdAt: u.createdAt || 0,
+        mine: false
+      };
+    });
       id: "self:" + u.id,
       userId: u.id,
       selfSignup: true,
@@ -8839,7 +8893,15 @@ function selfSignupRequests() {
 }
 
 function urqRows() {
-  let list = (cur("userRequests") || []).slice().concat(selfSignupRequests());
+  /* «طلباتي» تُشتقّ من مقدّم الطلب لا من حقلٍ مخزَّن: لو خُزِّن mine:true
+     لصار الطلبُ «طلبي» في عين كلّ من يفتح الشاشة. */
+  const me = String(((STATE && STATE.user) || {}).id ||
+                    ((STATE && STATE.user) || {}).uid || "");
+  let list = (cur("userRequests") || []).slice()
+    .map(r => Object.assign({}, r, {
+      mine: r.byId ? (String(r.byId) === me) : !!r.mine
+    }))
+    .concat(selfSignupRequests());
   list = list.filter(r => URQ.tab === "mine" ? r.mine : !r.mine);
   if (URQ.status) list = list.filter(r => {
     const st = (r.status || "pending");
@@ -8925,6 +8987,81 @@ window.urqDecide = function (to, ids) {
   mount();
 };
 
+/* =========================================================================
+   إرسالُ طلبِ إضافة مستخدم
+   -------------------------------------------------------------------------
+   الشاشةُ كانت تبتُّ في طلباتٍ لا سبيلَ إلى إنشائها: لا موضعَ في المشروع
+   كلِّه يكتب في userRequests — فتبويبُ «طلباتي» فارغٌ أبداً، والموافقاتُ
+   لا تأتي إلا من تسجيلٍ ذاتيّ.
+
+   هنا يُرسَل الطلب: يُكتب بحالة pending ومهلةٍ تنتهي، ويبتُّ فيه من يملك
+   ذلك فيُنشأ الحساب (urqDecide يفعل ذلك أصلاً للطلب المعتمد).
+   ========================================================================= */
+const URQ_DAYS = 7;          /* مهلةُ الطلب قبل أن ينتهي */
+
+window.urqForm = function () {
+  const facs = (cur("mosques") || []).map(m => ({ id: m.id, name: m.name || "—" }))
+    .concat((cur("complexes") || []).map(c => ({ id: c.id, name: c.name || "—" })));
+  const roles = (typeof USER_ROLES !== "undefined" ? USER_ROLES : [])
+    .filter(r => typeof canGrantRole !== "function" || canGrantRole(r.k));
+
+  openModal("طلب إضافة مستخدم", "يُرسل الطلب لمن يعتمده",
+    `<div class="form-grid">
+      <div class="field full"><label>الاسم <span class="req">*</span></label>
+        <input id="urqName" placeholder="اسم المستخدم الكامل"></div>
+      <div class="field"><label>اسم المستخدم / رقم الهوية <span class="req">*</span></label>
+        <input id="urqUser" dir="ltr" inputmode="numeric" placeholder="1012345678"></div>
+      <div class="field"><label>تسجيل كـ</label>
+        <select id="urqRole">${roles.length
+          ? roles.map(r => `<option value="${esc(r.k)}">${esc(r.h)}</option>`).join("")
+          : `<option value="teacher">معلّم</option>`}</select></div>
+      <div class="field full"><label>المنشأة</label>
+        <select id="urqFac"><option value="">— بلا منشأة —</option>${
+          facs.map(f => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("")}</select></div>
+      <div class="field full"><label>ملاحظة</label>
+        <input id="urqNote" placeholder="اختياري"></div>
+     </div>`,
+    `<button class="btn btn-primary" onclick="window.urqSave()">إرسال الطلب</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.urqSave = function () {
+  const name = (val("#urqName") || "").trim();
+  const user = (val("#urqUser") || "").trim();
+  if (!name) { showToast("الاسم مطلوب", "warn"); return; }
+  if (!user) { showToast("اسم المستخدم مطلوب", "warn"); return; }
+
+  const roleKey = val("#urqRole", "teacher");
+  const facId   = val("#urqFac", "");
+  const u = (STATE && STATE.user) || {};
+  const fac = (cur("mosques") || []).concat(cur("complexes") || [])
+    .find(x => String(x.id) === String(facId));
+
+  const now = Date.now();
+  const r = {
+    id: "ur" + now,
+    name: name, username: user,
+    roleKey: roleKey,
+    as: (USER_ROLES.find(x => x.k === roleKey) || {}).h || "—",
+    facId: facId, facility: fac ? (fac.name || "—") : "—",
+    by: u.name || u.email || "—",
+    byId: String(u.id || u.uid || ""),
+    note: (val("#urqNote") || "").trim(),
+    date: urqDate(now), createdAt: now,
+    expiresAt: now + URQ_DAYS * 86400000,
+    status: "pending"
+  };
+  r.expires = urqDate(r.expiresAt);
+
+  if (!Array.isArray(DB.userRequests)) DB.userRequests = [];
+  DB.userRequests.push(r);
+  persistSet("userRequests", r);
+  closeModal();
+  showToast("أُرسل الطلب — تجده في «طلباتي»", "success");
+  URQ.tab = "mine"; URQ.status = "pending";
+  mount();
+};
+
 function adminUserRequests() {
   URQ.auto = !!((DB.settings || {}).autoAcceptRequests);
   const all = urqRows();
@@ -8956,6 +9093,9 @@ function adminUserRequests() {
         </select>${CH}</div>
       </div>
       <div class="urq-acts">
+        ${/* إرسالُ طلبِ إضافةِ مستخدم: كان تبويبُ «طلباتي» لا يمتلئ أبداً
+             لأنّ شيئاً في النظام لا يكتب في userRequests — هذا هو الزرّ. */ ""}
+        <button type="button" class="urq-new" onclick="window.urqForm()">${ic("plus", 15)} طلب إضافة مستخدم</button>
         <button type="button" class="urq-ok${picked ? " ready" : ""}" onclick="window.urqDecide('approved')">موافقة المحدد${DBL}</button>
         <select class="rep-size" onchange="window.urqSize(this.value)">
           ${[10, 25, 50, 100].map(n => `<option value="${n}"${n === URQ.size ? " selected" : ""}>${n}</option>`).join("")}
@@ -37507,7 +37647,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-0345";
+  var APP_BUILD = "20261002-0405";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
