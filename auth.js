@@ -343,8 +343,31 @@ window.SHELL_MODE = true;
     { act:  "tchLogout", label: "تسجيل الخروج",      icon: "lock" }
   ];
 
+  /* اسمُ المعلّم وصورتُه تحت شعار «ذات» في القائمة الجانبية — بطلبٍ صريح:
+     خانةٌ مستديرةٌ فيها صورتُه الدائريّة يميناً واسمُه بجوارها. */
+  function teacherWhoHTML() {
+    var u = (window.STATE && window.STATE.user) || {};
+    var nm = String(u.name || "");
+    if (!nm) return "";
+    function sf(s) {
+      return (typeof esc === "function") ? esc(s)
+        : String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                   .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    var ph = "";
+    try {
+      var t = (typeof myTeacherRecord === "function") ? myTeacherRecord() : null;
+      ph = (t && t.photo) || u.photo || "";
+    } catch (e) { ph = u.photo || ""; }
+    var av = ph
+      ? '<img src="' + sf(ph) + '" alt="">'
+      : ((typeof ic === "function") ? ic("person", 26) : "");
+    return '<div class="nav-who"><span class="nav-who-av">' + av + '</span>' +
+           '<strong>' + sf(nm) + '</strong></div>';
+  }
+
   function teacherNavHTML() {
-    return NAV_TEACHER.map(function (it) {
+    return teacherWhoHTML() + NAV_TEACHER.map(function (it) {
       if (it.act) {
         return '<button type="button" class="nav-item nav-act" ' +
                'onclick="if(window.' + it.act + ')window.' + it.act + '()">' +

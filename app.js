@@ -30657,7 +30657,22 @@ function renderNav() {
   const items = navFor(STATE.iface);
   try { renderTabBar(); } catch (e) {}
 
-  nav.innerHTML = items.map(it => {
+  /* اسمُ المعلّم وصورتُه تحت شعار «ذات» في صدر القائمة — بطلبٍ صريح.
+     والرسمُ الفعليُّ في index.html من auth.js، وفيه مثلُه. */
+  let who = "";
+  try {
+    const u = (STATE || {}).user || {};
+    const nm = String(u.name || "");
+    if (STATE.iface === "teacher" && nm) {
+      const t = (typeof myTeacherRecord === "function") ? myTeacherRecord() : null;
+      const ph = (t && t.photo) || u.photo || "";
+      who = `<div class="nav-who"><span class="nav-who-av">${
+        ph ? `<img src="${esc(ph)}" alt="">` : ic("person", 26)
+      }</span><strong>${esc(nm)}</strong></div>`;
+    }
+  } catch (e) { who = ""; }
+
+  nav.innerHTML = who + items.map(it => {
     /* العدّادُ يُنادى في حارس: دالّةٌ ترمي خطأً كانت تُسقط رسمَ القائمة
        كلِّها، فتختفي البنودُ جميعاً — والسببُ عدّادٌ في بندٍ واحد. */
     let cnt = "";
@@ -39724,7 +39739,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261003-1730";
+  var APP_BUILD = "20261003-1815";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
