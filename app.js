@@ -26406,12 +26406,10 @@ function teacherDashboard() {
     <div class="donut-label">تحضير اليوم</div>
   </div>`;
 
-  /* ---- تنبيه الحالة ---- */
-  const banner = !total ? "" : (left > 0
-    ? noteCard(`<strong>تحضير اليوم لم يكتمل.</strong> باقي ${left} من ${total} طالباً.
-        <button class="btn btn-primary btn-sm" data-action="nav" data-page="attendance"
-          style="margin-inline-start:10px">${ic("attend", 15)} افتح التحضير</button>`)
-    : noteCard(`<strong>تحضير اليوم مكتمل.</strong> سُجّل ${marked} من ${total} طالباً.`));
+  /* ---- تنبيه الحالة ----
+     أُخرج من اللوحة بطلبٍ صريح وصار تنبيهاً في جرس التنبيهات
+     (tchAttNotif)، فلم يُحذف خبرُه بل انتقل موضعُه. */
+  const banner = "";
 
   /* ---- الحلقات ---- */
   const circleRows = circles.length ? circles.map(c => {
@@ -39514,8 +39512,35 @@ function scanNotifications() {
    وُحّدت على myNotifs: تفرز بالمعرّف والدور والطالب، والعامُّ فيها للطالب
    ووليّه وحدهما.
    ========================================================================= */
+/* تنبيهُ «تحضير اليوم لم يكتمل» — كان شريطاً في لوحة المعلّم فنُقل إلى
+   جرس التنبيهات بطلبٍ صريح. وهو تنبيهٌ محسوبٌ لا مخزَّن: يُبنى من حال
+   اليوم عند كلّ فتحٍ ولا يُكتب في قاعدة البيانات، فيختفي وحدَه متى اكتمل
+   التحضير. ويُعلَّم بـ virtual ليتخطّاه ما يكتب في السجلّ. */
+function tchAttNotif() {
+  try {
+    if (!STATE || STATE.iface !== "teacher") return null;
+    const students = inWorkCircle(cur("students"));
+    const total = students.length;
+    if (!total) return null;
+
+    const map = attMap(todayISO(), attCircle());
+    const left = total - students.filter(s => map[String(s.id)]).length;
+    if (left <= 0) return null;
+
+    return {
+      id: "virt-tch-att", virtual: true, read: false,
+      key: "tch-att", kind: "info", type: "info",
+      title: "تحضير اليوم لم يكتمل",
+      text: "باقي " + toArabicDigits(left) + " من " + toArabicDigits(total) + " طالباً.",
+      ts: Date.now()
+    };
+  } catch (e) { return null; }
+}
+
 function myNotifications() {
-  return typeof myNotifs === "function" ? myNotifs() : [];
+  const list = typeof myNotifs === "function" ? myNotifs() : [];
+  const v = tchAttNotif();
+  return v ? [v].concat(list) : list;
 }
 
 /* شارة العدد على زر الجرس */
@@ -39538,6 +39563,8 @@ window.notifMarkAllRead = function () {
   let n = 0;
   myNotifications().forEach(x => {
     if (x.read) return;
+    /* المحسوبُ لا يُكتب في السجلّ: ليس سجلّاً أصلاً */
+    if (x.virtual) return;
     x.read = true;
     persistSet("notifications", x);
     n++;
@@ -39582,6 +39609,7 @@ function notifTarget(n) {
     pending:  { page: "admin/users",         label: "فتح الحساب" },
     examOk:   { page: "admin/exams-record",  label: "فتح الاختبار" },
     noPunch:  { page: "admin/duty",          label: "فتح الدوام" },
+    "tch-att": { page: "teacher/attendance", label: "فتح التحضير" },
     absent:   { page: "teacher/attendance",  label: "فتح التحضير" },
     absentP:  { page: "teacher/attendance",  label: "فتح التحضير" },
     late3:    { page: "teacher/attendance",  label: "فتح التحضير" },
@@ -39594,6 +39622,15 @@ function notifTarget(n) {
 }
 
 window.notifOpen = function (notifId) {
+  /* التنبيهُ المحسوب ليس في DB، فيُفتح من حسابه مباشرةً */
+  if (String(notifId).indexOf("virt-") === 0) {
+    const v = (typeof tchAttNotif === "function") ? tchAttNotif() : null;
+    const tv = v && typeof notifTarget === "function" ? notifTarget(v) : null;
+    closePanel();
+    if (tv && tv.page) go(tv.page);
+    return;
+  }
+
   const n = (DB.notifications || []).find(x => String(x.id) === String(notifId));
   if (!n) return;
 
@@ -39802,7 +39839,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-0205";
+  var APP_BUILD = "20261004-0230";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
