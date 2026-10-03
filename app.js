@@ -31148,6 +31148,11 @@ function mount() {
 
   /* صورة الشريط تُحدَّث مع كل رسم، فتظهر فور الحفظ بلا إعادة تحميل */
   try { if (window.refreshTopbarPhoto) window.refreshTopbarPhoto(); } catch (e) {}
+  /* الشريطان يُراجَعان مع كلّ رسم: auth.js يستبدل renderNav بدالّته هو
+     (renderNav = buildSidebarNav)، فلا يُنادى renderTabBar من خلالها —
+     فكان شريطُ المعلّم السفليُّ لا يُرسم في index.html أصلاً. ومراجعةُ
+     الجانبيّ هنا لازمةٌ كذلك: زرُّ الخروج يضعه auth.js بعد أوّل رسم. */
+  try { renderTabBar(); } catch (e) {}
   /* والشريطُ الجانبيُّ يُراجَع مع كلّ رسم: زرُّ الخروج يضعه auth.js بعد
      أوّل رسمٍ للقائمة، فلا يكفي مراجعتُه عند إعادتها. */
   try { hideSideNavFor(STATE.iface); } catch (e) {}

@@ -326,6 +326,37 @@ window.SHELL_MODE = true;
     }
   };
 
+  /* ═══════════════════════════════════════════════════════════════
+     قائمةُ المعلّم — خمسةٌ بطلبٍ صريح
+     ───────────────────────────────────────────────────────────────
+     «أريد فقط: حلقاتي · المصحف التفاعلي · طلبات الاختبارات · الإعدادات ·
+     تسجيل الخروج. دول فقط لا غير».
+     وبنودُه شاشاتٌ داخل التطبيق لا ملفّاتٌ في /admin، فتُرسم أزراراً
+     بـ data-action="nav" يلتقطها app.js — لا روابطَ إلى صفحات الإدارة.
+     وما خرج من قائمته لم يُحذف: شاشاتُه الأخرى يصلها من تطبيقه.
+     ═══════════════════════════════════════════════════════════════ */
+  var NAV_TEACHER = [
+    { page: "dashboard", label: "حلقاتي",            icon: "book" },
+    { page: "mushaf",    label: "المصحف التفاعلي",   icon: "book" },
+    { page: "exams",     label: "طلبات الاختبارات",  icon: "exam" },
+    { page: "settings",  label: "الإعدادات",         icon: "settings" },
+    { act:  "tchLogout", label: "تسجيل الخروج",      icon: "lock" }
+  ];
+
+  function teacherNavHTML() {
+    return NAV_TEACHER.map(function (it) {
+      if (it.act) {
+        return '<button type="button" class="nav-item nav-act" ' +
+               'onclick="if(window.' + it.act + ')window.' + it.act + '()">' +
+               ic(it.icon, 19) + '<span>' + it.label + '</span></button>';
+      }
+      var on = (typeof STATE !== "undefined" && STATE.page === it.page) ? " active" : "";
+      return '<button type="button" class="nav-item' + on + '" ' +
+             'data-action="nav" data-page="' + it.page + '">' +
+             ic(it.icon, 19) + '<span>' + it.label + '</span></button>';
+    }).join("");
+  }
+
   /* مفتاحُ الابن: قيمة p إن كان يمرّ بالموزّع، وإلا اسمُ الملف بلا امتداد */
   function childKey(file) {
     var q = String(file || "").split("?");
@@ -413,6 +444,19 @@ window.SHELL_MODE = true;
   function buildSidebarNav() {
     const nav = document.getElementById("nav");
     if (!nav) return;
+
+    /* المعلّم: قائمتُه هي شاشاتُه وحدَها — لا منشآتٍ ولا مساجدَ ولا
+       تقاريرَ ولا إحصاءاتٍ شاملة؛ تلك شأنُ المدراء والمشرفين. وكانت
+       قائمةُ الإدارة تُعرض له كاملةً لأنّ NAV_ROLE لا دورَ فيه للمعلّم. */
+    if (myRole() === "teacher") {
+      nav.innerHTML = teacherNavHTML();
+      /* وزرُّ الخروج في ذيل الشريط يُخفى: الخروجُ بندٌ في القائمة نفسِها */
+      try {
+        var lo = document.getElementById("logoutBtn");
+        if (lo) lo.style.display = "none";
+      } catch (e) {}
+      return;
+    }
 
     /* داخل منشأة: قائمتُها هي المعروضة */
     if (typeof STATE !== "undefined" && STATE.facilityView) {
