@@ -362,8 +362,12 @@ window.SHELL_MODE = true;
     var av = ph
       ? '<img src="' + sf(ph) + '" alt="">'
       : ((typeof ic === "function") ? ic("person", 26) : "");
+    /* الأرقامُ تحت الاسم: حسابُها في app.js فلا يُكرَّر هنا */
+    var bits = "";
+    try { bits = (typeof navWhoStats === "function") ? navWhoStats() : ""; } catch (e) { bits = ""; }
+
     return '<div class="nav-who"><span class="nav-who-av">' + av + '</span>' +
-           '<strong>' + sf(nm) + '</strong></div>';
+           '<strong>' + sf(nm) + '</strong></div>' + bits;
   }
 
   function teacherNavHTML() {

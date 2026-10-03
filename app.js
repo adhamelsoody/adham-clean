@@ -30650,6 +30650,37 @@ function renderTabBar() {
     </button>`).join("");
 }
 
+/* أرقامُ المعلّم تحت اسمه في القائمة الجانبية — بطلبٍ صريح:
+   عددُ حلقاته وطلابه ومساجده وتخصّصُه. والمساجدُ تُحصى من حلقاته
+   لا من سجلّه، فمن له حلقاتٌ في مسجدين يرى اثنين. */
+function navWhoStats() {
+  try {
+    const t = (typeof myTeacherRecord === "function") ? myTeacherRecord() : null;
+    if (!t) return "";
+
+    const mine = (cur("circles") || []).filter(c => c &&
+      (String(c.teacherId) === String(t.id) ||
+        (Array.isArray(c.assistants) && c.assistants.indexOf(String(t.id)) > -1)));
+
+    const kids = (cur("students") || []).filter(s => s && s.status !== "متوقف" &&
+      mine.some(c => String(c.id) === String(s.circleId))).length;
+
+    const msq = {};
+    mine.forEach(c => { const m = String(c.mosqueId || ""); if (m) msq[m] = 1; });
+    if (!Object.keys(msq).length && t.mosqueId) msq[String(t.mosqueId)] = 1;
+
+    const rows = [
+      ["عدد الحلقات", toArabicDigits(mine.length)],
+      ["عدد الطلاب",  toArabicDigits(kids)],
+      ["عدد المساجد", toArabicDigits(Object.keys(msq).length)],
+      ["التخصص",      t.spec || t.qual || "—"]
+    ];
+    return `<div class="nav-who-bits">${rows.map(([h, v]) =>
+      `<div><span>${esc(h)}</span><b>${esc(String(v))}</b></div>`).join("")}</div>`;
+  } catch (e) { return ""; }
+}
+window.navWhoStats = navWhoStats;
+
 function renderNav() {
   const nav = $("#nav");
   if (!nav) return;
@@ -30668,7 +30699,7 @@ function renderNav() {
       const ph = (t && t.photo) || u.photo || "";
       who = `<div class="nav-who"><span class="nav-who-av">${
         ph ? `<img src="${esc(ph)}" alt="">` : ic("person", 26)
-      }</span><strong>${esc(nm)}</strong></div>`;
+      }</span><strong>${esc(nm)}</strong></div>` + navWhoStats();
     }
   } catch (e) { who = ""; }
 
@@ -39739,7 +39770,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261003-1815";
+  var APP_BUILD = "20261003-1835";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
