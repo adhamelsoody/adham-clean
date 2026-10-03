@@ -10285,3 +10285,23 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 /* بندُ الفعل في القائمة الجانبية — تسجيلُ الخروج */
 .nav-item.nav-act { color: #d86a66; }
 .nav-item.nav-act:hover { background: rgba(216, 106, 102, .12); }
+
+/* شكلُ بطاقة المعلّم في لوحته — طُلب الشكلُ وحدَه دون الألوان: لوحةٌ أعرضُ
+   استدارةً، صورةٌ دائريّةٌ كبيرةٌ في طرفها، واسمٌ كبيرٌ بجوارها. الألوانُ
+   هي ألوانُ النظام كما هي، وبطاقةُ الطالب (.stp-card وحدَها) لم تُمسّ. */
+.stp-card.tpf-hero { padding: 26px 22px 20px; border-radius: 22px; }
+.stp-card.tpf-hero .stp-top { gap: 18px; }
+.stp-card.tpf-hero .stp-av {
+  width: 112px; height: 112px; font-size: 38px; border-width: 5px;
+  box-shadow: 0 6px 22px rgba(11, 127, 131, .22);
+}
+.stp-card.tpf-hero .stp-id strong { font-size: 23px; line-height: 1.35; }
+.stp-card.tpf-hero .stp-id .muted { font-size: 13.5px; margin-top: 5px; }
+.stp-card.tpf-hero .stp-acts { margin-top: 14px; }
+
+/* الشاشاتُ الضيّقة: الصورةُ تصغر قليلاً كيلا يضيق الاسم */
+@media (max-width: 560px) {
+  .stp-card.tpf-hero { padding: 22px 16px 18px; }
+  .stp-card.tpf-hero .stp-av { width: 92px; height: 92px; font-size: 32px; border-width: 4px; }
+  .stp-card.tpf-hero .stp-id strong { font-size: 20px; }
+}

@@ -23985,7 +23985,7 @@ function teacherProfileCard() {
     ["التخصّص", t.spec || t.qual || "—"]
   ];
 
-  return `<div class="card stp-card">
+  return `<div class="card stp-card tpf-hero">
     <div class="stp-top">
       <div class="stp-av">${t.photo
         ? `<img src="${esc(t.photo)}" alt="">`
@@ -39724,7 +39724,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261003-1640";
+  var APP_BUILD = "20261003-1710";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
