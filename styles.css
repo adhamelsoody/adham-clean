@@ -10335,3 +10335,9 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 }
 .nav-who-bits span { font-size: 12px; color: rgba(255, 255, 255, .72); font-weight: 600; }
 .nav-who-bits b { font-size: 13px; color: #fff; font-weight: 700; }
+
+/* زرُّ التحضير في الشريط العلويّ بجوار جرس التنبيهات — بطلبٍ صريح.
+   لونُه لونُ العلامة ليُميَّز عن أزرار الشريط، ويخضرُّ متى سُجّل حضوره. */
+.icon-btn.tch-top-check { color: var(--brand-main, #0b7f83); }
+.icon-btn.tch-top-check:hover { background: var(--brand-soft, #eafbfc); }
+.icon-btn.tch-top-check.done { color: var(--success, #3a945c); }

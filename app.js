@@ -26445,14 +26445,9 @@ function teacherDashboard() {
     ${/* رسالةُ الترحيب التي تحدّدها الإدارة — تُعرض ما دامت مكتوبة */ ""}
     ${teacherWelcome() ? `<div class="tc-welcome">${ic("chat", 18)}
       <span>${esc(teacherWelcome())}</span></div>` : ""}
-    ${/* أعلى الواجهة: خانةُ التنبيهات، وبجانبها زرُّ التحضير الصغير */ ""}
-    <div class="tch-top">
-      ${tchNotifBox()}
-      <button type="button" class="tch-checkin${tchMyAtt(todayISO()) ? " done" : ""}"
-        onclick="window.tchCheckIn()">
-        ${ic("attend", 18)}<span>${tchMyAtt(todayISO()) ? "حضوري مسجَّل" : "التحضير"}</span>
-      </button>
-    </div>
+    ${/* خانةُ التنبيهات أُلغيت من اللوحة بطلبٍ صريح، وزرُّ التحضير انتقل إلى
+          الشريط العلويّ بجوار جرس التنبيهات (tchTopCheckBtn). ودالّةُ
+          tchNotifBox باقيةٌ في مكانها دون نداء. */ ""}
     ${/* بطاقةُ المعلّم نُقلت من اللوحة إلى شاشة «الإعدادات» بطلبٍ صريح،
           فلم تُحذف. وأرقامُه في القائمة الجانبية تحت اسمه. */ ""}
     ${tchCircleCards()}
@@ -30655,6 +30650,39 @@ function renderTabBar() {
 /* أرقامُ المعلّم تحت اسمه في القائمة الجانبية — بطلبٍ صريح:
    عددُ حلقاته وطلابه ومساجده وتخصّصُه. والمساجدُ تُحصى من حلقاته
    لا من سجلّه، فمن له حلقاتٌ في مسجدين يرى اثنين. */
+/* زرُّ التحضير في الشريط العلويّ بجوار جرس التنبيهات — بطلبٍ صريح.
+   يُركَّب للمعلّم وحدَه ويُنزع لغيره، وحالتُه تُراجَع مع كلّ رسم فيظهر
+   «حضوري مسجَّل» فور التسجيل بلا إعادة تحميل. */
+function tchTopCheckBtn() {
+  try {
+    const bar = document.querySelector(".topbar .topbar-left");
+    let b = document.getElementById("tchCheckTop");
+
+    if (!bar || !STATE || STATE.iface !== "teacher") {
+      if (b && b.parentNode) b.parentNode.removeChild(b);
+      return;
+    }
+
+    if (!b) {
+      b = document.createElement("button");
+      b.id = "tchCheckTop";
+      b.type = "button";
+      b.className = "icon-btn tch-top-check";
+      b.onclick = function () { if (window.tchCheckIn) window.tchCheckIn(); };
+      const bell = document.getElementById("btnNotif");
+      if (bell && bell.parentNode === bar) bar.insertBefore(b, bell);
+      else bar.insertBefore(b, bar.firstChild);
+    }
+
+    const done = (typeof tchMyAtt === "function") && !!tchMyAtt(todayISO());
+    b.classList.toggle("done", done);
+    b.title = done ? "حضوري مسجَّل" : "التحضير";
+    b.setAttribute("aria-label", b.title);
+    b.innerHTML = ic("attend", 20);
+  } catch (e) {}
+}
+window.tchTopCheckBtn = tchTopCheckBtn;
+
 function navWhoStats() {
   try {
     const t = (typeof myTeacherRecord === "function") ? myTeacherRecord() : null;
@@ -31202,6 +31230,8 @@ function mount() {
      فكان شريطُ المعلّم السفليُّ لا يُرسم في index.html أصلاً. ومراجعةُ
      الجانبيّ هنا لازمةٌ كذلك: زرُّ الخروج يضعه auth.js بعد أوّل رسم. */
   try { renderTabBar(); } catch (e) {}
+  /* وزرُّ التحضير في الشريط العلويّ: يُركَّب للمعلّم ويُنزع لغيره */
+  try { tchTopCheckBtn(); } catch (e) {}
   /* والشريطُ الجانبيُّ يُراجَع مع كلّ رسم: زرُّ الخروج يضعه auth.js بعد
      أوّل رسمٍ للقائمة، فلا يكفي مراجعتُه عند إعادتها. */
   try { hideSideNavFor(STATE.iface); } catch (e) {}
@@ -39772,7 +39802,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261003-1925";
+  var APP_BUILD = "20261004-0205";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
