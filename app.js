@@ -28579,6 +28579,10 @@ function fabRender() {
   const isTeacher = STATE.iface === "teacher" &&
                     (!u.role || u.role === "teacher" || u.role === "admin" || isMgrRole(u.role));
   if (!isTeacher || !teacherCan("editPlan")) return;
+  /* الزرُّ العائمُ أُزيل من واجهة المعلّم بطلبٍ صريح: كان يفتح شاشاتٍ
+     أُخرجت من قائمته (الواجبات · الخطط · التحضير · التسميع)، وقد طلب
+     أربعَ نوافذَ لا تزيد. والدالّةُ باقيةٌ لمن سواه. */
+  if (String(u.role || "") === "teacher") return;
 
   const studs = cur("students");
   if (!studs.length) return;
@@ -30614,6 +30618,12 @@ function hideSideNavFor(iface) {
      (حلقاتي · المصحف · طلبات الاختبارات · الإعدادات · الخروج) فيظهر. */
   const items = (typeof navFor === "function" ? navFor(iface) : (NAV[iface] || [])) || [];
   const off = !items.length;
+  /* زرُّ الخروج في ذيل الشريط (يضعه auth.js لكلّ الأدوار) يُخفى متى صار
+     الخروجُ بنداً في القائمة نفسِها — فلا يتكرّر أمام المعلّم. */
+  try {
+    const lo = document.getElementById("logoutBtn");
+    if (lo) lo.style.display = items.some(x => x && x.act === "tchLogout") ? "none" : "";
+  } catch (e) {}
   if (bar) bar.classList.toggle("nav-off", off);
   if (btn) btn.style.display = off ? "none" : "";
   try { document.body.classList.toggle("nav-off", off); } catch (e) {}
@@ -31138,6 +31148,9 @@ function mount() {
 
   /* صورة الشريط تُحدَّث مع كل رسم، فتظهر فور الحفظ بلا إعادة تحميل */
   try { if (window.refreshTopbarPhoto) window.refreshTopbarPhoto(); } catch (e) {}
+  /* والشريطُ الجانبيُّ يُراجَع مع كلّ رسم: زرُّ الخروج يضعه auth.js بعد
+     أوّل رسمٍ للقائمة، فلا يكفي مراجعتُه عند إعادتها. */
+  try { hideSideNavFor(STATE.iface); } catch (e) {}
 
   /* الواجهة تُصحَّح عند كل رسم، فلا يكفي تعديل STATE.iface يدوياً للتحايل */
   const allow = allowedIface();
@@ -39705,7 +39718,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261003-1530";
+  var APP_BUILD = "20261003-1600";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
