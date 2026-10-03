@@ -26450,9 +26450,10 @@ function teacherDashboard() {
         ${ic("attend", 18)}<span>${tchMyAtt(todayISO()) ? "حضوري مسجَّل" : "التحضير"}</span>
       </button>
     </div>
-    ${/* حلقاتُ المعلّم الموكّلةُ إليه وحدَها — صدرُ اللوحة كما نصّت الوثيقة */ ""}
-    ${tchCircleCards()}
+    ${/* بطاقةُ المعلّم فوق حلقاته بطلبٍ صريح: اسمُه وصورتُه وأرقامُه أوّلَ
+          ما يُرى، ثمّ حلقاتُه الموكّلةُ إليه. */ ""}
     ${teacherProfileCard()}
+    ${tchCircleCards()}
 
     <div class="dash-top">
       <div class="card att-summary-wrap"><div class="att-rows">${attRows}</div></div>
@@ -39723,7 +39724,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261003-1600";
+  var APP_BUILD = "20261003-1640";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
