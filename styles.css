@@ -10281,3 +10281,7 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 :root[data-theme="dark"] .tsg-ava { background: #142726; border-color: #1f4746; }
 :root[data-theme="dark"] .tsg-row { border-color: #1f4746; }
 :root[data-theme="dark"] .tst-tool.tsg-out:hover { background: #2a1615; }
+
+/* بندُ الفعل في القائمة الجانبية — تسجيلُ الخروج */
+.nav-item.nav-act { color: #d86a66; }
+.nav-item.nav-act:hover { background: rgba(216, 106, 102, .12); }

@@ -269,23 +269,22 @@ const NAV = {
     { id: "worktime", label: "إدارة الدوام", icon: "clock" },
     { id: "settings", label: "الإعدادات", icon: "settings" }
   ],
+  /* =======================================================================
+     قائمةُ المعلّم الجانبية — خمسةٌ بطلبٍ صريح
+     -----------------------------------------------------------------------
+     «كل ما أريده في الصفحات الجانبية للمعلم: حلقاتي · المصحف التفاعلي ·
+     الإعدادات · طلبات الاختبارات · تسجيل الخروج».
+     وما خرج من القائمة لم يُحذف: شاشاتُ حلقة اليوم والتحضير والتسميع
+     والواجبات وخطط الطلاب والمتأخرات واعتماد الحلقة باقيةٌ في PAGES
+     ويصلها المعلّمُ من تطبيقه (بطاقةُ الحلقة ← الطالب ← الواجب).
+     ======================================================================= */
   teacher: [
-    { id: "dashboard", label: "لوحة المعلم", icon: "grid" },
-    { id: "today", label: "حلقة اليوم", icon: "book" },
-    { id: "attendance", label: "التحضير اليومي", icon: "attend" },
-    { id: "recite", label: "التسميع والتقييم", icon: "pen" },
-    { id: "duties", label: "الواجبات", icon: "doc", count: () => cur("students").filter(x => !planOfStudent(x)).length },
-    { id: "tomorrow", label: "واجب الغد", icon: "calendar",
-      count: () => cur("students").filter(x => { const p = planOfStudent(x); return !p || p.day !== "tomorrow"; }).length },
-    { id: "plans", label: "خطط الطلاب", icon: "plan" },
+    { id: "dashboard", label: "حلقاتي", icon: "book" },
     { id: "mushaf", label: "المصحف التفاعلي", icon: "book" },
-    { id: "delays", label: "المتأخرات والتعويض", icon: "clock" },
-    { id: "approve", label: "اعتماد الحلقة", icon: "checkCircle" },
-    /* «إدارة الصلاحيات» فُتحت للمعلّم بطلبٍ صريح، وشاشةُ الإعدادات هي
-       موضعُها. ولا يرى فيها غيرَها: SET_DENIED.teacher يحجب ما سواها. */
-    { id: "settings", label: "إدارة الصلاحيات", icon: "settings" }
-    /* الرسائل في زرّ الشريط العلويّ لا في القائمة: شاشةٌ كاملةٌ لها
-       تزاحمُ صندوقَ الرسائل نفسَه — وكلاهما يفعل الشيء ذاته. */
+    { id: "exams", label: "طلبات الاختبارات", icon: "exam" },
+    { id: "settings", label: "الإعدادات", icon: "settings" },
+    /* بندٌ بفعلٍ لا بشاشة: الخروجُ كان في ذيل الشريط الجانبيّ وحدَه */
+    { id: "logout", label: "تسجيل الخروج", icon: "lock", act: "tchLogout" }
   ],
   student: [
     { id: "dashboard", label: "لوحة الطالب", icon: "grid" },
@@ -25921,6 +25920,67 @@ function tmsgCircleId() {
 window.tmsgCircle = function (id) { TMSG.circleId = String(id || ""); mount(); };
 
 /* =========================================================================
+   طلباتُ الاختبارات — ما رفعه المعلّمُ وأين صار
+   -------------------------------------------------------------------------
+   بندٌ في قائمته الجانبية بطلبٍ صريح. يعرض ما رفعه هو من طلبات (وما رُفع
+   لطلاب حلقاته) ومرحلةَ كلِّ طلبٍ كما تسمّيها شاشةُ الإدارة، فيعرف ما
+   اعتُمد وما ينتظر — ولا يملك هنا تعديلاً ولا حذفاً.
+   ========================================================================= */
+function teacherExams() {
+  if (!teacherCan("examRequest")) {
+    return `<div class="page">${pageHead("طلبات الاختبارات", "")}
+      <div class="card">${emptyState("طلبُ الاختبار غيرُ مفعَّلٍ لحسابك",
+        "الصلاحيةُ تُمنح من «إدارة الصلاحيات».")}</div></div>`;
+  }
+  const u = (STATE && STATE.user) || {};
+  const meId = String(u.id || u.uid || "");
+  const cids = new Set((typeof tchMyCircles === "function" ? tchMyCircles() : [])
+    .map(c => String(c.id)));
+  const list = (cur("exams") || []).filter(e => e && !e.deleted && (
+      String(e.requestedById || "") === meId ||
+      cids.has(String(e.circleId || ""))))
+    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+
+  const stageName = k => {
+    const s = (typeof EXAM_STAGES !== "undefined" ? EXAM_STAGES : [])
+      .find(x => x.k === String(k || "await-sup"));
+    return s ? s.h : String(k || "—");
+  };
+  const tint = k => (String(k) === "documented" || String(k) === "approved")
+    ? "t-green" : (String(k) === "incomplete" ? "t-red" : "t-amber");
+
+  const rows = list.map(e => `<tr>
+    <td class="pt-name">${esc(e.student || "—")}</td>
+    <td>${esc(e.circle || "—")}</td>
+    <td>${esc(e.part || e.scope || "—")}</td>
+    <td><span class="chip ${tint(e.stage)}">${esc(stageName(e.stage))}</span></td>
+    <td class="pt-num">${esc(e.createdAt
+      ? new Date(Number(e.createdAt)).toISOString().slice(0, 10) : "—")}</td>
+  </tr>`).join("");
+
+  const n = k => list.filter(e => String(e.stage || "await-sup") === k).length;
+  const cards = [
+    { t: "t-purple", v: list.length, h: "كلُّ الطلبات" },
+    { t: "t-amber",  v: n("await-sup") + n("await-rec") + n("await-ok"), h: "قيد المعالجة" },
+    { t: "t-green",  v: n("approved") + n("documented"), h: "معتمدة" }
+  ].map(x => `<div class="facility-card ${x.t}">
+      <div class="fc-num">${toArabicDigits(x.v)}</div>
+      <div class="fc-body"><span class="fc-label">${esc(x.h)}</span></div>
+    </div>`).join("");
+
+  return `<div class="page">
+    ${pageHead("طلبات الاختبارات", "ما رفعتَه لطلابك وأين صار")}
+    <div class="grid g-4 stagger" style="margin-bottom:14px">${cards}</div>
+    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
+      <thead><tr><th>الطالب</th><th>الحلقة</th><th>المقدار</th>
+        <th>المرحلة</th><th>التاريخ</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="5" class="rep-empty">
+        <span>لا طلباتِ اختبارٍ بعد — تُرفع من صفحة الطالب</span></td></tr>`}</tbody>
+    </table></div></div>
+  </div>`;
+}
+
+/* =========================================================================
    تعديلُ بيانات الطالب ونقلُه — بصلاحيتَيهما
    -------------------------------------------------------------------------
    مفتاحا editStudent و moveStudent كانا مُعلَنَين في «إدارة الصلاحيات» ولا
@@ -30399,6 +30459,7 @@ const PAGES = {
   "teacher/report": teacherReport,
   "teacher/circle": teacherCircle,
   "teacher/student": teacherStudent,
+  "teacher/exams": teacherExams,
   "student/dashboard": studentDashboard, "student/today": studentToday, "student/tomorrow": studentTomorrow,
   "student/progress": studentProgress, "student/attendance": studentAttendance, "student/results": studentResults,
   "student/notifications": studentNotifications,
@@ -30549,10 +30610,10 @@ const TABBAR = {
 function hideSideNavFor(iface) {
   const bar = document.querySelector(".sidebar");
   const btn = document.getElementById("menuToggle");
-  /* الدورُ حكمٌ كالواجهة: لو تأخّر تصحيحُ الواجهة لحظةً بقي الشريطُ ظاهراً
-     لمعلّمٍ لا شأنَ له بما فيه. */
-  const role = String(((STATE && STATE.user) || {}).role || "");
-  const off = iface === "teacher" || role === "teacher";
+  /* يُخفى الشريطُ متى لم يكن لواجهته بنود — وللمعلّم بنودٌ بطلبٍ صريح
+     (حلقاتي · المصحف · طلبات الاختبارات · الإعدادات · الخروج) فيظهر. */
+  const items = (typeof navFor === "function" ? navFor(iface) : (NAV[iface] || [])) || [];
+  const off = !items.length;
   if (bar) bar.classList.toggle("nav-off", off);
   if (btn) btn.style.display = off ? "none" : "";
   try { document.body.classList.toggle("nav-off", off); } catch (e) {}
@@ -30592,6 +30653,11 @@ function renderNav() {
     try {
       if (it.count) cnt = `<span class="nav-count">${it.count()}</span>`;
     } catch (e) { cnt = ""; }
+    /* بندٌ ينادي فعلاً لا يفتح شاشة — كتسجيل الخروج */
+    if (it.act) {
+      return `<button class="nav-item nav-act" onclick="window.${esc(it.act)}()">${
+        ic(it.icon, 19)}<span>${esc(it.label)}</span></button>`;
+    }
     return `<button class="nav-item ${it.id === STATE.page ? "active" : ""}" data-action="nav" data-page="${it.id}">${ic(it.icon, 19)}<span>${esc(it.label)}</span>${cnt}</button>`;
   }).join("");
 }
@@ -39639,7 +39705,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261003-0430";
+  var APP_BUILD = "20261003-1530";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
