@@ -26167,6 +26167,8 @@ function teacherSettings() {
       <strong dir="auto">${esc(String(v))}</strong></div>`).join("");
 
   return `<div class="page">
+    ${/* بطاقةُ المعلّم هنا وحدَها بطلبٍ صريح: نُقلت من اللوحة الرئيسة */ ""}
+    ${teacherProfileCard()}
     ${pageHead("الإعدادات", esc(t.name || ""))}
 
     <div class="card">
@@ -26450,9 +26452,8 @@ function teacherDashboard() {
         ${ic("attend", 18)}<span>${tchMyAtt(todayISO()) ? "حضوري مسجَّل" : "التحضير"}</span>
       </button>
     </div>
-    ${/* بطاقةُ المعلّم فوق حلقاته بطلبٍ صريح: اسمُه وصورتُه وأرقامُه أوّلَ
-          ما يُرى، ثمّ حلقاتُه الموكّلةُ إليه. */ ""}
-    ${teacherProfileCard()}
+    ${/* بطاقةُ المعلّم نُقلت من اللوحة إلى شاشة «الإعدادات» بطلبٍ صريح،
+          فلم تُحذف. وأرقامُه في القائمة الجانبية تحت اسمه. */ ""}
     ${tchCircleCards()}
 
     <div class="dash-top">
@@ -39770,7 +39771,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261003-1835";
+  var APP_BUILD = "20261003-1910";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
