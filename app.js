@@ -30549,7 +30549,10 @@ const TABBAR = {
 function hideSideNavFor(iface) {
   const bar = document.querySelector(".sidebar");
   const btn = document.getElementById("menuToggle");
-  const off = iface === "teacher";
+  /* الدورُ حكمٌ كالواجهة: لو تأخّر تصحيحُ الواجهة لحظةً بقي الشريطُ ظاهراً
+     لمعلّمٍ لا شأنَ له بما فيه. */
+  const role = String(((STATE && STATE.user) || {}).role || "");
+  const off = iface === "teacher" || role === "teacher";
   if (bar) bar.classList.toggle("nav-off", off);
   if (btn) btn.style.display = off ? "none" : "";
   try { document.body.classList.toggle("nav-off", off); } catch (e) {}
@@ -31075,7 +31078,13 @@ function mount() {
   if (allow && STATE.iface !== allow) {
     STATE.iface = allow;
     if (!NAV[allow].some(x => x.id === STATE.page)) STATE.page = NAV[allow][0].id;
+    /* والقائمةُ الجانبيةُ تُعاد مع التصحيح: كانت تُرسم عند الإقلاع بواجهة
+       الإدارة قبل وصول دور الحساب، ثمّ يُصحَّح الدورُ فتُرسم شاشةُ المعلّم
+       وتبقى قائمةُ الإدارة كما هي — فيرى المعلّمُ المنشآتِ والمساجدَ
+       والتقاريرَ وهي ليست من عمله، ولا يُخفى الشريطُ عنه. */
+    try { renderNav(); } catch (e) {}
   }
+
 
   if (scopeDenied()) {
     const root0 = $("#pageContent");
@@ -39630,7 +39639,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261002-1810";
+  var APP_BUILD = "20261003-0430";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
