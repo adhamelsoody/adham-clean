@@ -10680,3 +10680,48 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
   flex: 1 1 auto; min-width: 0; text-align: center;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* =========================================================================
+   التسجيلُ الصوتيُّ في محادثة المعلّم
+   -------------------------------------------------------------------------
+   شريطُ التسجيل يحلُّ محلَّ حقل الكتابة أثناء التسجيل بالشكل نفسِه — حافّةٌ
+   واحدةٌ ونصفُ قطرٍ واحد — فلا يتغيّر ارتفاعُ الشريط ولا يَقفز. والمقطعُ
+   المرسَل يظهر في الفقاعة مشغّلاً صغيراً بعرضٍ محدودٍ لا يمدّ الفقاعة.
+   ========================================================================= */
+.tch-rec { flex: 1 1 auto; display: flex; align-items: center; gap: 9px;
+  min-height: 42px; padding: 0 13px; border-radius: 22px;
+  background: #fff; border: 1px solid #e6e9ee; }
+.tch-rec b { font-size: 13.5px; color: #0f172a; font-variant-numeric: tabular-nums; }
+.tch-rec-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%;
+  background: #e23b3b; animation: tchRecPulse 1s ease-in-out infinite; }
+@keyframes tchRecPulse { 0%, 100% { opacity: 1 } 50% { opacity: .22 } }
+.tch-rec-x { margin-inline-start: auto; flex: 0 0 auto; width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; cursor: pointer; border-radius: 50%;
+  background: #f2f4f7; color: #5b6472; }
+.tch-rec-x:hover { background: #e7eaef; }
+
+.tch-aud { display: inline-flex; align-items: center; gap: 7px; }
+.tch-aud audio { height: 32px; max-width: 208px; }
+.tch-aud i { font-style: normal; font-size: 12px; opacity: .75;
+  font-variant-numeric: tabular-nums; }
+
+/* =========================================================================
+   صورةُ الرسالة ومرفقُها
+   -------------------------------------------------------------------------
+   الصورةُ بعرضٍ محدودٍ لا يمدّ الفقاعة، ونسبتُها محفوظةٌ بـ height:auto.
+   والمرفقُ صفٌّ واحدٌ فيه اسمُه وحجمُه وسهمُ التنزيل.
+   ========================================================================= */
+.msg-img { display: block; margin-top: 7px; max-width: 240px; }
+.msg-img img { display: block; width: 100%; height: auto; border-radius: 12px; }
+.msg-file { display: inline-flex; align-items: center; gap: 8px; margin-top: 7px;
+  padding: 8px 11px; border-radius: 12px; text-decoration: none;
+  background: rgba(0, 0, 0, .05); color: inherit; max-width: 250px; }
+.msg-file:hover { background: rgba(0, 0, 0, .09); }
+.msg-file span { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.msg-file strong { font-size: 12.5px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.msg-file i { font-style: normal; font-size: 11px; opacity: .7;
+  font-variant-numeric: tabular-nums; }
+.tch-b.me .msg-file { background: rgba(255, 255, 255, .22); }
+.tch-b.me .msg-file:hover { background: rgba(255, 255, 255, .3); }

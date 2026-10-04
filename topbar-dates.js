@@ -454,6 +454,29 @@
     composeTo(t.getAttribute("data-email"), t.getAttribute("data-name"));
   });
 
+  /* رسمُ وسائط الرسالة في هذا الوارد — بلا اعتمادٍ على app.js لأنّ هذا
+     الملفَّ يعمل قبله وقد يُفتح الوارد وحدَه. */
+  function MEDIA(m) {
+    if (!m) return "";
+    var out = "";
+    if (m.audio) {
+      out += "<audio controls preload=\"metadata\" src=\"" + ESC(m.audio) +
+             "\" style=\"height:32px;max-width:100%;margin-top:8px\"></audio>";
+    }
+    if (m.image) {
+      out += "<a href=\"" + ESC(m.image) + "\" target=\"_blank\" rel=\"noopener\"" +
+             " style=\"display:block;margin-top:8px\"><img src=\"" + ESC(m.image) +
+             "\" alt=\"صورة\" style=\"max-width:100%;border-radius:10px\"></a>";
+    }
+    if (m.file) {
+      out += "<a href=\"" + ESC(m.file) + "\" download=\"" +
+             ESC(m.fileName || "مرفق") + "\"" +
+             " style=\"display:inline-flex;gap:6px;align-items:center;margin-top:8px;" +
+             "font-size:12.5px\">" + IC("clip", 14) + ESC(m.fileName || "مرفق") + "</a>";
+    }
+    return out;
+  }
+
   /* --- (3) صندوق وارد المعلم --- */
   function openInbox() {
     var d = DBf(), u = ME();
@@ -483,6 +506,10 @@
             '<strong style="font-size:13.5px">' + ESC(m.fromName || "الإدارة") + '</strong>' +
             (m.read ? '' : '<span class="badge b-red no-dot" style="font-size:10px">جديدة</span>') + '</div>' +
             '<div style="font-size:13.5px;line-height:1.7;color:var(--text-main)">' + ESC(m.text || "") + '</div>' +
+            /* وسائطُ الرسالة: ما يرسله المعلّم صوتاً أو صورةً أو ملفاً محفوظٌ
+               في المستند نفسِه، وكان هذا الوارد يعرض النصّ وحدَه فلا يُسمع
+               التسجيلُ ولا تُرى الصورة. */
+            MEDIA(m) +
             '<div class="muted" style="font-size:11px;margin-top:6px">' + new Date(m.ts || Date.now()).toLocaleString("ar") + '</div>' +
             '</div>';
         }).join("");

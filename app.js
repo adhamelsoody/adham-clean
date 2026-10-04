@@ -24363,6 +24363,7 @@ function tchatAfterMount() {
   const go  = document.getElementById("tchGo");
   if (!inp || !go) return;
   const sync = () => {
+    if (TCHREC.on) { tchatRecPaint(); return; }
     const has = String(inp.value || "").trim().length > 0;
     go.classList.toggle("ready", has);
     go.title = has ? "إرسال" : "تسجيل صوتي";
@@ -24372,6 +24373,322 @@ function tchatAfterMount() {
   sync();
 }
 window.tchatAfterMount = tchatAfterMount;
+
+/* =========================================================================
+   وسائطُ الرسالة: صوتٌ وصورةٌ وملف
+   -------------------------------------------------------------------------
+   كان زرّا الكاميرا والإرفاق يقولان «غير متاحٍ بعد». والوسطُ يُحفظ في مستند
+   الرسالة نفسِه حقلاً مستقلّاً مرمَّزاً base64 — كالصوت — بلا Firebase Storage
+   ولا تغييرٍ في قواعد Firestore، ونصُّ الرسالة وصفٌ قصيرٌ لأنّ القاعدةَ تشترط
+   text غيرَ فارغ.
+
+   ورسمُ الوسائط دالّةٌ واحدةٌ تُنادى في كلّ موضعٍ تُعرَض فيه الرسالة: فقاعةُ
+   محادثة المعلّم، ونافذةُ الرسالة من جرس الرسائل لكلّ الأدوار، وشاشةُ وليّ
+   الأمر — فلا ثلاثةُ رسومٍ تتفرّق.
+
+   وحدُّ الحجم ٦٠٠ ك.ب بعد الترميز لأنّ حدَّ المستند في Firestore ميغابايتٌ
+   واحد. والصورةُ تُصغَّر في المتصفّح قبل الإرسال، فصورةُ الجوّال اليومَ
+   أضعافُ الحدّ — تُصغَّر ولا تُردّ.
+   ========================================================================= */
+const TCHPICK_MAX_B64 = 600 * 1024;
+const TCHPICK_MAX_RAW = 430 * 1024;
+const TCHPICK_IMG_MAX = 1280;
+
+/* حجمُ الملفّ نصّاً عربيّاً */
+function msgSizeText(n) {
+  const b = Number(n) || 0;
+  if (b <= 0) return "";
+  if (b < 1024) return toArabicDigits(b) + " بايت";
+  if (b < 1024 * 1024) return toArabicDigits(Math.round(b / 1024)) + " ك.ب";
+  return toArabicDigits((b / 1048576).toFixed(1)) + " م.ب";
+}
+window.msgSizeText = msgSizeText;
+
+function msgMediaHTML(m) {
+  if (!m) return "";
+  let out = "";
+
+  if (m.audio) {
+    out += `<span class="tch-aud">${ic("mic", 14)}
+      <audio controls preload="metadata" src="${esc(m.audio)}"></audio>
+      ${m.audioSec ? `<i>${tchatRecClock(m.audioSec)}</i>` : ""}</span>`;
+  }
+
+  if (m.image) {
+    out += `<a class="msg-img" href="${esc(m.image)}" target="_blank"
+      rel="noopener" title="فتحُ الصورة"><img src="${esc(m.image)}" alt="صورة"></a>`;
+  }
+
+  if (m.file) {
+    out += `<a class="msg-file" href="${esc(m.file)}"
+      download="${esc(m.fileName || "مرفق")}">${ic("clip", 15)}
+      <span><strong>${esc(m.fileName || "مرفق")}</strong>${
+        m.fileSize ? `<i>${esc(msgSizeText(m.fileSize))}</i>` : ""}</span>${
+        ic("download", 15)}</a>`;
+  }
+
+  return out;
+}
+window.msgMediaHTML = msgMediaHTML;
+
+/* حقلُ الاختيار واحدٌ يُعاد استعمالُه، ويُنشأ عند أوّل حاجةٍ لا في الرسم */
+function tchatPickEl() {
+  let el = document.getElementById("tchFile");
+  if (el) return el;
+  el = document.createElement("input");
+  el.type = "file"; el.id = "tchFile"; el.style.display = "none";
+  el.addEventListener("change", function () {
+    const f = el.files && el.files[0];
+    const mode = el.getAttribute("data-mode") || "file";
+    el.value = "";
+    if (f) tchatPickTake(f, mode);
+  });
+  document.body.appendChild(el);
+  return el;
+}
+
+window.tchatPickImage = function () {
+  const el = tchatPickEl();
+  el.setAttribute("data-mode", "image");
+  el.accept = "image/*";
+  el.setAttribute("capture", "environment");
+  el.click();
+};
+
+window.tchatPickFile = function () {
+  const el = tchatPickEl();
+  el.setAttribute("data-mode", "file");
+  el.accept = "";
+  el.removeAttribute("capture");
+  el.click();
+};
+
+function tchatPickTake(f, mode) {
+  if (!f) return;
+  const isImg = mode === "image" ||
+    String(f.type || "").indexOf("image/") === 0;
+  if (isImg) { tchatShrink(f); return; }
+
+  if (f.size > TCHPICK_MAX_RAW) {
+    showToast("المرفقُ أكبرُ من الحدّ — أقصاه ٤٣٠ ك.ب", "warn"); return;
+  }
+  const fr = new FileReader();
+  fr.onload = function () {
+    const d = String(fr.result || "");
+    if (!d || d.length > TCHPICK_MAX_B64) {
+      showToast("المرفقُ أكبرُ من الحدّ المسموح", "warn"); return;
+    }
+    window.tchatSend({ text: "ملف: " + String(f.name || "مرفق"),
+      fields: { file: d, fileName: String(f.name || "مرفق"),
+                fileType: String(f.type || ""), fileSize: Number(f.size) || 0 } });
+  };
+  fr.onerror = function () { showToast("تعذّر قراءةُ المرفق", "warn"); };
+  fr.readAsDataURL(f);
+}
+
+function tchatShrink(f) {
+  const url = URL.createObjectURL(f);
+  const img = new Image();
+
+  img.onload = function () {
+    const big = Math.max(img.width, img.height) || 1;
+    const k = Math.min(1, TCHPICK_IMG_MAX / big);
+    const cv = document.createElement("canvas");
+    cv.width  = Math.max(1, Math.round(img.width  * k));
+    cv.height = Math.max(1, Math.round(img.height * k));
+    try { cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height); }
+    catch (e) { URL.revokeObjectURL(url); showToast("تعذّر تصغيرُ الصورة", "warn"); return; }
+    URL.revokeObjectURL(url);
+
+    let q = 0.72, out = cv.toDataURL("image/jpeg", q);
+    while (out.length > TCHPICK_MAX_B64 && q > 0.34) {
+      q -= 0.1; out = cv.toDataURL("image/jpeg", q);
+    }
+    if (out.length > TCHPICK_MAX_B64) {
+      showToast("الصورةُ أكبرُ من الحدّ بعد التصغير", "warn"); return;
+    }
+    window.tchatSend({ text: "صورة", fields: { image: out } });
+  };
+
+  img.onerror = function () {
+    URL.revokeObjectURL(url);
+    showToast("تعذّر قراءةُ الصورة", "warn");
+  };
+  img.src = url;
+}
+window.tchatPickTake = tchatPickTake;
+window.tchatShrink = tchatShrink;
+
+/* =========================================================================
+   التسجيلُ الصوتيُّ في المحادثة
+   -------------------------------------------------------------------------
+   كان زرُّ الميكروفون يقول «غير متاحٍ بعد». والتسجيلُ هنا بـ MediaRecorder
+   في المتصفّح، والمقطعُ يُحفظ في سجلّ الرسالة نفسِه حقلاً مستقلّاً (audio)
+   مرمَّزاً base64 — بلا Firebase Storage ولا تغييرٍ في قواعد Firestore:
+   الرسالةُ تبقى مستنداً واحداً في site_messages، ونصُّها «رسالة صوتية»
+   لأنّ القاعدةَ تشترط text غيرَ فارغ.
+
+   وحدُّ المدّة دقيقةٌ وحدُّ الحجم ٦٠٠ ك.ب بعد الترميز، لأنّ حدَّ المستند
+   في Firestore ميغابايتٌ واحد — فالطويلُ يُردّ قبل الكتابة ولا يُكتب نصفُه.
+   ========================================================================= */
+const TCHREC = { on: false, t0: 0, sec: 0, timer: 0, mr: null,
+                 chunks: [], bytes: 0, stream: null, cancel: false };
+const TCHREC_MAX_SEC = 60;
+const TCHREC_MAX_B64 = 600 * 1024;
+/* الحدُّ الخامُ قبل الترميز: base64 يكبر بالثلث، فهذا يقع تحت حدِّ الترميز
+   أعلاه. ويُوقف التسجيلُ بالحجم كما يُوقف بالمدّة — فلا يسجّل المعلّم
+   دقيقةً كاملةً ثمّ يُردّ عليه المقطع. */
+const TCHREC_MAX_RAW = 430 * 1024;
+
+/* المدّةُ بصيغة د:ثث بأرقامٍ عربية */
+function tchatRecClock(sec) {
+  const n = Math.max(0, Math.floor(Number(sec) || 0));
+  return toArabicDigits(Math.floor(n / 60)) + ":" +
+         toArabicDigits(String(n % 60).padStart(2, "0"));
+}
+
+/* أوّلُ ترميزٍ يدعمه المتصفّح — سفاري لا يعرف webm */
+function tchatRecMime() {
+  if (!window.MediaRecorder) return "";
+  const want = ["audio/webm;codecs=opus", "audio/webm",
+                "audio/mp4", "audio/ogg;codecs=opus"];
+  if (!MediaRecorder.isTypeSupported) return "";
+  for (let i = 0; i < want.length; i++) {
+    if (MediaRecorder.isTypeSupported(want[i])) return want[i];
+  }
+  return "";
+}
+
+/* شريطُ التسجيل: نقطةٌ حمراء ومؤقّتٌ وزرُّ إلغاء، يحلُّ محلَّ حقل الكتابة
+   ولا يحذفه — يُخفى ويعود كما كان عند الانتهاء. */
+function tchatRecPaint() {
+  const wrap = document.querySelector(".tch-send");
+  if (!wrap) return;
+  const go  = document.getElementById("tchGo");
+  const inw = wrap.querySelector(".tch-in-wrap");
+
+  let bar = document.getElementById("tchRec");
+  if (TCHREC.on && !bar) {
+    bar = document.createElement("span");
+    bar.id = "tchRec"; bar.className = "tch-rec";
+    bar.innerHTML = `<i class="tch-rec-dot"></i><b id="tchRecT"></b>
+      <button type="button" class="tch-rec-x" title="إلغاء"
+        onclick="window.tchatRecCancel()">${ic("x", 16)}</button>`;
+    if (inw) wrap.insertBefore(bar, inw); else wrap.appendChild(bar);
+  }
+  if (!TCHREC.on && bar) bar.remove();
+  if (inw) inw.style.display = TCHREC.on ? "none" : "";
+
+  if (go) {
+    go.classList.toggle("ready", TCHREC.on);
+    go.title = TCHREC.on ? "إرسال التسجيل" : "تسجيل صوتي";
+    go.innerHTML = TCHREC.on ? ic("send", 18) : ic("mic", 18);
+  }
+  const el = document.getElementById("tchRecT");
+  if (el) el.textContent = tchatRecClock(TCHREC.sec);
+}
+window.tchatRecPaint = tchatRecPaint;
+
+window.tchatRecToggle = function () {
+  if (TCHREC.on) { tchatRecStop(false); return; }
+  tchatRecStart();
+};
+
+window.tchatRecCancel = function () { if (TCHREC.on) tchatRecStop(true); };
+
+function tchatRecStart() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia ||
+      !window.MediaRecorder) {
+    showToast("التسجيلُ الصوتيُّ غيرُ مدعومٍ في هذا المتصفّح", "warn"); return;
+  }
+
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+    const mime = tchatRecMime();
+    let mr;
+    try { mr = mime ? new MediaRecorder(stream, { mimeType: mime })
+                    : new MediaRecorder(stream); }
+    catch (e) { mr = new MediaRecorder(stream); }
+
+    TCHREC.on = true; TCHREC.cancel = false; TCHREC.chunks = []; TCHREC.bytes = 0;
+    TCHREC.mr = mr; TCHREC.stream = stream;
+    TCHREC.sec = 0; TCHREC.t0 = Date.now();
+
+    mr.ondataavailable = function (e) {
+      if (e && e.data && e.data.size) {
+        TCHREC.chunks.push(e.data);
+        TCHREC.bytes += e.data.size;
+      }
+    };
+
+    mr.onstop = function () {
+      const was  = TCHREC.cancel;
+      const secs = TCHREC.sec;
+      const blob = new Blob(TCHREC.chunks, { type: mr.mimeType || "audio/webm" });
+
+      ((TCHREC.stream && TCHREC.stream.getTracks && TCHREC.stream.getTracks()) || [])
+        .forEach(function (tr) { try { tr.stop(); } catch (e) {} });
+
+      if (TCHREC.timer) { clearInterval(TCHREC.timer); TCHREC.timer = 0; }
+      TCHREC.on = false; TCHREC.mr = null; TCHREC.stream = null; TCHREC.chunks = [];
+      tchatRecPaint();
+
+      if (was || !blob.size) return;
+      if (secs < 1) { showToast("التسجيلُ قصيرٌ جدّاً", "warn"); return; }
+
+      const fr = new FileReader();
+      fr.onload  = function () { tchatVoiceSend(String(fr.result || ""), secs); };
+      fr.onerror = function () { showToast("تعذّر قراءةُ التسجيل", "warn"); };
+      fr.readAsDataURL(blob);
+    };
+
+    /* ثانيةٌ لكلّ قطعة: بها يُعرَف الحجمُ المتراكم أثناء التسجيل لا بعده */
+    mr.start(1000);
+    TCHREC.timer = setInterval(function () {
+      TCHREC.sec = Math.floor((Date.now() - TCHREC.t0) / 1000);
+      tchatRecPaint();
+      if (TCHREC.sec >= TCHREC_MAX_SEC) {
+        showToast("انتهى حدُّ الدقيقة — أُرسل التسجيل", "info");
+        tchatRecStop(false); return;
+      }
+      if (TCHREC.bytes >= TCHREC_MAX_RAW) {
+        showToast("بلغ التسجيلُ الحدَّ المسموح — أُرسل", "info");
+        tchatRecStop(false);
+      }
+    }, 250);
+    tchatRecPaint();
+
+  }).catch(function () {
+    showToast("لم يُسمح باستخدام الميكروفون", "warn");
+  });
+}
+window.tchatRecStart = tchatRecStart;
+
+function tchatRecStop(cancel) {
+  TCHREC.cancel = !!cancel;
+  if (TCHREC.timer) { clearInterval(TCHREC.timer); TCHREC.timer = 0; }
+  if (TCHREC.mr && TCHREC.mr.state !== "inactive") {
+    try { TCHREC.mr.stop(); } catch (e) {}
+  } else {
+    ((TCHREC.stream && TCHREC.stream.getTracks && TCHREC.stream.getTracks()) || [])
+      .forEach(function (tr) { try { tr.stop(); } catch (e) {} });
+    TCHREC.on = false; TCHREC.mr = null; TCHREC.stream = null;
+    tchatRecPaint();
+  }
+}
+window.tchatRecStop = tchatRecStop;
+
+/* الإرسالُ بمسار tchatSend نفسِه: الصلاحيّاتُ والمستقبِلون وبوّابةُ
+   الكتابة persistSet كما هي — ولا شيءَ يُكتب إن تجاوز الحدّ. */
+function tchatVoiceSend(dataUrl, secs) {
+  if (!dataUrl) return;
+  if (String(dataUrl).length > TCHREC_MAX_B64) {
+    showToast("التسجيلُ أكبرُ من الحدّ المسموح — سجّل مقطعاً أقصر", "warn");
+    return;
+  }
+  window.tchatSend({ text: "رسالة صوتية",
+    fields: { audio: String(dataUrl), audioSec: Number(secs) || 0 } });
+}
+window.tchatVoiceSend = tchatVoiceSend;
 
 /* الأزرارُ التي لا نظامَ لها في المشروع تقول ذلك بدل أن تصمت */
 window.tchatSoon = function (what) {
@@ -24383,7 +24700,7 @@ window.tchatGo = function () {
   const inp = document.getElementById("tchText");
   const has = inp && String(inp.value || "").trim().length > 0;
   if (has) { window.tchatSend(); return; }
-  window.tchatSoon("التسجيل الصوتي");
+  window.tchatRecToggle();
 };
 
 /* علامةُ القراءة للصادر: ✓ أُرسلت، ✓✓ قُرئت — وهي حالةٌ حقيقيّةٌ في السجلّ */
@@ -24406,7 +24723,9 @@ function teacherChat() {
         const mine = String(m.fromUid || m.fromId || "") === me;
         return `<div class="tch-b ${mine ? "me" : "you"}">
           ${!mine && m.fromName ? `<strong>${esc(m.fromName)}</strong>` : ""}
-          <span>${esc(m.text || "")}</span>
+          ${m.audio || m.image || m.file
+            ? msgMediaHTML(m)
+            : `<span>${esc(m.text || "")}</span>`}
           <small>${esc(timeAgo(m.ts))}${mine ? tchatTick(m) : ""}</small>
         </div>`;
       }).join("")}</div>`
@@ -24435,32 +24754,35 @@ function teacherChat() {
       <button type="button" class="tch-go" id="tchGo" title="تسجيل صوتي"
         onclick="window.tchatGo()">${ic("mic", 18)}</button>
       <span class="tch-in-wrap">
-        <button type="button" class="tch-ic" title="كاميرا"
-          onclick="window.tchatSoon('إرسال الصور')">${ic("camera", 17)}</button>
+        <button type="button" class="tch-ic" title="صورة"
+          onclick="window.tchatPickImage()">${ic("camera", 17)}</button>
         <input id="tchText" class="tch-in" placeholder="مراسلة"
           onkeydown="if(event.key==='Enter')window.tchatSend()">
         <button type="button" class="tch-ic" title="إرفاق"
-          onclick="window.tchatSoon('إرفاق الملفات')">${ic("clip", 17)}</button>
+          onclick="window.tchatPickFile()">${ic("clip", 17)}</button>
       </span>
     </div>
   </div>`;
 }
 
 /* الإرسالُ من صفحة الدردشة — بالسجلّ نفسِه الذي تكتبه شاشةُ الرسائل */
-window.tchatSend = function () {
+window.tchatSend = function (xtra) {
   const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
   if (!t) return;
 
-  const txt = (val("#tchText") || "").trim();
+  /* xtra: حمولةٌ جاهزةٌ لا تأتي من حقل الكتابة — كالرسالة الصوتية. ونصُّها
+     لازمٌ لأنّ قاعدةَ site_messages تشترط text غيرَ فارغ. ومسارُ الإرسال
+     واحدٌ لا طريقَ ثانيةً للكتابة: الصلاحيّاتُ والمستقبِلون كما هم. */
+  const txt = (xtra && xtra.text) || (val("#tchText") || "").trim();
   if (!txt) { showToast("اكتب نصّ الرسالة", "warn"); return; }
 
   const u = (STATE && STATE.user) || {};
-  const base = {
+  const base = Object.assign({
     kind: "teacher",
     fromUid: String(u.uid || u.id || ""),
     fromName: t.name || u.name || "المعلّم",
     title: "محادثة", text: txt, ts: Date.now(), read: false
-  };
+  }, (xtra && xtra.fields) || {});
   if (!Array.isArray(DB.site_messages)) DB.site_messages = [];
 
   let sent = 0;
@@ -30189,6 +30511,7 @@ function parentMessages() {
         <span class="muted">${typeof timeAgo === "function" ? timeAgo(m.ts) : ""}</span>
       </div>
       <div class="msg-body">${esc(m.text || "")}</div>
+      ${msgMediaHTML(m)}
     </div>`).join("")
     : emptyState("لا رسائل بعد", "ما يصلك من معلّم ابنك أو الإدارة يظهر هنا.");
 
@@ -39347,6 +39670,7 @@ function msgOpen(id) {
   openModal(m.title || "رسالة",
     (m.fromName ? "من " + m.fromName + " — " : "") + timeAgo(m.ts),
     `<div class="msg-body">${esc(m.text || "")}</div>
+     ${msgMediaHTML(m)}
      ${m.fromId || m.fromEmail ? `<div class="field full" style="margin-top:16px">
        <label>الرد</label>
        <input id="msg_reply" placeholder="اكتب ردّك…">
@@ -40271,7 +40595,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-2305";
+  var APP_BUILD = "20261005-0150";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
