@@ -10738,3 +10738,90 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
   background: var(--chip-bg, #f2f4f7); color: var(--text-soft, #5b6472);
   font-variant-numeric: tabular-nums; }
 .att-when span svg { opacity: .75; }
+
+/* =========================================================================
+   شاشةُ الحلقة بالتصميم المطلوب
+   -------------------------------------------------------------------------
+   شريطٌ أخضرُ يملأ عرضَ الشاشة باسم الحلقة ومسجدها، ثمّ عناوينُ أقسامٍ
+   هادئة. بطاقاتُ الحضور أربعٌ في صفٍّ واحدٍ تنزل إلى اثنتين في الضيّق،
+   ومؤشّرُ الإنجاز شريطٌ بنسبته، وشريطُ الإجراءات ثابتٌ في الأسفل فوق
+   شريط التبويب مع مراعاة حافّة الجوّال.
+   ========================================================================= */
+.tcl-page { padding-top: 0; padding-bottom: 92px; }
+
+.tcl-hero {
+  display: flex; align-items: center; gap: 12px;
+  /* بلا هوامشَ سالبة: صفحةُ هذه الشاشة بلا حشوٍ أفقيّ، فالهامشُ السالب
+     كان يمدّ الشريطَ ثمانيَ بكسلاتٍ خارج العرض فيظهر تمريرٌ أفقيّ. */
+  margin: 0 0 16px; padding: 16px 18px 20px;
+  border-radius: 0 0 22px 22px; color: #fff;
+  background: linear-gradient(180deg, var(--brand-main, #0b7f83), var(--brand-dark, #004b50));
+}
+.tcl-back, .tcl-plus {
+  flex: 0 0 auto; width: 38px; height: 38px; border: none; cursor: pointer;
+  display: grid; place-items: center; border-radius: 12px;
+  background: rgba(255, 255, 255, .16); color: #fff;
+}
+.tcl-back:hover, .tcl-plus:hover { background: rgba(255, 255, 255, .26); }
+.tcl-who { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px;
+  text-align: center; }
+.tcl-who strong { font-size: 17px; font-weight: 800; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.tcl-who small { font-size: 12px; opacity: .85; }
+
+.tcl-h { font-size: 15px; font-weight: 800; margin: 18px 2px 10px;
+  display: flex; align-items: center; gap: 8px; }
+.tcl-cnt { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+  background: var(--brand-soft, #e8f4f3); color: var(--brand-dark, #004b50); }
+
+.tcl-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
+.tcl-stat {
+  display: grid; justify-items: center; gap: 6px; padding: 13px 8px;
+  border-radius: 16px; background: var(--surface, #fff);
+  border: 1px solid var(--border-soft, #eef1f0);
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,.05));
+}
+.tcl-slbl { font-size: 11.5px; font-weight: 600; color: var(--text-faint, #9aa3ad);
+  text-align: center; }
+.tcl-snum { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tcl-g .tcl-snum { color: #12855c; }
+.tcl-a .tcl-snum { color: #b8761b; }
+.tcl-b .tcl-snum { color: #2f6fb0; }
+.tcl-r .tcl-snum { color: #c0392f; }
+
+.tcl-prog {
+  padding: 14px 15px; border-radius: 16px; background: var(--surface, #fff);
+  border: 1px solid var(--border-soft, #eef1f0);
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,.05));
+}
+.tcl-bar { height: 9px; border-radius: 999px; overflow: hidden;
+  background: var(--brand-soft, #e8f4f3); }
+.tcl-bar i { display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--brand-light, #2f8aa0), var(--brand-main, #0b7f83)); }
+.tcl-prow { display: flex; justify-content: space-between; align-items: center;
+  margin-top: 9px; font-size: 12.5px; font-weight: 700;
+  font-variant-numeric: tabular-nums; }
+
+.tcl-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.tcl-card {
+  display: grid; justify-items: start; gap: 4px; padding: 14px 13px;
+  border-radius: 16px; background: var(--surface, #fff);
+  border: 1px solid var(--border-soft, #eef1f0);
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,.05));
+}
+.tcl-ico { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--brand-soft, #e8f4f3); color: var(--brand-dark, #004b50); margin-bottom: 4px; }
+.tcl-clbl { font-size: 11.5px; font-weight: 600; color: var(--text-faint, #9aa3ad); }
+.tcl-cnum { font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.tcl-act {
+  position: sticky; bottom: 0; z-index: 4;
+  display: flex; gap: 10px; margin: 16px 0 0;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface, #fff); border-top: 1px solid var(--border-soft, #eef1f0);
+}
+.tcl-act .btn { flex: 1 1 0; justify-content: center; }
+
+@media (max-width: 520px) {
+  .tcl-stats { grid-template-columns: 1fr 1fr; }
+}

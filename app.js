@@ -36728,6 +36728,161 @@ function attMarkRestAbsent() {
 }
 window.attMarkRestAbsent = attMarkRestAbsent;
 
+/* =========================================================================
+   شاشةُ الحلقة بالتصميم المطلوب
+   -------------------------------------------------------------------------
+   الشكلُ المطلوب: شريطٌ أخضرُ باسم الحلقة ومسجدها ورجوعٌ و«+»، ثمّ
+   «إحصائيات الحضور» أربعَ بطاقاتٍ في صفّ، ثمّ «مؤشّر الإنجاز» بشريطه
+   وتحته «حُضِّروا كذا من كذا»، ثمّ بطاقتا «النقاط المتاحة» و«واجبات
+   متبقية»، ثمّ «الطلاب/ات» بصورةٍ واسمٍ وعلاماتِ واجباتٍ وحالةِ حضور،
+   وشريطُ «اعتماد التحضير» و«إضافة طالب» ثابتٌ في الأسفل.
+
+   ولم يسقط رقمٌ كان ظاهراً في الشكل القديم: عددُ الطلاب صار في عنوان
+   قائمتهم، و«حُضِّروا» سطراً تحت مؤشّر الإنجاز، و«إنجاز الحلقة» هو
+   المؤشّرُ نفسُه بشريطه.
+
+   وكلُّ ما تناديه هذه الدالّةُ مَحميٌّ بـ typeof: إن غابت دالّةٌ مساعدةٌ
+   في نسخةٍ ما لم تنكسر الشاشةُ ولم تُفرَّغ، بل سقط ذلك الجزءُ وحدَه.
+   ========================================================================= */
+function tcrcView() {
+  const c = (typeof tcrcCircle === "function") ? tcrcCircle() : null;
+  if (!c) {
+    return `<div class="page">${pageHead("الحلقة", "")}
+      <div class="card">${emptyState("لا حلقةَ مفتوحة", "اختر حلقةً من لوحتك.")}</div></div>`;
+  }
+
+  const studs = (typeof tcrcStudents === "function") ? (tcrcStudents(c) || [])
+    : (cur("students") || []).filter(s => s &&
+        String(s.circleId || "") === String(c.id || "") && s.status !== "متوقف");
+
+  const d = (typeof attDate === "function") ? attDate() : todayISO();
+  const map = attMap(d, String(c.id));
+
+  const asg = (cur("assignments") || []).filter(a => a && String(a.date) === String(d) &&
+    studs.some(s => String(s.id) === String(a.studentId)));
+  const left = asg.filter(a => a.status !== "done").length;
+  const pct = asg.length ? Math.round((asg.length - left) / asg.length * 100) : 0;
+  const marked = studs.filter(s => map[String(s.id)]).length;
+
+  const attCount = st => studs.filter(s => {
+    const r = map[String(s.id)];
+    return !!r && String(r.status) === st;
+  }).length;
+
+  const nPresent = attCount("حاضر"), nLate = attCount("متأخر");
+  const nExcused = attCount("مستأذن"), nAbsent = attCount("غائب");
+
+  const ptsOn = (typeof canDo === "function") ? canDo("points") : false;
+  const pts = ptsOn ? (cur("pointsLog") || []).filter(p => p &&
+    studs.some(s => String(s.id) === String(p.studentId)))
+    .reduce((n, p) => n + (Number(p.n) || 0), 0) : 0;
+
+  const mayAdd = (typeof teacherCan === "function") ? teacherCan("addStudent") : true;
+
+  const attCards = [
+    ["حضور",      nPresent, "tcl-g"],
+    ["تأخّر",      nLate,    "tcl-a"],
+    ["غياب بعذر", nExcused, "tcl-b"],
+    ["غياب",      nAbsent,  "tcl-r"]
+  ].map(([h, n, t]) => `<div class="tcl-stat ${t}">
+      <span class="tcl-slbl">${esc(h)}</span>
+      <b class="tcl-snum">${toArabicDigits(n)}</b>
+    </div>`).join("");
+
+  const twoCards = `<div class="tcl-two">
+    ${ptsOn ? `<div class="tcl-card">
+      <span class="tcl-ico">${ic("star", 16)}</span>
+      <span class="tcl-clbl">النقاط المتاحة</span>
+      <b class="tcl-cnum">${toArabicDigits(pts)}</b>
+    </div>` : ""}
+    <div class="tcl-card">
+      <span class="tcl-ico">${ic("book", 16)}</span>
+      <span class="tcl-clbl">واجبات متبقية</span>
+      <b class="tcl-cnum">${toArabicDigits(left)}</b>
+    </div>
+  </div>`;
+
+  const rows = studs.map(s => {
+    const r = map[String(s.id)];
+    const lbl = r ? ((typeof attLabel === "function") ? attLabel(r.status, r.kind)
+                                                     : String(r.status || "")) : "لم يُسجَّل";
+    const tint = r ? ((typeof ATT_TINT === "object" && ATT_TINT[r.status]) || "") : "";
+    return `<div class="tq-row tq-click"
+      onclick="window.tcrcOpenStudent && window.tcrcOpenStudent('${jsAttr(s.id)}')">
+      <div class="mini-avatar">${initials(s.name)}</div>
+      <div class="tq-name"><strong>${esc(s.name || "—")}</strong>
+        <small>${esc(s.level || s.circle || "—")}</small></div>
+      <div class="tq-marks">${(typeof tcrcMarks === "function") ? tcrcMarks(s.id) : ""}</div>
+      <span class="chip ${tint}">${esc(lbl)}</span>
+    </div>`;
+  }).join("");
+
+  return `<div class="page tcl-page">
+    <div class="tcl-hero">
+      <button type="button" class="tcl-back" data-action="nav" data-page="dashboard"
+        title="رجوع">${ic("arrowLeft", 20)}</button>
+      <span class="tcl-who">
+        <strong>${esc(c.name || "الحلقة")}</strong>
+        <small>${esc(c.mosque || ((typeof complexName === "function")
+          ? complexName(c.complexId) : "") || "")}</small>
+      </span>
+      ${mayAdd ? `<button type="button" class="tcl-plus"
+        onclick="window.tcrcAddOpen && window.tcrcAddOpen()"
+        title="إضافة طالب">${ic("plus", 20)}</button>` : ""}
+    </div>
+
+    <h3 class="tcl-h">إحصائيات الحضور</h3>
+    <div class="tcl-stats">${attCards}</div>
+
+    <h3 class="tcl-h">مؤشّر الإنجاز</h3>
+    <div class="tcl-prog">
+      <div class="tcl-bar"><i style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>
+      <div class="tcl-prow">
+        <span>${toArabicDigits(pct)}٪</span>
+        <span class="muted">حُضِّروا ${toArabicDigits(marked)} من ${toArabicDigits(studs.length)}</span>
+      </div>
+    </div>
+
+    ${twoCards}
+
+    <h3 class="tcl-h">الطلاب/ات <span class="tcl-cnt">${toArabicDigits(studs.length)}</span></h3>
+    <div class="tq-list">${rows || `<div class="ntf-empty">لا طلابَ في هذه الحلقة</div>`}</div>
+
+    <div class="tcl-act">
+      <button type="button" class="btn btn-primary tcl-main"
+        onclick="window.tcrcAttOpen && window.tcrcAttOpen()">
+        ${ic("attend", 16)} اعتماد التحضير</button>
+      ${mayAdd ? `<button type="button" class="btn btn-soft tcl-sec"
+        onclick="window.tcrcAddOpen && window.tcrcAddOpen()">${ic("plus", 16)} إضافة طالب</button>` : ""}
+    </div>
+  </div>`;
+}
+window.tcrcView = tcrcView;
+
+/* ربطُ الشاشة بمفتاحها في PAGES — ومفتاحُها يُعرَف بمحتواه لا باسمه وحدَه،
+   لأنّ اسمَ الدالّة القديمة قد يختلف بين النسخ. يُجرَّب المفتاحُ المعروف
+   أوّلاً، وإلا بُحث في شاشات المعلّم عمّا فيه زرُّ «اعتماد التحضير» مع
+   أثرٍ من الشكل القديم. ولا يُمسّ غيرُ شاشةٍ واحدة. */
+(function () {
+  try {
+    if (typeof PAGES !== "object" || !PAGES) return;
+    if (typeof PAGES["teacher/circle"] === "function") {
+      PAGES["teacher/circle"] = tcrcView; return;
+    }
+    let hit = "";
+    Object.keys(PAGES).forEach(k => {
+      if (hit || String(k).indexOf("teacher/") !== 0) return;
+      const f = PAGES[k];
+      if (typeof f !== "function") return;
+      const src = String(f);
+      if (src.indexOf("اعتماد التحضير") > -1 &&
+          (src.indexOf("حُضّروا") > -1 || src.indexOf("إنجاز الحلقة") > -1 ||
+           src.indexOf("إحصائيات الحضور") > -1)) hit = k;
+    });
+    if (hit) PAGES[hit] = tcrcView;
+  } catch (e) {}
+})();
+
 /* =========================================================
    EVENT DELEGATION
    ========================================================= */
@@ -40658,7 +40813,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0320";
+  var APP_BUILD = "20261005-0410";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
