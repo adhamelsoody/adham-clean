@@ -24530,77 +24530,11 @@ function teacherMessages() {
   const needPick = TMSG.to !== "admin" && TMSG.to !== "circle";
 
   return `<div class="page">
-    ${pageHead("الرسائل", esc(t.name || ""))}
-
-    ${/* المحادثاتُ بخانة فلاترها في صدر الشاشة بطلبٍ صريح */ ""}
+    ${/* الشاشةُ محادثاتٌ وحدَها بطلبٍ صريح: «لا أريد الشكل الخارجي
+          للمحادثات». وقسما «رسالة جديدة» و«ما وصلك» رُفعا من الرسم
+          ودوالُّهما (tmsgTabs · tmsgRender · tmsgSend · myMessages)
+          باقيةٌ في مكانها، والمراسلةُ تتمّ من داخل المحادثة. */ ""}
     ${tchatList()}
-
-    <div class="card" style="margin-top:16px">
-      <div class="fac-toolbar">
-        <div><strong style="font-size:15px">رسالة جديدة</strong>
-          <div class="muted" style="font-size:11.5px;margin-top:2px">
-            إلى طلابك أو أولياء أمورهم أو الإدارة</div></div>
-      </div>
-
-      <div style="padding:0 16px 16px">
-        <div class="fac-tabs" style="margin-bottom:14px">
-          ${tabs.map(([k, h, i]) =>
-            `<button type="button" class="fac-tab${TMSG.to === k ? " on" : ""}"
-              onclick="window.tmsgTo('${k}')">${ic(i, 16)}<span>${esc(h)}</span></button>`).join("")}
-        </div>
-
-        ${TMSG.to === "circle" ? `
-        <div class="form-grid" style="margin-bottom:9px">
-          <div class="field"><label>الحلقة</label>
-            <select onchange="window.tmsgCircle(this.value)">${
-              (typeof tchMyCircles === "function" ? tchMyCircles() : []).map(c2 =>
-                `<option value="${jsAttr(c2.id)}"${String(c2.id) === tmsgCircleId()
-                  ? " selected" : ""}>${esc(c2.name || "—")}</option>`).join("")}</select></div>
-        </div>
-        ${noteCard("تصل طلابَ الحلقة جميعاً — " + toArabicDigits(
-          (cur("students") || []).filter(x => String(x.circleId || "") === tmsgCircleId() &&
-            x.status !== "متوقف").length) + " طالباً.")}` : ""}
-        ${needPick ? `
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px">
-          <input class="mig-dest" placeholder="ابحث بالاسم" style="max-width:170px"
-            oninput="window.tmsgSearch(this.value)">
-          <button type="button" class="btn btn-ghost btn-sm"
-            onclick="window.tmsgAll(true)">تحديد الكل</button>
-          <button type="button" class="btn btn-ghost btn-sm"
-            onclick="window.tmsgAll(false)">إلغاء</button>
-          <span id="tmsgCount" class="muted"
-            style="font-size:12px;align-self:center;margin-inline-start:auto"></span>
-        </div>
-        <div class="pick-box" id="tmsgBox"></div>
-        <div class="hint" style="margin-top:6px">
-          ${TMSG.to === "parent"
-            ? "تصل وليَّ أمر كلِّ طالبٍ اخترته — ومن لا حساب لوليّه تصله في صندوق الرسائل."
-            : toArabicDigits(kids.length) + " طالباً في حلقاتك"}
-        </div>` : `
-        ${noteCard("تصل المشرفَ ومدير النظام.")}`}
-
-        <div class="form-grid" style="margin-top:12px">
-          <div class="field"><label>العنوان</label>
-            <input id="tmTitle" placeholder="اختياري — مثال: تنبيه غياب"></div>
-          <div class="field full"><label>الرسالة <span class="req">*</span></label>
-            <textarea id="tmText" rows="3"
-              placeholder="نصّ الرسالة"></textarea></div>
-        </div>
-      </div>
-
-      <div class="pnl-actions">
-        <button class="btn btn-primary" onclick="window.tmsgSend()">إرسال</button>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <div class="fac-toolbar">
-        <div><strong style="font-size:15px">ما وصلك</strong>
-          <div class="muted" style="font-size:11.5px;margin-top:2px">
-            ${toArabicDigits(inbox.filter(m => !m.read).length)} غير مقروءة</div></div>
-      </div>
-      <div style="padding:0 16px 16px">${rows}</div>
-    </div>
   </div>`;
 }
 
@@ -40327,7 +40261,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-2010";
+  var APP_BUILD = "20261004-2030";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
