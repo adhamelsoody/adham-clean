@@ -24096,16 +24096,26 @@ window.pfClearDo = function (coll, id) { closeModal(); pfSave(coll, id, ""); };
 const TMSG = { to: "student", picked: [], q: "" };
 
 function tmsgKids() {
-  const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
-  if (!t) return [];
+  /* كان الحصرُ على teacherId وحدَه، ويعود فارغاً إن لم يُعرَف سجلُّ المعلّم —
+     فخلت خانةُ «طلابي» في المحادثات من كلّ طالبٍ وحلقاتُه ظاهرةٌ في اللوحة.
+     وحلقةُ المعلّم تُعرَف في المشروع بـ myCircles عبر tchMyCircles: بمعرّفه
+     أو باسمه أو بـ circleIds حسابِه أو بكونه مساعداً — لا بـ teacherId وحدَه.
+     فتُعرَف بها هنا أيضاً ليتّفق هذا العددُ مع إحصائيّة «عدد الطلاب».
+     والطالبُ يُنسَب إلى حلقته بـ circleId أو باسمها كما في بقيّة المشروع.
+     وما كان من مطابقةٍ بـ teacherId والمساعدين داخلٌ في myCircles ولم يُحذف. */
+  const mine = typeof tchMyCircles === "function" ? (tchMyCircles() || []) : [];
+  if (!mine.length) return [];
 
-  const cids = new Set((cur("circles") || []).filter(c =>
-    c && (String(c.teacherId) === String(t.id) ||
-      (Array.isArray(c.assistants) && c.assistants.indexOf(String(t.id)) > -1)))
-    .map(c => String(c.id)));
+  const cids = new Set(), cnames = new Set();
+  mine.forEach(c => {
+    if (!c) return;
+    if (c.id   != null && c.id   !== "") cids.add(String(c.id));
+    if (c.name != null && c.name !== "") cnames.add(String(c.name));
+  });
 
   let list = (cur("students") || []).filter(st =>
-    st && st.status !== "متوقف" && cids.has(String(st.circleId)));
+    st && st.status !== "متوقف" &&
+    (cids.has(String(st.circleId || "")) || cnames.has(String(st.circle || ""))));
 
   if (TMSG.q) list = list.filter(st => String(st.name || "").indexOf(TMSG.q) > -1);
   return list;
@@ -40261,7 +40271,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-2030";
+  var APP_BUILD = "20261004-2305";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
