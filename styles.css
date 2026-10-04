@@ -7692,6 +7692,24 @@ body, .app-body { background: var(--background, #f6f7f4); }
     background: var(--brand-main, #0b7f83);
   }
 
+  /* شريطُ المعلّم السفليّ بالشكل المطلوب: المفعَّلُ قرصٌ فيه أيقونتُه
+     واسمُه، وما سواه أيقونةٌ وحدَها — ولا يظهر إلا في الهواتف. */
+  .tabbar.tb-teacher {
+    border-top: 0; border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 22px rgba(10, 50, 54, .10);
+    padding-top: 8px; gap: 4px;
+  }
+  .tabbar.tb-teacher .tb-item {
+    flex-direction: row; gap: 7px; padding: 10px 6px;
+    border-radius: 999px; margin: 0 7px 8px;
+  }
+  .tabbar.tb-teacher .tb-item span { display: none; font-size: 12px; }
+  .tabbar.tb-teacher .tb-item.on {
+    background: var(--brand-soft, #eafbfc); color: var(--brand-dark, #0f6f72);
+  }
+  .tabbar.tb-teacher .tb-item.on span { display: inline; }
+  .tabbar.tb-teacher .tb-item.on::before { content: none; }
+
   /* فسحةٌ أسفل المحتوى: الشريطُ ثابتٌ فوقه */
   .content { padding-bottom: 84px; }
 
@@ -10654,3 +10672,11 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 /* شريطُ المعلّم المهذَّب: اسمُ البرنامج يميناً، وكتلةُ التحضير والتنبيهات
    تُدفع إلى أقصى اليسار — والتنبيهاتُ آخرُها فتقع في الطرف الأيسر. */
 .topbar.tch-top-min .topbar-left { margin-inline-start: auto; }
+
+/* اسمُ المنشأة في وسط شريط المعلّم — بطلبٍ صريح. يتوسّط بالمرونة لا
+   بالموضع المطلق، فلا يتراكب مع الأزرار في الشاشات الضيّقة، ويُقصّ بنقاطٍ
+   إن طال الاسم. */
+.topbar.tch-top-min .tch-brand {
+  flex: 1 1 auto; min-width: 0; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

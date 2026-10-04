@@ -31054,6 +31054,9 @@ function renderTabBar() {
   if (!live.length) { el.innerHTML = ""; el.style.display = "none"; return; }
 
   el.style.display = "";
+  /* صنفُ المعلّم: شكلُ الشريط السفليّ المطلوب — المفعَّلُ وحدَه باسمه */
+  try { el.classList.toggle("tb-teacher", STATE.iface === "teacher"); } catch (e) {}
+
   el.innerHTML = live.map(it =>
     `<button type="button" class="tb-item${it.id === STATE.page ? " on" : ""}"
       data-action="nav" data-page="${it.id}">
@@ -31064,6 +31067,24 @@ function renderTabBar() {
 /* أرقامُ المعلّم تحت اسمه في القائمة الجانبية — بطلبٍ صريح:
    عددُ حلقاته وطلابه ومساجده وتخصّصُه. والمساجدُ تُحصى من حلقاته
    لا من سجلّه، فمن له حلقاتٌ في مسجدين يرى اثنين. */
+/* اسمُ البرنامج في صدر الشريط: منشأةُ المعلّم كما هي في سجلّه —
+   مسجدُه، وإلا مجمّعُه، وإلا اسمُ النظام. */
+function tchFacilityName() {
+  try {
+    const t = (typeof myTeacherRecord === "function") ? myTeacherRecord() : null;
+    if (t && t.mosque) return String(t.mosque);
+    if (t && t.mosqueId) {
+      const m = (cur("mosques") || []).find(x => String(x.id) === String(t.mosqueId));
+      if (m && m.name) return String(m.name);
+    }
+    const cx = (typeof complexName === "function")
+      ? complexName((t && t.complexId) || (STATE && STATE.complexId)) : "";
+    if (cx) return String(cx);
+  } catch (e) {}
+  return "ذات القرآنية";
+}
+window.tchFacilityName = tchFacilityName;
+
 /* الشريطُ العلويُّ عند المعلّم: اسمُ البرنامج والتنبيهاتُ والتحضيرُ فقط —
    بطلبٍ صريح. وما عداه يُخفى له وحدَه ويعود لغيره كما كان (إخفاءٌ لا حذف). */
 const TCH_TOP_HIDE = ["#menuToggle", ".org-select", "#topFilters",
@@ -31082,16 +31103,19 @@ function tchTopbarTrim() {
       for (let i = 0; i < list.length; i++) list[i].style.display = on ? "none" : "";
     });
 
-    const right = bar.querySelector(".topbar-right") || bar;
     let b = document.getElementById("tchBrand");
     if (!on) { if (b && b.parentNode) b.parentNode.removeChild(b); return; }
     if (!b) {
       b = document.createElement("span");
       b.id = "tchBrand";
       b.className = "tch-brand";
-      b.textContent = "ذات القرآنية";
-      right.insertBefore(b, right.firstChild);
+      /* يُدرج في الشريط نفسِه لا داخل كتلةٍ منه، فيتوسّط بينها وبين
+         كتلة الأزرار بلا تراكبٍ على الشاشات الضيّقة. */
+      const left = bar.querySelector(".topbar-left");
+      if (left) bar.insertBefore(b, left); else bar.appendChild(b);
     }
+    /* الاسمُ هو منشأةُ المعلّم لا اسمَ النظام: مسجدُه، وإلا مجمّعُه */
+    b.textContent = tchFacilityName();
   } catch (e) {}
 }
 window.tchTopbarTrim = tchTopbarTrim;
@@ -40291,7 +40315,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-1900";
+  var APP_BUILD = "20261004-1945";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
