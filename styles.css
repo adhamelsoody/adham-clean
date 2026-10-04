@@ -10508,3 +10508,105 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 
 :root[data-theme="dark"] .tch-body { background-color: #16211c; }
 :root[data-theme="dark"] .tcv-row { background: #11211f; }
+
+/* =========================================================================
+   لوحةُ المعلّم بالتصميم المطلوب — ترويسةٌ خضراء، إحصائيّاتٌ ثلاث،
+   تبويبا الحلقات، وبطاقاتٌ بصفوفِ معلوماتٍ ومؤشّرِ إنجازٍ وزرَّين.
+   ========================================================================= */
+.tds-top {
+  display: flex; align-items: center; justify-content: center;
+  padding: 14px 18px; border-radius: 18px; margin-bottom: 14px; color: #fff;
+  background: linear-gradient(135deg, var(--brand-main, #0b7f83), var(--brand-dark, #0f6f72));
+}
+.tds-ttl { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 800; }
+.tds-ttl svg { width: 19px; height: 19px; }
+
+.tds-h { font-size: 15px; font-weight: 800; margin: 0 2px 10px; }
+
+.tds-grid {
+  display: grid; gap: 10px; margin-bottom: 20px;
+  grid-template-columns: repeat(3, 1fr);
+}
+.tds-card {
+  display: grid; justify-items: start; gap: 4px;
+  padding: 14px 13px; border-radius: 16px;
+  background: var(--surface, #fff); border: 1px solid var(--border-soft, #eef1f0);
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,.05));
+}
+.tds-ico {
+  width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--brand-soft, #eafbfc); color: var(--brand-dark, #0f6f72); margin-bottom: 4px;
+}
+.tds-lbl { font-size: 11.5px; color: var(--text-faint, #9aa3ad); font-weight: 600; }
+.tds-num { font-size: 21px; font-weight: 800; color: var(--text-main, #19323a); }
+
+/* تبويبا الحلقات */
+.tc-tabs { display: flex; gap: 10px; margin-bottom: 12px; }
+.tc-tab {
+  flex: 1; padding: 11px 10px; border-radius: 14px; cursor: pointer;
+  font: inherit; font-size: 13.5px; font-weight: 700;
+  background: var(--surface, #fff); color: var(--text-muted, #6b7780);
+  border: 1px solid var(--border-soft, #eef1f0);
+  transition: all .18s ease;
+}
+.tc-tab:hover { border-color: var(--brand-main, #0b7f83); }
+.tc-tab.on {
+  border-color: var(--brand-main, #0b7f83); color: var(--brand-dark, #0f6f72);
+  background: var(--brand-soft, #eafbfc);
+}
+
+/* بطاقةُ الحلقة */
+.tc-card .tc-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  margin-bottom: 12px;
+}
+.tc-card .tc-ttl { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.tc-card .tc-ttl strong { font-size: 16px; font-weight: 800; color: var(--brand-dark, #0f6f72); }
+.tc-tag {
+  font-size: 11.5px; font-weight: 700; padding: 3px 11px; border-radius: 999px;
+  background: var(--background, #f6f7f4); color: var(--text-muted, #6b7780);
+}
+.tc-card .tc-gear {
+  width: 34px; height: 34px; border-radius: 11px; flex: none; cursor: pointer;
+  display: grid; place-items: center;
+  border: 1px solid var(--border-soft, #eef1f0); background: var(--background, #f6f7f4);
+  color: var(--text-muted, #6b7780);
+}
+.tc-card .tc-gear:hover { border-color: var(--brand-main, #0b7f83); color: var(--brand-dark, #0f6f72); }
+
+.tc-body { display: flex; align-items: flex-start; gap: 12px; }
+.tc-rows { flex: 1; min-width: 0; display: grid; gap: 9px; }
+.tc-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted, #6b7780); }
+.tc-row svg { width: 15px; height: 15px; flex: none; color: var(--brand-main, #0b7f83); }
+.tc-row-pct { flex-wrap: wrap; }
+.tc-bar {
+  flex: 1 1 100px; height: 7px; border-radius: 999px; overflow: hidden;
+  background: var(--border-soft, #eef1f0);
+}
+.tc-bar b { display: block; height: 100%; border-radius: 999px; background: var(--brand-main, #0b7f83); }
+.tc-row-pct em { font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--text-faint, #9aa3ad); }
+.tc-card .tc-logo {
+  width: 62px; height: 62px; border-radius: 14px; flex: none; overflow: hidden;
+  display: grid; place-items: center;
+  background: var(--cream, #fdfaf2); border: 1px solid var(--border-soft, #eef1f0);
+  color: var(--brand-main, #0b7f83);
+}
+.tc-card .tc-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.tc-acts { display: flex; gap: 9px; margin-top: 13px; }
+.tc-b {
+  flex: 1; padding: 10px 8px; border-radius: 12px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 700; border: 1px solid transparent;
+  transition: all .18s ease;
+}
+.tc-b.ghost {
+  background: var(--surface, #fff); color: var(--brand-dark, #0f6f72);
+  border-color: var(--border-soft, #eef1f0);
+}
+.tc-b.ghost:hover { border-color: var(--brand-main, #0b7f83); }
+.tc-b.fill { background: var(--brand-dark, #0f6f72); color: #fff; }
+.tc-b.fill:hover { background: var(--brand-main, #0b7f83); }
+
+@media (max-width: 420px) {
+  .tds-grid { grid-template-columns: 1fr 1fr; }
+}

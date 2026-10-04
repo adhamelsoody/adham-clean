@@ -26580,37 +26580,110 @@ function tchCirclePct(cid) {
   return Math.round(done / studs.length * 100);
 }
 
+/* =========================================================================
+   لوحةُ المعلّم بالتصميم المطلوب: إحصائيّاتٌ ثلاث، ثمّ الحلقات بتبويبَيها
+   وبطاقاتها كما في الصورة — اسمٌ ووسمٌ وترسٌ، وصفوفُ معلوماتٍ بأيقوناتها،
+   ومؤشّرُ إنجازٍ بشريطه، وزرّا «اختبارات الطلاب» و«تقارير الطلاب».
+   ========================================================================= */
+const TDASH = { tab: "mine" };
+window.tdashTab = function (k) { TDASH.tab = String(k || "mine"); mount(); };
+
+/* إحصائيّاتُ صدر اللوحة — كلُّها محسوبةٌ من سجلّات المشروع لا مقدَّرة */
+function tdashStats() {
+  const mine = tchMyCircles() || [];
+  const cids = new Set(mine.map(c => String(c.id)));
+
+  const kids = (cur("students") || []).filter(s => s &&
+    s.status !== "متوقف" && cids.has(String(s.circleId || ""))).length;
+
+  const sid = typeof tchStaffId === "function" ? tchStaffId() : "";
+  const days = new Set((cur("attendance") || []).filter(a => a && a.staffId &&
+    String(a.staffId) === String(sid)).map(a => String(a.date || ""))).size;
+
+  /* أوجهُ الحفظ: ما اعتُمد في تسميع حلقاته من واجبات الحفظ وحدَها */
+  const faces = (cur("recitations") || []).filter(r => r &&
+    cids.has(String(r.circleId || "")) &&
+    String(r.kind || "").indexOf("حفظ") > -1)
+    .reduce((n, r) => n + (Number(r.faces) || 0), 0);
+
+  return [
+    ["أيام الحضور",   days,  "attend"],
+    ["أوجه الحفظ",    faces, "book"],
+    ["عدد الطلاب/ات", kids,  "users"]
+  ].map(([h, v, i]) => `<div class="tds-card">
+      <span class="tds-ico">${ic(i, 17)}</span>
+      <span class="tds-lbl">${esc(h)}</span>
+      <b class="tds-num">${toArabicDigits(v)}</b>
+    </div>`).join("");
+}
+
+/* وسمُ الحلقة: نوعُها إن ضُبط، وإلا وقتُها */
+function tcCircleTag(c) {
+  if (c && c.type) return String(c.type);
+  if (c && c.start) return String(c.start) + (c.end ? " — " + c.end : "");
+  return "";
+}
+
 function tchCircleCards() {
-  const list = tchMyCircles();
+  const mine = tchMyCircles() || [];
+  const all  = cur("circles") || [];
+  const list = TDASH.tab === "all" ? all : mine;
+  const isMine = c => mine.some(x => String(x.id) === String(c.id));
+
+  const tabs = `<div class="tc-tabs">
+    <button type="button" class="tc-tab${TDASH.tab === "mine" ? " on" : ""}"
+      onclick="window.tdashTab('mine')">حلقاتي</button>
+    <button type="button" class="tc-tab${TDASH.tab === "all" ? " on" : ""}"
+      onclick="window.tdashTab('all')">جميع الحلقات</button>
+  </div>`;
+
   if (!list.length) {
-    return `<div class="tc-wrap">${noteCard("لا حلقاتٍ موكّلةً إليك بعد — راجع الإدارة.")}</div>`;
+    return `<div class="tc-wrap">${tabs}${noteCard(TDASH.tab === "all"
+      ? "لا حلقاتٍ في نطاق حسابك."
+      : "لا حلقاتٍ موكّلةً إليك بعد — راجع الإدارة.")}</div>`;
   }
 
-  return `<div class="tc-wrap"><div class="tc-grid">${list.map(c => {
+  const cards = list.map(c => {
     const n   = (cur("students") || []).filter(s => String(s.circleId || "") === String(c.id)
                                                  && s.status !== "متوقف").length;
     const pct = tchCirclePct(c.id);
     const fac = c.mosque || complexName(c.complexId) || "—";
+    const tag = tcCircleTag(c);
+    const own = isMine(c);
+
     return `<article class="tc-card" onclick="if(!event.target.closest('button')) window.tchOpenCircle('${jsAttr(c.id)}')">
       <div class="tc-head">
-        <div class="tc-logo">${c.photo
-          ? `<img src="${esc(c.photo)}" alt="">`
-          : ic("book", 26)}</div>
         <div class="tc-ttl">
           <strong>${esc(c.name || "—")}</strong>
-          <small>${esc(fac)}</small>
+          ${tag ? `<span class="tc-tag">${esc(tag)}</span>` : ""}
         </div>
         <button type="button" class="tc-gear" title="إعدادات الحلقة"
-          onclick="window.tchCircleInfo('${jsAttr(c.id)}')">${ic("settings", 18)}</button>
+          onclick="window.tchCircleInfo('${jsAttr(c.id)}')">${ic("settings", 17)}</button>
       </div>
-      <div class="tc-meta">
-        <span class="tc-pill">${ic("users", 14)} ${toArabicDigits(n)} طالب</span>
-        <span class="tc-pill">${ic("check", 14)} ${toArabicDigits(pct)}٪ إنجاز</span>
+
+      <div class="tc-body">
+        <div class="tc-rows">
+          <div class="tc-row">${ic("mosque", 15)}<span>${esc(fac)}</span></div>
+          <div class="tc-row">${ic("users", 15)}<span>${toArabicDigits(n)} طالب</span></div>
+          <div class="tc-row tc-row-pct">${ic("check", 15)}<span>مؤشر الإنجاز</span>
+            <i class="tc-bar"><b style="width:${pct}%"></b></i>
+            <em>${toArabicDigits(pct)}٪</em></div>
+        </div>
+        <div class="tc-logo">${c.photo
+          ? `<img src="${esc(c.photo)}" alt="">`
+          : ic("book", 24)}</div>
       </div>
-      <div class="tc-bar"><span style="width:${pct}%"></span></div>
+
+      ${own ? `<div class="tc-acts">
+        <button type="button" class="tc-b ghost" data-action="nav" data-page="exams">اختبارات الطلاب</button>
+        <button type="button" class="tc-b fill" data-action="nav" data-page="report">تقارير الطلاب</button>
+      </div>` : ""}
     </article>`;
-  }).join("")}</div></div>`;
+  }).join("");
+
+  return `<div class="tc-wrap">${tabs}<div class="tc-grid">${cards}</div></div>`;
 }
+
 
 /* إعداداتُ الحلقة كما يراها المعلّم — عرضٌ لا تعديل، والتعديلُ من الإدارة */
 window.tchCircleInfo = function (id) {
@@ -26720,38 +26793,23 @@ function teacherDashboard() {
     : `<div class="muted" style="padding:14px;text-align:center">لا أحد متبقٍّ — اكتمل تحضير اليوم.</div>`;
 
   return `<div class="page">
-    ${pageHead("لوحة المعلم", "متابعة حلقتك اليومية")}
-    ${/* رسالةُ الترحيب التي تحدّدها الإدارة — تُعرض ما دامت مكتوبة */ ""}
+    ${/* اللوحةُ بالتصميم المطلوب: ترويسةٌ خضراء، ثمّ الإحصائيات، ثمّ الحلقات.
+          وما كان تحتها (صفوفُ الحضور وبطاقاتُ الأعداد وحلقةُ الإنجاز وقائمةُ
+          «لم يُسجَّل») رُفع من الرسم ودوالُّه باقيةٌ في مكانها. */ ""}
+    <div class="tds-top"><span class="tds-ttl">${ic("grid", 19)} حلقاتي</span></div>
     ${teacherWelcome() ? `<div class="tc-welcome">${ic("chat", 18)}
       <span>${esc(teacherWelcome())}</span></div>` : ""}
+
+    <h3 class="tds-h">الإحصائيات</h3>
+    <div class="tds-grid">${tdashStats()}</div>
+
+    <h3 class="tds-h">الحلقات</h3>
     ${/* خانةُ التنبيهات أُلغيت من اللوحة بطلبٍ صريح، وزرُّ التحضير انتقل إلى
           الشريط العلويّ بجوار جرس التنبيهات (tchTopCheckBtn). ودالّةُ
           tchNotifBox باقيةٌ في مكانها دون نداء. */ ""}
     ${/* بطاقةُ المعلّم نُقلت من اللوحة إلى شاشة «الإعدادات» بطلبٍ صريح،
           فلم تُحذف. وأرقامُه في القائمة الجانبية تحت اسمه. */ ""}
     ${tchCircleCards()}
-
-    <div class="dash-top">
-      <div class="card att-summary-wrap"><div class="att-rows">${attRows}</div></div>
-      <div class="card facility-wrap"><div class="facility-grid">${cards}</div></div>
-      <div class="card gauge-wrap">${donut}</div>
-    </div>
-
-    ${banner ? `<div style="height:16px"></div>${banner}` : ""}
-    <div style="height:16px"></div>
-
-    <div class="grid g-2" style="align-items:start">
-      <div class="card">
-        <div class="section-head"><h3>حلقاتي</h3>
-          <span class="badge b-gold">${marked} / ${total}</span></div>
-        ${circleRows}
-      </div>
-      <div class="card">
-        <div class="section-head"><h3>لم يُسجَّل بعد</h3>
-          <span class="badge b-gold">${pending.length}</span></div>
-        ${pendingRows}
-      </div>
-    </div>
   </div>`;
 }
 
@@ -40120,7 +40178,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-0520";
+  var APP_BUILD = "20261004-0630";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
