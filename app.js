@@ -26987,20 +26987,23 @@ function tcCircleTag(c) {
 function tchCircleCards() {
   const mine = tchMyCircles() || [];
   const all  = cur("circles") || [];
-  const list = TDASH.tab === "all" ? all : mine;
+
+  /* رُفع تبويبا «حلقاتي» و«جميع الحلقات» بطلبٍ صريح: تظهر حلقاتُ نطاق
+     الحساب كلُّها في اللوحة بلا أزرارِ تبويب. والقائمةُ اتّحادُ الاثنتين
+     بلا تكرار، فلا تسقط حلقةٌ كانت تظهر في أحدهما.
+
+     و TDASH و window.tdashTab وتنسيقُ التبويبين باقيةٌ في مكانها ولم
+     تُحذف — رُفع رسمُها وحدَه. */
+  const seen = {};
+  const list = all.concat(mine).filter(c => {
+    const k = String((c && c.id) || "");
+    if (!k || seen[k]) return false;
+    seen[k] = 1; return true;
+  });
   const isMine = c => mine.some(x => String(x.id) === String(c.id));
 
-  const tabs = `<div class="tc-tabs">
-    <button type="button" class="tc-tab${TDASH.tab === "mine" ? " on" : ""}"
-      onclick="window.tdashTab('mine')">حلقاتي</button>
-    <button type="button" class="tc-tab${TDASH.tab === "all" ? " on" : ""}"
-      onclick="window.tdashTab('all')">جميع الحلقات</button>
-  </div>`;
-
   if (!list.length) {
-    return `<div class="tc-wrap">${tabs}${noteCard(TDASH.tab === "all"
-      ? "لا حلقاتٍ في نطاق حسابك."
-      : "لا حلقاتٍ موكّلةً إليك بعد — راجع الإدارة.")}</div>`;
+    return `<div class="tc-wrap">${noteCard("لا حلقاتٍ في نطاق حسابك.")}</div>`;
   }
 
   const cards = list.map(c => {
@@ -27041,7 +27044,7 @@ function tchCircleCards() {
     </article>`;
   }).join("");
 
-  return `<div class="tc-wrap">${tabs}<div class="tc-grid">${cards}</div></div>`;
+  return `<div class="tc-wrap"><div class="tc-grid">${cards}</div></div>`;
 }
 
 
@@ -40813,7 +40816,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0410";
+  var APP_BUILD = "20261005-0450";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
