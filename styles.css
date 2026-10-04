@@ -10610,3 +10610,13 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 @media (max-width: 420px) {
   .tds-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* اسمُ البرنامج في الشريط العلويّ عند المعلّم — بطلبٍ صريح */
+.tch-brand {
+  font-size: 16px; font-weight: 800; color: var(--brand-dark, #0f6f72);
+  white-space: nowrap;
+}
+
+/* شريطُ المعلّم المهذَّب: اسمُ البرنامج يميناً، وكتلةُ التحضير والتنبيهات
+   تُدفع إلى أقصى اليسار — والتنبيهاتُ آخرُها فتقع في الطرف الأيسر. */
+.topbar.tch-top-min .topbar-left { margin-inline-start: auto; }

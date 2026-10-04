@@ -30987,6 +30987,37 @@ function renderTabBar() {
 /* أرقامُ المعلّم تحت اسمه في القائمة الجانبية — بطلبٍ صريح:
    عددُ حلقاته وطلابه ومساجده وتخصّصُه. والمساجدُ تُحصى من حلقاته
    لا من سجلّه، فمن له حلقاتٌ في مسجدين يرى اثنين. */
+/* الشريطُ العلويُّ عند المعلّم: اسمُ البرنامج والتنبيهاتُ والتحضيرُ فقط —
+   بطلبٍ صريح. وما عداه يُخفى له وحدَه ويعود لغيره كما كان (إخفاءٌ لا حذف). */
+const TCH_TOP_HIDE = ["#menuToggle", ".org-select", "#topFilters",
+                      "#btnMsg", "#btnRefresh", ".user-chip"];
+
+function tchTopbarTrim() {
+  try {
+    const bar = document.querySelector(".topbar");
+    if (!bar) return;
+    const on = !!(STATE && STATE.iface === "teacher");
+    /* الصنفُ يدفع كتلةَ الأزرار إلى أقصى اليسار، فالتنبيهاتُ يساراً بطلبٍ صريح */
+    try { bar.classList.toggle("tch-top-min", on); } catch (e) {}
+
+    TCH_TOP_HIDE.forEach(sel => {
+      const list = bar.querySelectorAll(sel);
+      for (let i = 0; i < list.length; i++) list[i].style.display = on ? "none" : "";
+    });
+
+    const right = bar.querySelector(".topbar-right") || bar;
+    let b = document.getElementById("tchBrand");
+    if (!on) { if (b && b.parentNode) b.parentNode.removeChild(b); return; }
+    if (!b) {
+      b = document.createElement("span");
+      b.id = "tchBrand";
+      b.className = "tch-brand";
+      b.textContent = "ذات القرآنية";
+      right.insertBefore(b, right.firstChild);
+    }
+  } catch (e) {}
+}
+window.tchTopbarTrim = tchTopbarTrim;
 /* زرُّ التحضير في الشريط العلويّ بجوار جرس التنبيهات — بطلبٍ صريح.
    يُركَّب للمعلّم وحدَه ويُنزع لغيره، وحالتُه تُراجَع مع كلّ رسم فيظهر
    «حضوري مسجَّل» فور التسجيل بلا إعادة تحميل. */
@@ -31569,6 +31600,8 @@ function mount() {
   try { renderTabBar(); } catch (e) {}
   /* وزرُّ التحضير في الشريط العلويّ: يُركَّب للمعلّم ويُنزع لغيره */
   try { tchTopCheckBtn(); } catch (e) {}
+  /* وبقيّةُ الشريط تُخفى عنه: اسمُ البرنامج والتنبيهاتُ والتحضيرُ فقط */
+  try { tchTopbarTrim(); } catch (e) {}
   /* والشريطُ الجانبيُّ يُراجَع مع كلّ رسم: زرُّ الخروج يضعه auth.js بعد
      أوّل رسمٍ للقائمة، فلا يكفي مراجعتُه عند إعادتها. */
   try { hideSideNavFor(STATE.iface); } catch (e) {}
@@ -40178,7 +40211,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-0630";
+  var APP_BUILD = "20261004-1750";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
