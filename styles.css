@@ -10427,19 +10427,19 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 :root[data-theme="dark"] .tcv-row:hover { background: rgba(255,255,255,.04); }
 
 /* =========================================================================
-   صفحةُ الدردشة — كما في الصورة: ترويسةٌ بيضاء، خلفيةٌ منقوشة،
-   بطاقةُ بدءٍ فيها الآية، وشريطُ كتابةٍ دائريّ أسفلَها
+   صفحةُ الدردشة — ترويسةٌ هادئة، خلفيةٌ خفيفةُ الزخرفة، فقاعاتٌ بوقتها
+   وحالةِ قراءتها، وشريطُ كتابةٍ ثابتٌ أسفلَ الشاشة يحترم المساحةَ الآمنة.
    ========================================================================= */
 .tch-page { display: flex; flex-direction: column; min-height: calc(100vh - 150px); }
 
 .tch-bar {
   display: flex; align-items: center; gap: 10px;
   background: var(--surface, #fff); border-radius: 18px;
-  padding: 10px 14px; box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,.05));
-  margin-bottom: 10px;
+  padding: 9px 13px; box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,.05));
+  margin-bottom: 10px; position: sticky; top: 0; z-index: 3;
 }
 .tch-back {
-  width: 34px; height: 34px; border-radius: 10px; flex: none; cursor: pointer;
+  width: 34px; height: 34px; border-radius: 11px; flex: none; cursor: pointer;
   display: grid; place-items: center; border: 0; background: transparent;
   color: var(--text-muted, #6b7780);
 }
@@ -10447,67 +10447,101 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 .tch-who { display: flex; align-items: center; gap: 10px; margin-inline-start: auto; }
 .tch-who strong { font-size: 15px; }
 .tch-av {
-  width: 40px; height: 40px; border-radius: 50%; flex: none;
+  width: 40px; height: 40px; border-radius: 50%; flex: none; overflow: hidden;
   display: grid; place-items: center; font-weight: 800; font-size: 14px;
-  background: #cdd6da; color: #7d8f98;
+  background: var(--brand-soft, #eafbfc); color: var(--brand-dark, #0f6f72);
 }
+.tch-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .tch-body {
-  flex: 1; border-radius: 18px; padding: 18px 14px;
-  background-color: #e9efe9;
+  flex: 1; border-radius: 18px; padding: 16px 13px;
+  min-height: 46vh; max-height: 62vh; overflow-y: auto;
+  background-color: #eaf0ea;
   background-image:
-    radial-gradient(circle at 12px 14px, rgba(90,110,100,.10) 2px, transparent 2px),
-    radial-gradient(circle at 54px 46px, rgba(90,110,100,.10) 2px, transparent 2px);
-  background-size: 72px 72px;
-  display: flex; flex-direction: column; justify-content: center;
+    radial-gradient(circle at 14px 16px, rgba(90,110,100,.09) 2px, transparent 2px),
+    radial-gradient(circle at 58px 50px, rgba(90,110,100,.09) 2px, transparent 2px);
+  background-size: 78px 78px;
+  display: flex; flex-direction: column; justify-content: flex-end;
 }
+.tch-body:has(.tch-start) { justify-content: center; }
 
 .tch-start {
-  width: min(420px, 92%); margin: 0 auto; text-align: center;
-  background: #fdfaf2; border-radius: 20px; padding: 20px 18px;
+  width: min(420px, 94%); margin: 0 auto; text-align: center;
+  background: #fdfaf2; border-radius: 20px; padding: 19px 17px;
   box-shadow: 0 10px 26px rgba(60,70,60,.12);
 }
 .tch-kind { display: block; text-align: right; font-size: 12px; color: #b79b57; font-weight: 700; }
 .tch-aya {
-  margin: 12px 0 4px; padding: 14px 12px; border-radius: 14px;
+  margin: 12px 0 4px; padding: 13px 12px; border-radius: 14px;
   border: 1px solid #e8d9ae; background: #fbf3df;
   font-size: 16px; font-weight: 700; color: #4a4330; line-height: 2;
 }
-.tch-sep { display: flex; align-items: center; gap: 8px; margin: 14px 0; }
-.tch-sep::before, .tch-sep::after {
-  content: ""; flex: 1; height: 1px; background: #e8d9ae;
-}
+.tch-sep { display: flex; align-items: center; gap: 8px; margin: 13px 0; }
+.tch-sep::before, .tch-sep::after { content: ""; flex: 1; height: 1px; background: #e8d9ae; }
 .tch-sep i { width: 7px; height: 7px; border-radius: 50%; background: #c7a95f; }
 .tch-note { font-size: 14px; color: #5d6a5d; }
 .tch-hamd { font-size: 13.5px; color: #9b8a5e; }
 
-.tch-msgs { display: grid; gap: 9px; align-content: start; }
+.tch-msgs { display: grid; gap: 8px; align-content: end; }
 .tch-b {
-  max-width: 78%; padding: 9px 13px; border-radius: 16px;
-  font-size: 13.5px; line-height: 1.75; box-shadow: 0 2px 6px rgba(0,0,0,.06);
+  max-width: 78%; padding: 8px 12px; border-radius: 16px;
+  font-size: 13.5px; line-height: 1.8; box-shadow: 0 2px 6px rgba(0,0,0,.06);
+  position: relative;
 }
-.tch-b strong { display: block; font-size: 12.5px; margin-bottom: 3px; }
-.tch-b small { display: block; font-size: 10.5px; opacity: .65; margin-top: 4px; }
-.tch-b.me { background: var(--brand-main, #0b7f83); color: #fff; margin-inline-start: auto; }
-.tch-b.you { background: #fff; color: var(--text-main, #19323a); margin-inline-end: auto; }
+.tch-b strong { display: block; font-size: 12px; margin-bottom: 2px; opacity: .8; }
+.tch-b small {
+  display: flex; align-items: center; gap: 4px; justify-content: flex-start;
+  font-size: 10.5px; opacity: .72; margin-top: 3px;
+}
+.tch-b.me { background: var(--brand-main, #0b7f83); color: #fff; margin-inline-start: auto;
+  border-end-end-radius: 6px; }
+.tch-b.you { background: #fff; color: var(--text-main, #19323a); margin-inline-end: auto;
+  border-end-start-radius: 6px; }
+.tch-tick { display: inline-flex; }
+.tch-tick svg { width: 13px; height: 13px; }
+.tch-tick.on { color: #9fe3ff; }
 
-.tch-send { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-.tch-in {
-  flex: 1; border-radius: 999px; border: 1px solid var(--border-soft, #eef1f0);
-  background: var(--surface, #fff); padding: 12px 18px; font-size: 14px;
-  font-family: inherit; color: var(--text-main, #19323a);
+/* شريطُ الكتابة: ثابتٌ أسفلَ الشاشة ويحترم المساحةَ الآمنة في الهواتف */
+.tch-send {
+  display: flex; align-items: center; gap: 9px;
+  position: sticky; bottom: 0; z-index: 4;
+  margin-top: 10px; padding: 8px 0 calc(8px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--background, #f6f7f4) 68%, transparent);
 }
-.tch-in:focus { outline: 0; border-color: var(--brand-main, #0b7f83); }
+.tch-in-wrap {
+  flex: 1; display: flex; align-items: center; gap: 6px;
+  border-radius: 999px; border: 1px solid var(--border-soft, #eef1f0);
+  background: var(--surface, #fff); padding: 4px 8px 4px 6px;
+  box-shadow: 0 2px 10px rgba(10,30,35,.05);
+}
+.tch-in {
+  flex: 1; border: 0; background: transparent; outline: 0;
+  font: inherit; font-size: 14px; padding: 9px 6px; color: var(--text-main, #19323a);
+}
+.tch-ic {
+  width: 34px; height: 34px; border-radius: 50%; flex: none; cursor: pointer;
+  display: grid; place-items: center; border: 0; background: transparent;
+  color: var(--text-faint, #9aa3ad);
+}
+.tch-ic:hover { background: var(--background, #f6f7f4); color: var(--brand-dark, #0f6f72); }
 .tch-go {
-  width: 48px; height: 48px; border-radius: 50%; flex: none; cursor: pointer;
+  width: 46px; height: 46px; border-radius: 50%; flex: none; cursor: pointer;
   display: grid; place-items: center; border: 0;
   background: var(--brand-dark, #0f6f72); color: #fff;
-  box-shadow: 0 4px 12px rgba(11,127,131,.28);
+  box-shadow: 0 4px 12px rgba(11,127,131,.26);
+  transition: background .18s ease, transform .18s ease;
 }
+.tch-go.ready { background: var(--brand-main, #0b7f83); transform: scale(1.03); }
 .tch-go:hover { background: var(--brand-main, #0b7f83); }
 
+@media (max-width: 560px) {
+  .tch-body { max-height: 58vh; padding: 13px 10px; }
+  .tch-b { max-width: 86%; }
+}
 :root[data-theme="dark"] .tch-body { background-color: #16211c; }
-:root[data-theme="dark"] .tcv-row { background: #11211f; }
+:root[data-theme="dark"] .tch-b.you { background: #11211f; }
+:root[data-theme="dark"] .tch-send { background: linear-gradient(to top, #0d1a18 68%, transparent); }
+
 
 /* =========================================================================
    لوحةُ المعلّم بالتصميم المطلوب — ترويسةٌ خضراء، إحصائيّاتٌ ثلاث،

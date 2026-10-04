@@ -71,7 +71,11 @@ const ICONS = {
   toggle: 'M16 7H8a5 5 0 000 10h8a5 5 0 000-10zM16 17a5 5 0 100-10 5 5 0 000 10z',
   /* بطاقةُ التصنيف والمرفقات — بطاقةُ تصنيفٍ ومشبكُ ورق */
   tag: 'M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01',
-  clip: 'M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48'
+  clip: 'M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48',
+  /* شريطُ كتابة المحادثة: ميكروفونٌ وكاميرا، وعلامةُ قراءةٍ مزدوجة */
+  mic: 'M12 2a3 3 0 013 3v6a3 3 0 01-6 0V5a3 3 0 013-3zM19 10v1a7 7 0 01-14 0v-1M12 18v4M8 22h8',
+  camera: 'M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z',
+  checkDouble: 'M1 12l5 5L17 6M9 17l1.5 1.5L22 7'
 };
 /* أيقونات مصمتة — تُرسم بالتعبئة لا بالحد */
 const ICONS_SOLID = {
@@ -24273,8 +24277,7 @@ function tchatRows() {
 
   return rows.map(r => `<button type="button" class="tcv-row"
       onclick="window.tchatOpen('${jsAttr(r.kind)}','${jsAttr(r.id)}')">
-      <span class="tcv-av">${r.kind === "admin" ? ic("shield", 19)
-        : r.kind === "circle" ? ic("book", 19) : esc(initials(r.name))}</span>
+      <span class="tcv-av">${tchatAvatar(r.kind, r.id, r.name, 19)}</span>
       <span class="tcv-mid">
         <strong>${esc(r.name)}${r.kind === "circle" ? " — رسالة عامة" : ""}</strong>
         <small>${esc(r.text ? r.text.slice(0, 60) : "لا رسائل بعد")}</small>
@@ -24313,7 +24316,74 @@ function tchatList() {
   </div>`;
 }
 
-/* صفحةُ الدردشة — ترويسةٌ وخلفيةٌ منقوشةٌ وبطاقةُ بدءٍ وشريطُ كتابة */
+/* بريدُ المُراسَل: قاعدةُ Firestore تشترط toEmail نصّاً في الإنشاء، وكان
+   الإرسالُ يكتب toId وحدَه فتردُّه القاعدة. يُلتمس من حساب الطالب، وإلا
+   يُكتب نصّاً فارغاً فيمرّ الإنشاء ويبقى السجلُّ عند صاحبه. */
+function tchatMail(kind, id) {
+  try {
+    if (kind !== "student") return "";
+    const st = (cur("students") || []).find(x => String(x.id) === String(id));
+    if (!st) return "";
+    const u = (cur("users") || []).find(x => x &&
+      (String(x.uid || "") === String(st.uid || "") ||
+       String(x.studentId || "") === String(st.id)));
+    return String((u && (u.email || u.username)) || st.email || "").toLowerCase();
+  } catch (e) { return ""; }
+}
+
+/* صورةُ المُراسَل في الترويسة والصفوف: صورتُه إن وُجدت، وإلا أيقونةٌ
+   للإدارة والحلقة، وإلا أوّلُ حروف اسمه. */
+function tchatAvatar(kind, id, name, size) {
+  if (kind === "admin")  return ic("shield", size || 19);
+  if (kind === "circle") return ic("book", size || 19);
+  try {
+    const st = (cur("students") || []).find(x => String(x.id) === String(id));
+    if (st && st.photo) return `<img src="${esc(st.photo)}" alt="">`;
+  } catch (e) {}
+  return esc(initials(name || ""));
+}
+
+/* بعد كلّ رسم: التمريرُ إلى آخر رسالة، وتبديلُ زرّ الصوت بالإرسال */
+function tchatAfterMount() {
+  if (!STATE || STATE.page !== "chat" || STATE.iface !== "teacher") return;
+  const box = document.getElementById("tchBody");
+  if (box) box.scrollTop = box.scrollHeight;
+
+  const inp = document.getElementById("tchText");
+  const go  = document.getElementById("tchGo");
+  if (!inp || !go) return;
+  const sync = () => {
+    const has = String(inp.value || "").trim().length > 0;
+    go.classList.toggle("ready", has);
+    go.title = has ? "إرسال" : "تسجيل صوتي";
+    go.innerHTML = has ? ic("send", 18) : ic("mic", 18);
+  };
+  if (!inp.dataset.wired) { inp.dataset.wired = "1"; inp.addEventListener("input", sync); }
+  sync();
+}
+window.tchatAfterMount = tchatAfterMount;
+
+/* الأزرارُ التي لا نظامَ لها في المشروع تقول ذلك بدل أن تصمت */
+window.tchatSoon = function (what) {
+  showToast((what || "هذه الميزة") + " غير متاحٍ بعد في النظام", "info");
+};
+
+/* زرُّ الطرف: صوتٌ حين يخلو الحقل، وإرسالٌ حين يُكتب فيه */
+window.tchatGo = function () {
+  const inp = document.getElementById("tchText");
+  const has = inp && String(inp.value || "").trim().length > 0;
+  if (has) { window.tchatSend(); return; }
+  window.tchatSoon("التسجيل الصوتي");
+};
+
+/* علامةُ القراءة للصادر: ✓ أُرسلت، ✓✓ قُرئت — وهي حالةٌ حقيقيّةٌ في السجلّ */
+function tchatTick(m) {
+  return m && m.read
+    ? `<i class="tch-tick on">${ic("checkDouble", 13)}</i>`
+    : `<i class="tch-tick">${ic("check", 13)}</i>`;
+}
+
+/* صفحةُ المحادثة — ترويسةٌ وخلفيةٌ هادئةٌ وفقاعاتٌ وشريطُ كتابةٍ ثابت */
 function teacherChat() {
   if (!TCHAT.kind) { go("messages"); return ""; }
 
@@ -24325,9 +24395,9 @@ function teacherChat() {
     ? `<div class="tch-msgs">${ms.map(m => {
         const mine = String(m.fromUid || m.fromId || "") === me;
         return `<div class="tch-b ${mine ? "me" : "you"}">
-          ${m.title && m.title !== "محادثة" ? `<strong>${esc(m.title)}</strong>` : ""}
+          ${!mine && m.fromName ? `<strong>${esc(m.fromName)}</strong>` : ""}
           <span>${esc(m.text || "")}</span>
-          <small>${esc(timeAgo(m.ts))}</small>
+          <small>${esc(timeAgo(m.ts))}${mine ? tchatTick(m) : ""}</small>
         </div>`;
       }).join("")}</div>`
     : `<div class="tch-start">
@@ -24345,18 +24415,23 @@ function teacherChat() {
         title="رجوع">${ic("arrowLeft", 20)}</button>
       <span class="tch-who">
         <strong>${esc(TCHAT.name || "محادثة")}</strong>
-        <span class="tch-av">${TCHAT.kind === "admin" ? ic("shield", 18)
-          : TCHAT.kind === "circle" ? ic("book", 18) : esc(initials(TCHAT.name))}</span>
+        <span class="tch-av">${tchatAvatar(TCHAT.kind, TCHAT.id, TCHAT.name, 20)}</span>
       </span>
     </div>
 
-    <div class="tch-body">${body}</div>
+    <div class="tch-body" id="tchBody">${body}</div>
 
     <div class="tch-send">
-      <button type="button" class="tch-go" onclick="window.tchatSend()"
-        title="إرسال">${ic("send", 18)}</button>
-      <input id="tchText" class="tch-in" placeholder="مراسلة"
-        onkeydown="if(event.key==='Enter')window.tchatSend()">
+      <button type="button" class="tch-go" id="tchGo" title="تسجيل صوتي"
+        onclick="window.tchatGo()">${ic("mic", 18)}</button>
+      <span class="tch-in-wrap">
+        <button type="button" class="tch-ic" title="كاميرا"
+          onclick="window.tchatSoon('إرسال الصور')">${ic("camera", 17)}</button>
+        <input id="tchText" class="tch-in" placeholder="مراسلة"
+          onkeydown="if(event.key==='Enter')window.tchatSend()">
+        <button type="button" class="tch-ic" title="إرفاق"
+          onclick="window.tchatSoon('إرفاق الملفات')">${ic("clip", 17)}</button>
+      </span>
     </div>
   </div>`;
 }
@@ -24380,7 +24455,7 @@ window.tchatSend = function () {
 
   let sent = 0;
   if (TCHAT.kind === "admin") {
-    const rec = Object.assign({ id: "tc" + Date.now(), toRole: "admin" }, base);
+    const rec = Object.assign({ id: "tc" + Date.now(), toRole: "admin", toEmail: "" }, base);
     DB.site_messages.push(rec);
     try { persistSet("site_messages", rec); } catch (e) {}
     sent = 1;
@@ -24393,6 +24468,7 @@ window.tchatSend = function () {
       x.status !== "متوقف").forEach((st, i) => {
       const rec = Object.assign({
         id: "tc" + Date.now() + "-" + i, toId: String(st.uid || st.id),
+        toEmail: tchatMail("student", st.id),
         studentId: String(st.id), student: st.name || "",
         circleId: String(st.circleId || ""), circleMsg: true
       }, base);
@@ -24409,6 +24485,7 @@ window.tchatSend = function () {
     if (!st) { showToast("الطالب غير موجود", "warn"); return; }
     const rec = Object.assign({
       id: "tc" + Date.now(), toId: String(st.uid || st.id),
+      toEmail: tchatMail("student", st.id),
       studentId: String(st.id), student: st.name || "",
       circleId: String(st.circleId || "")
     }, base);
@@ -31647,6 +31724,9 @@ function mount() {
   runAnimations(root);
   try { fabRender(); } catch (e) { console.warn("fab:", e); }
   try { updateMsgBadge(); } catch (e) { /* الشريط غير موجود بعد */ }
+  /* صفحةُ المحادثة بعد رسم محتواها: التمريرُ إلى الأحدث، وتبديلُ زرّ
+     الصوت بالإرسال — ولا بدّ أن يكون بعد innerHTML لا قبله. */
+  try { tchatAfterMount(); } catch (e) {}
 }
 
 /* =========================================================
@@ -40211,7 +40291,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-1750";
+  var APP_BUILD = "20261004-1900";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
