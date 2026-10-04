@@ -24166,11 +24166,12 @@ function tmsgRender() {
    ========================================================================= */
 const TCHAT = { filter: "all", kind: "", id: "", name: "", q: "" };
 
+/* رُفعت رقاقةُ «الإدارة وحلقتي» بطلبٍ صريح. وفرعُها في tchatVisible باقٍ
+   كما هو ولم يُحذف — فمحادثاتُ الإدارة والحلقة ما زالت تظهر في «الكل». */
 const TCHAT_FILTERS = [
-  ["all",    "الكل",            "chat"],
-  ["admin",  "الإدارة وحلقتي",  "shield"],
-  ["kids",   "طلابي",           "users"],
-  ["unread", "غير المقروء",     "bell"]
+  ["all",    "الكل",         "chat"],
+  ["kids",   "طلابي",        "users"],
+  ["unread", "غير المقروء",  "bell"]
 ];
 
 window.tchatFilter = function (k) { TCHAT.filter = String(k || "all"); mount(); };
@@ -24300,6 +24301,10 @@ function tchatRows() {
 }
 
 function tchatList() {
+  /* من كان على الفلتر المرفوع في جلسةٍ مفتوحة يعود إلى «الكل»، فلا يبقى
+     على تصفيةٍ لا رقاقةَ لها ولا سبيلَ للخروج منها. */
+  if (!TCHAT_FILTERS.some(f => f[0] === TCHAT.filter)) TCHAT.filter = "all";
+
   const chips = TCHAT_FILTERS.map(([k, h]) =>
     `<button type="button" class="tcf-chip${TCHAT.filter === k ? " on" : ""}"
       onclick="window.tchatFilter('${k}')">${esc(h)}
@@ -40595,7 +40600,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0150";
+  var APP_BUILD = "20261005-0215";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
