@@ -24236,6 +24236,17 @@ function tchatThreads() {
   return rows;
 }
 
+/* رتبةُ التثبيت: الإدارةُ أوّلاً ثمّ الحلقاتُ ثمّ الطلاب. وكان الترتيبُ
+   بغير المقروء ثمّ بالأحدث وحدَهما، فيتنقّل صفُّ الإدارة وصفُّ الحلقة في
+   القائمة كلّما وصلت رسالةٌ من طالب. وهما مثبّتان الآن لا يتغيّر مكانُهما،
+   والترتيبُ القديم باقٍ كما هو بين أهل الرتبة الواحدة. */
+function tchatPinRank(r) {
+  if (!r) return 2;
+  if (r.kind === "admin")  return 0;
+  if (r.kind === "circle") return 1;
+  return 2;
+}
+
 function tchatVisible() {
   const f = TCHAT.filter;
   return tchatThreads().filter(r => {
@@ -24243,7 +24254,8 @@ function tchatVisible() {
     if (f === "kids")   return r.kind === "student";
     if (f === "unread") return r.unread > 0;
     return true;
-  }).sort((a, b) => (b.unread - a.unread) || (b.ts - a.ts));
+  }).sort((a, b) => (tchatPinRank(a) - tchatPinRank(b)) ||
+                    (b.unread - a.unread) || (b.ts - a.ts));
 }
 
 window.tchatOpen = function (kind, id) {
@@ -40600,7 +40612,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0215";
+  var APP_BUILD = "20261005-0240";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
