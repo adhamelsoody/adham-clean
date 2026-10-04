@@ -10343,34 +10343,72 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 .icon-btn.tch-top-check.done { color: var(--success, #3a945c); }
 
 /* =========================================================================
-   محادثاتُ المعلّم — خانةُ الفلاتر وقائمةُ المحادثات
+   قائمةُ المحادثات — بالتصميم المطلوب: ترويسةٌ خضراء، بحثٌ، رقائقُ بأعدادها،
+   عنوانُ «الحديثة»، وصفوفٌ بصورةٍ دائريّةٍ يفصلها خطٌّ رفيع.
+   وعرضُها محدودٌ ومتوسَّطٌ كيلا تمتدّ على الشاشات العريضة.
    ========================================================================= */
-.tcf-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.tcf-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 13px; border-radius: var(--r-pill, 999px);
-  border: 1px solid var(--border-soft, #eef1f0);
-  background: var(--background, #f6f7f4); color: var(--text-muted, #6b7780);
-  font-size: 12.5px; font-weight: 700; cursor: pointer;
-  transition: all .18s ease;
+.tcv-card { padding: 0; overflow: hidden; }
+
+.tcv-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 18px; color: #fff;
+  background: linear-gradient(135deg, var(--brand-main, #0b7f83), var(--brand-dark, #0f6f72));
 }
-.tcf-chip svg { width: 15px; height: 15px; }
-.tcf-chip:hover { border-color: var(--brand-main, #0b7f83); color: var(--brand-dark, #0f6f72); }
-.tcf-chip.on {
-  background: var(--brand-main, #0b7f83); border-color: var(--brand-main, #0b7f83); color: #fff;
+.tcv-ttl { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 800; }
+.tcv-ttl svg { width: 19px; height: 19px; }
+.tcv-top-dot {
+  min-width: 22px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(255, 255, 255, .22); font-size: 12px; font-weight: 800;
 }
 
-.tcv-list { display: grid; gap: 7px; }
-.tcv-row {
-  display: flex; align-items: center; gap: 11px; width: 100%;
-  padding: 11px 12px; border-radius: 14px; text-align: right; cursor: pointer;
-  border: 1px solid var(--border-soft, #eef1f0); background: var(--surface, #fff);
-  transition: border-color .18s ease, background .18s ease;
+.tcv-wrap { padding: 14px; max-width: 620px; margin-inline: auto; }
+
+.tcv-srch {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 14px; border-radius: 14px; margin-bottom: 12px;
+  background: var(--background, #f6f7f4); border: 1px solid var(--border-soft, #eef1f0);
+  color: var(--text-faint, #9aa3ad);
 }
-.tcv-row:hover { border-color: var(--brand-main, #0b7f83); background: var(--brand-soft, #eafbfc); }
+.tcv-srch input {
+  flex: 1; border: 0; background: transparent; font: inherit; font-size: 13.5px;
+  color: var(--text-main, #19323a); outline: 0;
+}
+
+.tcf-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.tcf-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: var(--r-pill, 999px);
+  border: 1px solid var(--border-soft, #eef1f0);
+  background: var(--background, #f6f7f4); color: var(--text-muted, #6b7780);
+  font-size: 12.5px; font-weight: 700; cursor: pointer; transition: all .18s ease;
+}
+.tcf-chip b {
+  font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 999px;
+  background: rgba(0, 0, 0, .06); color: inherit;
+}
+.tcf-chip:hover { border-color: var(--brand-main, #0b7f83); color: var(--brand-dark, #0f6f72); }
+.tcf-chip.on {
+  background: var(--brand-dark, #0f6f72); border-color: var(--brand-dark, #0f6f72); color: #fff;
+}
+.tcf-chip.on b { background: rgba(255, 255, 255, .22); }
+
+.tcv-lbl {
+  font-size: 12.5px; font-weight: 700; color: var(--text-faint, #9aa3ad);
+  margin: 0 2px 6px;
+}
+
+.tcv-list { display: grid; }
+.tcv-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px;
+  padding: 11px 6px; text-align: right; cursor: pointer;
+  border: 0; border-bottom: 1px solid var(--border-soft, #eef1f0);
+  background: transparent; transition: background .18s ease;
+}
+.tcv-row:last-child { border-bottom: 0; }
+.tcv-row:hover { background: var(--background, #f6f7f4); }
 .tcv-av {
-  width: 42px; height: 42px; border-radius: 50%; flex: none;
-  display: grid; place-items: center; font-weight: 800; font-size: 14px;
+  width: 46px; height: 46px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-weight: 800; font-size: 15px;
   background: var(--brand-soft, #eafbfc); color: var(--brand-dark, #0f6f72);
 }
 .tcv-mid { flex: 1; min-width: 0; }
@@ -10383,7 +10421,10 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
   min-width: 20px; padding: 1px 6px; border-radius: 999px;
   background: var(--brand-main, #0b7f83); color: #fff; font-size: 11px; font-weight: 800;
 }
-.tcv-empty { padding: 22px; text-align: center; color: var(--text-faint, #9aa3ad); font-size: 13px; }
+.tcv-empty { padding: 26px; text-align: center; color: var(--text-faint, #9aa3ad); font-size: 13px; }
+
+:root[data-theme="dark"] .tcv-srch { background: #11211f; }
+:root[data-theme="dark"] .tcv-row:hover { background: rgba(255,255,255,.04); }
 
 /* =========================================================================
    صفحةُ الدردشة — كما في الصورة: ترويسةٌ بيضاء، خلفيةٌ منقوشة،

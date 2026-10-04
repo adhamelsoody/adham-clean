@@ -24150,7 +24150,7 @@ function tmsgRender() {
    خاصٌّ بطلابه الذين يدرّسهم فقط، وفلترٌ للرسائل غير المقروءة».
    والمحادثاتُ تُبنى من site_messages — لا مجموعةَ جديدة ولا قاعدةَ تُمسّ.
    ========================================================================= */
-const TCHAT = { filter: "all", kind: "", id: "", name: "" };
+const TCHAT = { filter: "all", kind: "", id: "", name: "", q: "" };
 
 const TCHAT_FILTERS = [
   ["all",    "الكل",            "chat"],
@@ -24249,18 +24249,32 @@ window.tchatOpen = function (kind, id) {
   go("chat");
 };
 
-/* قائمةُ المحادثات بخانة فلاترها — تُعرض في صدر شاشة الرسائل */
-function tchatList() {
-  const rows = tchatVisible();
+/* قائمةُ المحادثات — بالتصميم الذي طلبه: ترويسةٌ خضراء، حقلُ بحث،
+   رقائقُ فلترةٍ بأعدادها، عنوانُ «الحديثة»، ثمّ صفوفٌ بصورةٍ دائريّة. */
+window.tchatSearch = function (v) {
+  TCHAT.q = String(v || "");
+  const box = document.getElementById("tcvList");
+  if (box) box.innerHTML = tchatRows();
+};
 
-  const chips = TCHAT_FILTERS.map(([k, h, i]) =>
-    `<button type="button" class="tcf-chip${TCHAT.filter === k ? " on" : ""}"
-      onclick="window.tchatFilter('${k}')">${ic(i, 15)}<span>${esc(h)}</span></button>`).join("");
+function tchatCount(k) {
+  const all = tchatThreads();
+  if (k === "admin")  return all.filter(r => r.kind === "admin" || r.kind === "circle").length;
+  if (k === "kids")   return all.filter(r => r.kind === "student").length;
+  if (k === "unread") return all.filter(r => r.unread > 0).length;
+  return all.length;
+}
 
-  const body = rows.length ? rows.map(r => `<button type="button" class="tcv-row"
+function tchatRows() {
+  const q = String(TCHAT.q || "").trim();
+  const rows = tchatVisible().filter(r => !q || String(r.name || "").indexOf(q) > -1);
+
+  if (!rows.length) return `<div class="tcv-empty">لا محادثاتٍ مطابقة</div>`;
+
+  return rows.map(r => `<button type="button" class="tcv-row"
       onclick="window.tchatOpen('${jsAttr(r.kind)}','${jsAttr(r.id)}')">
-      <span class="tcv-av">${r.kind === "admin" ? ic("shield", 18)
-        : r.kind === "circle" ? ic("book", 18) : esc(initials(r.name))}</span>
+      <span class="tcv-av">${r.kind === "admin" ? ic("shield", 19)
+        : r.kind === "circle" ? ic("book", 19) : esc(initials(r.name))}</span>
       <span class="tcv-mid">
         <strong>${esc(r.name)}${r.kind === "circle" ? " — رسالة عامة" : ""}</strong>
         <small>${esc(r.text ? r.text.slice(0, 60) : "لا رسائل بعد")}</small>
@@ -24269,18 +24283,32 @@ function tchatList() {
         ${r.ts ? `<span class="tcv-time">${esc(timeAgo(r.ts))}</span>` : ""}
         ${r.unread ? `<b class="tcv-dot">${toArabicDigits(r.unread)}</b>` : ""}
       </span>
-    </button>`).join("")
-    : `<div class="tcv-empty">لا محادثاتٍ في هذا الفلتر</div>`;
+    </button>`).join("");
+}
 
-  return `<div class="card">
-    <div class="fac-toolbar">
-      <div><strong style="font-size:15px">المحادثات</strong>
-        <div class="muted" style="font-size:11.5px;margin-top:2px">
-          الإدارةُ وحلقاتُك وطلابُك</div></div>
+function tchatList() {
+  const chips = TCHAT_FILTERS.map(([k, h]) =>
+    `<button type="button" class="tcf-chip${TCHAT.filter === k ? " on" : ""}"
+      onclick="window.tchatFilter('${k}')">${esc(h)}
+      <b>${toArabicDigits(tchatCount(k))}</b></button>`).join("");
+
+  return `<div class="card tcv-card">
+    <div class="tcv-top">
+      <span class="tcv-ttl">${ic("chat", 19)} الرسائل</span>
+      ${tchatCount("unread")
+        ? `<span class="tcv-top-dot">${toArabicDigits(tchatCount("unread"))}</span>` : ""}
     </div>
-    <div style="padding:0 16px 16px">
+
+    <div class="tcv-wrap">
+      <div class="tcv-srch">${ic("search", 17)}
+        <input type="search" value="${esc(TCHAT.q || "")}"
+          placeholder="ابحث في الحلقات والطلاب"
+          oninput="window.tchatSearch(this.value)"></div>
+
       <div class="tcf-row">${chips}</div>
-      <div class="tcv-list">${body}</div>
+
+      <div class="tcv-lbl">الحديثة</div>
+      <div class="tcv-list" id="tcvList">${tchatRows()}</div>
     </div>
   </div>`;
 }
@@ -40092,7 +40120,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-0405";
+  var APP_BUILD = "20261004-0520";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
