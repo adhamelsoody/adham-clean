@@ -3487,8 +3487,10 @@ function reviewPlans() {
     });
   });
 
-  /* المُدرجة يدوياً في reviews تبقى — لا تُهمل بيانات قائمة */
-  (cur("reviews") || []).forEach(r => {
+  /* المُدرجة يدوياً في reviews تبقى — لا تُهمل بيانات قائمة.
+     وتقييمُ المعلّمين يسكن المجموعةَ نفسَها بوسم kind، فيُتخطّى هنا
+     لئلّا يظهر صفٌّ بلا طالبٍ في «خطط بانتظار قرار الإدارة». */
+  (cur("reviews") || []).filter(r => !r || r.kind !== "teacherRating").forEach(r => {
     if (out.some(x => String(x.student) === String(r.student))) return;
     const p = (cur("plans") || []).find(x => String(x.student) === String(r.student));
     out.push({ plan: p, prog: null, next: null,
@@ -20505,6 +20507,7 @@ function setPanelTeacherApp() {
     ${/* عناصرُ التقييم والتقرير: ضبطُهما هنا لأنّهما ممّا يظهر للمعلّم */""}
     ${evalCfgPanel()}
     ${reptCfgPanel()}
+    ${rateCfgPanel()}
   </div>`;
 }
 
@@ -25282,6 +25285,10 @@ function teacherReport() {
     ${sec("perf", "إحصاء الأداء", `<div class="grid g-4 stagger">${perf}</div>`)}
     ${sec("weekly", "إحصاء الأسبوع", weekly)}
     ${sec("period", "إحصاء الفترة", period)}
+    ${/* تقييمُ الإدارة: تُظهره الإدارةُ من عناصر التقرير، ويراه من مُنح
+          صلاحيةَ viewRating وحدَه — فالشرطان معاً لا أحدُهما. */
+      (typeof teacherCan === "function" && teacherCan("viewRating"))
+        ? sec("rating", "تقييم الإدارة", rateCard(sid)) : ""}
     ${reportOn("attLog") ? `<div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
       <thead><tr><th>التاريخ</th><th>الحلقة</th><th>الحالة</th><th>ملاحظة</th></tr></thead>
       <tbody>${rows.length ? rows.map(r => `<tr>
@@ -26257,12 +26264,229 @@ function evalItems() {
 }
 function evalItemsOn() { return evalItems().filter(x => x.on); }
 
+/* =========================================================================
+   تقييمُ الإدارة للمعلّم
+   -------------------------------------------------------------------------
+   البند ٢٨: «إذا كان لدى الإدارة نظام لتقييم المعلمين، يظهر للمعلم التقييم
+   الذي تسمح الإدارة بعرضه». وكانت الصلاحيةُ viewRating قائمةً في المشروع
+   ولا نظامَ وراءها: لا شاشةَ إدخالٍ ولا سجلّ، فلا شيءَ يُعرض.
+
+   القرارات — سُئل عنها فقيل «اعملهم كلّهم»، فهذه هي ومكتوبةٌ ليُراجَعها:
+     • المقيِّم: المالك والمدير والمشرف. والمعلّمُ لا يقيّم نفسَه.
+     • العناصر: الانضباط · الأداء · متابعة الطلاب · التعامل، كلٌّ من عشرة،
+       وللإدارة أن تُظهر وتُخفي وتُسمّي وتزيد كما في عناصر تقييم التسميع.
+     • الدورة: شهريّة — سجلٌّ واحدٌ لكلّ معلّمٍ في كلّ شهر، ويحمل termId
+       فيُفرز بالفترة أيضاً.
+
+   والتخزينُ في مجموعة reviews القائمة بوسم kind — فلا مجموعةَ جديدة ولا
+   مساسَ بقواعد Firestore. وreviewPlans تتخطّى الموسومَ بهذا الوسم فلا
+   يختلط تقييمُ المعلّمين بخطط المراجعة.
+   ========================================================================= */
+const RATE_DEFAULTS = [
+  { k: "intizam", h: "الانضباط",       on: true },
+  { k: "adaa",    h: "الأداء",          on: true },
+  { k: "mutabaa", h: "متابعة الطلاب",  on: true },
+  { k: "taamul",  h: "التعامل",         on: true }
+];
+
+function ratingItems() {
+  const saved = (DB.settings || {}).ratingItems;
+  const list = Array.isArray(saved) && saved.length ? saved : RATE_DEFAULTS;
+  return list.map(x => ({ k: String((x && x.k) || ""), h: String((x && x.h) || ""),
+                          on: !x || x.on !== false })).filter(x => x.k);
+}
+function ratingItemsOn() { return ratingItems().filter(x => x.on); }
+
+/* من يملك التقييم: المالك والمدير والمشرف */
+function canRateTeacher() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  return r === "owner" || r === "admin" || r === "supervisor";
+}
+
+/* شهرُ الدورة الحاليّة */
+function ratePeriod(d) {
+  const s = String(d || todayISO());
+  return s.slice(0, 7);
+}
+function rateId(tid, per) {
+  return "rate-" + String(tid || "") + "-" + String(per || ratePeriod());
+}
+
+/* تقييماتُ معلّمٍ مرتَّبةً من الأحدث */
+function teacherRatings(tid) {
+  return (cur("reviews") || [])
+    .filter(r => r && r.kind === "teacherRating" &&
+                 String(r.teacherId || "") === String(tid || ""))
+    .sort((a, b) => String(b.period || "").localeCompare(String(a.period || "")));
+}
+function rateOf(tid, per) {
+  const p = String(per || ratePeriod());
+  return teacherRatings(tid).find(r => String(r.period || "") === p) || null;
+}
+
+/* معدّلُ التقييم من عشرة — متوسّطُ العناصر المعروضة */
+function rateAvg(rec) {
+  const items = ratingItemsOn();
+  if (!rec || !items.length) return null;
+  let n = 0, sum = 0;
+  items.forEach(x => {
+    const v = Number((rec.scores || {})[x.k]);
+    if (!isNaN(v)) { sum += v; n++; }
+  });
+  return n ? Math.round(sum / n * 10) / 10 : null;
+}
+
+/* لوحةُ ضبط عناصر التقييم — في إعدادات «تطبيق المعلم» مع أخواتها */
+function rateCfgPanel() {
+  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const rows = ratingItems().map((x, i) => `<tr>
+    <td><input class="pm-in" id="rt_h_${i}" value="${esc(x.h)}" ${edit ? "" : "disabled"}></td>
+    <td><label class="sy-sw"><input type="checkbox" id="rt_on_${i}" ${x.on ? "checked" : ""}
+      ${edit ? "" : "disabled"}><span></span></label></td>
+  </tr>`).join("");
+  return `<div class="sp-card">
+    <div class="sp-cardhead"><div><h3>عناصر تقييم الإدارة للمعلّم</h3>
+      <p>ما تقيّم به الإدارةُ معلّميها شهرياً، وما يظهر منه في تقرير المعلّم</p></div></div>
+    <table class="ptable"><thead><tr><th>العنصر</th><th>يظهر</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    ${edit ? `<div class="row-actions" style="margin-top:10px">
+      <button class="btn btn-ghost btn-sm" onclick="window.rtCfgAdd()">${ic("plus", 15)} أضف عنصراً</button>
+      <button class="btn btn-primary btn-sm" onclick="window.rtCfgSave()">${ic("check", 15)} حفظ العناصر</button>
+    </div>` : ""}
+  </div>`;
+}
+
+window.rtCfgAdd = function () {
+  const list = ratingItems();
+  list.push({ k: "rt" + Date.now(), h: "عنصرٌ جديد", on: true });
+  DB.settings = DB.settings || {}; DB.settings.ratingItems = list;
+  mount();
+};
+
+window.rtCfgSave = function () {
+  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+    showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
+  }
+  const list = ratingItems().map((x, i) => ({
+    k: x.k, h: (val("#rt_h_" + i) || x.h),
+    on: !!(document.getElementById("rt_on_" + i) || {}).checked
+  }));
+  DB.settings = DB.settings || {}; DB.settings.ratingItems = list;
+  persistSet("settings", { id: "teacherRate", ratingItems: list });
+  showToast("حُفظت عناصرُ تقييم المعلّم", "success");
+  mount();
+};
+
+/* نافذةُ إدخال التقييم — للإدارة والمشرف */
+window.tchRateOpen = function (tid) {
+  if (!canRateTeacher()) { showToast("التقييمُ من صلاحية الإدارة", "warn"); return; }
+  const t = (cur("teachers") || []).find(x => String(x.id) === String(tid));
+  if (!t) { showToast("المعلم غير موجود", "warn"); return; }
+
+  const per = ratePeriod();
+  const rec = rateOf(t.id, per);
+  const rows = ratingItemsOn().map(x => `<div class="field">
+      <label>${esc(x.h)} <small class="muted">من ١٠</small></label>
+      <input type="number" min="0" max="10" step="1" id="rt_v_${esc(x.k)}"
+        value="${esc(String(((rec && rec.scores) || {})[x.k] != null
+          ? (rec.scores || {})[x.k] : ""))}" placeholder="٠ — ١٠">
+    </div>`).join("");
+
+  openModal("تقييم المعلّم", esc(t.name || "") + " — " + toArabicDigits(per),
+    `<div class="form-grid">${rows}
+      <div class="field full"><label>ملاحظة الإدارة</label>
+        <textarea id="rt_note" rows="2"
+          placeholder="ما تودّ الإدارةُ إبلاغَه">${esc((rec && rec.note) || "")}</textarea></div>
+    </div>`,
+    `<button class="btn btn-primary" onclick="window.tchRateSave('${jsAttr(t.id)}')">${
+      ic("check", 16)} حفظ التقييم</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.tchRateSave = function (tid) {
+  if (!canRateTeacher()) { showToast("التقييمُ من صلاحية الإدارة", "warn"); return; }
+  const t = (cur("teachers") || []).find(x => String(x.id) === String(tid));
+  if (!t) { showToast("المعلم غير موجود", "warn"); return; }
+
+  const u = (STATE && STATE.user) || {};
+  const per = ratePeriod();
+  const scores = {};
+  ratingItemsOn().forEach(x => {
+    const raw = val("#rt_v_" + x.k);
+    if (raw === "" || raw == null) return;
+    const v = Math.max(0, Math.min(10, Number(raw) || 0));
+    scores[x.k] = v;
+  });
+
+  const prev = rateOf(t.id, per);
+  const rec = {
+    id: rateId(t.id, per), kind: "teacherRating",
+    teacherId: String(t.id), teacherName: t.name || "",
+    period: per, scores: scores, note: (val("#rt_note") || "").trim(),
+    mosqueId: t.mosqueId || "", complexId: t.complexId != null ? t.complexId : STATE.complexId,
+    termId: (typeof activeTermId === "function" ? activeTermId() : "") || "",
+    by: u.email || "", byName: u.name || "", ts: Date.now(),
+    firstTs: prev ? (Number(prev.firstTs || prev.ts) || Date.now()) : Date.now()
+  };
+
+  if (!Array.isArray(DB.reviews)) DB.reviews = [];
+  const i = DB.reviews.findIndex(x => String(x.id) === String(rec.id));
+  if (i > -1) DB.reviews[i] = rec; else DB.reviews.push(rec);
+  try { persistSet("reviews", rec); } catch (e) {}
+
+  closeModal();
+  showToast("حُفظ تقييمُ " + (t.name || "المعلّم"), "success");
+  mount();
+};
+
+/* بطاقةُ التقييم في تقرير المعلّم — آخرُ شهرٍ ثمّ ما قبله */
+function rateCard(tid) {
+  const list = teacherRatings(tid);
+  if (!list.length) {
+    return `<div style="padding:14px 16px">${
+      typeof emptyState === "function"
+        ? emptyState("لا تقييمَ بعد", "ما ترصده الإدارةُ من تقييمٍ لأدائك يظهر هنا.")
+        : "لا تقييمَ بعد"}</div>`;
+  }
+  const last = list[0];
+  const avg = rateAvg(last);
+  const items = ratingItemsOn();
+
+  const bars = items.map(x => {
+    const v = Number((last.scores || {})[x.k]);
+    if (isNaN(v)) return "";
+    return `<div class="rt-row">
+      <span class="rt-lbl">${esc(x.h)}</span>
+      <i class="rt-bar"><b style="width:${Math.max(0, Math.min(100, v * 10))}%"></b></i>
+      <em class="rt-val">${toArabicDigits(v)}<small> / ١٠</small></em>
+    </div>`;
+  }).join("");
+
+  const hist = list.slice(1, 7).map(r => {
+    const a = rateAvg(r);
+    return `<span class="chip">${toArabicDigits(r.period || "")}${
+      a != null ? " · " + toArabicDigits(a) : ""}</span>`;
+  }).join("");
+
+  return `<div style="padding:0 16px 16px">
+    <div class="rt-head">
+      <span class="rt-per">${toArabicDigits(last.period || "")}</span>
+      ${avg != null ? `<b class="rt-avg">${toArabicDigits(avg)}<small> / ١٠</small></b>` : ""}
+    </div>
+    ${bars}
+    ${last.note ? `<div class="rt-note">${esc(last.note)}</div>` : ""}
+    ${hist ? `<div class="chip-list" style="margin-top:10px">${hist}</div>` : ""}
+  </div>`;
+}
+
 const REPT_DEFAULTS = [
   { k: "att",      h: "إحصاء الحضور",     on: true },
   { k: "attLog",   h: "سجلّ الحضور",      on: true },
   { k: "perf",     h: "إحصاء الأداء",     on: true },
   { k: "weekly",   h: "إحصاء الأسبوع",    on: true },
-  { k: "period",   h: "إحصاء الفترة",     on: true }
+  { k: "period",   h: "إحصاء الفترة",     on: true },
+  /* تقييمُ الإدارة — البند ٢٨. ظهورُه مشروطٌ بصلاحية viewRating أيضاً */
+  { k: "rating",   h: "تقييم الإدارة",    on: true }
 ];
 
 function reportItems() {
@@ -35887,6 +36111,19 @@ function panelTeacher(id) {
           <div style="margin-bottom:10px"><span class="muted" style="font-size:12px">اكتمال التسميع</span>${progressRow(t.recite || 0)}</div>
           <div class="kv"><span>متأخرات الطلاب</span><strong>${t.late || 0}</strong></div>
         </div>
+        ${canRateTeacher() ? `<div class="panel-block"><h4>${ic("star", 15)} تقييم الإدارة</h4>
+          ${(function () {
+            const r = rateOf(t.id);
+            const a = rateAvg(r);
+            return r
+              ? `<div class="kv"><span>${esc(toArabicDigits(r.period || ""))}</span>
+                   <strong>${a != null ? toArabicDigits(a) + " / ١٠" : "—"}</strong></div>` +
+                (r.note ? `<div class="muted" style="font-size:12.5px;margin-top:4px">${esc(r.note)}</div>` : "")
+              : `<div class="muted" style="font-size:13px">لم يُقيَّم هذا الشهر بعد.</div>`;
+          })()}
+          <div style="margin-top:9px"><button class="btn btn-ghost btn-sm"
+            onclick="window.tchRateOpen('${jsAttr(t.id)}')">${ic("star", 14)} تقييم هذا الشهر</button></div>
+        </div>` : ""}
         <div class="panel-block"><h4>${ic("users", 15)} طلاب المعلم (${studs.length})</h4>
           ${studs.map(s => `<div class="kv"><span>${esc(s.name)}</span><strong>${s.delays > 0 ? badge(s.delays + " متأخر", "b-red") : badge("منتظم", "b-green")}</strong></div>`).join("") || '<div class="muted" style="font-size:13px">لا يوجد طلاب مرتبطون بهذا المعلم.</div>'}
         </div>`}
@@ -40038,7 +40275,14 @@ function personFilter(coll, rows) {
 
   if (coll === "plans" || coll === "delays" || coll === "recitations" ||
       coll === "exams" || coll === "attendance" || coll === "rewards" || coll === "reviews") {
-    return rows.filter(x => mineByStudent(x) || mineByCircle(x));
+    /* تقييمُ الإدارة للمعلّم يسكن reviews بلا طالبٍ ولا حلقة، فيُنسب إلى
+       صاحبه بـ teacherId — وإلا حجبه الحصرُ الشخصيُّ عن المعلّم نفسِه
+       فلا يرى تقييمَه. ولا يرى بهذا تقييمَ غيره: المطابقةُ بسجلّه هو. */
+    const myTid = ps.role === "teacher" && typeof myTeacherRecord === "function"
+      ? String((myTeacherRecord() || {}).id || "") : "";
+    const mineByTeacher = x => !!myTid && x && x.kind === "teacherRating" &&
+      String(x.teacherId || "") === myTid;
+    return rows.filter(x => mineByStudent(x) || mineByCircle(x) || mineByTeacher(x));
   }
 
   if (coll === "teachers") {
@@ -40816,7 +41060,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0450";
+  var APP_BUILD = "20261005-0530";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

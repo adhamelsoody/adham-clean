@@ -10825,3 +10825,31 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 @media (max-width: 520px) {
   .tcl-stats { grid-template-columns: 1fr 1fr; }
 }
+
+/* =========================================================================
+   تقييمُ الإدارة في تقرير المعلّم
+   -------------------------------------------------------------------------
+   صفٌّ لكلّ عنصرٍ فيه اسمُه وشريطُ درجته ورقمُها، ومعدّلٌ في الصدر.
+   ========================================================================= */
+.rt-head { display: flex; align-items: center; justify-content: space-between;
+  margin: 2px 0 12px; }
+.rt-per { font-size: 12.5px; font-weight: 700; padding: 4px 11px; border-radius: 999px;
+  background: var(--brand-soft, #e8f4f3); color: var(--brand-dark, #004b50);
+  font-variant-numeric: tabular-nums; }
+.rt-avg { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rt-avg small { font-size: 12px; font-weight: 600; opacity: .6; }
+
+.rt-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.rt-lbl { flex: 0 0 110px; font-size: 12.5px; font-weight: 600;
+  color: var(--text-soft, #5b6472); }
+.rt-bar { flex: 1 1 auto; height: 8px; border-radius: 999px; overflow: hidden;
+  background: var(--brand-soft, #e8f4f3); }
+.rt-bar b { display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--brand-light, #2f8aa0), var(--brand-main, #0b7f83)); }
+.rt-val { flex: 0 0 auto; font-style: normal; font-size: 13px; font-weight: 800;
+  font-variant-numeric: tabular-nums; }
+.rt-val small { font-size: 11px; font-weight: 600; opacity: .55; }
+
+.rt-note { margin-top: 10px; padding: 11px 13px; border-radius: 12px; font-size: 13px;
+  line-height: 1.7; background: var(--surface-soft, #f7f9f9);
+  border: 1px solid var(--border-soft, #eef1f0); }
