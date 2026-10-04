@@ -374,7 +374,13 @@
 
   function T(m, t) { if (typeof window.showToast === "function") window.showToast(m, t); else if (t === "warn") alert(m); }
   function DBf() { return window.__db || null; }
-  function ME() { return window.CURRENT_USER || null; }
+  /* CURRENT_USER لا يضعه أحدٌ في المشروع، فكانت ME() ترجع null دائماً
+     ويسقط كلُّ تفريعٍ على الدور هنا — ومنه أنّ زرّ الرسائل يفتح نافذة
+     «التواصل» للمعلّم. الحسابُ الفعليُّ في STATE.user. */
+  function ME() {
+    if (window.CURRENT_USER) return window.CURRENT_USER;
+    try { return (window.STATE && window.STATE.user) || null; } catch (e) { return null; }
+  }
   function ESC(s) { return typeof window.esc === "function" ? window.esc(s) : String(s == null ? "" : s); }
   function IC(n, s) { return typeof window.ic === "function" ? window.ic(n, s) : ""; }
   function INI(n) { return typeof window.initials === "function" ? window.initials(n) : String(n || "").charAt(0); }
@@ -535,7 +541,10 @@
       try {
         var u = ME();
         var role = u && u.role;
-        if (role === "teacher" || role === "parent") openInbox();
+        /* المعلّم: شاشةُ المحادثات بفلاترها هي وجهتُه — بطلبٍ صريح */
+        if (role === "teacher" && window.PAGES && window.PAGES["teacher/messages"] &&
+            typeof window.go === "function") { window.go("messages"); return; }
+        if (role === "parent") openInbox();
         else openContacts();
       } catch (err) {
         console.warn("openMsgPanel override", err);
