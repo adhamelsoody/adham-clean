@@ -27367,7 +27367,7 @@ function teacherAttendance() {
     const lockAttr = rowLock ? ` disabled title="${esc(!attMayTake(recCircleOf(s, attCircle()), true)
       ? "التحضير هنا ليس من صلاحيتك" : "انتهت مهلة التعديل — التعديل من الإدارة")}"` : "";
     const curKind = cs ? (cs.kind || "") : "";
-    const chips = ATT_STATES.map(st => {
+    const chips = ATT_PICK.map(st => {
       const act = st === "مستأذن"
         ? `data-action="att-excuse" data-student="${esc(String(s.id))}"`
         : `data-action="att-set" data-student="${esc(String(s.id))}" data-status="${esc(st)}"` +
@@ -27420,7 +27420,7 @@ function teacherAttendance() {
   const bulk = selN ? `<div class="att-bulk">
       <strong>${selN} محدَّد</strong>
       <div class="chip-list">
-        ${ATT_STATES.map(st => `<button type="button" class="chip ${ATT_TINT[st]}"
+        ${ATT_PICK.map(st => `<button type="button" class="chip ${ATT_TINT[st]}"
           data-action="att-bulk" data-status="${esc(st)}" style="border:none;cursor:pointer">${esc(st)}</button>`).join("")}
       </div>
     </div>` : "";
@@ -27446,8 +27446,26 @@ function teacherAttendance() {
       <button class="btn btn-ghost btn-sm" data-action="att-shift" data-days="-1">اليوم السابق</button>
       <button class="btn btn-ghost btn-sm" data-action="att-shift" data-days="1" ${isToday ? "disabled" : ""}>اليوم التالي</button>
       <button class="btn btn-ghost btn-sm" data-action="att-rest">${ic("check", 15)} الباقي حاضر</button>
+      <button class="btn btn-ghost btn-sm" data-action="att-rest-absent">${ic("x", 15)} الباقي غائب</button>
     </div>
   </div>`;
+
+  /* تاريخُ التحضير وساعتُه وحلقتُه ووقتُها — كان العنوان يقول «تحضير اليوم»
+     بلا تاريخٍ ولا وقت، فلا يُعرف على أيّ يومٍ تُسجَّل الحالاتُ ولا متى.
+     والحلقةُ يختارها المعلّم من شريطها، أو يختارها النظامُ بأقربها وقتاً
+     عبر workCircleByTime — ووقتُها يظهر هنا ليُعرف أيَّ حلقةٍ يحضّر. */
+  const attWhen = (function () {
+    const cidW = attCircle();
+    const cW = cidW ? (cur("circles") || []).find(x => String(x.id) === String(cidW)) : null;
+    const s0 = (cW && typeof circleStartAt === "function") ? (circleStartAt(cW, dateISO) || "") : "";
+    const e0 = (cW && typeof circleEndAt   === "function") ? (circleEndAt(cW, dateISO)   || "") : "";
+    return `<div class="att-when">
+      <span>${ic("calendar", 14)} ${esc(dayNameOf(dateISO))} · ${toArabicDigits(dateISO)}</span>
+      <span>${ic("clock", 14)} ${toArabicDigits(nowHHMM())}</span>
+      ${cW ? `<span>${ic("book", 14)} ${esc(cW.name || "")}${
+          s0 ? " · " + toArabicDigits(s0) + (e0 ? " — " + toArabicDigits(e0) : "") : ""}</span>` : ""}
+    </div>`;
+  })();
 
   /* ---- شريط الحفظ ---- */
   const saveBar = `<div class="att-savebar ${pending ? "on" : ""}">
@@ -27477,6 +27495,7 @@ function teacherAttendance() {
       ${dayNote}
       ${lockNote}
       ${head}
+      ${attWhen}
       ${summary}
       ${bulk}
       <div class="table-wrap"><div class="table-scroll"><table class="data" style="min-width:640px">
@@ -35924,6 +35943,14 @@ function panelProgram(id) {
 const ATT_STATES = ["حاضر", "متأخر", "مستأذن", "غائب"];
 const ATT_TINT   = { "حاضر": "t-green", "متأخر": "t-amber", "مستأذن": "t-blue", "غائب": "t-red" };
 
+/* حالاتُ الاختيار في شاشة التحضير: «غائب» ليست منها بطلبٍ صريح — لا أحدَ
+   يجلس يختار الغيابَ طالباً طالباً. المعلّمُ يسجّل من حضر، ومن بقي بلا
+   حالةٍ يُعلَّم غائباً دفعةً واحدةً بزرّ «الباقي غائب».
+
+   والقيمةُ «غائب» نفسُها باقيةٌ في ATT_STATES كما هي ولم تُحذف: العدّاداتُ
+   والتقاريرُ ورسائلُ أولياء الأمور وشاشاتُ الإدارة لم يتغيّر فيها شيء. */
+const ATT_PICK = ATT_STATES.filter(x => x !== "غائب");
+
 /* =========================================================================
    إعدادات التحضير — جهةُ التحضير · مهلةُ التعديل · تسميةُ الحالات
    -------------------------------------------------------------------------
@@ -36683,6 +36710,24 @@ function attMarkRest() {
   showToast("عُلّم " + rest.length + " طالباً حاضراً — اضغط حفظ التحضير");
 }
 
+/* «الباقي غائب» — نظيرةُ «الباقي حاضر»: من بقي بلا حالةٍ يُعلَّم غائباً
+   دفعةً واحدة، فلا يختار المعلّمُ الغيابَ طالباً طالباً.
+
+   وتُحصر في أهل دوام اليوم وحدَهم، خلافاً لـ attMarkRest: الحضورُ لا يَظلم
+   أحداً، أمّا الغيابُ فيُحتسب على الطالب — ومن ليس اليوم يومَ دوامه لا
+   يُسجَّل عليه غياب. */
+function attMarkRestAbsent() {
+  const d0 = attDate();
+  const saved = attMap(d0, attCircle());
+  const rest = inWorkCircle(cur("students")).filter(s =>
+    !attCurrent(s.id, saved) && isDutyDay(s, d0));
+  if (!rest.length) { showToast("لا يوجد طالبٌ بلا حالةٍ في دوام اليوم"); return; }
+  rest.forEach(s => { attDraft()[String(s.id)] = { status: "غائب", reason: "" }; });
+  mount();
+  showToast("عُلّم " + toArabicDigits(rest.length) + " طالباً غائباً — اضغط حفظ التحضير", "warn");
+}
+window.attMarkRestAbsent = attMarkRestAbsent;
+
 /* =========================================================
    EVENT DELEGATION
    ========================================================= */
@@ -36774,6 +36819,7 @@ document.addEventListener("click", (e) => {
     case "att-set":  attSet(t.dataset.student, t.dataset.status, t.dataset.circle || "", t.dataset.kind || ""); break;
     case "att-shift": attShift(t.dataset.days); break;
     case "att-rest": attMarkRest(); break;
+    case "att-rest-absent": attMarkRestAbsent(); break;
     case "att-excuse": attExcuseAsk(t.dataset.student, false); break;
     case "att-excuse-save": attExcuseSave(t.dataset.ids); break;
     case "att-bulk": attBulk(t.dataset.status); break;
@@ -40612,7 +40658,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0240";
+  var APP_BUILD = "20261005-0320";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
