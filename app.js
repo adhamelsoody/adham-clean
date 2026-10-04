@@ -31043,7 +31043,19 @@ function hideSideNavFor(iface) {
 
 function renderTabBar() {
   try { hideSideNavFor(STATE.iface); } catch (e) {}
-  const el = document.getElementById("tabbar");
+  /* الشريطُ يُنشأ إن لم يكن في الصفحة: نسخةُ index.html المخزَّنةُ في
+     عامل الخدمة قد تكون قديمةً بلا <nav id="tabbar">، فيختفي الشريطُ
+     السفليُّ في الجوّال ولا سبيلَ إلى شاشاته. */
+  let el = document.getElementById("tabbar");
+  if (!el) {
+    try {
+      el = document.createElement("nav");
+      el.id = "tabbar";
+      el.className = "tabbar";
+      el.setAttribute("aria-label", "التنقّل السريع");
+      document.body.appendChild(el);
+    } catch (e) { return; }
+  }
   if (!el) return;
 
   const items = TABBAR[STATE.iface];
@@ -40315,7 +40327,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-1945";
+  var APP_BUILD = "20261004-2010";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
