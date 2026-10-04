@@ -40092,7 +40092,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-0310";
+  var APP_BUILD = "20261004-0345";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
@@ -40356,7 +40356,15 @@ async function init() {
   $$(".iface-btn").forEach(b => b.addEventListener("click", () => setIface(b.dataset.iface)));
 
   on("#btnNotif", "click", () => { if (typeof openNotifPanel === "function") openNotifPanel(); else if (typeof window.openNotifPanel === "function") window.openNotifPanel(); else showToast("لا توجد إشعارات جديدة", "info"); });
-  on("#btnMsg", "click", () => { if (typeof openMsgPanel === "function") openMsgPanel(); else if (typeof window.openMsgPanel === "function") window.openMsgPanel(); else showToast("صندوق الرسائل", "info"); });
+  /* زرُّ الرسائل عند المعلّم يفتح شاشةَ المحادثات بفلاترها لا نافذةَ
+     «التواصل»: على الشاشات العريضة لا شريطَ سفليَّ يصلها، وقائمتُه
+     الجانبيةُ خمسةُ بنودٍ بطلبِه — فكانت الشاشةُ لا تُفتح أصلاً. */
+  on("#btnMsg", "click", () => {
+    try {
+      const r = String((((STATE || {}).user) || {}).role || "");
+      if (r === "teacher" && PAGES["teacher/messages"]) { go("messages"); return; }
+    } catch (e) {}
+    if (typeof openMsgPanel === "function") openMsgPanel(); else if (typeof window.openMsgPanel === "function") window.openMsgPanel(); else showToast("صندوق الرسائل", "info"); });
   on("#btnRefresh", "click", async () => { showToast("جارٍ تحديث البيانات…", "info"); await reloadAndRender(); showToast("تم تحديث البيانات"); });
 
   on("#menuToggle", "click", () => {
