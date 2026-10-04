@@ -10341,3 +10341,129 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 .icon-btn.tch-top-check { color: var(--brand-main, #0b7f83); }
 .icon-btn.tch-top-check:hover { background: var(--brand-soft, #eafbfc); }
 .icon-btn.tch-top-check.done { color: var(--success, #3a945c); }
+
+/* =========================================================================
+   محادثاتُ المعلّم — خانةُ الفلاتر وقائمةُ المحادثات
+   ========================================================================= */
+.tcf-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.tcf-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px; border-radius: var(--r-pill, 999px);
+  border: 1px solid var(--border-soft, #eef1f0);
+  background: var(--background, #f6f7f4); color: var(--text-muted, #6b7780);
+  font-size: 12.5px; font-weight: 700; cursor: pointer;
+  transition: all .18s ease;
+}
+.tcf-chip svg { width: 15px; height: 15px; }
+.tcf-chip:hover { border-color: var(--brand-main, #0b7f83); color: var(--brand-dark, #0f6f72); }
+.tcf-chip.on {
+  background: var(--brand-main, #0b7f83); border-color: var(--brand-main, #0b7f83); color: #fff;
+}
+
+.tcv-list { display: grid; gap: 7px; }
+.tcv-row {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 11px 12px; border-radius: 14px; text-align: right; cursor: pointer;
+  border: 1px solid var(--border-soft, #eef1f0); background: var(--surface, #fff);
+  transition: border-color .18s ease, background .18s ease;
+}
+.tcv-row:hover { border-color: var(--brand-main, #0b7f83); background: var(--brand-soft, #eafbfc); }
+.tcv-av {
+  width: 42px; height: 42px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-weight: 800; font-size: 14px;
+  background: var(--brand-soft, #eafbfc); color: var(--brand-dark, #0f6f72);
+}
+.tcv-mid { flex: 1; min-width: 0; }
+.tcv-mid strong { display: block; font-size: 14px; }
+.tcv-mid small { display: block; font-size: 12px; color: var(--text-faint, #9aa3ad);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tcv-end { display: grid; gap: 5px; justify-items: center; flex: none; }
+.tcv-time { font-size: 11px; color: var(--text-faint, #9aa3ad); }
+.tcv-dot {
+  min-width: 20px; padding: 1px 6px; border-radius: 999px;
+  background: var(--brand-main, #0b7f83); color: #fff; font-size: 11px; font-weight: 800;
+}
+.tcv-empty { padding: 22px; text-align: center; color: var(--text-faint, #9aa3ad); font-size: 13px; }
+
+/* =========================================================================
+   صفحةُ الدردشة — كما في الصورة: ترويسةٌ بيضاء، خلفيةٌ منقوشة،
+   بطاقةُ بدءٍ فيها الآية، وشريطُ كتابةٍ دائريّ أسفلَها
+   ========================================================================= */
+.tch-page { display: flex; flex-direction: column; min-height: calc(100vh - 150px); }
+
+.tch-bar {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface, #fff); border-radius: 18px;
+  padding: 10px 14px; box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,.05));
+  margin-bottom: 10px;
+}
+.tch-back {
+  width: 34px; height: 34px; border-radius: 10px; flex: none; cursor: pointer;
+  display: grid; place-items: center; border: 0; background: transparent;
+  color: var(--text-muted, #6b7780);
+}
+.tch-back:hover { background: var(--background, #f6f7f4); }
+.tch-who { display: flex; align-items: center; gap: 10px; margin-inline-start: auto; }
+.tch-who strong { font-size: 15px; }
+.tch-av {
+  width: 40px; height: 40px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-weight: 800; font-size: 14px;
+  background: #cdd6da; color: #7d8f98;
+}
+
+.tch-body {
+  flex: 1; border-radius: 18px; padding: 18px 14px;
+  background-color: #e9efe9;
+  background-image:
+    radial-gradient(circle at 12px 14px, rgba(90,110,100,.10) 2px, transparent 2px),
+    radial-gradient(circle at 54px 46px, rgba(90,110,100,.10) 2px, transparent 2px);
+  background-size: 72px 72px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+
+.tch-start {
+  width: min(420px, 92%); margin: 0 auto; text-align: center;
+  background: #fdfaf2; border-radius: 20px; padding: 20px 18px;
+  box-shadow: 0 10px 26px rgba(60,70,60,.12);
+}
+.tch-kind { display: block; text-align: right; font-size: 12px; color: #b79b57; font-weight: 700; }
+.tch-aya {
+  margin: 12px 0 4px; padding: 14px 12px; border-radius: 14px;
+  border: 1px solid #e8d9ae; background: #fbf3df;
+  font-size: 16px; font-weight: 700; color: #4a4330; line-height: 2;
+}
+.tch-sep { display: flex; align-items: center; gap: 8px; margin: 14px 0; }
+.tch-sep::before, .tch-sep::after {
+  content: ""; flex: 1; height: 1px; background: #e8d9ae;
+}
+.tch-sep i { width: 7px; height: 7px; border-radius: 50%; background: #c7a95f; }
+.tch-note { font-size: 14px; color: #5d6a5d; }
+.tch-hamd { font-size: 13.5px; color: #9b8a5e; }
+
+.tch-msgs { display: grid; gap: 9px; align-content: start; }
+.tch-b {
+  max-width: 78%; padding: 9px 13px; border-radius: 16px;
+  font-size: 13.5px; line-height: 1.75; box-shadow: 0 2px 6px rgba(0,0,0,.06);
+}
+.tch-b strong { display: block; font-size: 12.5px; margin-bottom: 3px; }
+.tch-b small { display: block; font-size: 10.5px; opacity: .65; margin-top: 4px; }
+.tch-b.me { background: var(--brand-main, #0b7f83); color: #fff; margin-inline-start: auto; }
+.tch-b.you { background: #fff; color: var(--text-main, #19323a); margin-inline-end: auto; }
+
+.tch-send { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.tch-in {
+  flex: 1; border-radius: 999px; border: 1px solid var(--border-soft, #eef1f0);
+  background: var(--surface, #fff); padding: 12px 18px; font-size: 14px;
+  font-family: inherit; color: var(--text-main, #19323a);
+}
+.tch-in:focus { outline: 0; border-color: var(--brand-main, #0b7f83); }
+.tch-go {
+  width: 48px; height: 48px; border-radius: 50%; flex: none; cursor: pointer;
+  display: grid; place-items: center; border: 0;
+  background: var(--brand-dark, #0f6f72); color: #fff;
+  box-shadow: 0 4px 12px rgba(11,127,131,.28);
+}
+.tch-go:hover { background: var(--brand-main, #0b7f83); }
+
+:root[data-theme="dark"] .tch-body { background-color: #16211c; }
+:root[data-theme="dark"] .tcv-row { background: #11211f; }

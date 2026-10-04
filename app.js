@@ -24143,6 +24143,256 @@ function tmsgRender() {
   }
 }
 
+/* =========================================================================
+   محادثاتُ المعلّم — قائمةٌ بفلاترها، وصفحةُ دردشةٍ لكلّ مُراسِل
+   -------------------------------------------------------------------------
+   «في المحادثات تكون خانةُ فلاتر: فلترٌ فيه الإدارةُ وحلقةُ المعلّم، وفلترٌ
+   خاصٌّ بطلابه الذين يدرّسهم فقط، وفلترٌ للرسائل غير المقروءة».
+   والمحادثاتُ تُبنى من site_messages — لا مجموعةَ جديدة ولا قاعدةَ تُمسّ.
+   ========================================================================= */
+const TCHAT = { filter: "all", kind: "", id: "", name: "" };
+
+const TCHAT_FILTERS = [
+  ["all",    "الكل",            "chat"],
+  ["admin",  "الإدارة وحلقتي",  "shield"],
+  ["kids",   "طلابي",           "users"],
+  ["unread", "غير المقروء",     "bell"]
+];
+
+window.tchatFilter = function (k) { TCHAT.filter = String(k || "all"); mount(); };
+
+/* رسائلُ محادثةٍ واحدة: ما أرسلتُه إليها وما وصلني منها، الأقدمُ أوّلاً */
+function tchatMsgs(kind, id) {
+  const all = Array.isArray(DB.site_messages) ? DB.site_messages : [];
+  const u = (STATE && STATE.user) || {};
+  const me = String(u.uid || u.id || "");
+  const inbox = typeof myMessages === "function" ? myMessages() : [];
+
+  const mine = all.filter(m => m && String(m.fromUid || m.fromId || "") === me);
+
+  let out = [];
+  if (kind === "admin") {
+    out = mine.filter(m => String(m.toRole || "") === "admin")
+      .concat(inbox.filter(m => m && !m.studentId && !m.circleMsg));
+  } else if (kind === "circle") {
+    out = mine.filter(m => m.circleMsg && String(m.circleId || "") === String(id));
+  } else {
+    const st = (cur("students") || []).find(x => String(x.id) === String(id));
+    const sid = st ? [String(st.id), String(st.uid || "")].filter(Boolean) : [String(id)];
+    out = mine.filter(m => String(m.studentId || "") === String(id) && !m.circleMsg)
+      .concat(inbox.filter(m => m && (sid.indexOf(String(m.fromId || "")) > -1 ||
+        sid.indexOf(String(m.fromUid || "")) > -1 || String(m.studentId || "") === String(id))));
+  }
+
+  const seen = {};
+  return out.filter(m => {
+    const k = String(m.id || "");
+    if (!k || seen[k]) return false;
+    seen[k] = 1; return true;
+  }).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+}
+
+/* المحادثاتُ المتاحةُ للمعلّم: الإدارةُ وحلقاتُه وطلابُه */
+function tchatThreads() {
+  const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
+  if (!t) return [];
+
+  const rows = [];
+  const add = (kind, id, name) => {
+    const ms = tchatMsgs(kind, id);
+    const last = ms.length ? ms[ms.length - 1] : null;
+    const u = (STATE && STATE.user) || {};
+    const me = String(u.uid || u.id || "");
+    rows.push({
+      kind, id: String(id || ""), name,
+      ts: last ? (last.ts || 0) : 0,
+      text: last ? String(last.text || "") : "",
+      unread: ms.filter(m => !m.read &&
+        String(m.fromUid || m.fromId || "") !== me).length
+    });
+  };
+
+  add("admin", "", "الإدارة");
+  (typeof tchMyCircles === "function" ? tchMyCircles() : [])
+    .forEach(c => add("circle", c.id, c.name || "حلقة"));
+  (typeof tmsgKids === "function" ? tmsgKids() : [])
+    .forEach(s => add("student", s.id, s.name || "طالب"));
+
+  return rows;
+}
+
+function tchatVisible() {
+  const f = TCHAT.filter;
+  return tchatThreads().filter(r => {
+    if (f === "admin")  return r.kind === "admin" || r.kind === "circle";
+    if (f === "kids")   return r.kind === "student";
+    if (f === "unread") return r.unread > 0;
+    return true;
+  }).sort((a, b) => (b.unread - a.unread) || (b.ts - a.ts));
+}
+
+window.tchatOpen = function (kind, id) {
+  const r = tchatThreads().find(x => x.kind === kind && String(x.id) === String(id));
+  TCHAT.kind = kind; TCHAT.id = String(id || "");
+  TCHAT.name = r ? r.name : "";
+
+  /* ما وصلني في هذه المحادثة يُعلَّم مقروءاً بفتحها */
+  const u = (STATE && STATE.user) || {};
+  const me = String(u.uid || u.id || "");
+  tchatMsgs(kind, id).forEach(m => {
+    if (!m.read && String(m.fromUid || m.fromId || "") !== me) {
+      m.read = true;
+      try { persistSet("site_messages", m); } catch (e) {}
+    }
+  });
+
+  go("chat");
+};
+
+/* قائمةُ المحادثات بخانة فلاترها — تُعرض في صدر شاشة الرسائل */
+function tchatList() {
+  const rows = tchatVisible();
+
+  const chips = TCHAT_FILTERS.map(([k, h, i]) =>
+    `<button type="button" class="tcf-chip${TCHAT.filter === k ? " on" : ""}"
+      onclick="window.tchatFilter('${k}')">${ic(i, 15)}<span>${esc(h)}</span></button>`).join("");
+
+  const body = rows.length ? rows.map(r => `<button type="button" class="tcv-row"
+      onclick="window.tchatOpen('${jsAttr(r.kind)}','${jsAttr(r.id)}')">
+      <span class="tcv-av">${r.kind === "admin" ? ic("shield", 18)
+        : r.kind === "circle" ? ic("book", 18) : esc(initials(r.name))}</span>
+      <span class="tcv-mid">
+        <strong>${esc(r.name)}${r.kind === "circle" ? " — رسالة عامة" : ""}</strong>
+        <small>${esc(r.text ? r.text.slice(0, 60) : "لا رسائل بعد")}</small>
+      </span>
+      <span class="tcv-end">
+        ${r.ts ? `<span class="tcv-time">${esc(timeAgo(r.ts))}</span>` : ""}
+        ${r.unread ? `<b class="tcv-dot">${toArabicDigits(r.unread)}</b>` : ""}
+      </span>
+    </button>`).join("")
+    : `<div class="tcv-empty">لا محادثاتٍ في هذا الفلتر</div>`;
+
+  return `<div class="card">
+    <div class="fac-toolbar">
+      <div><strong style="font-size:15px">المحادثات</strong>
+        <div class="muted" style="font-size:11.5px;margin-top:2px">
+          الإدارةُ وحلقاتُك وطلابُك</div></div>
+    </div>
+    <div style="padding:0 16px 16px">
+      <div class="tcf-row">${chips}</div>
+      <div class="tcv-list">${body}</div>
+    </div>
+  </div>`;
+}
+
+/* صفحةُ الدردشة — ترويسةٌ وخلفيةٌ منقوشةٌ وبطاقةُ بدءٍ وشريطُ كتابة */
+function teacherChat() {
+  if (!TCHAT.kind) { go("messages"); return ""; }
+
+  const u = (STATE && STATE.user) || {};
+  const me = String(u.uid || u.id || "");
+  const ms = tchatMsgs(TCHAT.kind, TCHAT.id);
+
+  const body = ms.length
+    ? `<div class="tch-msgs">${ms.map(m => {
+        const mine = String(m.fromUid || m.fromId || "") === me;
+        return `<div class="tch-b ${mine ? "me" : "you"}">
+          ${m.title && m.title !== "محادثة" ? `<strong>${esc(m.title)}</strong>` : ""}
+          <span>${esc(m.text || "")}</span>
+          <small>${esc(timeAgo(m.ts))}</small>
+        </div>`;
+      }).join("")}</div>`
+    : `<div class="tch-start">
+        <span class="tch-kind">تجويد</span>
+        <div class="tch-aya">(وَرَتِّلِ ٱلْقُرْءَانَ تَرْتِيلًا)</div>
+        <div class="tch-sep"><i></i></div>
+        <div class="tch-note">ابدأ المحادثة — لم تُرسل أي رسائل بعد</div>
+        <div class="tch-sep"></div>
+        <div class="tch-hamd">الحمد لله رب العالمين</div>
+      </div>`;
+
+  return `<div class="page tch-page">
+    <div class="tch-bar">
+      <button type="button" class="tch-back" data-action="nav" data-page="messages"
+        title="رجوع">${ic("arrowLeft", 20)}</button>
+      <span class="tch-who">
+        <strong>${esc(TCHAT.name || "محادثة")}</strong>
+        <span class="tch-av">${TCHAT.kind === "admin" ? ic("shield", 18)
+          : TCHAT.kind === "circle" ? ic("book", 18) : esc(initials(TCHAT.name))}</span>
+      </span>
+    </div>
+
+    <div class="tch-body">${body}</div>
+
+    <div class="tch-send">
+      <button type="button" class="tch-go" onclick="window.tchatSend()"
+        title="إرسال">${ic("send", 18)}</button>
+      <input id="tchText" class="tch-in" placeholder="مراسلة"
+        onkeydown="if(event.key==='Enter')window.tchatSend()">
+    </div>
+  </div>`;
+}
+
+/* الإرسالُ من صفحة الدردشة — بالسجلّ نفسِه الذي تكتبه شاشةُ الرسائل */
+window.tchatSend = function () {
+  const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
+  if (!t) return;
+
+  const txt = (val("#tchText") || "").trim();
+  if (!txt) { showToast("اكتب نصّ الرسالة", "warn"); return; }
+
+  const u = (STATE && STATE.user) || {};
+  const base = {
+    kind: "teacher",
+    fromUid: String(u.uid || u.id || ""),
+    fromName: t.name || u.name || "المعلّم",
+    title: "محادثة", text: txt, ts: Date.now(), read: false
+  };
+  if (!Array.isArray(DB.site_messages)) DB.site_messages = [];
+
+  let sent = 0;
+  if (TCHAT.kind === "admin") {
+    const rec = Object.assign({ id: "tc" + Date.now(), toRole: "admin" }, base);
+    DB.site_messages.push(rec);
+    try { persistSet("site_messages", rec); } catch (e) {}
+    sent = 1;
+
+  } else if (TCHAT.kind === "circle") {
+    if (!teacherCan("msgCircle")) {
+      showToast("صلاحيةُ الرسالة العامة غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+    }
+    (cur("students") || []).filter(x => x && String(x.circleId || "") === String(TCHAT.id) &&
+      x.status !== "متوقف").forEach((st, i) => {
+      const rec = Object.assign({
+        id: "tc" + Date.now() + "-" + i, toId: String(st.uid || st.id),
+        studentId: String(st.id), student: st.name || "",
+        circleId: String(st.circleId || ""), circleMsg: true
+      }, base);
+      DB.site_messages.push(rec);
+      try { persistSet("site_messages", rec); } catch (e) {}
+      sent++;
+    });
+
+  } else {
+    if (!teacherCan("msgStudents")) {
+      showToast("صلاحيةُ مراسلة الطلاب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+    }
+    const st = (cur("students") || []).find(x => String(x.id) === String(TCHAT.id));
+    if (!st) { showToast("الطالب غير موجود", "warn"); return; }
+    const rec = Object.assign({
+      id: "tc" + Date.now(), toId: String(st.uid || st.id),
+      studentId: String(st.id), student: st.name || "",
+      circleId: String(st.circleId || "")
+    }, base);
+    DB.site_messages.push(rec);
+    try { persistSet("site_messages", rec); } catch (e) {}
+    sent = 1;
+  }
+
+  if (!sent) { showToast("لا مستقبِلَ لهذه المحادثة", "warn"); return; }
+  mount();
+};
+
 function teacherMessages() {
   const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
   if (!t) {
@@ -24177,7 +24427,10 @@ function teacherMessages() {
   return `<div class="page">
     ${pageHead("الرسائل", esc(t.name || ""))}
 
-    <div class="card">
+    ${/* المحادثاتُ بخانة فلاترها في صدر الشاشة بطلبٍ صريح */ ""}
+    ${tchatList()}
+
+    <div class="card" style="margin-top:16px">
       <div class="fac-toolbar">
         <div><strong style="font-size:15px">رسالة جديدة</strong>
           <div class="muted" style="font-size:11.5px;margin-top:2px">
@@ -30463,7 +30716,7 @@ const PAGES = {
   "student/dashboard": studentDashboard, "student/today": studentToday, "student/tomorrow": studentTomorrow,
   "student/progress": studentProgress, "student/attendance": studentAttendance, "student/results": studentResults,
   "student/notifications": studentNotifications,
-  "teacher/messages": teacherMessages, "teacher/mushaf": mushafPage, "student/mushaf": mushafPage,
+  "teacher/messages": teacherMessages, "teacher/chat": teacherChat, "teacher/mushaf": mushafPage, "student/mushaf": mushafPage,
   "student/store": studentStore, "parent/store": studentStore,
 
   /* وليّ الأمر: شاشاتُ الطالب نفسها — البياناتُ واحدة والمخاطَبُ مختلف */
@@ -39839,7 +40092,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261004-0230";
+  var APP_BUILD = "20261004-0310";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
