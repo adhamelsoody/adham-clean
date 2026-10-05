@@ -27459,7 +27459,12 @@ window.tchPassSend = function () {
 window.tchLogout = function () {
   const a = window.__auth;
   const go2 = function () {
-    try { sessionStorage.removeItem("__nav"); } catch (e) {}
+    /* مفاتيحُ الجلسة تُمسح كلُّها لا «__nav» وحدَه: الخروجُ يُبقي التبويبَ
+       مفتوحاً، فكان سياقُ المنشأة والفلاترُ ومعرّفاتُ النقل تبقى لمن يدخل
+       بعده في الجهاز نفسِه. والتفضيلاتُ (السمةُ وحالُ القوائم) لا تُمسّ:
+       ليست بياناتِ أحد. */
+    ["__nav", "__facCtx", "__facView", "__mqFilter", "__moveIds"]
+      .forEach(function (k) { try { sessionStorage.removeItem(k); } catch (e) {} });
     location.href = "/login.html";
   };
   if (a && typeof a.signOut === "function") a.signOut().then(go2).catch(go2);
@@ -31522,6 +31527,33 @@ function studentSettings() {
   </div>`;
 }
 
+/* جهةُ التعديل: بياناتُ الطالب الأساسيةُ من إدارة المجمّع، فيُدَلُّ عليها
+   باسمها ومديرِها وجوّالِه إن سُجّل — لا بعبارةٍ عامّةٍ لا تُرشد إلى أحد. */
+function stuAdminContact(st) {
+  const cx = (cur("complexes") || []).find(x =>
+    String(x.id) === String((st && st.complexId) != null ? st.complexId : "")) || null;
+  const nm  = (cx && cx.name) || (typeof complexName === "function"
+    ? complexName(st && st.complexId) : "") || "";
+  const mgr = cx && cx.manager && cx.manager !== "—" ? String(cx.manager) : "";
+  const tel = cx && cx.phone   && cx.phone   !== "—" ? String(cx.phone)   : "";
+
+  const bits = [];
+  if (nm)  bits.push(`<div class="kv"><span>الجهة</span><strong>${esc(nm)}</strong></div>`);
+  if (mgr) bits.push(`<div class="kv"><span>المسؤول</span><strong>${esc(mgr)}</strong></div>`);
+  if (tel) bits.push(`<div class="kv"><span>الجوال</span>
+    <strong><a class="stp-tel" href="tel:${esc(tel.replace(/[^\d+]/g, ""))}"
+      dir="ltr">${esc(toArabicDigits(tel))}</a></strong></div>`);
+
+  return `<div class="card stp-help">
+    <div class="stp-help-h">${ic("info", 15)} تعديلُ بقيّة البيانات</div>
+    <p class="stp-help-p">الاسمُ ورقمُ الهوية والحلقةُ والمسجدُ والمجمّع تُدار من
+      إدارة المجمّع، فلا تُعدَّل من هنا حفظاً لسلامة السجلّ. ولتعديل أيٍّ منها
+      راجِع إدارةَ مجمّعك${mgr || tel ? " على ما يلي" : ""}، أو كلّم معلّمَ حلقتك
+      ليرفع طلبَك إليها.</p>
+    ${bits.length ? `<div class="stp-help-kv">${bits.join("")}</div>` : ""}
+  </div>`;
+}
+
 /* الملفُّ الشخصيّ: بياناتُه وما يملك تعديلَه — الصورةُ والبريدُ وحدَهما */
 window.stuProfileOpen = function () {
   const st = typeof activeStudent === "function" ? activeStudent() : null;
@@ -31530,11 +31562,14 @@ window.stuProfileOpen = function () {
 
   const rows = [
     ["الاسم",      st.name || u.name || "—"],
-    ["رقم الهوية", st.nid || st.id || "—"],
+    /* الأرقامُ عربيةٌ في كلّ الواجهة — ورقمُ الهوية كان يُعرض لاتينياً */
+    ["رقم الهوية", toArabicDigits(String(st.nid || st.id || "—"))],
     ["الحلقة",     st.circle || "—"],
     ["المسجد",     st.mosque || "—"],
     ["المجمّع",    (typeof complexName === "function" ? complexName(st.complexId) : "") || "—"]
-  ].map(([h, v]) => `<div class="kv"><span>${esc(h)}</span><strong>${esc(String(v))}</strong></div>`).join("");
+  ].map(([h, v]) => `<div class="kv stp-ro"><span>${esc(h)}</span>
+      <strong>${esc(String(v))} <i class="stp-lock" title="لا يُعدَّل من هنا">${
+        ic("lock", 11)}</i></strong></div>`).join("");
 
   openModal("الملف الشخصي", esc(st.name || ""),
     `${studentProfileCard(st)}
@@ -31544,8 +31579,9 @@ window.stuProfileOpen = function () {
          <input id="stuMail" type="email" dir="ltr"
            value="${esc(String(st.email || u.email || ""))}">
        </div>
-       ${noteCard("الصورةُ والبريدُ وحدَهما يُعدَّلان. وبقيّةُ البيانات من إدارة المجمّع.")}
-     </div>`,
+       ${noteCard("الصورةُ والبريدُ وحدَهما يُعدَّلان — وما سواهما معروضٌ للاطّلاع.")}
+     </div>
+     ${stuAdminContact(st)}`,
     `<button class="btn btn-primary" onclick="window.stuMailSave()">${
       ic("check", 16)} حفظ البريد</button>
      <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
@@ -42022,7 +42058,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-2210";
+  var APP_BUILD = "20261005-2330";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

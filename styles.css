@@ -11043,7 +11043,10 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 .sls-tick.on { background: #12855c; border-color: #12855c; }
 
 .mre-page { padding-top: 0; }
-.mre-hero { display: flex; align-items: center; gap: 12px; margin: 0 -16px 18px;
+/* الهامشُ السالبُ كان يُخرج الترويسةَ ثمانيَ بكسلاتٍ خارج الشاشة فيظهر
+   تمريرٌ أفقيّ. صارت داخل حشو الصفحة بقوسٍ أسفلَ كترويسة الرئيسية. */
+.mre-hero { display: flex; align-items: center; gap: 12px; margin: 0 0 18px;
+  border-radius: 0 0 26px 26px;
   padding: 18px 18px 22px; color: #fff;
   background: linear-gradient(180deg, var(--brand-main, #11857f), var(--brand-dark, #0d4f4a)); }
 .mre-av { flex: 0 0 auto; width: 54px; height: 54px; border-radius: 50%;
@@ -11204,3 +11207,14 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 [data-theme="dark"] .ord-ok   { background: #142a3f !important; color: #9ec9ff !important; }
 [data-theme="dark"] .ord-done { background: #102e24 !important; color: #7fe0bb !important; }
 [data-theme="dark"] .ord-bad  { background: #3a1a18 !important; color: #ffa9a4 !important; }
+
+/* ===== إعداداتُ الطالب: إرشادُ تعديل البيانات ===== */
+.stp-ro strong { display: inline-flex; align-items: center; gap: 5px; }
+.stp-lock { display: inline-flex; line-height: 0; color: var(--text-faint, #9aa3ad); }
+.stp-help { margin-top: 12px; border-inline-start: 3px solid var(--brand-main, #0b7f83); }
+.stp-help-h { display: flex; align-items: center; gap: 6px; font-weight: 800;
+  font-size: 13px; color: var(--brand-dark, #0f6f72); margin-bottom: 6px; }
+.stp-help-p { margin: 0; font-size: 12.5px; line-height: 1.75;
+  color: var(--text-soft, #5d6b6a); }
+.stp-help-kv { margin-top: 10px; display: grid; gap: 4px; }
+.stp-tel { color: var(--brand-main, #0b7f83); font-variant-numeric: tabular-nums; }
