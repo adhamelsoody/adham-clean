@@ -22572,6 +22572,11 @@ function adminSoon() {
   if (key === "proc-report")  return adminProcReport();
   if (key === "audit")        return adminAudit();
   if (key === "outbox")       return adminOutbox();
+  /* المحادثاتُ في واجهة الإدارة تمرّ بالموزّع: شاشاتُها ملفّاتٌ مستقلّة
+     (SHELL_MODE)، فكان go("messages") يبحث عن messages.html فلا يجده
+     ويقول «لم يُعثر على شاشة». ولا ملفَّ جديداً: soon.html هي البابُ. */
+  if (key === "messages")     return teacherMessages();
+  if (key === "chat")         return teacherChat();
 
   const title = SOON_TITLES[key] || "صفحة جديدة";
   setDocTitle(title);
@@ -24509,7 +24514,18 @@ const TCHAT_FILTERS = [
   ["unread", "غير المقروء",  "bell"]
 ];
 
-window.tchatFilter = function (k) { TCHAT.filter = String(k || "all"); mount(); };
+window.tchatFilter = function (k) {
+  TCHAT.filter = String(k || "all");
+  try { tchatSave(); } catch (e) {}
+  mount();
+};
+
+/* الرجوعُ إلى قائمة المحادثات: تُنسى المحادثةُ المفتوحة فلا تُستعاد */
+window.tchatBack = function () {
+  TCHAT.kind = ""; TCHAT.id = ""; TCHAT.name = "";
+  try { sessionStorage.removeItem("__tchat"); } catch (e) {}
+  go("messages");
+};
 
 /* رسائلُ محادثةٍ واحدة: ما أرسلتُه إليها وما وصلني منها، الأقدمُ أوّلاً */
 function tchatMsgs(kind, id) {
@@ -24654,10 +24670,29 @@ function tchatVisible() {
                     (b.unread - a.unread) || (b.ts - a.ts));
 }
 
+/* في واجهة الإدارة كلُّ شاشةٍ ملفٌّ مستقلّ، فالانتقالُ إلى الدردشة تحميلٌ
+   جديدٌ للصفحة يمسح TCHAT من الذاكرة فتعود الشاشةُ إلى القائمة. تُحفظ
+   المحادثةُ المفتوحةُ في الجلسة وتُستعاد عند الإقلاع. */
+function tchatSave() {
+  try {
+    sessionStorage.setItem("__tchat", JSON.stringify({
+      kind: TCHAT.kind, id: TCHAT.id, name: TCHAT.name, filter: TCHAT.filter }));
+  } catch (e) {}
+}
+function tchatRestore() {
+  try {
+    const v = JSON.parse(sessionStorage.getItem("__tchat") || "null");
+    if (v && v.kind) { TCHAT.kind = v.kind; TCHAT.id = v.id || ""; TCHAT.name = v.name || ""; }
+    if (v && v.filter) TCHAT.filter = v.filter;
+  } catch (e) {}
+}
+window.tchatRestore = tchatRestore;
+
 window.tchatOpen = function (kind, id) {
   const r = tchatThreads().find(x => x.kind === kind && String(x.id) === String(id));
   TCHAT.kind = kind; TCHAT.id = String(id || "");
   TCHAT.name = r ? r.name : "";
+  tchatSave();
 
   /* ما وصلني في هذه المحادثة يُعلَّم مقروءاً بفتحها */
   const u = (STATE && STATE.user) || {};
@@ -25132,6 +25167,7 @@ function tchatTick(m) {
 
 /* صفحةُ المحادثة — ترويسةٌ وخلفيةٌ هادئةٌ وفقاعاتٌ وشريطُ كتابةٍ ثابت */
 function teacherChat() {
+  if (!TCHAT.kind) tchatRestore();
   if (!TCHAT.kind) { go("messages"); return ""; }
 
   const u = (STATE && STATE.user) || {};
@@ -25160,7 +25196,7 @@ function teacherChat() {
 
   return `<div class="page tch-page">
     <div class="tch-bar">
-      <button type="button" class="tch-back" data-action="nav" data-page="messages"
+      <button type="button" class="tch-back" onclick="window.tchatBack()"
         title="رجوع">${ic("arrowLeft", 20)}</button>
       <span class="tch-who">
         <strong>${esc(TCHAT.name || "محادثة")}</strong>
@@ -42463,7 +42499,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-0450";
+  var APP_BUILD = "20261006-0610";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

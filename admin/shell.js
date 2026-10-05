@@ -920,6 +920,9 @@ window.SHELL_MODE = true;
     });
     /* صفحات موجودة لكنها غير مدرجة في القائمة الجانبية — تُفتح من بطاقات
        لوحة التحكم، فنثبّتها هنا بدل الاعتماد على الافتراض في go() */
+    /* المحادثاتُ والدردشةُ تمرّان بالموزّع soon.html — لا ملفَّ لهما */
+    m.messages   = m.messages   || "soon.html?p=messages";
+    m.chat       = m.chat       || "soon.html?p=chat";
     m.users      = m.users      || "users.html";
     m.circles    = m.circles    || "circles.html";
     m.students   = m.students   || "students.html";
