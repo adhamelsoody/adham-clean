@@ -343,6 +343,43 @@ window.SHELL_MODE = true;
     { act:  "tchLogout", label: "تسجيل الخروج",      icon: "lock" }
   ];
 
+  /* الطالبُ ووليُّ أمره: نوافذُهما الخمسُ وحدَها.
+     كان navForRole يُرجع NAV_ADMIN كاملةً لكلّ دورٍ لا ذكرَ له في NAV_ROLE
+     — والطالبُ منهم — فيرى في قائمته الجانبية «المنشآت التعليمية» و«المساجد»
+     و«مدراء المنشآت» و«القبول والتسجيل» وغيرَها من أبواب الإدارة، وهي ليست
+     من شأنه. وهي النوافذُ الخمسُ نفسُها التي في شريطه السفليّ، فلا يختلف
+     البابان على اسمٍ ولا ترتيب. */
+  var NAV_STUDENT = [
+    { page: "dashboard", label: "الرئيسية",         icon: "grid" },
+    { page: "mushaf",    label: "المصحف التفاعلي",  icon: "book" },
+    { page: "reports",   label: "التقارير",         icon: "report" },
+    { page: "store",     label: "المتجر",           icon: "gift" },
+    { page: "settings",  label: "الإعدادات",        icon: "settings" },
+    { act:  "tchLogout", label: "تسجيل الخروج",     icon: "lock" }
+  ];
+
+  /* ما منعته الإدارةُ في «تطبيق الطالب» يسقط من قائمته كما يسقط من شريطه */
+  function studentNavHTML() {
+    var on = function (id) {
+      if (id === "dashboard" || id === "settings") return true;
+      try {
+        return typeof window.stuAppOn !== "function" || window.stuAppOn("show." + id);
+      } catch (e) { return true; }
+    };
+    return NAV_STUDENT.filter(function (it) { return it.act || on(it.page); })
+      .map(function (it) {
+        if (it.act) {
+          return '<button type="button" class="nav-item nav-act" ' +
+                 'onclick="if(window.' + it.act + ')window.' + it.act + '()">' +
+                 ic(it.icon, 19) + '<span>' + it.label + '</span></button>';
+        }
+        var act = (typeof STATE !== "undefined" && STATE.page === it.page) ? " active" : "";
+        return '<button type="button" class="nav-item' + act + '" ' +
+               'data-action="nav" data-page="' + it.page + '">' +
+               ic(it.icon, 19) + '<span>' + it.label + '</span></button>';
+      }).join("");
+  }
+
   /* اسمُ المعلّم وصورتُه تحت شعار «ذات» في القائمة الجانبية — بطلبٍ صريح:
      خانةٌ مستديرةٌ فيها صورتُه الدائريّة يميناً واسمُه بجوارها. */
   function teacherWhoHTML() {
@@ -481,6 +518,16 @@ window.SHELL_MODE = true;
       try {
         var lo = document.getElementById("logoutBtn");
         if (lo) lo.style.display = "none";
+      } catch (e) {}
+      return;
+    }
+
+    /* الطالبُ ووليُّ أمره: نوافذُهما الخمسُ وحدَها لا قائمةُ الإدارة */
+    if (myRole() === "student" || myRole() === "parent") {
+      nav.innerHTML = studentNavHTML();
+      try {
+        var lo2 = document.getElementById("logoutBtn");
+        if (lo2) lo2.style.display = "none";
       } catch (e) {}
       return;
     }
