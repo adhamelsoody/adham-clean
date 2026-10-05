@@ -10904,3 +10904,46 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
   .tsc-three { grid-template-columns: 1fr 1fr; }
   .tsc-three .tsc-card:first-child { grid-column: 1 / -1; }
 }
+
+/* =========================================================================
+   تسجيلُ الحضور والغياب — الدليلُ والصفوفُ وأيقوناتُ الحالة
+   -------------------------------------------------------------------------
+   أيقونةٌ لكلّ حالةٍ بدل زرٍّ نصّيّ، فتتّسع الأسماءُ الطويلة. والمختارةُ
+   تمتلئ بلونها. وزرُّ تعديل الحالة في صفّ الطالب على الحافّة اليسرى.
+   ========================================================================= */
+.tat-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.tat-leg { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+  font-weight: 700; padding: 5px 10px; border-radius: 999px;
+  background: var(--surface-soft, #f7f9f9); }
+
+.tat-list { display: grid; gap: 8px; max-height: 58vh; overflow-y: auto; }
+.tat-row { display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+  border-radius: 14px; background: var(--surface, #fff);
+  border: 1px solid var(--border-soft, #eef1f0); }
+.tat-av { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center; overflow: hidden;
+  background: var(--brand-soft, #e8f4f3); color: var(--brand-dark, #004b50); }
+.tat-av img { width: 100%; height: 100%; object-fit: cover; }
+.tat-name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tat-opts { flex: 0 0 auto; display: inline-flex; gap: 6px; }
+.tat-opt { width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+  display: grid; place-items: center; background: transparent;
+  border: 1px solid var(--border-soft, #eef1f0); color: #9aa3ad; }
+.tat-opt.on { color: #fff; border-color: transparent; }
+.tat-opt.t-green.on  { background: #12855c; }
+.tat-opt.t-amber.on  { background: #b8761b; }
+.tat-opt.t-blue.on   { background: #2f6fb0; }
+.tat-opt.t-red.on    { background: #c0392f; }
+.tat-go { flex: 1 1 auto; justify-content: center; }
+
+.tq-edit { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer; margin-inline-start: 6px;
+  background: var(--surface-soft, #f7f9f9); color: var(--text-soft, #5b6472);
+  border: 1px solid var(--border-soft, #eef1f0); }
+.tq-edit:hover { background: var(--brand-soft, #e8f4f3);
+  color: var(--brand-dark, #004b50); }
+
+.tcl-ok { display: flex; align-items: center; gap: 9px; margin-top: 14px;
+  padding: 12px 14px; border-radius: 14px; font-size: 13px; font-weight: 700;
+  background: #eaf7f0; color: #12855c; border: 1px solid #cfead9; }

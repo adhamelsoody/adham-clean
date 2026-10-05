@@ -25486,6 +25486,43 @@ function teacherCircle() {
    ========================================================================= */
 const TATT = { sel: {} };
 
+/* =========================================================================
+   تسجيلُ الحضور والغياب — بالتصميم المطلوب
+   -------------------------------------------------------------------------
+   كانت الحالاتُ أزراراً نصّيّةً في صفٍّ واحدٍ يضيق بها. وصارت كما في الصورة:
+   سطرُ دليلٍ في الأعلى، ثمّ صفٌّ لكلّ طالبٍ فيه صورتُه واسمُه وأيقوناتُ
+   الحالات على يساره، وزرُّ الاعتماد ثابتٌ في الأسفل.
+
+   وأيقونةُ «متأخر» زائدةٌ على الصورة عمداً: الحالةُ قائمةٌ في النظام
+   وتُحتسب في التقارير، فحذفُها من الاختيار يُفقد المعلّمَ رصدَها.
+   ========================================================================= */
+const ATT_ICO = { "حاضر": "eye", "متأخر": "clock", "مستأذن": "pause", "غائب": "x" };
+
+function attStateIcon(st) { return ATT_ICO[st] || "check"; }
+
+/* دليلُ الحالات فوق القائمة */
+function tcrcAttLegend() {
+  return `<div class="tat-legend">${ATT_STATES.map(st =>
+    `<span class="tat-leg ${ATT_TINT[st] || ""}">${ic(attStateIcon(st), 14)} ${
+      esc(attLabel(st))}</span>`).join("")}</div>`;
+}
+
+/* صفُّ طالبٍ في شاشة التسجيل */
+function tcrcAttRow(s) {
+  const sid = String(s.id);
+  return `<div class="tat-row" data-sid="${jsAttr(sid)}">
+    <span class="tat-av">${(s.photo
+      ? `<img src="${esc(s.photo)}" alt="">`
+      : ic("user", 16))}</span>
+    <span class="tat-name" title="${esc(s.name || "")}">${esc(s.name || "—")}</span>
+    <span class="tat-opts">${ATT_STATES.map(st =>
+      `<button type="button" class="tat-opt ${ATT_TINT[st] || ""}${
+        TATT.sel[sid] === st ? " on" : ""}" title="${esc(attLabel(st))}"
+        onclick="window.tcrcAttPick(this,'${jsAttr(sid)}','${jsAttr(st)}')"
+        >${ic(attStateIcon(st), 17)}</button>`).join("")}</span>
+  </div>`;
+}
+
 window.tcrcAttOpen = function () {
   const c = tcrcCircle();
   if (!c) { showToast("لا حلقةَ مفتوحة", "warn"); return; }
@@ -25501,17 +25538,50 @@ window.tcrcAttOpen = function () {
     TATT.sel[String(s.id)] = (r && r.status) || "حاضر";
   });
 
-  openModal("اعتماد التحضير", esc(c.name || ""),
-    `<div class="tatt-list">${studs.map(s => `<div class="tatt-row" data-sid="${jsAttr(s.id)}">
-      <span class="tatt-name">${esc(s.name || "—")}</span>
-      <span class="tatt-opts">${ATT_STATES.map(st =>
-        `<button type="button" class="tatt-opt ${ATT_TINT[st] || ""}${
-          TATT.sel[String(s.id)] === st ? " on" : ""}"
-          onclick="window.tcrcAttPick(this,'${jsAttr(s.id)}','${jsAttr(st)}')"
-          >${esc(attLabel(st))}</button>`).join("")}</span>
-    </div>`).join("")}</div>`,
-    `<button class="btn btn-primary" onclick="window.tcrcAttSave()">اعتماد التحضير</button>
+  openModal("تسجيل الحضور والغياب", esc(c.name || ""),
+    `${tcrcAttLegend()}
+     <div class="tat-list">${studs.map(tcrcAttRow).join("")}</div>`,
+    `<button class="btn btn-primary tat-go" onclick="window.tcrcAttSave()">${
+      ic("attend", 16)} اعتماد التحضير</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+/* =========================================================================
+   تعديلُ حالة طالبٍ واحد
+   -------------------------------------------------------------------------
+   «يمكن وأنا أحضّر الكلَّ، واحدٌ غاب حضّرتُه بالغلط» — فلكلّ طالبٍ في قائمة
+   الحلقة زرٌّ يفتح حالتَه وحدَها فتُبدَّل وتُحفظ، بلا إعادة تحضير الحلقة.
+   ويُحترم ما سُجّل له اليوم فيظهر مختاراً.
+   ========================================================================= */
+/* «التحضير لاحقاً»: يعود إلى اللوحة بلا كتابةِ شيء — تأجيلٌ لا تسجيل */
+window.tcrcAttLater = function () {
+  showToast("أُجِّل التحضير — يبقى بانتظارك في هذه الحلقة", "info");
+  if (typeof go === "function") go("dashboard");
+};
+
+window.tcrcAttOne = function (sid) {
+  const c = tcrcCircle();
+  if (!c) { showToast("لا حلقةَ مفتوحة", "warn"); return; }
+  const st = (cur("students") || []).find(x => String(x.id) === String(sid));
+  if (!st) { showToast("الطالب غير موجود", "warn"); return; }
+
+  const d = typeof attDate === "function" ? attDate() : todayISO();
+  const r = attMap(d, String(c.id))[String(sid)];
+  TATT.sel = TATT.sel || {};
+  TATT.sel[String(sid)] = (r && r.status) || "حاضر";
+
+  openModal("تعديل حالة الطالب", esc(st.name || ""),
+    `${tcrcAttLegend()}<div class="tat-list">${tcrcAttRow(st)}</div>`,
+    `<button class="btn btn-primary" onclick="window.tcrcAttOneSave('${jsAttr(sid)}')">${
+      ic("check", 16)} حفظ الحالة</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.tcrcAttOneSave = function (sid) {
+  const keep = {};
+  keep[String(sid)] = TATT.sel[String(sid)];
+  TATT.sel = keep;
+  window.tcrcAttSave();
 };
 
 window.tcrcAttPick = function (btn, sid, st) {
@@ -37144,6 +37214,10 @@ function tcrcView() {
         <small>${esc(s.level || s.circle || "—")}</small></div>
       <div class="tq-marks">${(typeof tcrcMarks === "function") ? tcrcMarks(s.id) : ""}</div>
       <span class="chip ${tint}">${esc(lbl)}</span>
+      ${/* زرُّ تعديل الحالة: يفتح حالةَ هذا الطالب وحدَها — لمن حُضّر بالغلط */""}
+      <button type="button" class="tq-edit" title="تعديل حالة الحضور"
+        onclick="event.stopPropagation(); window.tcrcAttOne && window.tcrcAttOne('${jsAttr(s.id)}')"
+        >${ic("user", 15)}</button>
     </div>`;
   }).join("");
 
@@ -37175,15 +37249,22 @@ function tcrcView() {
 
     ${twoCards}
 
+    ${/* شارةُ الاعتماد: تظهر متى سُجّلت حالاتُ الطلاب كلِّهم في هذا اليوم */""}
+    ${(studs.length && marked >= studs.length)
+      ? `<div class="tcl-ok">${ic("checkCircle", 17)} تمّ اعتماد تحضير اليوم</div>` : ""}
+
     <h3 class="tcl-h">الطلاب/ات <span class="tcl-cnt">${toArabicDigits(studs.length)}</span></h3>
     <div class="tq-list">${rows || `<div class="ntf-empty">لا طلابَ في هذه الحلقة</div>`}</div>
 
+    ${/* زرّان في الأسفل كما في الصورة. و«إضافة طالب» لم يُحذف — هو زرُّ «+»
+          في الشريط الأخضر أعلى الشاشة. */""}
     <div class="tcl-act">
       <button type="button" class="btn btn-primary tcl-main"
         onclick="window.tcrcAttOpen && window.tcrcAttOpen()">
         ${ic("attend", 16)} اعتماد التحضير</button>
-      ${mayAdd ? `<button type="button" class="btn btn-soft tcl-sec"
-        onclick="window.tcrcAddOpen && window.tcrcAddOpen()">${ic("plus", 16)} إضافة طالب</button>` : ""}
+      <button type="button" class="btn btn-soft tcl-sec"
+        onclick="window.tcrcAttLater && window.tcrcAttLater()">
+        ${ic("clock", 16)} التحضير لاحقاً</button>
     </div>
   </div>`;
 }
@@ -41154,7 +41235,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0710";
+  var APP_BUILD = "20261005-0800";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
