@@ -11070,3 +11070,79 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 .mre-out .mre-lbl { color: #c0392f; }
 .mre-ver { margin: 16px 0 6px; text-align: center; font-size: 11.5px;
   color: var(--text-faint, #9aa3ad); font-variant-numeric: tabular-nums; }
+
+/* ===== شريطُ الطالب السفليّ: اسمٌ طويلٌ في عمودٍ متساوٍ ===== */
+/* شريطُ الطالب: أعمدةٌ متساوية — «المصحف التفاعلي» اسمٌ طويلٌ كان
+   يوسّع خانتَه (min-content) فيضيق ما سواها، فصارت الخانةُ تقبل
+   السطرَين ويتساوى العرضُ، وتبقى الأيقوناتُ على سمتٍ واحد. */
+@media (max-width: 980px) {
+  .tabbar:not(.tb-teacher) .tb-item { min-width: 0; padding-inline: 2px; }
+  .tabbar:not(.tb-teacher) .tb-item span {
+    white-space: normal; text-align: center;
+    line-height: 1.22; min-height: 2.44em;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; text-overflow: clip;
+  }
+}
+
+/* ===== خريطة التقدّم في القرآن (تقارير الطالب) ===== */
+.qmp-head { display: flex; gap: 10px; }
+.qmp-box { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 12px; border-radius: 14px; background: var(--brand-soft, #eafbfc); }
+.qmp-box small { font-size: 11px; color: var(--text-faint, #9aa3ad); }
+.qmp-box strong { font-size: 15px; color: var(--brand-dark, #0f6f72);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qmp-box em { font-style: normal; font-size: 11.5px; font-weight: 700;
+  color: var(--text-faint, #9aa3ad); }
+.qmp-box-e { background: #fff7e6; }
+.qmp-box-e strong { color: #9a6700; }
+
+.qmp-bar { margin: 12px 0 6px; height: 9px; border-radius: 999px;
+  background: var(--border-soft, #eef1f0); overflow: hidden; }
+.qmp-bar i { display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #0b7f83, #27c3a8);
+  transition: width .5s ease; }
+.qmp-pct { display: flex; align-items: center; gap: 5px; justify-content: center;
+  font-size: 12px; font-weight: 700; color: var(--brand-main, #0b7f83); }
+
+.qmp-key { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+  margin: 10px 0 8px; font-size: 11px; color: var(--text-faint, #9aa3ad); }
+.qmp-key span { display: inline-flex; align-items: center; gap: 5px; }
+.qmp-k { width: 11px; height: 11px; border-radius: 4px; display: inline-block; }
+.qmp-k-on { background: var(--brand-main, #0b7f83); }
+.qmp-k-here { background: #f0a500; box-shadow: 0 0 0 2px #ffe9b3; }
+.qmp-k-off { background: var(--border-soft, #eef1f0); }
+
+.qmp-track { position: relative; display: grid; gap: 6px; max-height: 268px; overflow-y: auto;
+  padding: 4px 2px; border-radius: 14px;
+  background: var(--surface-soft, #f7f9f9);
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  scrollbar-width: thin; }
+.qmp-s { position: relative; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px;
+  min-height: 48px; padding: 6px 4px; border-radius: 12px;
+  border: 1px solid transparent; transition: background .2s, color .2s; }
+.qmp-i { font-size: 10px; font-weight: 800; opacity: .75;
+  font-variant-numeric: tabular-nums; }
+.qmp-n { font-size: 11px; font-weight: 700; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.qmp-off { background: var(--surface, #fff); color: var(--text-faint, #9aa3ad);
+  border-color: var(--border-soft, #eef1f0); opacity: .62; }
+.qmp-on { background: var(--brand-main, #0b7f83); color: #fff;
+  box-shadow: 0 2px 8px rgba(11,127,131,.22); }
+.qmp-on .qmp-i { opacity: .85; }
+.qmp-here { background: #fff3d6; color: #8a5a00; border-color: #f0a500;
+  box-shadow: 0 0 0 3px rgba(240,165,0,.22); font-weight: 800; }
+
+.qmp-tick, .qmp-flag { position: absolute; inset-block-start: 3px; inset-inline-end: 4px;
+  display: inline-flex; line-height: 0; opacity: .9; }
+.qmp-flag { color: #d98a00; }
+
+.qmp-msg { margin-top: 10px; text-align: center; font-size: 12.5px;
+  font-weight: 700; color: var(--brand-dark, #0f6f72); }
+
+[data-theme="dark"] .qmp-track { background: #14201e; }
+[data-theme="dark"] .qmp-off { background: #16201e; border-color: #232f2c; }
+[data-theme="dark"] .qmp-box-e { background: #2a2314; }
+[data-theme="dark"] .qmp-here { background: #332a12; color: #ffd98a; }

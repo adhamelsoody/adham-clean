@@ -31078,6 +31078,179 @@ function stuStats(st) {
   };
 }
 
+/* =========================================================================
+   خريطة التقدّم في القرآن — قسمٌ تحفيزيٌّ في تقارير الطالب
+   -------------------------------------------------------------------------
+   كان الطالب يرى تقدّمه رقماً («تقدّمه في المستوى ٤٠٪») لا موضعاً، فلا
+   يعرف أين هو من المصحف ولا كم بقي أمامه. هنا تُرسم سورُ القرآن كلُّها
+   مرتّبةً على مسار حفظه هو: ما أنجزه مضيءٌ، وما لم يبلغه خافت، وموقعُه
+   الحاليُّ معلَّمٌ بينهما. والمسار يتقدّم وحدَه كلّما أُنجزت سورة.
+   ========================================================================= */
+
+/* عددُ آيات السورة من فهرس المصحف المحمَّل */
+function qmpAyahs(i) {
+  if (typeof QSURAHS === "undefined" || !QSURAHS) return 0;
+  const s = QSURAHS.find(x => Number(x.i) === Number(i));
+  return s ? Number(s.a) || 0 : 0;
+}
+
+/* اتجاهُ المسار: اختيارُ خطّة الطالب أوّلاً، فإن خلت فاتجاهُ آخرِ واجبِ
+   حفظٍ أُنجز — فهو ما سار عليه فعلاً — وإلا فالتصاعديُّ وهو افتراضُ
+   النظام في dirOf. */
+function qmpDir(st, plan) {
+  if (plan && plan.direction) return dirOf(plan.direction);
+  const last = (cur("assignments") || [])
+    .filter(a => a && st && String(a.studentId) === String(st.id) &&
+                 String(a.kind || "").indexOf("hifz") === 0 && a.direction)
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
+  return last ? dirOf(last.direction) : "forward";
+}
+
+/* السورُ المنجَزة: من كلّ سجلّ الطالب لا من فترته النشطة — الترحيلُ يطوي
+   واجباتِ الفترة السابقة فيضيع من الخريطة ما حفظه قبلها، كما في
+   surahRounds. وتُجمع مدَياتُ الواجبات ثمّ تُدمج: السورةُ منجَزةٌ متى
+   غُطّيت آياتُها كلُّها من أوّلها، فلا يُحتسب بلوغُ آخرِها وحدَه إنجازاً. */
+function qmpDone(st) {
+  const cov = {};                       /* رقمُ السورة ← مدَياتُ آياتها */
+  if (!st) return {};
+
+  (cur("assignments") || []).forEach(a => {
+    if (!a || String(a.studentId) !== String(st.id)) return;
+    if (String(a.kind || "").indexOf("hifz") !== 0) return;   /* الحفظُ وقضاؤه */
+    if (a.status !== "done") return;
+
+    const s1 = Number(a.fromS) || 0, s2 = Number(a.toS) || 0;
+    const e2 = Number(a.toA) || 0;
+    /* بلا نهايةٍ محدَّدة لا يُحتسب المدى: fillAsgRanges تملؤها بعد التوليد،
+       وتخمينُها هنا يزعم للطالب إنجازاً لم يتمّه. */
+    if (!s1 || !s2 || !e2) return;
+
+    /* الصفرُ في أوّل الآية علامةُ «آخر السورة» في السير التنازليّ */
+    const back = dirOf(a.direction) === "backward";
+    const e1 = Number(a.fromA) || (back ? (qmpAyahs(s1) || 1) : 1);
+
+    /* يُقلب الطرفان في السير التنازليّ ليصير المدى من أوّله إلى آخره */
+    let bs = s1, ba = e1, es = s2, ea = e2;
+    if (s1 > s2 || (s1 === s2 && e1 > e2)) { bs = s2; ba = e2; es = s1; ea = e1; }
+
+    for (let s = bs; s <= es; s++) {
+      const n = qmpAyahs(s); if (!n) continue;
+      const from = s === bs ? Math.max(1, ba) : 1;
+      const to   = s === es ? Math.min(n, ea) : n;
+      if (to >= from) (cov[s] = cov[s] || []).push([from, to]);
+    }
+  });
+
+  const done = {};
+  Object.keys(cov).forEach(k => {
+    const n = qmpAyahs(k); if (!n) return;
+    const list = cov[k].slice().sort((x, y) => x[0] - y[0]);
+    let reach = 0;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i][0] > reach + 1) break;      /* ثغرةٌ في الحفظ: ما بعدها لا يُحتسب */
+      if (list[i][1] > reach) reach = list[i][1];
+    }
+    if (reach >= n) done[k] = true;
+  });
+  return done;
+}
+
+/* موقعُ الطالب الآن: مؤشّرُ خطّته، فإن خلا فآخرُ سورةٍ بلغها في واجبٍ أُنجز */
+function qmpNow(st, plan) {
+  const p = Number(plan && plan.hifzFromS) || 0;
+  if (p) return p;
+  const last = (cur("assignments") || [])
+    .filter(a => a && st && String(a.studentId) === String(st.id) &&
+                 String(a.kind || "").indexOf("hifz") === 0 &&
+                 a.status === "done" && Number(a.toS))
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
+  return last ? Number(last.toS) : 0;
+}
+
+/* بطاقةُ الخريطة. فهرسُ السور يُجلب من الشبكة فقد لا يكون حاضراً وقت
+   الرسم، فيُطلب هنا وتُعاد الصفحةُ رسمَها عند وصوله — كما في المصحف. */
+function quranMapCard(st) {
+  if (typeof reciteLoadSurahs === "function") reciteLoadSurahs();
+
+  if (typeof QSURAHS === "undefined" || !QSURAHS || !QSURAHS.length) {
+    return `<div class="card trp-card">${
+      emptyState("جارٍ تحميل فهرس المصحف…", "تظهر الخريطة فور وصوله.")}</div>`;
+  }
+
+  const plan = typeof studentPlan === "function" ? studentPlan(st) : null;
+  const back = qmpDir(st, plan) === "backward";
+  const done = qmpDone(st);
+  const now  = Number(qmpNow(st, plan)) || 0;
+
+  const list = QSURAHS.slice().sort((a, b) =>
+    back ? Number(b.i) - Number(a.i) : Number(a.i) - Number(b.i));
+
+  const all  = list.length;
+  const nd   = Object.keys(done).length;
+  const pct  = all ? Math.round(nd * 100 / all) : 0;
+  const left = Math.max(0, all - nd);
+
+  const cells = list.map(s => {
+    const i    = Number(s.i);
+    const on   = !!done[i];
+    const here = !!now && i === now;
+    const cls  = here ? "qmp-s qmp-here" : (on ? "qmp-s qmp-on" : "qmp-s qmp-off");
+    const tip  = s.n + (on ? " — أُنجزت" : here ? " — موقعك الآن" : " — لم تصل إليها بعد");
+    return `<span class="${cls}"${here ? ' id="qmpHere"' : ""} title="${esc(tip)}">
+      <b class="qmp-i">${toArabicDigits(i)}</b>
+      <span class="qmp-n">${esc(s.n)}</span>
+      ${on ? `<i class="qmp-tick">${ic("check", 11)}</i>` : ""}
+      ${here ? `<i class="qmp-flag">${ic("flag", 11)}</i>` : ""}
+    </span>`;
+  }).join("");
+
+  /* كلمةٌ تتبع حاله: لا بدايةَ بعد · في الطريق · أتمّ المصحف */
+  const first = list[0] ? list[0].n : "";
+  const msg = !nd && !now
+    ? `رحلتُك تبدأ بسورة ${first} — أوّلُ سورةٍ في مسارك.`
+    : (left ? `أحسنت! بقيت ${toArabicDigits(left)} سورة لتُتمّ المصحف. واصِل.`
+            : "ما شاء الله — أتممتَ المصحف كلَّه. نسأل الله أن يثبّته في صدرك.");
+
+  /* تمريرُ الخريطة إلى موضعه: الخانةُ الحاليةُ تُتوسَّط بعد الرسم */
+  try {
+    setTimeout(function () {
+      const e = document.getElementById("qmpHere");
+      const t = e && e.parentNode;
+      if (!e || !t || !t.classList || !t.classList.contains("qmp-track")) return;
+      /* بالمستطيلات لا بـ offsetTop: المسارُ غيرُ مُموضَعٍ فيُنسب الإزاحةُ
+         إلى جَدٍّ آخر فتهبط الخريطةُ على سورةٍ لا صلةَ لها بموقعه. */
+      const er = e.getBoundingClientRect(), tr = t.getBoundingClientRect();
+      t.scrollTop = Math.max(0, t.scrollTop + (er.top - tr.top)
+                                - (tr.height / 2 - er.height / 2));
+    }, 60);
+  } catch (e) {}
+
+  return `<div class="card trp-card qmp">
+    <div class="qmp-head">
+      <span class="qmp-box">
+        <small>موقعك الآن</small>
+        <strong>${now ? esc(surahName(now) || "—") : "لم تبدأ بعد"}</strong>
+      </span>
+      <span class="qmp-box qmp-box-e">
+        <small>سورٌ أُنجزت</small>
+        <strong>${toArabicDigits(nd)}<em> من ${toArabicDigits(all)}</em></strong>
+      </span>
+    </div>
+
+    <div class="qmp-bar"><i style="width:${pct}%"></i></div>
+    <div class="qmp-pct">${ic("star", 12)} ${toArabicDigits(pct)}٪ من رحلة الحفظ</div>
+
+    <div class="qmp-key">
+      <span><i class="qmp-k qmp-k-on"></i> أُنجزت</span>
+      <span><i class="qmp-k qmp-k-here"></i> موقعك الآن</span>
+      <span><i class="qmp-k qmp-k-off"></i> لم تصل إليها</span>
+    </div>
+
+    <div class="qmp-track">${cells}</div>
+    <div class="qmp-msg">${esc(msg)}</div>
+  </div>`;
+}
+
 function studentReports() {
   const st = typeof activeStudent === "function" ? activeStudent() : null;
   if (!st) return typeof noKidPage === "function"
@@ -31125,6 +31298,9 @@ function studentReports() {
 
     <div class="tsc-h">المسار</div>
     <div class="card trp-card"><div class="tsc-four">${pathCards}</div></div>
+
+    <div class="tsc-h">خريطة التقدم في القرآن</div>
+    ${quranMapCard(st)}
   </div>`;
 }
 
@@ -31162,7 +31338,7 @@ function studentSettings() {
       row("lock", "تغيير كلمة المرور", `onclick="window.stuPassReset()"`))}
 
     ${group("التعلّم",
-      row("book", "المصحف", `data-action="nav" data-page="mushaf"`) +
+      row("book", "المصحف التفاعلي", `data-action="nav" data-page="mushaf"`) +
       row("report", "تقاريري", `data-action="nav" data-page="reports"`) +
       row("gift", "المتجر", `data-action="nav" data-page="store"`))}
 
@@ -32117,18 +32293,18 @@ const TABBAR = {
   /* النوافذُ الخمس التي نصّت عليها مواصفاتُ موقع الطالب. و«واجب اليوم»
      و«سير الخطة» لم يُحذفا — هما في القائمة الجانبية كما كانا. */
   student: [
-    { id: "dashboard", label: "الرئيسية", icon: "grid" },
-    { id: "mushaf",    label: "القرآن",   icon: "book" },
-    { id: "reports",   label: "التقارير", icon: "report" },
-    { id: "store",     label: "المتجر",   icon: "gift" },
-    { id: "settings",  label: "الإعدادات", icon: "settings" }
+    { id: "dashboard", label: "الرئيسية",        icon: "grid" },
+    { id: "mushaf",    label: "المصحف التفاعلي", icon: "book" },
+    { id: "reports",   label: "التقارير",        icon: "report" },
+    { id: "store",     label: "المتجر",          icon: "gift" },
+    { id: "settings",  label: "الإعدادات",       icon: "settings" }
   ],
   parent: [
-    { id: "dashboard", label: "الرئيسية", icon: "grid" },
-    { id: "mushaf",    label: "القرآن",   icon: "book" },
-    { id: "reports",   label: "التقارير", icon: "report" },
-    { id: "store",     label: "المتجر",   icon: "gift" },
-    { id: "settings",  label: "الإعدادات", icon: "settings" }
+    { id: "dashboard", label: "الرئيسية",        icon: "grid" },
+    { id: "mushaf",    label: "المصحف التفاعلي", icon: "book" },
+    { id: "reports",   label: "التقارير",        icon: "report" },
+    { id: "store",     label: "المتجر",          icon: "gift" },
+    { id: "settings",  label: "الإعدادات",       icon: "settings" }
   ]
 };
 
@@ -41657,7 +41833,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-1810";
+  var APP_BUILD = "20261005-2130";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
