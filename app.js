@@ -25748,11 +25748,13 @@ function teacherStudent() {
 
   /* الواجباتُ في بطاقتها: تقويمٌ بأيّامه ثمّ شرائطُ واجبات اليوم المختار
      ونتائجُه — وهي خارج حجب «الاطلاع على الخطة» لأنّها عملُ يومه لا مساره. */
+  /* الترتيبُ كما في الصورة: «التقويم» بعنوانه، ثمّ «درس اليوم» بصفوفه.
+     والعنوانُ يحمل التاريخَ إن كان اليومُ المختارُ غيرَ اليوم. */
   const duties = `
-    <div class="section-head"><h3>واجباتُ ${
-      tstuDay() === tstuToday() ? "اليوم" : esc(tstuDay())}</h3></div>
+    <div class="tsc-h">التقويم</div>
     ${tstuCalendar(st)}
-    <div style="height:12px"></div>
+    <div class="tsc-h tsc-h2">${
+      tstuDay() === tstuToday() ? "درس اليوم" : "درسُ " + esc(tstuDay())}</div>
     ${tstuDutyCards(st)}
     ${tstuDayResults(st)}`;
 
@@ -25904,24 +25906,74 @@ function tstuStatCards(st) {
   const d = tstuDay();
   const today = tstuAsgOf(st, d);
   const done = today.filter(a => a.status === "done").length;
-  const recN = (cur("recitations") || []).filter(r => r &&
-    String(r.studentId) === String(st.id)).length;
+  const recs = (cur("recitations") || []).filter(r => r &&
+    String(r.studentId) === String(st.id));
+  const recN = recs.length;
 
-  const cards = [
-    { t: "t-green",  n: toArabicDigits(prog) + "٪", h: "مؤشر الإنجاز" },
-    { t: debts ? "t-red" : "t-green", n: debts, h: "عدد التأخرات" },
-    { t: att.pct >= 80 ? "t-green" : "t-amber",
-      n: toArabicDigits(att.pct) + "٪", h: "مؤشر الالتزام" },
-    { t: "t-blue",   n: toArabicDigits(done) + " / " + toArabicDigits(today.length),
-      h: "واجبات اليوم" },
-    { t: "t-purple", n: recN, h: "التسميعات" },
-    { t: "t-amber",  n: att.absent, h: attLabel("غائب") }
-  ];
-  return `<div class="grid g-4 stagger" style="margin-bottom:14px">${cards.map(x =>
-    `<div class="facility-card ${x.t}">
-      <div class="fc-num">${typeof x.n === "number" ? toArabicDigits(x.n) : esc(String(x.n))}</div>
-      <div class="fc-body"><span class="fc-label">${esc(x.h)}</span></div>
-    </div>`).join("")}</div>`;
+  /* =====================================================================
+     البطاقاتُ بالتصميم المطلوب
+     ---------------------------------------------------------------------
+     كانت ستَّ شرائطَ بعرض الشاشة متشابهةً لا يُعرف المهمُّ منها. وصارت كما
+     في الصورة: ثلاثُ بطاقاتٍ في صفٍّ — المستوى ومؤشّرُ الإنجاز ومؤشّرُ
+     الالتزام — ثمّ بطاقتان بزرٍّ، ثمّ سطرُ «جودة الأداء».
+
+     ولم يسقط رقمٌ كان ظاهراً: التأخّراتُ وواجباتُ اليوم والغيابُ صارت
+     شاراتٍ تحت البطاقات، وعددُ التسميعات في بطاقته.
+     ===================================================================== */
+  const lvl = (plan && (plan.level || (lp && lp.level && lp.level.name))) || "—";
+
+  /* جودةُ الأداء: متوسّطُ درجات تسميعاته المرصودة — وشرطتان إن لم تُرصد */
+  const scored = recs.filter(r => r && r.score != null && !isNaN(Number(r.score)));
+  const qual = scored.length
+    ? Math.round(scored.reduce((n, r) => n + Number(r.score), 0) / scored.length)
+    : null;
+
+  const three = [
+    ["المستوى",        esc(String(lvl)),                      "tsc-lvl"],
+    ["مؤشر الإنجاز",   toArabicDigits(prog) + "٪",            "tsc-ok"],
+    ["مؤشر الالتزام",  toArabicDigits(att.pct) + "٪",
+      att.pct >= 80 ? "tsc-ok" : "tsc-warn"]
+  ].map(([h, v, t]) => `<div class="tsc-card ${t}">
+      <span class="tsc-lbl">${esc(h)}</span>
+      <b class="tsc-val">${v}</b>
+    </div>`).join("");
+
+  const pair = `<div class="tsc-two">
+    ${teacherCan("points") ? `<div class="tsc-box">
+      <span class="tsc-blbl">نقاط الطالب</span>
+      <b class="tsc-bnum">${toArabicDigits(tstuPointsSum(st))}</b>
+      <button type="button" class="btn btn-primary btn-sm"
+        onclick="window.tstuPoints()">${ic("star", 15)} إضافة نقاط</button>
+    </div>` : ""}
+    <div class="tsc-box">
+      <span class="tsc-blbl">التسميعات</span>
+      <b class="tsc-bnum">${toArabicDigits(recN)}</b>
+      ${teacherCan("examRequest") ? `<button type="button" class="btn btn-soft btn-sm"
+        onclick="window.tstuExamOpen()">${ic("exam", 15)} طلب اختبار</button>` : ""}
+    </div>
+  </div>`;
+
+  const bits = `<div class="chip-list tsc-bits">
+    <span class="chip${debts ? " t-red" : ""}">التأخرات: ${toArabicDigits(debts)}</span>
+    <span class="chip t-blue">واجبات اليوم: ${toArabicDigits(done)} / ${
+      toArabicDigits(today.length)}</span>
+    <span class="chip t-amber">${esc(attLabel("غائب"))}: ${toArabicDigits(att.absent)}</span>
+  </div>`;
+
+  return `<div class="tsc-wrap">
+    <div class="tsc-three">${three}</div>
+    ${pair}
+    <div class="tsc-qual"><span>جودة الأداء</span>
+      <b>${qual == null ? "—" : toArabicDigits(qual) + "٪"}</b></div>
+    ${bits}
+  </div>`;
+}
+
+/* مجموعُ نقاط الطالب — يُقرأ من سجلّ النقاط نفسِه */
+function tstuPointsSum(st) {
+  return (cur("pointsLog") || []).filter(p => p &&
+    String(p.studentId) === String((st && st.id) || ""))
+    .reduce((n, p) => n + (Number(p.n) || 0), 0);
 }
 
 /* =========================================================================
@@ -41102,7 +41154,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0610";
+  var APP_BUILD = "20261005-0710";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

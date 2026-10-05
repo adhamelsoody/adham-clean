@@ -10853,3 +10853,54 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 .rt-note { margin-top: 10px; padding: 11px 13px; border-radius: 12px; font-size: 13px;
   line-height: 1.7; background: var(--surface-soft, #f7f9f9);
   border: 1px solid var(--border-soft, #eef1f0); }
+
+/* =========================================================================
+   صفحةُ الطالب عند المعلّم — بالتصميم المطلوب
+   -------------------------------------------------------------------------
+   أدواتُ الصفحة شريطُ رقائقَ يُمرَّر أفقياً بدل ستّة أزرارٍ تملأ الشاشة،
+   ثمّ ثلاثُ بطاقاتٍ في صفّ، ثمّ بطاقتان بزرٍّ، ثمّ سطرُ جودة الأداء.
+   ========================================================================= */
+.tst-tools { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto;
+  padding-bottom: 4px; scrollbar-width: none; }
+.tst-tools::-webkit-scrollbar { display: none; }
+.tst-tools .tst-tool { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
+  cursor: pointer; white-space: nowrap;
+  background: var(--surface, #fff); color: var(--text-main, #0f172a);
+  border: 1px solid var(--border-soft, #eef1f0); }
+.tst-tools .tst-tool.on { background: var(--brand-main, #0b7f83); color: #fff;
+  border-color: transparent; }
+
+.tsc-wrap { margin: 14px 0; }
+.tsc-three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+.tsc-card { display: grid; gap: 6px; padding: 13px 11px; border-radius: 16px;
+  background: var(--surface, #fff); border: 1px solid var(--border-soft, #eef1f0);
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,.05)); text-align: center; }
+.tsc-lbl { font-size: 11.5px; font-weight: 600; color: var(--text-faint, #9aa3ad); }
+.tsc-val { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums;
+  line-height: 1.35; }
+.tsc-ok   .tsc-val { color: #12855c; }
+.tsc-warn .tsc-val { color: #b8761b; }
+.tsc-lvl  .tsc-val { color: var(--brand-dark, #004b50); font-size: 14.5px; }
+
+.tsc-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 11px; }
+.tsc-box { display: grid; justify-items: center; gap: 7px; padding: 15px 12px;
+  border-radius: 16px; background: var(--surface, #fff);
+  border: 1px solid var(--border-soft, #eef1f0);
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,.05)); }
+.tsc-blbl { font-size: 13px; font-weight: 700; }
+.tsc-bnum { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tsc-box .btn { width: 100%; justify-content: center; }
+
+.tsc-qual { display: flex; align-items: center; justify-content: space-between;
+  margin-top: 13px; padding: 0 3px; font-size: 13.5px; font-weight: 700; }
+.tsc-qual b { font-variant-numeric: tabular-nums; }
+.tsc-bits { margin-top: 10px; }
+
+.tsc-h { font-size: 15px; font-weight: 800; margin: 2px 2px 10px; }
+.tsc-h2 { margin-top: 16px; }
+
+@media (max-width: 420px) {
+  .tsc-three { grid-template-columns: 1fr 1fr; }
+  .tsc-three .tsc-card:first-child { grid-column: 1 / -1; }
+}
