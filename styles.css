@@ -10963,3 +10963,9 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 @media (max-width: 560px) {
   .tsc-four { grid-template-columns: 1fr 1fr; }
 }
+
+/* =========================================================================
+   سجلُّ نقاط الطالب — المكتسبُ أخضرُ والمخصومُ أحمر
+   ========================================================================= */
+.pts-plus  { color: #12855c; font-variant-numeric: tabular-nums; }
+.pts-minus { color: #c0392f; font-variant-numeric: tabular-nums; }

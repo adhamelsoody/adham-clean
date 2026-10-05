@@ -18476,6 +18476,8 @@ function studentStore() {
     : `<div class="card">${emptyState("لا جوائز بعد",
         "لم تُضَف جوائز إلى متجر مسجدك حتى الآن.")}</div>`;
 
+  const ptsLog = stuPointsLog(st);
+
   const orders = mine.length ? `<div class="card" style="margin-top:18px">
     <div class="section-head"><h3>استبدالاتي</h3></div>
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
@@ -18493,6 +18495,7 @@ function studentStore() {
     ${pageHead("متجر الجوائز", "استبدل نقاطك بما تحب")}
     ${typeof kidSwitcher === "function" ? kidSwitcher() : ""}
     ${head}
+    ${ptsLog}
     ${cards}
     ${orders}
   </div>`;
@@ -31027,6 +31030,194 @@ window.parentSend = function () {
    يرفعها بنفسه هنا — وصورتُه وحدها. أمّا اسمُه وحلقتُه ومستواه فعرضٌ لا
    تعديل: بياناتٌ تُسند إليه ولا يُسندها لنفسه.
    ========================================================================= */
+/* =========================================================================
+   موقعُ الطالب — نافذةُ التقارير ونافذةُ الإعدادات
+   -------------------------------------------------------------------------
+   المواصفات: «يحتوي الموقع على خمس نوافذ رئيسية تظهر في شريط التنقل
+   السفلي: الرئيسية · القرآن الكريم · التقارير · المتجر · الإعدادات».
+   وكان الشريطُ أربعاً بلا قرآنٍ ولا تقاريرَ ولا إعدادات، والمصحفُ لا
+   يُبلَغ إلا من القائمة الجانبية، ولا شاشةَ إعداداتٍ للطالب أصلاً.
+
+   والشاشتان الجديدتان تجمعان ما هو مبثوثٌ في النظام ولا تُنشئان بياناتٍ
+   جديدة: التقاريرُ من سجلّات الحضور والتسميع والخطة، والإعداداتُ من ملفّ
+   الطالب نفسِه.
+   ========================================================================= */
+
+/* تاريخُ انضمام الطالب — أوّلُ ما سُجِّل له في النظام */
+function stuJoinDate(st) {
+  if (!st) return "";
+  if (st.joined) return String(st.joined);
+  const all = []
+    .concat((cur("attendance") || []).filter(a => a && String(a.studentId) === String(st.id)))
+    .concat((cur("recitations") || []).filter(r => r && String(r.studentId) === String(st.id)))
+    .map(x => String(x.date || "")).filter(Boolean).sort();
+  return all[0] || "";
+}
+
+/* إحصاءُ الطالب كاملاً — رقمٌ واحدٌ لكلّ بندٍ في المواصفات */
+function stuStats(st) {
+  const recs = typeof studentRecs === "function" ? studentRecs(st) : [];
+  const att  = typeof studentAtt  === "function" ? studentAtt(st)  : [];
+  const plan = typeof studentPlan === "function" ? studentPlan(st) : null;
+  const lp = (plan && typeof levelProgress === "function") ? levelProgress(plan) : null;
+
+  const n = s => att.filter(r => r && r.status === s).length;
+  const days = new Set(recs.map(r => String(r.date || ""))).size;
+
+  return {
+    joined:  stuJoinDate(st),
+    recs:    recs.length,
+    perDay:  days ? Math.round(recs.length / days * 10) / 10 : 0,
+    present: n("حاضر"), absent: n("غائب"), late: n("متأخر"), excused: n("مستأذن"),
+    total:   att.length,
+    faces:   recs.reduce((a, r) => a + (Number(r.faces) || 0), 0),
+    review:  recs.filter(r => String(r.kind || "").indexOf("مراجع") > -1).length,
+    levels:  Number(st && st.levelsDone) || 0,
+    pct:     lp ? (Number(lp.pct) || 0) : (Number(plan && plan.progress) || 0),
+    level:   (lp && lp.level && lp.level.name) || (plan && plan.level) || "—"
+  };
+}
+
+function studentReports() {
+  const st = typeof activeStudent === "function" ? activeStudent() : null;
+  if (!st) return typeof noKidPage === "function"
+    ? noKidPage("تقاريري", "") : `<div class="page">${pageHead("تقاريري", "")}</div>`;
+
+  const s = stuStats(st);
+  const p = v => s.total ? Math.round(v / s.total * 100) : 0;
+
+  const card = (h, v, t, sub) => `<div class="tsc-card ${t || ""}">
+    <span class="tsc-lbl">${esc(h)}</span>
+    <b class="tsc-val">${v}</b>
+    ${sub ? `<span class="tsc-sub">${sub}</span>` : ""}
+  </div>`;
+
+  const attCards = [
+    card("الحضور",  toArabicDigits(s.present), "tsc-ok",   toArabicDigits(p(s.present)) + "٪"),
+    card("الغياب",  toArabicDigits(s.absent),  "tsc-bad",  toArabicDigits(p(s.absent)) + "٪"),
+    card("التأخر",  toArabicDigits(s.late),    "tsc-warn", toArabicDigits(p(s.late)) + "٪"),
+    card("الاستئذان", toArabicDigits(s.excused), "tsc-lvl", toArabicDigits(p(s.excused)) + "٪")
+  ].join("");
+
+  const perfCards = [
+    card("التسميعات",      toArabicDigits(s.recs),   "tsc-ok"),
+    card("تسميعاتٌ باليوم", toArabicDigits(s.perDay), "tsc-lvl"),
+    card("أوجهٌ محفوظة",    toArabicDigits(s.faces),  "tsc-ok"),
+    card("مراجعات",        toArabicDigits(s.review), "tsc-warn")
+  ].join("");
+
+  const pathCards = [
+    card("المستوى الحالي", esc(String(s.level)), "tsc-lvl"),
+    card("تقدّمه فيه",     toArabicDigits(s.pct) + "٪", "tsc-ok"),
+    card("مستوياتٌ أُنجزت", toArabicDigits(s.levels), "tsc-lvl"),
+    card("تاريخ الانضمام", s.joined ? toArabicDigits(s.joined) : "—", "tsc-lvl")
+  ].join("");
+
+  return `<div class="page">
+    ${pageHead("تقاريري", esc(st.name || ""))}
+    ${typeof kidSwitcher === "function" ? kidSwitcher() : ""}
+
+    <div class="tsc-h">إحصاء الحضور</div>
+    <div class="card trp-card"><div class="tsc-four">${attCards}</div></div>
+
+    <div class="tsc-h">إحصاء التسميع</div>
+    <div class="card trp-card"><div class="tsc-four">${perfCards}</div></div>
+
+    <div class="tsc-h">المسار</div>
+    <div class="card trp-card"><div class="tsc-four">${pathCards}</div></div>
+  </div>`;
+}
+
+/* نافذةُ الإعدادات: بياناتُه وما يملك تعديلَه منها، ثمّ كلمةُ المرور والخروج */
+function studentSettings() {
+  const st = typeof activeStudent === "function" ? activeStudent() : null;
+  const u = (STATE && STATE.user) || {};
+
+  const rows = [
+    ["الاسم",        (st && st.name) || u.name || "—"],
+    ["رقم الهوية",   (st && (st.nid || st.id)) || "—"],
+    ["الحلقة",       (st && st.circle) || "—"],
+    ["المسجد",       (st && st.mosque) || "—"],
+    ["المجمّع",      (st && typeof complexName === "function"
+                        ? complexName(st.complexId) : "") || "—"]
+  ].map(([h, v]) => `<div class="kv"><span>${esc(h)}</span><strong>${esc(String(v))}</strong></div>`).join("");
+
+  return `<div class="page">
+    ${pageHead("الإعدادات", esc((st && st.name) || ""))}
+    ${typeof kidSwitcher === "function" ? kidSwitcher() : ""}
+    ${st ? studentProfileCard(st) : ""}
+
+    <div class="tsc-h">بياناتي</div>
+    <div class="card trp-card">
+      ${rows}
+      ${/* البريدُ وحدَه قابلٌ للتعديل مع الصورة — وبقيّةُ البيانات من الإدارة */""}
+      <div class="field full" style="margin-top:12px">
+        <label>البريد الإلكتروني</label>
+        <input id="stuMail" type="email" dir="ltr"
+          value="${esc(String((st && st.email) || u.email || ""))}">
+      </div>
+      <div class="row-actions">
+        <button class="btn btn-primary btn-sm" onclick="window.stuMailSave()">${
+          ic("check", 15)} حفظ البريد</button>
+      </div>
+      ${noteCard("الصورةُ والبريدُ وحدَهما يُعدَّلان من هنا. وبقيّةُ البيانات تُعدَّل من إدارة المجمّع.")}
+    </div>
+
+    <div class="tsc-h">الحساب</div>
+    <div class="card trp-card">
+      <div class="row-actions">
+        <button class="btn btn-soft btn-sm" onclick="window.stuPassReset()">${
+          ic("lock", 15)} تغيير كلمة المرور</button>
+      </div>
+      <div style="height:10px"></div>
+      <button class="btn btn-danger" style="width:100%;justify-content:center"
+        onclick="window.tchLogout && window.tchLogout()">${
+        ic("lock", 16)} تسجيل الخروج</button>
+    </div>
+  </div>`;
+}
+
+window.stuMailSave = function () {
+  const st = typeof activeStudent === "function" ? activeStudent() : null;
+  if (!st) { showToast("لا طالبَ مفتوح", "warn"); return; }
+  const v = String(val("#stuMail") || "").trim().toLowerCase();
+  if (v && v.indexOf("@") < 1) { showToast("بريدٌ غير صحيح", "warn"); return; }
+  st.email = v;
+  try { persistSet("students", st); } catch (e) {}
+  showToast("حُفظ بريدُك", "success");
+  mount();
+};
+
+/* تغييرُ كلمة المرور: بصفحة الاستعادة نفسِها التي يستعملها المعلّم */
+window.stuPassReset = function () {
+  openModal("تغيير كلمة المرور", "",
+    noteCard("تُغيَّر كلمةُ المرور من صفحة الاستعادة بالتحقّق من جوّالك أو بريدك."),
+    `<a class="btn btn-primary" href="reset.html">${ic("lock", 16)} فتح صفحة التغيير</a>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+/* سجلُّ نقاط الطالب — المقدار والتاريخ والسبب، نصّت عليه المواصفات */
+function stuPointsLog(st) {
+  const list = (cur("pointsLog") || [])
+    .filter(x => x && String(x.studentId) === String((st && st.id) || ""))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  if (!list.length) return "";
+
+  return `<div class="card" style="margin-top:18px">
+    <div class="section-head"><h3>سجلّ نقاطي</h3></div>
+    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
+      <tbody>${list.slice(0, 30).map(x => {
+        const n = Number(x.n) || 0;
+        return `<tr>
+          <td class="pt-num"><strong class="${n < 0 ? "pts-minus" : "pts-plus"}">${
+            (n < 0 ? "−" : "+") + toArabicDigits(Math.abs(n))}</strong></td>
+          <td>${esc(x.reason || x.note || "—")}</td>
+          <td class="muted" style="font-size:12px">${esc(x.date || "")}</td>
+        </tr>`;
+      }).join("")}</tbody></table></div></div>
+  </div>`;
+}
+
 function studentProfileCard(st) {
   if (!st) return "";
 
@@ -31575,6 +31766,9 @@ const PAGES = {
   "student/notifications": studentNotifications,
   "teacher/messages": teacherMessages, "teacher/chat": teacherChat, "teacher/mushaf": mushafPage, "student/mushaf": mushafPage,
   "student/store": studentStore, "parent/store": studentStore,
+  "student/reports": studentReports, "parent/reports": studentReports,
+  "student/settings": studentSettings, "parent/settings": studentSettings,
+  "parent/mushaf": mushafPage,
 
   /* وليّ الأمر: شاشاتُ الطالب نفسها — البياناتُ واحدة والمخاطَبُ مختلف */
   "parent/dashboard": parentDashboard,
@@ -31700,17 +31894,21 @@ const TABBAR = {
     { id: "report",    label: "تقرير المعلم", icon: "report" },
     { id: "settings",  label: "الإعدادات",    icon: "settings" }
   ],
+  /* النوافذُ الخمس التي نصّت عليها مواصفاتُ موقع الطالب. و«واجب اليوم»
+     و«سير الخطة» لم يُحذفا — هما في القائمة الجانبية كما كانا. */
   student: [
     { id: "dashboard", label: "الرئيسية", icon: "grid" },
-    { id: "today",     label: "واجب اليوم", icon: "book" },
-    { id: "progress",  label: "سير الخطة", icon: "target" },
-    { id: "store",     label: "المتجر",   icon: "gift" }
+    { id: "mushaf",    label: "القرآن",   icon: "book" },
+    { id: "reports",   label: "التقارير", icon: "report" },
+    { id: "store",     label: "المتجر",   icon: "gift" },
+    { id: "settings",  label: "الإعدادات", icon: "settings" }
   ],
   parent: [
     { id: "dashboard", label: "الرئيسية", icon: "grid" },
-    { id: "today",     label: "واجب اليوم", icon: "book" },
-    { id: "progress",  label: "سير الخطة", icon: "target" },
-    { id: "store",     label: "المتجر",   icon: "gift" }
+    { id: "mushaf",    label: "القرآن",   icon: "book" },
+    { id: "reports",   label: "التقارير", icon: "report" },
+    { id: "store",     label: "المتجر",   icon: "gift" },
+    { id: "settings",  label: "الإعدادات", icon: "settings" }
   ]
 };
 
@@ -41239,7 +41437,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0840";
+  var APP_BUILD = "20261005-1720";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
