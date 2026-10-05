@@ -4435,14 +4435,33 @@ function syncTeacherRecord(u) {
 
   let t = DB.teachers.find(key);
   const mq = Array.isArray(DB.mosques) ? DB.mosques : [];
+
+  /* =======================================================================
+     منشأةُ المعلّم: الفارغُ لا يمسح المملوء
+     -----------------------------------------------------------------------
+     كانت هذه الدالّةُ تنسخ mosqueId من مستند users إلى سجلّ المعلّم نسخاً
+     أعمى. فإذا نُقل المعلّمُ إلى مسجدٍ آخرَ بتعديل سجلّه، أعادت المزامنةُ
+     التاليةُ المسجدَ القديمَ من مستند users — أو كتبت فراغاً إن لم يكن فيه
+     مسجدٌ أصلاً، فيُمحى مسجدُ المعلّم من سجلّه.
+
+     ونتيجتُها ما رآه: userScopeIds لا تجد له منشأةً فيُحرَم، وتظهر «حسابك
+     غير مرتبط بمنشأة» ولا يرى حلقةً ولا طالباً.
+
+     القاعدةُ الآن: ما في مستند users يُقدَّم إن كان مملوءاً، وإلا بقي ما في
+     سجلّ المعلّم كما هو. ولا يُمحى حقلٌ بفراغٍ أبداً.
+     ======================================================================= */
+  const mid0 = String(u.mosqueId || (t && t.mosqueId) || "");
+  const cid0 = u.complexId || (t && t.complexId) || STATE.complexId;
+
   const fields = {
     name: u.name || "—",
     uid: u.uid || "",
     username: u.username || u.email || u.loginEmail || "—",
     phone: u.phone || "—",
-    complexId: u.complexId || STATE.complexId,
-    mosqueId: u.mosqueId || "",
-    mosque: u.mosqueId ? ((mq.find(m => String(m.id) === String(u.mosqueId)) || {}).name || "—") : "—",
+    complexId: cid0,
+    mosqueId: mid0,
+    mosque: mid0 ? ((mq.find(m => String(m.id) === String(mid0)) || {}).name
+                    || (t && t.mosque) || "—") : ((t && t.mosque) || "—"),
     status: u.active === false ? "متوقف" : "نشط"
   };
 
@@ -4555,6 +4574,25 @@ function facKey(kind, id) { return kind + ":" + String(id); }
 function userScopeIds(u) {
   if (!u) return [];
   if (Array.isArray(u.scopeIds) && u.scopeIds.length) return u.scopeIds.map(String);
+
+  /* نطاقُ المعلّم يتبع سجلَّه في teachers، لا الحقلَ المفردَ في حسابه:
+     ذاك أثرُ مزامنةٍ قديمةٍ يركد على المسجد الأوّل، فإذا نُقل المعلّمُ بقي
+     محصوراً في مسجدٍ لا يعمل فيه فلا يرى حلقاته. والمملوءُ من سجلّه يسبق،
+     وإن خلا سجلُّه عاد إلى الحقل المفرد كما كان. */
+  if ((u.role || "") === "teacher") {
+    const mine = (Array.isArray(DB.teachers) ? DB.teachers : []).find(x => x &&
+         (u.uid && String(x.uid || "") === String(u.uid))
+      || (u.username && String(x.username || "") === String(u.username))
+      || (u.email && String(x.username || "").toLowerCase() === String(u.email).toLowerCase())
+      || (u.name && String(x.name || "").trim() === String(u.name).trim()));
+    if (mine && (mine.mosqueId || mine.complexId)) {
+      const o = [];
+      if (mine.mosqueId)  o.push(facKey("mosque",  mine.mosqueId));
+      if (mine.complexId) o.push(facKey("complex", mine.complexId));
+      return o;
+    }
+  }
+
   /* السجلات القديمة: حقل مفرد */
   if (u.mosqueId)  return [facKey("mosque", u.mosqueId)];
   if (u.complexId) return [facKey("complex", u.complexId)];
@@ -39517,7 +39555,11 @@ window.syncMyScope = function (force) {
   const u = (STATE && STATE.user) || {};
   if (!u.uid) return Promise.resolve(false);
 
-  const rec = (cur("users") || []).find(x =>
+  /* القراءةُ هنا من مرايا DB لا من cur: cur مصفّاةٌ بالنطاق، وهذه الدالّةُ
+     هي التي تُنشئ النطاق. فالحسابُ بلا نطاقٍ كان لا يرى مستندَه ولا سجلَّ
+     معلّمه، فلا يُحسب له نطاقٌ فيبقى بلا نطاق — قفلٌ على نفسه لا يُفكّ إلا
+     بالقراءة غيرِ المصفّاة. وهذا الاستثناءُ الوحيدُ من عرف cur. */
+  const rec = (Array.isArray(DB.users) ? DB.users : []).find(x =>
     String(x.uid || x.id) === String(u.uid));
   if (!rec) return Promise.resolve(false);
 
@@ -39525,11 +39567,11 @@ window.syncMyScope = function (force) {
 
   /* حلقات المعلّم: ما أُسند إليه أصالةً أو مساعداً */
   if (rec.role === "teacher") {
-    const t = (cur("teachers") || []).find(x =>
+    const t = (Array.isArray(DB.teachers) ? DB.teachers : []).find(x =>
       String(x.uid) === String(u.uid) ||
       (x.name && u.name && nameKey(x.name) === nameKey(u.name)));
 
-    const ids = (cur("circles") || []).filter(c => {
+    const ids = (Array.isArray(DB.circles) ? DB.circles : []).filter(c => {
       if (!c) return false;
       if (t && String(c.teacherId) === String(t.id)) return true;
       if (u.uid && String(c.teacherId) === String(u.uid)) return true;
@@ -41060,7 +41102,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0530";
+  var APP_BUILD = "20261005-0610";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
