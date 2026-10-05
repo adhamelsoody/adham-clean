@@ -568,8 +568,11 @@
       try {
         var u = ME();
         var role = u && u.role;
-        /* المعلّم: شاشةُ المحادثات بفلاترها هي وجهتُه — بطلبٍ صريح */
-        if (role === "teacher" && window.PAGES && window.PAGES["teacher/messages"] &&
+        /* شاشةُ المحادثات بفلاترها هي وجهةُ الجميع — كانت للمعلّم وحدَه
+           ويقع غيرُه على الصندوق القديم. و openInbox و openContacts
+           باقيتان تُستعملان متى لم تكن للدور شاشةٌ مسجَّلة. */
+        var iface = (window.STATE && window.STATE.iface) || "";
+        if (window.PAGES && window.PAGES[iface + "/messages"] &&
             typeof window.go === "function") { window.go("messages"); return; }
         if (role === "parent") openInbox();
         else openContacts();

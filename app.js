@@ -24526,6 +24526,12 @@ function tchatMsgs(kind, id) {
       .concat(inbox.filter(m => m && !m.studentId && !m.circleMsg));
   } else if (kind === "circle") {
     out = mine.filter(m => m.circleMsg && String(m.circleId || "") === String(id));
+  } else if (kind === "teacher") {
+    const t = (cur("teachers") || []).find(x => String(x.id) === String(id));
+    const tid = t ? [String(t.id), String(t.uid || "")].filter(Boolean) : [String(id)];
+    out = mine.filter(m => String(m.toTeacherId || "") === String(id))
+      .concat(inbox.filter(m => m && (tid.indexOf(String(m.fromId || "")) > -1 ||
+        tid.indexOf(String(m.fromUid || "")) > -1)));
   } else {
     const st = (cur("students") || []).find(x => String(x.id) === String(id));
     const sid = st ? [String(st.id), String(st.uid || "")].filter(Boolean) : [String(id)];
@@ -24542,11 +24548,69 @@ function tchatMsgs(kind, id) {
   }).sort((a, b) => (a.ts || 0) - (b.ts || 0));
 }
 
-/* المحادثاتُ المتاحةُ للمعلّم: الإدارةُ وحلقاتُه وطلابُه */
-function tchatThreads() {
-  const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
-  if (!t) return [];
+/* =========================================================================
+   مَن يملك صاحبُ الجلسة مراسلتَه — لكلّ دورٍ أهلُه
+   -------------------------------------------------------------------------
+   كانت الشاشةُ للمعلّم وحدَه: تبدأ بـ myTeacherRecord فإن لم يكن معلّماً
+   عادت فارغة، فيقع غيرُه على الصندوق القديم. صارت المصادرُ تُختار بالدور
+   والشاشةُ واحدةٌ للجميع — لا نسخةَ ثانيةً للشات ولا مجموعةَ جديدة في
+   قاعدة البيانات: site_messages كما هي. */
+function chatPeers() {
+  const u = (STATE && STATE.user) || {};
+  const r = String(u.role || "");
+  const out = [];
+  const push = (kind, id, name) => { if (name) out.push({ kind, id: String(id || ""), name }); };
 
+  if (r === "teacher") {
+    push("admin", "", "الإدارة");
+    (typeof tchMyCircles === "function" ? tchMyCircles() : [])
+      .forEach(c => push("circle", c.id, c.name || "حلقة"));
+    (typeof tmsgKids === "function" ? tmsgKids() : [])
+      .forEach(x => push("student", x.id, x.name || "طالب"));
+    return out;
+  }
+
+  if (r === "student" || r === "parent") {
+    /* ما سمحت به الإدارةُ في «تطبيق الطالب» لا غير */
+    const allow = typeof stuChatTargets === "function" ? stuChatTargets() : [];
+    const st = typeof activeStudent === "function" ? activeStudent() : null;
+    allow.forEach(a => {
+      if (a.k === "admin") push("admin", "", "إدارة المجمّع");
+      if (a.k === "teacher" && st) {
+        const tid = String(st.teacherId || "");
+        push("teacher", tid || "t", st.teacher || "معلّم الحلقة");
+      }
+    });
+    return out;
+  }
+
+  /* الإدارةُ والمشرفون ومديرو المنشآت: معلّموهم وطلابُهم في نطاقهم،
+     و«الإدارة» ليست بنداً لأنّهم هم. والقوائمُ مصفّاةٌ بـ cur أصلاً. */
+  push("admin", "", "صندوق الإدارة");
+  (cur("teachers") || []).filter(x => x && x.status !== "متوقف")
+    .forEach(x => push("teacher", x.id, x.name || "معلّم"));
+  (cur("students") || []).filter(x => x && x.status !== "متوقف")
+    .forEach(x => push("student", x.id, x.name || "طالب"));
+  return out;
+}
+
+/* رقائقُ الفلترة بحسب الدور: «طلابي» لا معنى لها عند الطالب، و«المعلّمون»
+   لا معنى لها عند المعلّم. والقائمةُ تُبنى ممّا عند صاحب الجلسة فعلاً. */
+function chatFilters() {
+  const r = String(((STATE && STATE.user) || {}).role || "");
+  const has = k => chatPeers().some(p => p.kind === k);
+  const out = [["all", "الكل", "chat"]];
+  if (r === "teacher") { if (has("student")) out.push(["kids", "طلابي", "users"]); }
+  else if (r !== "student" && r !== "parent") {
+    if (has("teacher")) out.push(["tchs", "المعلّمون", "teacher"]);
+    if (has("student")) out.push(["kids", "الطلاب", "users"]);
+  }
+  out.push(["unread", "غير المقروء", "bell"]);
+  return out;
+}
+
+/* المحادثاتُ المتاحةُ لصاحب الجلسة */
+function tchatThreads() {
   const rows = [];
   const add = (kind, id, name) => {
     const ms = tchatMsgs(kind, id);
@@ -24562,12 +24626,7 @@ function tchatThreads() {
     });
   };
 
-  add("admin", "", "الإدارة");
-  (typeof tchMyCircles === "function" ? tchMyCircles() : [])
-    .forEach(c => add("circle", c.id, c.name || "حلقة"));
-  (typeof tmsgKids === "function" ? tmsgKids() : [])
-    .forEach(s => add("student", s.id, s.name || "طالب"));
-
+  chatPeers().forEach(p => add(p.kind, p.id, p.name));
   return rows;
 }
 
@@ -24579,13 +24638,15 @@ function tchatPinRank(r) {
   if (!r) return 2;
   if (r.kind === "admin")  return 0;
   if (r.kind === "circle") return 1;
-  return 2;
+  if (r.kind === "teacher") return 2;
+  return 3;
 }
 
 function tchatVisible() {
   const f = TCHAT.filter;
   return tchatThreads().filter(r => {
     if (f === "admin")  return r.kind === "admin" || r.kind === "circle";
+    if (f === "tchs")   return r.kind === "teacher";
     if (f === "kids")   return r.kind === "student";
     if (f === "unread") return r.unread > 0;
     return true;
@@ -24622,6 +24683,7 @@ window.tchatSearch = function (v) {
 function tchatCount(k) {
   const all = tchatThreads();
   if (k === "admin")  return all.filter(r => r.kind === "admin" || r.kind === "circle").length;
+  if (k === "tchs")   return all.filter(r => r.kind === "teacher").length;
   if (k === "kids")   return all.filter(r => r.kind === "student").length;
   if (k === "unread") return all.filter(r => r.unread > 0).length;
   return all.length;
@@ -24650,9 +24712,10 @@ function tchatRows() {
 function tchatList() {
   /* من كان على الفلتر المرفوع في جلسةٍ مفتوحة يعود إلى «الكل»، فلا يبقى
      على تصفيةٍ لا رقاقةَ لها ولا سبيلَ للخروج منها. */
-  if (!TCHAT_FILTERS.some(f => f[0] === TCHAT.filter)) TCHAT.filter = "all";
+  const FILTERS = chatFilters();
+  if (!FILTERS.some(f => f[0] === TCHAT.filter)) TCHAT.filter = "all";
 
-  const chips = TCHAT_FILTERS.map(([k, h]) =>
+  const chips = FILTERS.map(([k, h]) =>
     `<button type="button" class="tcf-chip${TCHAT.filter === k ? " on" : ""}"
       onclick="window.tchatFilter('${k}')">${esc(h)}
       <b>${toArabicDigits(tchatCount(k))}</b></button>`).join("");
@@ -24698,6 +24761,11 @@ function tchatMail(kind, id) {
 function tchatAvatar(kind, id, name, size) {
   if (kind === "admin")  return ic("shield", size || 19);
   if (kind === "circle") return ic("book", size || 19);
+  if (kind === "teacher") {
+    const t = (cur("teachers") || []).find(x => String(x.id) === String(id));
+    if (t && t.photo) return `<img src="${esc(t.photo)}" alt="">`;
+    return ic("teacher", size || 19);
+  }
   try {
     const st = (cur("students") || []).find(x => String(x.id) === String(id));
     if (st && st.photo) return `<img src="${esc(st.photo)}" alt="">`;
@@ -25119,8 +25187,12 @@ function teacherChat() {
 
 /* الإرسالُ من صفحة الدردشة — بالسجلّ نفسِه الذي تكتبه شاشةُ الرسائل */
 window.tchatSend = function (xtra) {
+  const me0 = (STATE && STATE.user) || {};
+  const role0 = String(me0.role || "");
+  /* كان الإرسالُ يقف على سجلّ المعلّم، فلا يرسل غيرُه شيئاً. صار اسمُ
+     المرسِل من سجلّه إن كان معلّماً، وإلا من حسابه. */
   const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
-  if (!t) return;
+  if (role0 === "teacher" && !t) return;
 
   /* xtra: حمولةٌ جاهزةٌ لا تأتي من حقل الكتابة — كالرسالة الصوتية. ونصُّها
      لازمٌ لأنّ قاعدةَ site_messages تشترط text غيرَ فارغ. ومسارُ الإرسال
@@ -25130,9 +25202,10 @@ window.tchatSend = function (xtra) {
 
   const u = (STATE && STATE.user) || {};
   const base = Object.assign({
-    kind: "teacher",
+    kind: role0 || "user",
     fromUid: String(u.uid || u.id || ""),
-    fromName: t.name || u.name || "المعلّم",
+    fromName: (t && t.name) || u.name || "—",
+    fromRole: role0,
     title: "محادثة", text: txt, ts: Date.now(), read: false
   }, (xtra && xtra.fields) || {});
   if (!Array.isArray(DB.site_messages)) DB.site_messages = [];
@@ -25144,8 +25217,20 @@ window.tchatSend = function (xtra) {
     try { persistSet("site_messages", rec); } catch (e) {}
     sent = 1;
 
+  } else if (TCHAT.kind === "teacher") {
+    const tt = (cur("teachers") || []).find(x => String(x.id) === String(TCHAT.id));
+    const rec = Object.assign({
+      id: "tc" + Date.now(),
+      toTeacherId: String(TCHAT.id),
+      toId: String((tt && (tt.uid || tt.id)) || TCHAT.id),
+      toEmail: String((tt && tt.email) || "").toLowerCase()
+    }, base);
+    DB.site_messages.push(rec);
+    try { persistSet("site_messages", rec); } catch (e) {}
+    sent = 1;
+
   } else if (TCHAT.kind === "circle") {
-    if (!teacherCan("msgCircle")) {
+    if (role0 === "teacher" && !teacherCan("msgCircle")) {
       showToast("صلاحيةُ الرسالة العامة غيرُ مفعَّلةٍ لحسابك", "warn"); return;
     }
     (cur("students") || []).filter(x => x && String(x.circleId || "") === String(TCHAT.id) &&
@@ -25162,7 +25247,7 @@ window.tchatSend = function (xtra) {
     });
 
   } else {
-    if (!teacherCan("msgStudents")) {
+    if (role0 === "teacher" && !teacherCan("msgStudents")) {
       showToast("صلاحيةُ مراسلة الطلاب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
     }
     const st = (cur("students") || []).find(x => String(x.id) === String(TCHAT.id));
@@ -25183,11 +25268,21 @@ window.tchatSend = function (xtra) {
 };
 
 function teacherMessages() {
+  const u0 = (STATE && STATE.user) || {};
+  const r0 = String(u0.role || "");
   const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
-  if (!t) {
-    return `<div class="page">${pageHead("الرسائل", "")}
+  /* المعلّمُ وحدَه يحتاج سجلَّه لتُعرَف حلقاتُه؛ وغيرُه يدخل الشاشةَ نفسَها */
+  if (r0 === "teacher" && !t) {
+    return `<div class="page">${pageHead("المحادثات", "")}
       <div class="card">${emptyState("لم يُربط حسابك بسجلّ معلّم",
         "راجع الإدارة لربط حسابك، فتظهر حلقاتُك وطلابُك.")}</div></div>`;
+  }
+  /* الطالبُ ووليُّ أمره: المراسلةُ إذنٌ من الإدارة */
+  if ((r0 === "student" || r0 === "parent") &&
+      typeof stuChatTargets === "function" && !stuChatTargets().length) {
+    return `<div class="page">${pageHead("المحادثات", "")}
+      <div class="card">${emptyState("المراسلةُ موقوفة",
+        "أوقفت الإدارةُ المراسلةَ من التطبيق. راجع إدارةَ مجمّعك.")}</div></div>`;
   }
 
   const inbox = typeof myMessages === "function" ? myMessages() : [];
@@ -25205,12 +25300,12 @@ function teacherMessages() {
 
   /* الإدارة وجهةٌ بلا اختيار: تصل المشرفَ والمدير، والحلقةُ تُختار بنفسها */
   const tabs = tmsgTabs();
-  if (!tabs.length) {
-    return `<div class="page">${pageHead("الرسائل", esc(t.name || ""))}
+  if (r0 === "teacher" && !tabs.length) {
+    return `<div class="page">${pageHead("المحادثات", esc((t && t.name) || ""))}
       <div class="card">${emptyState("لا محادثاتٍ متاحةٌ لحسابك",
         "صلاحياتُ المراسلة غيرُ مفعَّلةٍ — راجع الإدارة.")}</div></div>`;
   }
-  if (!tabs.some(x => x[0] === TMSG.to)) TMSG.to = tabs[0][0];
+  if (tabs.length && !tabs.some(x => x[0] === TMSG.to)) TMSG.to = tabs[0][0];
   const needPick = TMSG.to !== "admin" && TMSG.to !== "circle";
 
   return `<div class="page">
@@ -32671,6 +32766,11 @@ const PAGES = {
   "student/dashboard": studentDashboard, "student/today": studentToday, "student/tomorrow": studentTomorrow,
   "student/progress": studentProgress, "student/attendance": studentAttendance, "student/results": studentResults,
   "student/notifications": studentNotifications,
+  /* الشاتُ الجديد لكلّ النظام: الشاشةُ واحدةٌ والمصادرُ بالدور (chatPeers).
+     والصفحاتُ القديمةُ لم تُحذف — parentMessages باقيةٌ في مكانها. */
+  "admin/messages": teacherMessages, "admin/chat": teacherChat,
+  "student/messages": teacherMessages, "student/chat": teacherChat,
+  "parent/chat": teacherChat,
   "teacher/messages": teacherMessages, "teacher/chat": teacherChat, "teacher/mushaf": mushafPage, "student/mushaf": mushafPage,
   "student/store": studentStore, "parent/store": studentStore,
   "student/reports": studentReports, "parent/reports": studentReports,
@@ -32683,7 +32783,9 @@ const PAGES = {
   "parent/attendance": studentAttendance,
   "parent/results": studentResults,
   "parent/progress": studentProgress,
-  "parent/messages": parentMessages,
+  /* وليُّ الأمر إلى الشاشة الجديدة. و parentMessages لم تُحذف: تُفتح
+     بـ parent/messages-old متى احتيج إليها. */
+  "parent/messages": teacherMessages, "parent/messages-old": parentMessages,
   "parent/notifications": studentNotifications,
   "teacher/duties": teacherDuties,
   "teacher/tomorrow": teacherTomorrow,
@@ -42361,7 +42463,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-0410";
+  var APP_BUILD = "20261006-0450";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
