@@ -31133,49 +31133,79 @@ function studentSettings() {
   const st = typeof activeStudent === "function" ? activeStudent() : null;
   const u = (STATE && STATE.user) || {};
 
-  const rows = [
-    ["الاسم",        (st && st.name) || u.name || "—"],
-    ["رقم الهوية",   (st && (st.nid || st.id)) || "—"],
-    ["الحلقة",       (st && st.circle) || "—"],
-    ["المسجد",       (st && st.mosque) || "—"],
-    ["المجمّع",      (st && typeof complexName === "function"
-                        ? complexName(st.complexId) : "") || "—"]
-  ].map(([h, v]) => `<div class="kv"><span>${esc(h)}</span><strong>${esc(String(v))}</strong></div>`).join("");
+  /* شكلُ «المزيد» المطلوب: ترويسةٌ خضراء، ثمّ مجموعاتُ صفوفٍ لكلٍّ أيقونتُها
+     وسهمُها، ثمّ الخروجُ أحمرَ في صفٍّ مستقلّ، ثمّ رقمُ الإصدار. */
+  const place = st ? [st.mosque || "", (typeof complexName === "function"
+    ? complexName(st.complexId) : "")].filter(Boolean).join(" · ") : "";
 
-  return `<div class="page">
-    ${pageHead("الإعدادات", esc((st && st.name) || ""))}
-    ${typeof kidSwitcher === "function" ? kidSwitcher() : ""}
-    ${st ? studentProfileCard(st) : ""}
+  const row = (icon, label, act) => `<button type="button" class="mre-row" ${act}>
+    <span class="mre-ic">${ic(icon, 17)}</span>
+    <span class="mre-lbl">${esc(label)}</span>
+    <span class="mre-go">${ic("arrowLeft", 15)}</span>
+  </button>`;
 
-    <div class="tsc-h">بياناتي</div>
-    <div class="card trp-card">
-      ${rows}
-      ${/* البريدُ وحدَه قابلٌ للتعديل مع الصورة — وبقيّةُ البيانات من الإدارة */""}
-      <div class="field full" style="margin-top:12px">
-        <label>البريد الإلكتروني</label>
-        <input id="stuMail" type="email" dir="ltr"
-          value="${esc(String((st && st.email) || u.email || ""))}">
-      </div>
-      <div class="row-actions">
-        <button class="btn btn-primary btn-sm" onclick="window.stuMailSave()">${
-          ic("check", 15)} حفظ البريد</button>
-      </div>
-      ${noteCard("الصورةُ والبريدُ وحدَهما يُعدَّلان من هنا. وبقيّةُ البيانات تُعدَّل من إدارة المجمّع.")}
+  const group = (title, rows) => `<div class="mre-h">${esc(title)}</div>
+    <div class="card mre-card">${rows}</div>`;
+
+  return `<div class="page mre-page">
+    <div class="mre-hero">
+      <span class="mre-av">${st && st.photo
+        ? `<img src="${esc(st.photo)}" alt="">` : ic("user", 22)}</span>
+      <span class="mre-who">
+        <strong>${esc((st && st.name) || u.name || "—")}</strong>
+        ${place ? `<small>${esc(place)}</small>` : ""}
+      </span>
     </div>
 
-    <div class="tsc-h">الحساب</div>
-    <div class="card trp-card">
-      <div class="row-actions">
-        <button class="btn btn-soft btn-sm" onclick="window.stuPassReset()">${
-          ic("lock", 15)} تغيير كلمة المرور</button>
-      </div>
-      <div style="height:10px"></div>
-      <button class="btn btn-danger" style="width:100%;justify-content:center"
-        onclick="window.tchLogout && window.tchLogout()">${
-        ic("lock", 16)} تسجيل الخروج</button>
+    ${group("الحساب",
+      row("user", "الملف الشخصي", `onclick="window.stuProfileOpen()"`) +
+      row("lock", "تغيير كلمة المرور", `onclick="window.stuPassReset()"`))}
+
+    ${group("التعلّم",
+      row("book", "المصحف", `data-action="nav" data-page="mushaf"`) +
+      row("report", "تقاريري", `data-action="nav" data-page="reports"`) +
+      row("gift", "المتجر", `data-action="nav" data-page="store"`))}
+
+    <div class="card mre-card">
+      <button type="button" class="mre-row mre-out"
+        onclick="window.tchLogout && window.tchLogout()">
+        <span class="mre-lbl">${ic("lock", 16)} تسجيل الخروج</span>
+      </button>
     </div>
+
+    <div class="mre-ver">الإصدار ${toArabicDigits(String(
+      (typeof APP_BUILD !== "undefined" && APP_BUILD) || ""))}</div>
   </div>`;
 }
+
+/* الملفُّ الشخصيّ: بياناتُه وما يملك تعديلَه — الصورةُ والبريدُ وحدَهما */
+window.stuProfileOpen = function () {
+  const st = typeof activeStudent === "function" ? activeStudent() : null;
+  if (!st) { showToast("لا طالبَ مفتوح", "warn"); return; }
+  const u = (STATE && STATE.user) || {};
+
+  const rows = [
+    ["الاسم",      st.name || u.name || "—"],
+    ["رقم الهوية", st.nid || st.id || "—"],
+    ["الحلقة",     st.circle || "—"],
+    ["المسجد",     st.mosque || "—"],
+    ["المجمّع",    (typeof complexName === "function" ? complexName(st.complexId) : "") || "—"]
+  ].map(([h, v]) => `<div class="kv"><span>${esc(h)}</span><strong>${esc(String(v))}</strong></div>`).join("");
+
+  openModal("الملف الشخصي", esc(st.name || ""),
+    `${studentProfileCard(st)}
+     <div class="card trp-card">${rows}
+       <div class="field full" style="margin-top:12px">
+         <label>البريد الإلكتروني</label>
+         <input id="stuMail" type="email" dir="ltr"
+           value="${esc(String(st.email || u.email || ""))}">
+       </div>
+       ${noteCard("الصورةُ والبريدُ وحدَهما يُعدَّلان. وبقيّةُ البيانات من إدارة المجمّع.")}
+     </div>`,
+    `<button class="btn btn-primary" onclick="window.stuMailSave()">${
+      ic("check", 16)} حفظ البريد</button>
+     <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+};
 
 window.stuMailSave = function () {
   const st = typeof activeStudent === "function" ? activeStudent() : null;
@@ -31215,6 +31245,193 @@ function stuPointsLog(st) {
           <td class="muted" style="font-size:12px">${esc(x.date || "")}</td>
         </tr>`;
       }).join("")}</tbody></table></div></div>
+  </div>`;
+}
+
+/* =========================================================================
+   موقعُ الطالب — الشكلُ المطلوب
+   -------------------------------------------------------------------------
+   الرئيسيةُ كما في الصورة: ترويسةٌ خضراءُ داكنةٌ فيها تحيّةُ الوقت وصورتُه
+   واسمُه ومسجدُه ومجمّعُه وجرسٌ ومحادثات، ثمّ «استريكاتي» ثلاثَ بطاقاتٍ
+   داخل الترويسة، ثمّ بطاقةُ «مهام اليوم» بتبويباتها الثلاثة.
+
+   والستريكاتُ من المواصفات: «مؤشرات تحفيزية تعتمد على استمرار الطالب دون
+   انقطاع»، و«إذا سجّلت الإدارةُ الطالبَ مستأذنًا فلا ينقطع الستريك».
+   تُحسب من سجلّات الحضور والتسميع المحفوظة ولا تُخزَّن.
+   ========================================================================= */
+
+/* تحيّةُ الوقت */
+function stuGreet() {
+  const h = new Date().getHours();
+  if (h < 12) return "صباح الخير";
+  if (h < 17) return "طاب يومك";
+  return "مساء الخير";
+}
+
+/* يومٌ قبل يوم */
+function stuPrevDay(iso, n) {
+  const d = new Date(String(iso || todayISO()) + "T12:00:00");
+  d.setDate(d.getDate() - (Number(n) || 1));
+  return d.toISOString().slice(0, 10);
+}
+
+/* =========================================================================
+   الستريكات — ثلاثٌ: الحضور · التسميع · التسميع بلا أخطاء
+   -------------------------------------------------------------------------
+   تُعدّ من اليوم إلى الوراء: يومٌ مُرضٍ يزيد، ويومُ الاستئذان يُتخطّى ولا
+   يقطع، وأوّلُ يومٍ مخالفٍ أو بلا سجلٍّ يوقف العدّ.
+   ========================================================================= */
+function stuStreaks(st) {
+  const att = (typeof studentAtt === "function" ? studentAtt(st) : []) || [];
+  const recs = (typeof studentRecs === "function" ? studentRecs(st) : []) || [];
+
+  const byDay = {};
+  att.forEach(a => { if (a && a.date) byDay[String(a.date)] = String(a.status || ""); });
+
+  const recDays = {}, cleanDays = {};
+  recs.forEach(r => {
+    if (!r || !r.date) return;
+    const d = String(r.date);
+    recDays[d] = (recDays[d] || 0) + 1;
+    const e = Number(r.errors) || 0;
+    if (cleanDays[d] !== false) cleanDays[d] = (e === 0);
+    if (e > 0) cleanDays[d] = false;
+  });
+
+  const run = ok => {
+    let n = 0, d = todayISO();
+    for (let i = 0; i < 400; i++) {
+      const s = byDay[d];
+      if (s === "مستأذن") { d = stuPrevDay(d, 1); continue; }   /* لا يقطع */
+      if (!ok(d, s)) break;
+      n++; d = stuPrevDay(d, 1);
+    }
+    return n;
+  };
+
+  return {
+    att:   run((d, s) => s === "حاضر" || s === "متأخر"),
+    recite: run(d => !!recDays[d]),
+    clean: run(d => !!recDays[d] && cleanDays[d] === true)
+  };
+}
+
+/* ترويسةُ الطالب وستريكاتُه — كتلةٌ واحدةٌ خضراءُ في صدر الرئيسية */
+function stuHero(st) {
+  const u = (STATE && STATE.user) || {};
+  const s = stuStreaks(st);
+  const place = [st.mosque || "", (typeof complexName === "function"
+    ? complexName(st.complexId) : "")].filter(Boolean).join(" · ");
+
+  const kids = (typeof myKids === "function" ? myKids() : []) || [];
+  const many = u.role === "parent" && kids.length > 1;
+
+  const cards = [
+    ["استمرارية الحضور",  s.att],
+    ["استمرارية التسميع", s.recite],
+    ["التسميع بلا أخطاء", s.clean]
+  ].map(([h, n]) => `<div class="shx-card">
+      <span class="shx-fire">${ic("star", 15)}</span>
+      <b class="shx-num">${toArabicDigits(n)}</b>
+      <span class="shx-day">يوم</span>
+      <span class="shx-lbl">${esc(h)}</span>
+    </div>`).join("");
+
+  return `<div class="shx">
+    <div class="shx-top">
+      <span class="shx-btns">
+        <button type="button" class="shx-ic" title="التنبيهات"
+          data-action="nav" data-page="notifications">${ic("bell", 18)}</button>
+        <button type="button" class="shx-ic" title="المحادثات"
+          onclick="window.openMsgPanel && window.openMsgPanel()">${ic("chat", 18)}</button>
+      </span>
+      <span class="shx-who">
+        <small class="shx-greet">${esc(stuGreet())}</small>
+        <strong class="shx-name"${many ? ` role="button" onclick="window.kidPickOpen && window.kidPickOpen()"` : ""}>${
+          esc(st.name || "—")}${many ? " " + ic("arrowDown", 14) : ""}</strong>
+        ${place ? `<small class="shx-place">${ic("mosque", 12)} ${esc(place)}</small>` : ""}
+      </span>
+      <span class="shx-av">${st.photo
+        ? `<img src="${esc(st.photo)}" alt="">`
+        : ic("user", 22)}</span>
+    </div>
+
+    <div class="shx-h">${ic("star", 14)} استريكاتي</div>
+    <div class="shx-cards">${cards}</div>
+  </div>`;
+}
+
+/* قائمةُ الأبناء لوليّ الأمر — تُفتح بالضغط على الاسم */
+window.kidPickOpen = function () {
+  const kids = (typeof myKids === "function" ? myKids() : []) || [];
+  if (!kids.length) return;
+  openModal("أبنائي", "",
+    `<div class="tat-list">${kids.map(k => `<button type="button" class="tat-row"
+      style="width:100%;cursor:pointer;text-align:start"
+      onclick="window.pickKid && window.pickKid('${jsAttr(k.id)}'); window.closeModal && closeModal();">
+      <span class="tat-av">${k.photo ? `<img src="${esc(k.photo)}" alt="">` : ic("user", 16)}</span>
+      <span class="tat-name">${esc(k.name || "—")}</span>
+    </button>`).join("")}</div>`, "");
+};
+
+/* =========================================================================
+   مهامُّ اليوم — الدرسُ السابق ودرسُ اليوم والدرسُ القادم
+   -------------------------------------------------------------------------
+   المواصفات: «قسم بعنوان الدرس وفيه ثلاثة خيارات… يمكن للطالب التنقل بينها
+   والاطلاع على تفاصيل كل درس»، وكلُّ واجبٍ في شريطٍ مستقلٍّ بنوعه ونطاقه
+   وحالة تسميعه.
+   ========================================================================= */
+const SLSN = { tab: "today" };
+window.stuLessonTab = function (k) { SLSN.tab = String(k || "today"); mount(); };
+
+function stuLessonDate() {
+  const t = todayISO();
+  return SLSN.tab === "prev" ? stuPrevDay(t, 1)
+       : SLSN.tab === "next" ? stuPrevDay(t, -1) : t;
+}
+
+function stuLessonRows(st) {
+  const d = stuLessonDate();
+  const list = (cur("assignments") || []).filter(a => a &&
+    String(a.studentId) === String(st.id) && String(a.date) === String(d));
+
+  if (!list.length) {
+    return `<div class="ntf-empty">${SLSN.tab === "next"
+      ? "لا واجباتٍ مقرّرةٌ للدرس القادم بعد"
+      : "لا واجباتِ هذا اليوم"}</div>`;
+  }
+
+  return `<div class="sls-list">${list.map(a => {
+    const done = a.status === "done";
+    const rng = typeof tstuRange === "function" ? tstuRange(a) : "";
+    return `<div class="sls-row${done ? " on" : ""}">
+      <span class="sls-ico">${ic("book", 17)}</span>
+      <span class="sls-mid">
+        <strong>${esc(a.kindName || a.kind || "واجب")}</strong>
+        ${rng ? `<small>${esc(rng)}</small>` : ""}
+      </span>
+      <span class="sls-st ${done ? "on" : ""}">${done ? "سُمِّع" : "في انتظار التسميع"}</span>
+      <span class="sls-tick${done ? " on" : ""}">${done ? ic("check", 13) : ""}</span>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function stuTasksCard(st) {
+  const d = stuLessonDate();
+  const tabs = [["prev", "الدرس السابق"], ["today", "درس اليوم"], ["next", "الدرس القادم"]]
+    .map(([k, h]) => `<button type="button" class="sls-tab${SLSN.tab === k ? " on" : ""}"
+      onclick="window.stuLessonTab('${k}')">${esc(h)}</button>`).join("");
+
+  const pts = Number(st.points) || 0;
+
+  return `<div class="card sls-card">
+    <div class="sls-head">
+      <strong>${ic("book", 17)} مهام اليوم</strong>
+      <span class="sls-date">${ic("calendar", 13)} ${toArabicDigits(d)}</span>
+    </div>
+    <div class="sls-tabs">${tabs}</div>
+    <div class="sls-pts">النقاط: <b>${toArabicDigits(pts)}</b></div>
+    ${stuLessonRows(st)}
   </div>`;
 }
 
@@ -31318,10 +31535,13 @@ function studentDashboard() {
     </div>`).join("")
     : `<div class="muted" style="padding:14px;text-align:center">لا تسميعات مسجَّلة بعد.</div>`;
 
-  return `<div class="page">
-    ${pageHead("لوحة الطالب", esc(st.name) + " — " + esc(st.circle || "بلا حلقة"))}
+  /* الشكلُ المطلوب: الترويسةُ والستريكاتُ ثمّ «مهام اليوم»، وما كان من
+     ملخّصاتٍ وبطاقاتٍ باقٍ تحتها لم يُحذف منه شيء. */
+  return `<div class="page stu-home">
+    ${stuHero(st)}
     ${kidSwitcher()}
-    ${studentProfileCard(st)}
+    ${stuTasksCard(st)}
+    <div style="height:16px"></div>
     <div class="dash-top">
       <div class="card att-summary-wrap"><div class="att-rows">${attRows}</div></div>
       <div class="card facility-wrap"><div class="facility-grid">${cards}</div></div>
@@ -41437,7 +41657,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-1720";
+  var APP_BUILD = "20261005-1810";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
