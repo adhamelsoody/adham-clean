@@ -20702,7 +20702,7 @@ const STUAPP_DEFAULTS = {
   /* النوافذُ الظاهرةُ في شريطه السفليّ */
   show: { mushaf: true, reports: true, store: true },
   /* ما يظهر في رئيسيته */
-  home: { streaks: true, tasks: true, points: true, att: true },
+  home: { streaks: true, tasks: true, points: true, duty: true },
   /* أقسامُ تقاريره */
   reports: { att: true, perf: true, path: true, qmap: true }
 };
@@ -20756,7 +20756,7 @@ const STUAPP_ROWS = [
   ["home.streaks",   "استريكاتي في الرئيسية",   ""],
   ["home.tasks",     "مهامُّ اليوم",             ""],
   ["home.points",    "رصيدُ النقاط",             ""],
-  ["home.att",       "إحصاءُ الحضور في الرئيسية", ""],
+  ["home.duty",      "واجبُ اليوم في الرئيسية",  ""],
   ["reports.att",    "تقارير: إحصاءُ الحضور",    ""],
   ["reports.perf",   "تقارير: إحصاءُ التسميع",   ""],
   ["reports.path",   "تقارير: المسار",           ""],
@@ -32036,6 +32036,9 @@ function studentDashboard() {
   const faces = recs.reduce((a, r) => a + (Number(r.faces) || 0), 0);
   const prog = Number(p && p.progress) || 0;
 
+  /* صفوفُ الحضور رُفعت من صدر اللوحة بطلبٍ صريح وحلّ محلَّها «واجب اليوم».
+     وسجلُّ الحضور كاملاً باقٍ في شاشة «سجل الحضور» وفي «تقاريري»، وهذه
+     الحسبةُ باقيةٌ هنا لأنّ attRows قد يُستعمل من خارجها. */
   const attRows = [
     /* الأسماءُ من attLabel: ما سمّته الإدارةُ في «حالات التحضير» يظهر
        للطالب كما يظهر للمعلّم — وكانت مكتوبةً هنا فلا يتبع أحدُهما الآخر. */
@@ -32085,18 +32088,16 @@ function studentDashboard() {
     ${stuAppOn("home.tasks") ? stuTasksCard(st) : ""}
     <div style="height:16px"></div>
     <div class="dash-top">
-      ${stuAppOn("home.att")
-        ? `<div class="card att-summary-wrap"><div class="att-rows">${attRows}</div></div>` : ""}
+      ${stuAppOn("home.duty") ? `<div class="card dtw">
+        <div class="section-head"><h3>واجب اليوم</h3>
+          <button class="btn btn-ghost btn-sm" data-action="nav" data-page="today">التفاصيل</button></div>
+        <div class="dtw-body">${studentDuties(st, false)}</div>
+      </div>` : ""}
       <div class="card facility-wrap"><div class="facility-grid">${cards}</div></div>
       <div class="card gauge-wrap">${donut}</div>
     </div>
     <div style="height:16px"></div>
-    <div class="grid g-2" style="align-items:start">
-      <div class="card">
-        <div class="section-head"><h3>واجب اليوم</h3>
-          <button class="btn btn-ghost btn-sm" data-action="nav" data-page="today">التفاصيل</button></div>
-        ${studentDuties(st, false)}
-      </div>
+    <div class="grid g-1" style="align-items:start">
       <div class="card">
         <div class="section-head"><h3>آخر التسميعات</h3>
           <span class="badge b-gold">${recs.length}</span></div>
@@ -42217,7 +42218,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-0110";
+  var APP_BUILD = "20261006-0215";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

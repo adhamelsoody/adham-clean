@@ -11233,3 +11233,43 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
    فيها جرسُه ومحادثاتُه. */
 body[data-iface="student"] .topbar { display: none !important; }
 body[data-iface="student"] .content { padding-top: 14px; }
+
+/* ===== صدرُ لوحة الطالب: ثلاثُ بطاقاتٍ متناسقة ===== */
+/* رُفع ملخّصُ الحضور من الصدر وحلّ محلَّه «واجب اليوم» بطلبٍ صريح، وصُغِّرت
+   البطاقاتُ الثلاث وسُوّيت أحجامُها — اللوحةُ تُقرأ في الهاتف أوّلاً. */
+.g-1 { grid-template-columns: 1fr; }
+
+.dash-top > .card { padding: 14px; }
+.dash-top .section-head { margin-bottom: 10px; }
+.dash-top .section-head h3 { font-size: 14px; }
+
+/* بطاقةُ واجب اليوم: جسمُها يمرّ داخلها فلا تطول البطاقةُ على أختيها */
+.dtw { display: flex; flex-direction: column; min-width: 0; }
+.dtw-body { flex: 1; min-height: 0; max-height: 212px; overflow-y: auto;
+  scrollbar-width: thin; }
+.dtw-body > .card { border: 0; box-shadow: none; padding: 0; background: transparent; }
+.dtw-body .duty-range { font-size: 13px; }
+.dtw-body .duty-sum { font-size: 11.5px; }
+.dtw-body .empty-state { padding: 14px 8px; }
+.dtw-body .empty-state h4 { font-size: 13.5px; }
+.dtw-body .empty-state p { font-size: 11.5px; }
+
+/* البطاقاتُ الأربعُ أصغرَ قليلاً ليستويَ العمودُ مع أختيه */
+.dash-top .facility-grid { gap: 8px; }
+.dash-top .facility-card { min-height: 46px; }
+.dash-top .fc-num { flex: 0 0 54px; font-size: 17px; }
+.dash-top .fc-body { padding: 0 11px; gap: 8px; }
+.dash-top .fc-ico svg { width: 18px; height: 18px; }
+.dash-top .fc-label { font-size: 12.5px; }
+
+/* ومؤشّرُ الإنجاز بقدرهما */
+.dash-top .donut { width: 112px; height: 112px; }
+.dash-top .donut-label { font-size: 13px; }
+
+@media (max-width: 980px) {
+  /* في الهاتف: واجبُ اليوم أوّلاً، ثمّ البطاقات، ثمّ المؤشّر */
+  .dash-top { gap: 12px; }
+  .dash-top > .card { padding: 12px; }
+  .dtw-body { max-height: 240px; }
+  .dash-top .donut { width: 104px; height: 104px; }
+}
