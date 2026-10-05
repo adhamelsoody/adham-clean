@@ -28991,6 +28991,146 @@ function mushafGo(n) {
 window.mushafJump = function (v) { mushafGo(v); };
 
 /* الانتقال إلى أول صفحة في سورة */
+/* =========================================================================
+   فهرسُ السور — بدلاً من قائمةٍ منسدلةٍ بمئةٍ وأربعَ عشرةَ سطراً
+   -------------------------------------------------------------------------
+   كان اختيارُ السورة من <select> يفتح عموداً واحداً يُمرَّر فيه الطالبُ
+   طويلاً ليبلغ «الناس»، ولا بحثَ فيه ولا جزءَ ولا رقمَ صفحة. هنا فهرسٌ
+   يُفتح في بطاقة: بحثٌ بالاسم أو بالرقم، وتبويبُ «السور» و«الأجزاء»،
+   وكلُّ سورةٍ بطاقةٌ فيها رقمُها واسمُها وعددُ آياتها وصفحتُها.
+
+   ومواضعُ الأجزاء الثلاثين مستخرجةٌ من صفحات المصحف نفسِها التي في
+   quran/pages (حقل j في كلّ آية) — لا من ذاكرةٍ ولا تقدير. */
+
+/* [رقمُ الجزء، صفحتُه، سورتُه، آيتُه، اسمُ سورته] */
+const QJUZ = [
+  [1, 1, 1, 1, "الفاتحة"],
+  [2, 22, 2, 142, "البقرة"],
+  [3, 42, 2, 253, "البقرة"],
+  [4, 62, 3, 93, "آل عمران"],
+  [5, 82, 4, 24, "النساء"],
+  [6, 102, 4, 148, "النساء"],
+  [7, 121, 5, 82, "المائدة"],
+  [8, 142, 6, 111, "الأنعام"],
+  [9, 162, 7, 88, "الأعراف"],
+  [10, 182, 8, 41, "الأنفال"],
+  [11, 201, 9, 93, "التوبة"],
+  [12, 222, 11, 6, "هود"],
+  [13, 242, 12, 53, "يوسف"],
+  [14, 262, 15, 1, "الحجر"],
+  [15, 282, 17, 1, "الإسراء"],
+  [16, 302, 18, 75, "الكهف"],
+  [17, 322, 21, 1, "الأنبياء"],
+  [18, 342, 23, 1, "المؤمنون"],
+  [19, 362, 25, 21, "الفرقان"],
+  [20, 382, 27, 56, "النمل"],
+  [21, 402, 29, 46, "العنكبوت"],
+  [22, 422, 33, 31, "الأحزاب"],
+  [23, 442, 36, 28, "يس"],
+  [24, 462, 39, 32, "الزمر"],
+  [25, 482, 41, 47, "فصلت"],
+  [26, 502, 46, 1, "الأحقاف"],
+  [27, 522, 51, 31, "الذاريات"],
+  [28, 542, 58, 1, "المجادلة"],
+  [29, 562, 67, 1, "الملك"],
+  [30, 582, 78, 1, "النبأ"]
+];
+
+const SIDX = { tab: "surah", q: "" };
+
+/* تسويةُ النصّ للبحث: التشكيلُ والهمزاتُ و«ال» لا تمنع المطابقة */
+function qNorm(s) {
+  return String(s || "")
+    .replace(/[\u064B-\u0652\u0640]/g, "")
+    .replace(/[\u0622\u0623\u0625\u0671]/g, "ا")
+    .replace(/\u0649/g, "ي").replace(/\u0629/g, "ه")
+    .replace(/^ال/, "").trim();
+}
+
+function sidxRows() {
+  const q  = qNorm(SIDX.q);
+  const qd = String(SIDX.q || "").replace(/[^0-9٠-٩]/g, "");
+  const num = qd ? Number(qd.replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))) : 0;
+
+  if (SIDX.tab === "juz") {
+    const list = QJUZ.filter(j => !SIDX.q ||
+      (num && j[0] === num) || qNorm(j[4]).indexOf(q) > -1);
+    if (!list.length) return `<div class="sidx-none">لا جزءَ بهذا الاسم أو الرقم</div>`;
+    return `<div class="sidx-juz">${list.map(j => `<button type="button" class="sidx-jrow"
+      onclick="window.sidxGoPage(${j[1]})">
+      <span class="sidx-jnum">${toArabicDigits(j[0])}</span>
+      <span class="sidx-jmid"><strong>الجزء ${toArabicDigits(j[0])}</strong>
+        <small>يبدأ من ${esc(j[4])} ${toArabicDigits(j[3])}</small></span>
+      <span class="sidx-jpg">صفحة ${toArabicDigits(j[1])}</span>
+    </button>`).join("")}</div>`;
+  }
+
+  const all = (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : [];
+  const cur = (typeof mushaf === "function" ? (mushaf() || {}).page : 0) || 0;
+  const here = all.filter(x => Number(x.p) <= Number(cur)).slice(-1)[0] || null;
+
+  const list = all.filter(x => !SIDX.q ||
+    (num && Number(x.i) === num) || qNorm(x.n).indexOf(q) > -1);
+  if (!list.length) return `<div class="sidx-none">لا سورةَ بهذا الاسم أو الرقم</div>`;
+
+  return `<div class="sidx-grid">${list.map(x => {
+    const on = here && Number(here.i) === Number(x.i);
+    return `<button type="button" class="sidx-card${on ? " on" : ""}"
+      onclick="window.sidxGoSurah(${x.i})">
+      <span class="sidx-n">${toArabicDigits(x.i)}</span>
+      <strong class="sidx-nm">${esc(x.n)}</strong>
+      <small class="sidx-meta">${toArabicDigits(x.a)} آية · ص ${toArabicDigits(x.p)}</small>
+    </button>`;
+  }).join("")}</div>`;
+}
+
+/* القائمةُ وحدَها تُعاد رسمَها عند البحث: إعادةُ البطاقة كلِّها تُفقد
+   التركيزَ في حقل البحث فينقطع الكتابة. */
+function sidxPaint() {
+  const box = document.getElementById("sidxList");
+  if (box) box.innerHTML = sidxRows();
+  const tabs = document.querySelectorAll("#sidxTabs .sidx-tab");
+  Array.prototype.forEach.call(tabs, function (b) {
+    b.classList.toggle("on", b.dataset.k === SIDX.tab);
+  });
+}
+
+window.sidxSearch = function (v) { SIDX.q = String(v || ""); sidxPaint(); };
+window.sidxTab = function (k) { SIDX.tab = k === "juz" ? "juz" : "surah"; sidxPaint(); };
+window.sidxGoSurah = function (i) {
+  closeModal();
+  if (typeof window.mushafSurah === "function") window.mushafSurah(i);
+};
+window.sidxGoPage = function (p) {
+  closeModal();
+  if (typeof mushafGo === "function") mushafGo(Number(p));
+};
+
+window.sidxOpen = function () {
+  if (typeof reciteLoadSurahs === "function") reciteLoadSurahs();
+  SIDX.q = "";
+  openModal("فهرس المصحف", "ابحث بالاسم أو بالرقم",
+    `<div class="sidx">
+      <div class="sidx-search">${ic("search", 16)}
+        <input id="sidxQ" type="search" autocomplete="off"
+          placeholder="اسمُ السورة أو رقمُها…" oninput="window.sidxSearch(this.value)">
+      </div>
+      <div class="sidx-tabs" id="sidxTabs">
+        <button type="button" class="sidx-tab on" data-k="surah"
+          onclick="window.sidxTab('surah')">السور</button>
+        <button type="button" class="sidx-tab" data-k="juz"
+          onclick="window.sidxTab('juz')">الأجزاء</button>
+      </div>
+      <div class="sidx-list" id="sidxList">${sidxRows()}</div>
+    </div>`,
+    `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+  try { setTimeout(function () {
+    const e = document.getElementById("sidxQ"); if (e) e.focus();
+    const on = document.querySelector("#sidxList .sidx-card.on");
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: "center" });
+  }, 60); } catch (e) {}
+};
+
 window.mushafSurah = function (id) {
   if (!QSURAHS) return;
   const s = QSURAHS.find(x => x.i === Number(id));
@@ -29109,8 +29249,9 @@ function mushafPage() {
   const step = wide ? 2 : 1;
   const juz = (MUSHAF_CACHE[n] && MUSHAF_CACHE[n][0] && MUSHAF_CACHE[n][0].j) || "—";
 
-  const surahOpts = QSURAHS
-    ? QSURAHS.map(x => `<option value="${x.i}" ${x.p === n ? "selected" : ""}>${x.i}. ${esc(x.n)}</option>`).join("")
+  /* اسمُ السورة التي تبدأ هذه الصفحةُ أو ما قبلَها — يُكتب على زرّ الفهرس */
+  const curSurahName = (typeof QSURAHS !== "undefined" && QSURAHS)
+    ? ((QSURAHS.filter(x => Number(x.p) <= Number(n)).slice(-1)[0] || {}).n || "")
     : "";
 
   /* ---- الشريط العلوي ---- */
@@ -29119,7 +29260,9 @@ function mushafPage() {
       ${ic("book", 18)}<strong>المصحف التفاعلي</strong>
     </div>
     <div class="mus-top-l">
-      <select class="mus-sel" onchange="window.mushafSurah(this.value)">${surahOpts}</select>
+      <button type="button" class="mus-sel mus-idx" onclick="window.sidxOpen()">
+        ${ic("list", 15)}<span>${esc(curSurahName || "فهرس المصحف")}</span>
+        ${ic("arrowDown", 13)}</button>
       <input class="mus-jump" type="number" min="1" max="604" value="${n}" dir="ltr"
         onchange="window.mushafJump(this.value)" title="اذهب إلى صفحة">
       <span class="mus-juz">الجزء ${toArabicDigits(juz)}</span>
@@ -42218,7 +42361,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-0250";
+  var APP_BUILD = "20261006-0410";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

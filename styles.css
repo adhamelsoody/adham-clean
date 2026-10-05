@@ -11273,3 +11273,69 @@ body[data-iface="student"] .content { padding-top: 14px; }
   .dtw-body { max-height: 240px; }
   .dash-top .donut { width: 104px; height: 104px; }
 }
+
+/* ===== فهرسُ المصحف: بحثٌ وسورٌ وأجزاء ===== */
+.mus-idx { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border: 1px solid var(--border-soft, #eef1f0); background: var(--surface, #fff);
+  border-radius: 999px; padding: 7px 13px; font: inherit; font-size: 13px;
+  font-weight: 800; color: var(--brand-dark, #0f6f72); }
+.mus-idx:active { transform: scale(.985); }
+.mus-idx span { max-width: 140px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+
+.sidx { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.sidx-search { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  border-radius: 14px; background: var(--surface-soft, #f7f9f9);
+  border: 1px solid var(--border-soft, #eef1f0); color: var(--text-faint, #9aa3ad); }
+.sidx-search input { flex: 1; min-width: 0; border: 0; background: transparent;
+  font: inherit; font-size: 13.5px; color: var(--text-main, #15302f); outline: none; }
+
+.sidx-tabs { display: flex; gap: 6px; }
+.sidx-tab { flex: 1; padding: 8px 10px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--border-soft, #eef1f0); background: var(--surface, #fff);
+  font: inherit; font-size: 12.5px; font-weight: 800;
+  color: var(--text-faint, #9aa3ad); }
+.sidx-tab.on { background: var(--brand-main, #0b7f83); color: #fff;
+  border-color: var(--brand-main, #0b7f83); }
+
+.sidx-list { max-height: 52vh; overflow-y: auto; scrollbar-width: thin;
+  padding: 2px; }
+.sidx-grid { display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.sidx-card { position: relative; display: flex; flex-direction: column;
+  align-items: center; gap: 2px; padding: 11px 7px 9px; cursor: pointer;
+  border-radius: 14px; border: 1px solid var(--border-soft, #eef1f0);
+  background: var(--surface, #fff); font: inherit; text-align: center; }
+.sidx-card:active { transform: scale(.985); }
+.sidx-n { display: grid; place-items: center; width: 26px; height: 26px;
+  border-radius: 9px; font-size: 11px; font-weight: 800;
+  background: var(--brand-soft, #eafbfc); color: var(--brand-main, #0b7f83);
+  font-variant-numeric: tabular-nums; }
+.sidx-nm { font-size: 13px; font-weight: 800; color: var(--text-main, #15302f);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidx-meta { font-size: 10.5px; color: var(--text-faint, #9aa3ad); }
+.sidx-card.on { border-color: var(--brand-main, #0b7f83);
+  box-shadow: 0 0 0 2px rgba(11,127,131,.16); }
+.sidx-card.on .sidx-n { background: var(--brand-main, #0b7f83); color: #fff; }
+
+.sidx-juz { display: flex; flex-direction: column; gap: 7px; }
+.sidx-jrow { display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 10px 12px; border-radius: 13px; font: inherit; text-align: start;
+  border: 1px solid var(--border-soft, #eef1f0); background: var(--surface, #fff); }
+.sidx-jnum { flex: 0 0 auto; display: grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 10px; font-size: 12px; font-weight: 800;
+  background: var(--brand-soft, #eafbfc); color: var(--brand-main, #0b7f83);
+  font-variant-numeric: tabular-nums; }
+.sidx-jmid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sidx-jmid strong { font-size: 13.5px; color: var(--text-main, #15302f); }
+.sidx-jmid small { font-size: 11px; color: var(--text-faint, #9aa3ad); }
+.sidx-jpg { flex: 0 0 auto; font-size: 11px; font-weight: 700;
+  color: var(--brand-main, #0b7f83); }
+
+.sidx-none { padding: 26px 10px; text-align: center; font-size: 12.5px;
+  color: var(--text-faint, #9aa3ad); }
+
+[data-theme="dark"] .sidx-card,
+[data-theme="dark"] .sidx-jrow,
+[data-theme="dark"] .sidx-tab { background: #16201e; border-color: #232f2c; }
+[data-theme="dark"] .sidx-search { background: #14201e; border-color: #232f2c; }
