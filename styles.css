@@ -11218,3 +11218,18 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
   color: var(--text-soft, #5d6b6a); }
 .stp-help-kv { margin-top: 10px; display: grid; gap: 4px; }
 .stp-tel { color: var(--brand-main, #0b7f83); font-variant-numeric: tabular-nums; }
+
+/* ===== رفعُ الشريط العلويّ من واجهة الطالب ===== */
+/* الشريطُ العلويُّ مرفوعٌ من واجهة الطالب وحدَها بطلبٍ صريح: هو وكلُّ ما
+   فيه — زرُّ القائمة ومنتقي المجمّع وفلاترُ التاريخ والتنبيهاتُ والرسائلُ
+   والتحديثُ وبطاقةُ الحساب وزرُّ الوضع الداكن. والإدارةُ والمعلّمُ ووليُّ
+   الأمر على ما كانوا، لم يُمسّ شريطُهم.
+
+   وهو إخفاءٌ لا حذف: العناصرُ باقيةٌ في index.html وفي admin/*.html
+   وشيفرتُها كما هي (topbar-dates.js و renderComplexSelect و
+   tchTopCheckBtn تجدها فلا ينكسر شيء)، وإعادتُه سطرٌ واحدٌ هنا.
+
+   والطالبُ لا يفقد تنقّلاً: شريطُه السفليُّ هو سبيلُه، وترويستُه الخضراءُ
+   فيها جرسُه ومحادثاتُه. */
+body[data-iface="student"] .topbar { display: none !important; }
+body[data-iface="student"] .content { padding-top: 14px; }

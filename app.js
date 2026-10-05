@@ -32694,6 +32694,9 @@ function hideSideNavFor(iface) {
   if (bar) bar.classList.toggle("nav-off", off);
   if (btn) btn.style.display = off ? "none" : "";
   try { document.body.classList.toggle("nav-off", off); } catch (e) {}
+  /* وسمُ الواجهة على <body>: التنسيقُ يبني عليه ما يخصُّ واجهةً بعينها —
+     كرفع الشريط العلويّ عن الطالب وحدَه دون أن يُمسّ شريطُ غيره. */
+  try { document.body.setAttribute("data-iface", String(iface || "")); } catch (e) {}
 }
 
 function renderTabBar() {
@@ -42214,7 +42217,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-0010";
+  var APP_BUILD = "20261006-0110";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
