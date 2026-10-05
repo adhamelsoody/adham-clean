@@ -17935,6 +17935,7 @@ window.rwdForm = function (id) {
            value="${r ? esc(r.qty != null ? r.qty : "") : ""}" placeholder="بلا حد"></div>
        <div class="field full"><label>وصف مختصر</label>
          <input id="rw_desc" value="${r ? esc(r.desc || "") : ""}"></div>
+       ${photoField("rw_photo", r ? (r.photo || "") : "", "صورة الجائزة")}
        <div class="field"><label>الحالة</label>
          <select id="rw_status">
            <option value="متاحة"${!r || r.status !== "موقوفة" ? " selected" : ""}>متاحة</option>
@@ -18037,6 +18038,8 @@ window.rwdSave = function () {
     /* الفراغ يعني بلا حدّ — والصفر يعني نفادها */
     qty: qtyRaw === "" ? null : Math.max(0, Math.round(Number(qtyRaw)) || 0),
     desc: val("#rw_desc") || "",
+    /* صورةُ الجائزة: يراها الطالبُ في المتجر — تُصغَّر كبقيّة الصور */
+    photo: photoVal("rw_photo", old ? (old.photo || "") : ""),
     status: val("#rw_status") || "متاحة",
     size: val("#rw_size") || "متوسطة",
 
@@ -18204,12 +18207,8 @@ window.orderCancel = function (orderId) {
      <button class="btn btn-ghost" data-action="close-modal">تراجع</button>`);
 };
 
-window.orderCancelDo = function (orderId) {
-  if (!canEditMotivation()) { showToast("إلغاء الطلبات للمدير", "warn"); return; }
-
-  const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
-  if (!o) return;
-
+/* ردُّ نقاط الطلب وإعادةُ الجائزة إلى المتجر — للإلغاء وللرفض سواء */
+function orderGiveBack(o, why) {
   const st = (cur("students") || []).find(x => String(x.id) === String(o.studentId));
   if (st) {
     /* تُردّ النقاط: الإلغاء لا يُضيع رصيد الطالب */
@@ -18218,7 +18217,7 @@ window.orderCancelDo = function (orderId) {
 
     const plog = {
       id: "pt" + Date.now(), studentId: String(st.id), student: st.name || "",
-      n: Number(o.cost) || 0, why: "إلغاء استبدال: " + (o.reward || ""),
+      n: Number(o.cost) || 0, why: why + (o.reward || ""),
       by: ((STATE && STATE.user) || {}).name || "—",
       ts: Date.now(), date: todayISO(), after: st.points
     };
@@ -18229,6 +18228,15 @@ window.orderCancelDo = function (orderId) {
 
   const r = (cur("rewards") || []).find(x => String(x.id) === String(o.rewardId));
   if (r && r.qty != null) { r.qty = (Number(r.qty) || 0) + 1; persistSet("rewards", r); }
+}
+
+window.orderCancelDo = function (orderId) {
+  if (!canEditMotivation()) { showToast("إلغاء الطلبات للمدير", "warn"); return; }
+
+  const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
+  if (!o) return;
+
+  orderGiveBack(o, "إلغاء استبدال: ");
 
   o.status = "canceled";
   o.canceledAt = Date.now();
@@ -18236,6 +18244,76 @@ window.orderCancelDo = function (orderId) {
 
   closeModal();
   showToast("أُلغي الطلب ورُدّت النقاط", "success");
+  mount();
+};
+
+/* الموافقةُ على الطلب: خطوةٌ بين الطلب والتسليم يراها الطالبُ في شاشته */
+window.orderApprove = function (orderId) {
+  if (!canEditMotivation()) { showToast("اعتماد الطلبات للمدير", "warn"); return; }
+  const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
+  if (!o || o.status !== "pending") return;
+  const u = (STATE && STATE.user) || {};
+  o.status = "approved";
+  o.approvedAt = Date.now();
+  o.approvedBy = u.name || u.email || "";
+  persistSet("storeOrders", o);
+  try {
+    if (typeof pushNotif === "function") {
+      pushNotif({
+        key: "ordok|" + o.id, studentId: String(o.studentId),
+        title: "تمت الموافقة على طلبك",
+        text: "طلبُك «" + (o.reward || "") + "» اعتُمد — راجع مشرفك لاستلامه.",
+        type: "success", label: "المتجر"
+      });
+    }
+  } catch (e) {}
+  showToast("اعتُمد طلب " + (o.student || ""), "success");
+  mount();
+};
+
+/* الرفض: تُردّ النقاط كما في الإلغاء، ويُسجَّل السببُ ليراه الطالب */
+window.orderReject = function (orderId) {
+  const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
+  if (!o || !ordIsOpen(o)) return;
+
+  openModal("رفض الطلب", o.student || "",
+    noteCard(`ستُعاد <strong>${toArabicDigits(o.cost)}</strong> نقطة إلى رصيد الطالب،
+      وتعود الجائزة إلى المتجر.`) +
+    `<div class="field full"><label>سبب الرفض (يراه الطالب)</label>
+      <input id="ord_why" placeholder="مثال: الجائزة غير متوفّرة حالياً"></div>`,
+    `<button class="btn btn-danger" onclick="window.orderRejectDo('${jsAttr(orderId)}')">رفض الطلب</button>
+     <button class="btn btn-ghost" data-action="close-modal">تراجع</button>`);
+};
+
+window.orderRejectDo = function (orderId) {
+  if (!canEditMotivation()) { showToast("رفض الطلبات للمدير", "warn"); return; }
+
+  const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
+  if (!o) return;
+
+  orderGiveBack(o, "رفض استبدال: ");
+
+  const u = (STATE && STATE.user) || {};
+  o.status = "rejected";
+  o.rejectedAt = Date.now();
+  o.rejectedBy = u.name || u.email || "";
+  o.rejectWhy = (val("#ord_why") || "").trim();
+  persistSet("storeOrders", o);
+
+  try {
+    if (typeof pushNotif === "function") {
+      pushNotif({
+        key: "ordno|" + o.id, studentId: String(o.studentId),
+        title: "طلبك لم يُقبل",
+        text: "طلبُك «" + (o.reward || "") + "» رُفض" +
+              (o.rejectWhy ? " — " + o.rejectWhy : "") + "، ورُدّت نقاطُك.",
+        type: "warn", label: "المتجر"
+      });
+    }
+  } catch (e) {}
+
+  closeModal();
+  showToast("رُفض الطلب ورُدّت النقاط", "success");
   mount();
 };
 
@@ -18253,8 +18331,35 @@ function ptsRank() {
     .sort((a, b) => ptsTotal(b) - ptsTotal(a));
 }
 
+/* =========================================================================
+   حالاتُ طلب الاستبدال
+   -------------------------------------------------------------------------
+   كانت ثلاثاً (معلَّق · سُلّمت · أُلغيت) فلا يعرف الطالبُ أنُظر في طلبه أم
+   لا. صارت سلسلةً يفهمها: قيد المراجعة ← تمت الموافقة ← تم تسليم الجائزة،
+   ويقطعها الرفضُ أو الإلغاء. والقديمُ باقٍ كما هو: pending و delivered و
+   canceled لم تتغيّر دلالتُها، وما تُحدثه الإدارةُ من حالاتٍ أخرى يُعرض
+   باسمه كما هو ولا يسقط من الشاشة.
+   ========================================================================= */
+const ORD_STATUS = {
+  pending:   { h: "قيد المراجعة",    t: "wait" },
+  approved:  { h: "تمت الموافقة",     t: "ok"   },
+  rejected:  { h: "تم رفض الطلب",     t: "bad"  },
+  delivered: { h: "تم تسليم الجائزة", t: "done" },
+  canceled:  { h: "أُلغي الطلب",      t: "bad"  }
+};
+/* الحالتان اللتان ما زال الطلبُ فيهما عند الإدارة */
+const ORD_OPEN = ["pending", "approved"];
+
+function ordStatus(s) {
+  const k = String(s || "pending");
+  return ORD_STATUS[k] || { h: k, t: "wait" };
+}
+function ordIsOpen(o) {
+  return ORD_OPEN.indexOf(String((o || {}).status || "pending")) > -1;
+}
+
 function pendingOrders() {
-  return (cur("storeOrders") || []).filter(o => o.status === "pending")
+  return (cur("storeOrders") || []).filter(ordIsOpen)
     .sort((a, b) => (a.ts || 0) - (b.ts || 0));
 }
 
@@ -18328,7 +18433,7 @@ function ptsStudentsPanel() {
 
 function ptsOrdersPanel() {
   const pend = pendingOrders();
-  const done = (cur("storeOrders") || []).filter(o => o.status !== "pending")
+  const done = (cur("storeOrders") || []).filter(o => !ordIsOpen(o))
     .sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 30);
 
   const row = (o, isPend) => `<tr>
@@ -18336,22 +18441,26 @@ function ptsOrdersPanel() {
     <td>${esc(o.reward || "—")}</td>
     <td class="pt-num">${toArabicDigits(o.cost || 0)}</td>
     <td class="muted" style="font-size:12px">${esc(o.date || "")}</td>
-    <td>${isPend ? '<span class="pt-badge off">بانتظار التسليم</span>'
-      : o.status === "delivered"
-        ? `<span class="pt-badge on">سُلّمت</span>`
-        : `<span class="pt-badge off">أُلغيت</span>`}</td>
+    <td><span class="pt-badge ord-${ordStatus(o.status).t}">${
+      esc(ordStatus(o.status).h)}</span></td>
     <td class="pt-actions">${isPend
-      ? `<button class="btn btn-primary btn-sm" onclick="window.orderDeliver('${jsAttr(o.id)}')">
+      ? `${o.status === "pending"
+            ? `<button class="btn btn-ghost btn-sm" onclick="window.orderApprove('${jsAttr(o.id)}')">
+                موافقة</button>` : ""}
+         <button class="btn btn-primary btn-sm" onclick="window.orderDeliver('${jsAttr(o.id)}')">
           تم التسليم</button>
-         <button class="row-btn cp-danger" onclick="window.orderCancel('${jsAttr(o.id)}')"
-           title="إلغاء">${ic("x", 14)}</button>`
-      : `<span class="muted" style="font-size:11.5px">${esc(o.deliveredBy || "")}</span>`}</td>
+         <button class="row-btn cp-danger" onclick="window.orderReject('${jsAttr(o.id)}')"
+           title="رفض">${ic("x", 14)}</button>
+         <button class="row-btn" onclick="window.orderCancel('${jsAttr(o.id)}')"
+           title="إلغاء">${ic("trash", 14)}</button>`
+      : `<span class="muted" style="font-size:11.5px">${
+          esc(o.deliveredBy || o.rejectedBy || "")}</span>`}</td>
   </tr>`;
 
   return `<div class="card">
-    <div class="fac-toolbar"><div><strong style="font-size:15px">طلبات بانتظار التسليم</strong>
+    <div class="fac-toolbar"><div><strong style="font-size:15px">طلبات قيد المعالجة</strong>
       <div class="muted" style="font-size:11.5px;margin-top:2px">
-        سلّم الجائزة في المسجد ثم سجّل التسليم هنا</div></div></div>
+        وافق على الطلب ثمّ سلّم الجائزة في المسجد وسجّل التسليم هنا</div></div></div>
 
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
       <thead><tr><th>الطالب</th><th>الجائزة</th><th>النقاط</th>
@@ -18372,8 +18481,12 @@ function ptsRewardsPanel() {
   const list = cur("rewards") || [];
 
   const rows = list.length ? list.map(r => `<tr${r.status === "موقوفة" ? ' style="opacity:.55"' : ""}>
-      <td><strong>${esc(r.name || "—")}</strong>
-        ${r.desc ? `<div class="muted" style="font-size:11.5px">${esc(r.desc)}</div>` : ""}</td>
+      <td><div class="td-name">
+        <div class="rwd-thumb">${r.photo
+          ? `<img src="${esc(r.photo)}" alt="">` : ic("gift", 16)}</div>
+        <div><div class="td-strong">${esc(r.name || "—")}</div>
+        ${r.desc ? `<div class="muted" style="font-size:11.5px">${esc(r.desc)}</div>` : ""}
+        </div></div></td>
       <td class="pt-num"><strong>${toArabicDigits(r.cost || 0)}</strong></td>
       <td>${r.qty == null ? '<span class="muted">بلا حد</span>'
         : r.qty === 0 ? '<span class="pt-badge off">نفدت</span>'
@@ -18435,19 +18548,73 @@ function ptsLogPanel() {
 /* =========================================================================
    متجر الطالب
    ========================================================================= */
+/* شاشةُ المتجر أو شاشةُ الطلبات — زرٌّ مستقلٌّ ينقل بينهما */
+const STORE = { view: "store" };
+window.storeView = function (v) { STORE.view = v === "orders" ? "orders" : "store"; mount(); };
+
+/* طلباتُ الطالب من الأحدث */
+function stuOrders(st) {
+  return (cur("storeOrders") || [])
+    .filter(o => o && String(o.studentId) === String((st && st.id) || ""))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+}
+
+/* شاشةُ «طلبات الاستبدال»: الجاري والسابق بحالة كلٍّ منها */
+function stuOrdersPage(st) {
+  const mine = stuOrders(st);
+  const open = mine.filter(ordIsOpen);
+  const past = mine.filter(o => !ordIsOpen(o));
+
+  const row = o => {
+    const s = ordStatus(o.status);
+    return `<div class="sor-row">
+      <div class="sor-top">
+        <strong>${esc(o.reward || "—")}</strong>
+        <span class="sor-badge ord-${s.t}">${esc(s.h)}</span>
+      </div>
+      <div class="sor-meta">
+        <span>${ic("star", 12)} ${toArabicDigits(o.cost || 0)} نقطة</span>
+        <span>${ic("calendar", 12)} ${esc(o.date || "—")}</span>
+      </div>
+      ${o.status === "rejected" && o.rejectWhy
+        ? `<div class="sor-why">${ic("info", 12)} ${esc(o.rejectWhy)}</div>` : ""}
+      ${o.status === "delivered" && o.deliveredBy
+        ? `<div class="sor-why">${ic("check", 12)} سلّمها ${esc(o.deliveredBy)}</div>` : ""}
+    </div>`;
+  };
+
+  const group = (h, rows) => rows.length
+    ? `<div class="card" style="margin-top:14px">
+        <div class="section-head"><h3>${esc(h)}</h3>
+          <span class="muted" style="font-size:11.5px">${toArabicDigits(rows.length)}</span></div>
+        <div class="sor-list">${rows.map(row).join("")}</div>
+      </div>` : "";
+
+  return `<div class="page">
+    ${pageHead("طلبات الاستبدال", "حالةُ كلّ طلبٍ قدّمته")}
+    <button type="button" class="btn btn-ghost btn-sm" style="margin-bottom:10px"
+      onclick="window.storeView('store')"><span class="sor-back">${
+        ic("arrowLeft", 15)}</span> عودة إلى المتجر</button>
+    ${mine.length
+      ? group("طلباتٌ جارية", open) + group("طلباتٌ سابقة", past)
+      : `<div class="card">${emptyState("لا طلباتِ استبدالٍ بعد",
+          "حين تستبدل نقاطك بجائزة يظهر طلبُك هنا وتتابع حالته.")}</div>`}
+  </div>`;
+}
+
 function studentStore() {
   const st = typeof activeStudent === "function" ? activeStudent() : null;
   if (!st) return typeof noKidPage === "function"
     ? noKidPage("متجر الجوائز", "") : `<div class="page"></div>`;
+
+  if (STORE.view === "orders") return stuOrdersPage(st);
 
   const have = ptsOf(st);
   /* المستحقّ وحده: من جمع نقاطه لا يشتري ما لم يُوضع له */
   const list = typeof rwdFor === "function"
     ? rwdFor(st)
     : (cur("rewards") || []).filter(r => r.status !== "موقوفة");
-  const mine = (cur("storeOrders") || [])
-    .filter(o => String(o.studentId) === String(st.id))
-    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const mine = stuOrders(st);
 
   /* الرصيد بارزاً أعلى الشاشة — نصّت عليه المواصفات */
   const head = `<div class="store-bal">
@@ -18456,48 +18623,49 @@ function studentStore() {
       <small>المكتسب الكلّي: ${toArabicDigits(ptsTotal(st))} نقطة</small></div>
   </div>`;
 
+  /* زرُّ الطلبات مستقلٌّ تحت الرصيد، وعليه عددُ ما هو قيد المعالجة */
+  const openN = mine.filter(ordIsOpen).length;
+  const ordBtn = `<button type="button" class="store-orders-btn"
+    onclick="window.storeView('orders')">
+    <span class="sob-i">${ic("list", 17)}</span>
+    <span class="sob-t">طلبات الاستبدال
+      <small>تابِع حالة طلباتك الجارية والسابقة</small></span>
+    ${openN ? `<b class="sob-n">${toArabicDigits(openN)}</b>` : ""}
+    <span class="sob-go">${ic("arrowLeft", 15)}</span>
+  </button>`;
+
   const cards = list.length ? `<div class="store-grid">${list.map(r => {
     const cost = Number(r.cost) || 0;
-    const can = have >= cost && r.qty !== 0;
+    const out  = r.qty === 0;
+    const can  = have >= cost && !out;
     const short = cost - have;
     return `<div class="store-item${can ? "" : " off"}">
-      <div class="store-ico">${ic("gift", 26)}</div>
+      <div class="store-ico${r.photo ? " has-img" : ""}">${r.photo
+        ? `<img src="${esc(r.photo)}" alt="${esc(r.name || "")}">`
+        : ic("gift", 26)}</div>
       <strong>${esc(r.name || "")}</strong>
       ${r.desc ? `<small>${esc(r.desc)}</small>` : ""}
       <div class="store-cost">${toArabicDigits(cost)} نقطة</div>
-      ${r.qty === 0
+      ${out
         ? `<span class="store-out">نفدت</span>`
         : can
           ? `<button class="btn btn-primary btn-sm"
               onclick="window.storeBuy('${jsAttr(r.id)}')">استبدال</button>`
-          : `<span class="store-need">ينقصك ${toArabicDigits(short)}</span>`}
+          : `<span class="store-need">${ic("lock", 12)} رصيدك لا يكفي —
+              ينقصك ${toArabicDigits(short)} نقطة</span>`}
     </div>`;
   }).join("")}</div>`
     : `<div class="card">${emptyState("لا جوائز بعد",
         "لم تُضَف جوائز إلى متجر مسجدك حتى الآن.")}</div>`;
 
-  const ptsLog = stuPointsLog(st);
-
-  const orders = mine.length ? `<div class="card" style="margin-top:18px">
-    <div class="section-head"><h3>استبدالاتي</h3></div>
-    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
-      <tbody>${mine.slice(0, 10).map(o => `<tr>
-        <td><strong>${esc(o.reward || "")}</strong></td>
-        <td class="pt-num">${toArabicDigits(o.cost || 0)}</td>
-        <td class="muted" style="font-size:12px">${esc(o.date || "")}</td>
-        <td>${o.status === "delivered" ? '<span class="pt-badge on">استلمتها</span>'
-          : o.status === "canceled" ? '<span class="pt-badge off">أُلغيت</span>'
-          : '<span class="pt-badge off">بانتظار الاستلام</span>'}</td>
-      </tr>`).join("")}</tbody></table></div></div>
-  </div>` : "";
-
   return `<div class="page">
     ${pageHead("متجر الجوائز", "استبدل نقاطك بما تحب")}
     ${typeof kidSwitcher === "function" ? kidSwitcher() : ""}
     ${head}
-    ${ptsLog}
+    ${ordBtn}
+    ${stuPointsLog(st)}
+    <div class="tsc-h" style="margin-top:18px">الجوائز المتاحة</div>
     ${cards}
-    ${orders}
   </div>`;
 }
 
@@ -31407,20 +31575,32 @@ function stuPointsLog(st) {
   const list = (cur("pointsLog") || [])
     .filter(x => x && String(x.studentId) === String((st && st.id) || ""))
     .sort((a, b) => (b.ts || 0) - (a.ts || 0));
-  if (!list.length) return "";
 
-  return `<div class="card" style="margin-top:18px">
+  if (!list.length) return `<div class="card" style="margin-top:18px">
     <div class="section-head"><h3>سجلّ نقاطي</h3></div>
+    ${emptyState("لا حركاتٍ بعد", "كلّ نقطةٍ تُمنح لك أو تُخصم تظهر هنا بسببها وتاريخها.")}
+  </div>`;
+
+  const shown = list.slice(0, 100);
+  return `<div class="card" style="margin-top:18px">
+    <div class="section-head"><h3>سجلّ نقاطي</h3>
+      <span class="muted" style="font-size:11.5px">${toArabicDigits(list.length)} حركة</span></div>
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
-      <tbody>${list.slice(0, 30).map(x => {
+      <tbody>${shown.map(x => {
         const n = Number(x.n) || 0;
+        /* السببُ يُكتب في why عند المنح والخصم — وكان لا يُقرأ فيظهر «—» */
+        const why = x.why || x.reason || x.note || "—";
         return `<tr>
           <td class="pt-num"><strong class="${n < 0 ? "pts-minus" : "pts-plus"}">${
-            (n < 0 ? "−" : "+") + toArabicDigits(Math.abs(n))}</strong></td>
-          <td>${esc(x.reason || x.note || "—")}</td>
+            (n < 0 ? "−" : "+") + toArabicDigits(Math.abs(n))}</strong>
+            <small class="pts-unit">نقاط</small></td>
+          <td>${esc(why)}</td>
           <td class="muted" style="font-size:12px">${esc(x.date || "")}</td>
         </tr>`;
       }).join("")}</tbody></table></div></div>
+    ${list.length > shown.length
+      ? `<div class="muted" style="font-size:11.5px;text-align:center;padding:8px">
+          تُعرض آخر ${toArabicDigits(shown.length)} حركة</div>` : ""}
   </div>`;
 }
 
@@ -41046,8 +41226,17 @@ function personFilter(coll, rows) {
   if (coll === "students") return rows.filter(s => S.ids.has(String(s.id)) || S.names.has(String(s.name || "")));
   if (coll === "circles")  return rows.filter(c => C.ids.has(String(c.id)) || C.names.has(String(c.name || "")));
 
+  /* الجوائزُ قائمةُ متجرٍ لا سجلٌّ شخصيّ: جائزةُ المسجد لا studentId فيها
+     ولا circleId، فكان الحصرُ الشخصيُّ يُسقطها كلَّها — ويُفتح متجرُ الطالب
+     فارغاً أبداً وإن امتلأت لوحةُ الإدارة بالجوائز. تمرّ هنا، وrwdEligible
+     وحدَها تحكم استحقاقَه (المسجدُ · الحلقةُ · المستوى · العمرُ · المرّات). */
+  if (coll === "rewards") {
+    return rows.filter(x => !x || mineByStudent(x) || mineByCircle(x) ||
+      (!x.studentId && !x.student && !x.circleId && !x.circle));
+  }
+
   if (coll === "plans" || coll === "delays" || coll === "recitations" ||
-      coll === "exams" || coll === "attendance" || coll === "rewards" || coll === "reviews") {
+      coll === "exams" || coll === "attendance" || coll === "reviews") {
     /* تقييمُ الإدارة للمعلّم يسكن reviews بلا طالبٍ ولا حلقة، فيُنسب إلى
        صاحبه بـ teacherId — وإلا حجبه الحصرُ الشخصيُّ عن المعلّم نفسِه
        فلا يرى تقييمَه. ولا يرى بهذا تقييمَ غيره: المطابقةُ بسجلّه هو. */
@@ -41833,7 +42022,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-2130";
+  var APP_BUILD = "20261005-2210";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
