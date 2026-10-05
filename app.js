@@ -9863,6 +9863,7 @@ const SET_SECTIONS = [
   { k: "supcat",   h: "تصنيفات المشرفين" },
   { k: "perms",    h: "إدارة الصلاحيات" },
   { k: "tchapp",   h: "تطبيق المعلم" },
+  { k: "stuapp",   h: "تطبيق الطالب" },
   { k: "mushaf",   h: "المصحف والتقييم" },
   { k: "procs",    h: "الإجراءات التدرّجية" },
   /* «مسيّرات الرواتب» أُزيل من قائمة الإعدادات بطلب الإدارة: شاشةٌ لا
@@ -10616,6 +10617,7 @@ const MOSQUE_CFG_KEYS = [
   /* التحضير */
   "attWho", "attEditMin", "attLabels", "attCustom", "offDutyMode", "partialExemptPct", "autoApprove",
   /* الحفظ والتقييم والخصم */
+  "studentApp",
   "musMarks", "recPass", "hwTypes", "hwRedoBelow", "hwOnAbsence", "hwOnExcuse", "hwOnPartial",
   /* المقرأة وكبار السن */
   "maqraahOn", "maqraahUrl", "elderlyAge", "elderlyEase",
@@ -20684,6 +20686,127 @@ function teacherWelcome() {
   return String(((DB.settings || {}).teacherWelcome) || "");
 }
 
+/* =========================================================================
+   تطبيقُ الطالب — ما تضبطه الإدارةُ ويظهر أثرُه عند الطالب
+   -------------------------------------------------------------------------
+   كانت نوافذُ الطالب وإحصاءاتُه ومراسلتُه مكتوبةً في الشيفرة، فلا تملك
+   الإدارةُ منها شيئاً: لا منعَ مراسلةٍ ولا إخفاءَ نافذةٍ ولا اختيارَ ما
+   يظهر في تقاريره. هنا تُجمع في مفتاحٍ واحدٍ داخل settings/general —
+   لا مجموعةَ جديدة — ويُقرأ في كلّ شاشةٍ عند الرسم، فينعكس تغييرُ
+   الإدارة فوراً. ومفتاحُه في MOSQUE_CFG_KEYS فلكلّ مسجدٍ أن يَعدِل عنه.
+   ========================================================================= */
+const STUAPP_DEFAULTS = {
+  /* المراسلة ومن يُراسَل */
+  chat: true,
+  chatTo: { teacher: true, admin: true },
+  /* النوافذُ الظاهرةُ في شريطه السفليّ */
+  show: { mushaf: true, reports: true, store: true },
+  /* ما يظهر في رئيسيته */
+  home: { streaks: true, tasks: true, points: true, att: true },
+  /* أقسامُ تقاريره */
+  reports: { att: true, perf: true, path: true, qmap: true }
+};
+
+/* الإعداداتُ المدموجة: الافتراضُ ثمّ ما حفظته الإدارةُ (وطبقةُ المسجد
+   مدموجةٌ أصلاً في DB.settings عبر cfgApplyOverlay). */
+function stuAppCfg() {
+  const s = (DB.settings || {}).studentApp;
+  const out = JSON.parse(JSON.stringify(STUAPP_DEFAULTS));
+  if (s && typeof s === "object") {
+    Object.keys(out).forEach(k => {
+      if (s[k] === undefined) return;
+      if (out[k] && typeof out[k] === "object") Object.assign(out[k], s[k] || {});
+      else out[k] = s[k];
+    });
+  }
+  return out;
+}
+
+/* سؤالٌ واحدٌ بمسارٍ مثل "reports.att" أو "chat" */
+function stuAppOn(path) {
+  const p = String(path || "").split(".");
+  let v = stuAppCfg();
+  for (let i = 0; i < p.length; i++) {
+    if (v == null || typeof v !== "object") return false;
+    v = v[p[i]];
+  }
+  return v !== false;
+}
+window.stuAppOn = stuAppOn;
+
+/* جهاتُ المراسلة المسموحة — تُقرأ في شاشة رسائل الطالب ووليّ الأمر */
+function stuChatTargets() {
+  if (!stuAppOn("chat")) return [];
+  const c = stuAppCfg().chatTo || {};
+  const out = [];
+  if (c.teacher !== false) out.push({ k: "teacher", h: "معلّم الحلقة" });
+  if (c.admin !== false) out.push({ k: "admin", h: "إدارة المجمّع" });
+  return out;
+}
+window.stuChatTargets = stuChatTargets;
+
+/* لوحةُ الإدارة */
+const STUAPP_ROWS = [
+  ["chat",           "السماح بالمراسلة",        "يظهر زرُّ المحادثات في تطبيق الطالب"],
+  ["chatTo.teacher", "مراسلة معلّم الحلقة",     ""],
+  ["chatTo.admin",   "مراسلة إدارة المجمّع",    ""],
+  ["show.mushaf",    "نافذة المصحف التفاعلي",   ""],
+  ["show.reports",   "نافذة التقارير",          ""],
+  ["show.store",     "نافذة المتجر",            ""],
+  ["home.streaks",   "استريكاتي في الرئيسية",   ""],
+  ["home.tasks",     "مهامُّ اليوم",             ""],
+  ["home.points",    "رصيدُ النقاط",             ""],
+  ["home.att",       "إحصاءُ الحضور في الرئيسية", ""],
+  ["reports.att",    "تقارير: إحصاءُ الحضور",    ""],
+  ["reports.perf",   "تقارير: إحصاءُ التسميع",   ""],
+  ["reports.path",   "تقارير: المسار",           ""],
+  ["reports.qmap",   "تقارير: خريطةُ التقدّم",    ""]
+];
+
+function setPanelStudentApp() {
+  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const rows = STUAPP_ROWS.map(([p, h, d], i) => `<tr>
+    <td><strong>${esc(h)}</strong>${d ? `<div class="muted" style="font-size:11.5px">${esc(d)}</div>` : ""}</td>
+    <td><label class="sy-sw"><input type="checkbox" id="sa_on_${i}"
+      ${stuAppOn(p) ? "checked" : ""} ${edit ? "" : "disabled"}><span></span></label></td>
+  </tr>`).join("");
+
+  return `<div class="pm-wrap">
+    <div class="tm-top"><strong class="tm-title">تطبيق الطالب</strong></div>
+    <div class="tm-info">${ic("info", 18)}
+      <span>ما تضبطه هنا ينعكس على موقع الطالب وتطبيقِه فوراً.
+      ${edit ? "" : "<b>العرضُ هنا للاطلاع — الضبطُ من صلاحية مدير النظام.</b>"}</span>
+    </div>
+    <div class="sp-card">
+      <div class="sp-cardhead"><div><h3>المراسلة والنوافذ والإحصاءات</h3>
+        <p>ما يراه الطالبُ وما يُمنع منه</p></div></div>
+      <table class="ptable"><thead><tr><th>العنصر</th><th>يظهر</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      ${edit ? `<div class="row-actions" style="margin-top:10px">
+        <button class="btn btn-primary btn-sm" onclick="window.stuAppSave()">${
+          ic("check", 15)} حفظ الإعدادات</button></div>` : ""}
+    </div>
+  </div>`;
+}
+
+window.stuAppSave = function () {
+  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+    showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
+  }
+  const cfg = JSON.parse(JSON.stringify(STUAPP_DEFAULTS));
+  STUAPP_ROWS.forEach(([p], i) => {
+    const on = !!(document.getElementById("sa_on_" + i) || {}).checked;
+    const parts = p.split(".");
+    if (parts.length === 1) cfg[parts[0]] = on;
+    else { cfg[parts[0]] = cfg[parts[0]] || {}; cfg[parts[0]][parts[1]] = on; }
+  });
+  DB.settings = DB.settings || {};
+  DB.settings.studentApp = cfg;
+  persistSet("settings", Object.assign({ id: "general" }, DB.settings));
+  showToast("حُفظت إعداداتُ تطبيق الطالب", "success");
+  mount();
+};
+
 function setPanelTeacherApp() {
   const w = teacherWelcome();
   const edit = typeof isTopAdmin === "function" && isTopAdmin();
@@ -22410,7 +22533,7 @@ function adminSettingsNew() {
       </aside>
       <section class="st-main">${!setSecAllowed(SET.sec)
         ? financeDenied(SET.sec === "payroll" ? "مسيّرات الرواتب" : "تصنيفات المشرفين")
-        : SET.sec === "main" ? setPanelMain() : SET.sec === "programs" ? setPanelPrograms() : SET.sec === "levels" ? setPanelLevels() : SET.sec === "duties" ? setPanelDuties() : SET.sec === "supcat" ? setPanelSupcat() : SET.sec === "perms" ? setPanelPerms() : SET.sec === "tchapp" ? setPanelTeacherApp() : SET.sec === "terms" ? setPanelTerms() : SET.sec === "mushaf" ? setPanelMushaf() : SET.sec === "procs" ? setPanelProcedures() : SET.sec === "payroll" ? setPanelPayroll() : SET.sec === "msgs" ? setPanelMessages() : SET.sec === "prayer" ? setPanelPrayer() : setPanelOther(SET.sec)}</section>
+        : SET.sec === "main" ? setPanelMain() : SET.sec === "programs" ? setPanelPrograms() : SET.sec === "levels" ? setPanelLevels() : SET.sec === "duties" ? setPanelDuties() : SET.sec === "supcat" ? setPanelSupcat() : SET.sec === "perms" ? setPanelPerms() : SET.sec === "tchapp" ? setPanelTeacherApp() : SET.sec === "stuapp" ? setPanelStudentApp() : SET.sec === "terms" ? setPanelTerms() : SET.sec === "mushaf" ? setPanelMushaf() : SET.sec === "procs" ? setPanelProcedures() : SET.sec === "payroll" ? setPanelPayroll() : SET.sec === "msgs" ? setPanelMessages() : SET.sec === "prayer" ? setPanelPrayer() : setPanelOther(SET.sec)}</section>
     </div>
   </div>`;
 }
@@ -31118,17 +31241,30 @@ function parentMessages() {
     </div>`).join("")
     : emptyState("لا رسائل بعد", "ما يصلك من معلّم ابنك أو الإدارة يظهر هنا.");
 
+  /* المراسلةُ إذنٌ من الإدارة، والجهاتُ المسموحةُ منها كذلك — وكانت
+     مفتوحةً دائماً وإلى المعلّم والإدارة معاً بلا خيار. */
+  const targets = typeof stuChatTargets === "function" ? stuChatTargets() : [];
+  const toSel = targets.length > 1
+    ? `<div class="field full"><label>إلى</label>
+        <select id="pmTo">${targets.map(t =>
+          `<option value="${esc(t.k)}">${esc(t.h)}</option>`).join("")}</select></div>`
+    : "";
+  const toName = targets.length === 1 ? targets[0].h : tName;
+
   return `<div class="page">
     ${pageHead("مراسلة المعلّم", esc(st.name || ""))}
     ${kidsBar()}
 
+    ${!targets.length ? `<div class="card">${emptyState("المراسلةُ موقوفة",
+        "أوقفت الإدارةُ المراسلةَ من التطبيق. راجع إدارةَ مجمّعك.")}</div>` : `
     <div class="card">
       <div class="fac-toolbar">
-        <div><strong style="font-size:15px">إلى ${esc(tName)}</strong>
+        <div><strong style="font-size:15px">إلى ${esc(toName)}</strong>
           <div class="muted" style="font-size:11.5px;margin-top:2px">
-            رسالتك تصل معلّم الحلقة والإدارة</div></div>
+            ${esc(targets.map(t => t.h).join(" · "))}</div></div>
       </div>
       <div class="form-grid" style="padding:0 16px 16px">
+        ${toSel}
         <div class="field full"><label>الرسالة</label>
           <textarea id="pmText" rows="3"
             placeholder="استفسارٌ عن حفظه · اعتذارٌ عن يوم · طلب موعد"></textarea></div>
@@ -31136,7 +31272,7 @@ function parentMessages() {
       <div class="pnl-actions">
         <button class="btn btn-primary" onclick="window.parentSend()">إرسال</button>
       </div>
-    </div>
+    </div>`}
 
     <div class="card" style="margin-top:16px">
       <div class="fac-toolbar">
@@ -31153,13 +31289,20 @@ window.parentSend = function () {
   if (!txt) { showToast("اكتب رسالتك أولاً", "warn"); return; }
   if (!st) return;
 
+  /* الحارسُ في الإرسال لا في العرض وحدَه: إخفاءُ النموذج لا يمنع نداءه */
+  const allow = typeof stuChatTargets === "function" ? stuChatTargets() : [];
+  if (!allow.length) { showToast("المراسلةُ موقوفةٌ من الإدارة", "warn"); return; }
+  const pick = String(val("#pmTo") || (allow[0] || {}).k || "teacher");
+  const to = allow.some(x => x.k === pick) ? pick : allow[0].k;
+
   const u = (STATE && STATE.user) || {};
   const rec = {
     id: "pm" + Date.now(),
     kind: "parent",
     fromUid: String(u.uid || u.id || ""),
     fromName: u.name || "وليّ الأمر",
-    toId: String(st.teacherId || ""),
+    toId: to === "teacher" ? String(st.teacherId || "") : "",
+    toWhom: to,
     toEmail: "",
     title: "رسالة من وليّ أمر " + (st.name || ""),
     text: txt,
@@ -31173,8 +31316,10 @@ window.parentSend = function () {
   DB.site_messages.push(rec);
 
   Promise.resolve(persistSet("site_messages", rec)).then(() => {
-    /* تُرسَل للإدارة كذلك: المعلّم قد لا يفتح النظام اليوم */
+    /* تُرسَل للإدارة كذلك: المعلّم قد لا يفتح النظام اليوم — إلا أن
+       تكون الإدارةُ غيرَ مسموحةٍ جهةً، فتُترك لصاحبها وحده. */
     try {
+      if (to === "admin" || allow.some(x => x.k === "admin")) {
       if (typeof pushNotif === "function") {
         pushNotif({
           key: "pmsg|" + rec.id,
@@ -31184,6 +31329,7 @@ window.parentSend = function () {
                 txt.slice(0, 60) + (txt.length > 60 ? "…" : ""),
           type: "info", label: "رسالة"
         });
+      }
       }
     } catch (e) {}
 
@@ -31439,10 +31585,10 @@ function studentReports() {
   </div>`;
 
   const attCards = [
-    card("الحضور",  toArabicDigits(s.present), "tsc-ok",   toArabicDigits(p(s.present)) + "٪"),
-    card("الغياب",  toArabicDigits(s.absent),  "tsc-bad",  toArabicDigits(p(s.absent)) + "٪"),
-    card("التأخر",  toArabicDigits(s.late),    "tsc-warn", toArabicDigits(p(s.late)) + "٪"),
-    card("الاستئذان", toArabicDigits(s.excused), "tsc-lvl", toArabicDigits(p(s.excused)) + "٪")
+    card(attLabel("حاضر"),   toArabicDigits(s.present), "tsc-ok",   toArabicDigits(p(s.present)) + "٪"),
+    card(attLabel("غائب"),   toArabicDigits(s.absent),  "tsc-bad",  toArabicDigits(p(s.absent)) + "٪"),
+    card(attLabel("متأخر"),  toArabicDigits(s.late),    "tsc-warn", toArabicDigits(p(s.late)) + "٪"),
+    card(attLabel("مستأذن"), toArabicDigits(s.excused), "tsc-lvl",  toArabicDigits(p(s.excused)) + "٪")
   ].join("");
 
   const perfCards = [
@@ -31463,17 +31609,17 @@ function studentReports() {
     ${pageHead("تقاريري", esc(st.name || ""))}
     ${typeof kidSwitcher === "function" ? kidSwitcher() : ""}
 
-    <div class="tsc-h">إحصاء الحضور</div>
-    <div class="card trp-card"><div class="tsc-four">${attCards}</div></div>
+    ${stuAppOn("reports.att") ? `<div class="tsc-h">إحصاء الحضور</div>
+    <div class="card trp-card"><div class="tsc-four">${attCards}</div></div>` : ""}
 
-    <div class="tsc-h">إحصاء التسميع</div>
-    <div class="card trp-card"><div class="tsc-four">${perfCards}</div></div>
+    ${stuAppOn("reports.perf") ? `<div class="tsc-h">إحصاء التسميع</div>
+    <div class="card trp-card"><div class="tsc-four">${perfCards}</div></div>` : ""}
 
-    <div class="tsc-h">المسار</div>
-    <div class="card trp-card"><div class="tsc-four">${pathCards}</div></div>
+    ${stuAppOn("reports.path") ? `<div class="tsc-h">المسار</div>
+    <div class="card trp-card"><div class="tsc-four">${pathCards}</div></div>` : ""}
 
-    <div class="tsc-h">خريطة التقدم في القرآن</div>
-    ${quranMapCard(st)}
+    ${stuAppOn("reports.qmap") ? `<div class="tsc-h">خريطة التقدم في القرآن</div>
+    ${quranMapCard(st)}` : ""}
   </div>`;
 }
 
@@ -31511,9 +31657,9 @@ function studentSettings() {
       row("lock", "تغيير كلمة المرور", `onclick="window.stuPassReset()"`))}
 
     ${group("التعلّم",
-      row("book", "المصحف التفاعلي", `data-action="nav" data-page="mushaf"`) +
-      row("report", "تقاريري", `data-action="nav" data-page="reports"`) +
-      row("gift", "المتجر", `data-action="nav" data-page="store"`))}
+      (stuAppOn("show.mushaf") ? row("book", "المصحف التفاعلي", `data-action="nav" data-page="mushaf"`) : "") +
+      (stuAppOn("show.reports") ? row("report", "تقاريري", `data-action="nav" data-page="reports"`) : "") +
+      (stuAppOn("show.store") ? row("gift", "المتجر", `data-action="nav" data-page="store"`) : ""))}
 
     <div class="card mre-card">
       <button type="button" class="mre-row mre-out"
@@ -31729,13 +31875,14 @@ function stuHero(st) {
       <span class="shx-lbl">${esc(h)}</span>
     </div>`).join("");
 
+  const streaks = stuAppOn("home.streaks");
   return `<div class="shx">
     <div class="shx-top">
       <span class="shx-btns">
         <button type="button" class="shx-ic" title="التنبيهات"
           data-action="nav" data-page="notifications">${ic("bell", 18)}</button>
-        <button type="button" class="shx-ic" title="المحادثات"
-          onclick="window.openMsgPanel && window.openMsgPanel()">${ic("chat", 18)}</button>
+        ${stuAppOn("chat") ? `<button type="button" class="shx-ic" title="المحادثات"
+          onclick="window.openMsgPanel && window.openMsgPanel()">${ic("chat", 18)}</button>` : ""}
       </span>
       <span class="shx-who">
         <small class="shx-greet">${esc(stuGreet())}</small>
@@ -31748,8 +31895,8 @@ function stuHero(st) {
         : ic("user", 22)}</span>
     </div>
 
-    <div class="shx-h">${ic("star", 14)} استريكاتي</div>
-    <div class="shx-cards">${cards}</div>
+    ${streaks ? `<div class="shx-h">${ic("star", 14)} استريكاتي</div>
+    <div class="shx-cards">${cards}</div>` : ""}
   </div>`;
 }
 
@@ -31890,10 +32037,12 @@ function studentDashboard() {
   const prog = Number(p && p.progress) || 0;
 
   const attRows = [
-    { cls: "att-present", ico: "check", label: "الحضور", num: present, pct: pct(present), head: true },
-    { cls: "att-late",    ico: "eye",   label: "التأخير", num: late,    pct: pct(late) },
-    { cls: "att-excused", ico: "eye",   label: "مستأذن",  num: excused, pct: pct(excused) },
-    { cls: "att-absent",  ico: "x",     label: "غياب",    num: absent,  pct: pct(absent) }
+    /* الأسماءُ من attLabel: ما سمّته الإدارةُ في «حالات التحضير» يظهر
+       للطالب كما يظهر للمعلّم — وكانت مكتوبةً هنا فلا يتبع أحدُهما الآخر. */
+    { cls: "att-present", ico: "check", label: attLabel("حاضر"),  num: present, pct: pct(present), head: true },
+    { cls: "att-late",    ico: "eye",   label: attLabel("متأخر"),  num: late,    pct: pct(late) },
+    { cls: "att-excused", ico: "eye",   label: attLabel("مستأذن"), num: excused, pct: pct(excused) },
+    { cls: "att-absent",  ico: "x",     label: attLabel("غائب"),   num: absent,  pct: pct(absent) }
   ].map(r => `<div class="att-row ${r.cls}${r.head ? " att-row-head" : ""}">
       <div class="ar-right"><span class="ar-ico">${ic(r.ico, r.head ? 22 : 20)}</span><span class="ar-label">${r.label}</span><span class="ar-count">(${r.num})</span></div>
       <span class="ar-pct">${r.pct}%</span></div>`).join("");
@@ -31902,8 +32051,9 @@ function studentDashboard() {
     { tint: "t-green",  icon: "book",   num: faces,        label: "أوجه محفوظة", page: "results" },
     { tint: "t-blue",   icon: "pen",    num: recs.length,  label: "جلسات تسميع", page: "results" },
     { tint: "t-purple", icon: "target", num: prog,         label: "% من الخطة",  page: "progress" },
-    { tint: "t-amber",  icon: "star",   num: Number(st.points) || 0, label: "نقاطي", page: "progress" }
-  ].map(f => `<button type="button" class="facility-card ${f.tint}" data-action="nav" data-page="${f.page}">
+    { tint: "t-amber",  icon: "star",   num: Number(st.points) || 0, label: "نقاطي", page: "progress",
+      off: !stuAppOn("home.points") }
+  ].filter(f => !f.off).map(f => `<button type="button" class="facility-card ${f.tint}" data-action="nav" data-page="${f.page}">
       <div class="fc-num">${f.num}</div>
       <div class="fc-body"><span class="fc-ico">${ic(f.icon, 22)}</span><span class="fc-label">${f.label}</span></div>
     </button>`).join("");
@@ -31932,10 +32082,11 @@ function studentDashboard() {
   return `<div class="page stu-home">
     ${stuHero(st)}
     ${kidSwitcher()}
-    ${stuTasksCard(st)}
+    ${stuAppOn("home.tasks") ? stuTasksCard(st) : ""}
     <div style="height:16px"></div>
     <div class="dash-top">
-      <div class="card att-summary-wrap"><div class="att-rows">${attRows}</div></div>
+      ${stuAppOn("home.att")
+        ? `<div class="card att-summary-wrap"><div class="att-rows">${attRows}</div></div>` : ""}
       <div class="card facility-wrap"><div class="facility-grid">${cards}</div></div>
       <div class="card gauge-wrap">${donut}</div>
     </div>
@@ -32565,8 +32716,13 @@ function renderTabBar() {
   const items = TABBAR[STATE.iface];
   if (!items) { el.innerHTML = ""; el.style.display = "none"; return; }
 
-  /* ما لا شاشةَ له يُطرح: المتجرُ مثلاً قد يكون مطفأً في الإعدادات */
-  const live = items.filter(it => PAGES[STATE.iface + "/" + it.id]);
+  /* ما لا شاشةَ له يُطرح: المتجرُ مثلاً قد يكون مطفأً في الإعدادات.
+     وما منعته الإدارةُ في «تطبيق الطالب» يُطرح كذلك — للطالب ووليّ أمره
+     وحدَهما، فلا يُمسّ شريطُ المعلّم. */
+  const stu = STATE.iface === "student" || STATE.iface === "parent";
+  const live = items.filter(it => PAGES[STATE.iface + "/" + it.id] &&
+    (!stu || typeof stuAppOn !== "function" || stuAppOn("show." + it.id) ||
+     ["dashboard", "settings"].indexOf(it.id) > -1));
   if (!live.length) { el.innerHTML = ""; el.style.display = "none"; return; }
 
   el.style.display = "";
@@ -42058,7 +42214,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-2330";
+  var APP_BUILD = "20261006-0010";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
