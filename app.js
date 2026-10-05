@@ -25229,15 +25229,17 @@ function teacherReport() {
   const total = recs.length;
   const pct = v => total ? Math.round(v / total * 100) : 0;
 
+  /* بطاقاتُ التقرير بتصميم صفحة الطالب نفسِه: اسمُ العنصر فوق ورقمُه تحت
+     في بطاقةٍ واحدةٍ من صفّ — لا شرائطَ بعرض الشاشة. والنسبةُ تحت الرقم. */
   const cards = [
-    { k: attLabel("حاضر"),   v: present, t: "t-green"  },
-    { k: attLabel("متأخر"),  v: late,    t: "t-amber"  },
-    { k: attLabel("مستأذن"), v: excused, t: "t-blue"   },
-    { k: attLabel("غائب"),   v: absent,  t: "t-purple" }
-  ].map(x => `<div class="facility-card ${x.t}">
-      <div class="fc-num">${toArabicDigits(x.v)}</div>
-      <div class="fc-body"><span class="fc-label">${esc(x.k)}</span>
-        <span class="fc-label">${toArabicDigits(pct(x.v))}٪</span></div>
+    { k: attLabel("حاضر"),   v: present, t: "tsc-ok"   },
+    { k: attLabel("متأخر"),  v: late,    t: "tsc-warn" },
+    { k: attLabel("مستأذن"), v: excused, t: "tsc-lvl"  },
+    { k: attLabel("غائب"),   v: absent,  t: "tsc-bad"  }
+  ].map(x => `<div class="tsc-card ${x.t}">
+      <span class="tsc-lbl">${esc(x.k)}</span>
+      <b class="tsc-val">${toArabicDigits(x.v)}</b>
+      <span class="tsc-sub">${toArabicDigits(pct(x.v))}٪</span>
     </div>`).join("");
 
   const rows = recs.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))
@@ -25261,13 +25263,13 @@ function teacherReport() {
   const recStuds = new Set(myRecs.map(r => String(r.studentId))).size;
 
   const perf = [
-    { t: "t-green",  n: myRecs.length, h: "التسميعات" },
-    { t: "t-blue",   n: recStuds,      h: "طلابٌ سُمّعوا" },
-    { t: "t-amber",  n: asgDone,       h: "واجباتٌ أُنجزت" },
-    { t: "t-purple", n: studIds.size,  h: "طلابي" }
-  ].map(x => `<div class="facility-card ${x.t}">
-      <div class="fc-num">${toArabicDigits(x.n)}</div>
-      <div class="fc-body"><span class="fc-label">${esc(x.h)}</span></div>
+    { t: "tsc-ok",   n: myRecs.length, h: "التسميعات" },
+    { t: "tsc-lvl",  n: recStuds,      h: "طلابٌ سُمّعوا" },
+    { t: "tsc-warn", n: asgDone,       h: "واجباتٌ أُنجزت" },
+    { t: "tsc-lvl",  n: studIds.size,  h: "طلابي" }
+  ].map(x => `<div class="tsc-card ${x.t}">
+      <span class="tsc-lbl">${esc(x.h)}</span>
+      <b class="tsc-val">${toArabicDigits(x.n)}</b>
     </div>`).join("");
 
   /* إحصاءُ الأسبوع: سبعةُ أيّامٍ بتسميعاتها وواجباتها المنجَزة */
@@ -25313,14 +25315,16 @@ function teacherReport() {
   </div>`;
 
   /* عناصرُ التقرير: ما أظهرته الإدارةُ منها وحدَه */
+  /* القسمُ بعنوانٍ هادئٍ فوقه لا بترويسةِ بطاقة — كما في صفحة الطالب.
+     وما أخفته الإدارةُ من عناصر التقرير يبقى مخفيّاً كما كان. */
   const sec = (k, title, body) => reportOn(k)
-    ? `<div class="card" style="margin-bottom:14px">
-        <div class="section-head"><h3>${esc(title)}</h3></div>${body}</div>` : "";
+    ? `<div class="tsc-h">${esc(title)}</div>
+       <div class="card trp-card">${body}</div>` : "";
 
   return `<div class="page">
     ${pageHead("تقرير المعلم", "حضورك وأداؤك مع طلابك")}
-    ${sec("att", "إحصاء الحضور", `<div class="grid g-4 stagger">${cards}</div>`)}
-    ${sec("perf", "إحصاء الأداء", `<div class="grid g-4 stagger">${perf}</div>`)}
+    ${sec("att", "إحصاء الحضور", `<div class="tsc-four">${cards}</div>`)}
+    ${sec("perf", "إحصاء الأداء", `<div class="tsc-four">${perf}</div>`)}
     ${sec("weekly", "إحصاء الأسبوع", weekly)}
     ${sec("period", "إحصاء الفترة", period)}
     ${/* تقييمُ الإدارة: تُظهره الإدارةُ من عناصر التقرير، ويراه من مُنح
@@ -41235,7 +41239,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261005-0800";
+  var APP_BUILD = "20261005-0840";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

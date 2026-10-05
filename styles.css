@@ -10947,3 +10947,19 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 .tcl-ok { display: flex; align-items: center; gap: 9px; margin-top: 14px;
   padding: 12px 14px; border-radius: 14px; font-size: 13px; font-weight: 700;
   background: #eaf7f0; color: #12855c; border: 1px solid #cfead9; }
+
+/* =========================================================================
+   تقريرُ المعلّم — بتصميم صفحة الطالب نفسِه
+   -------------------------------------------------------------------------
+   أربعُ بطاقاتٍ في صفٍّ تنزل إلى اثنتين في الضيّق، وبطاقةُ القسم بلا
+   ترويسةٍ لأنّ العنوان صار فوقها.
+   ========================================================================= */
+.tsc-four { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
+.tsc-sub { font-size: 11px; font-weight: 700; opacity: .7;
+  font-variant-numeric: tabular-nums; }
+.tsc-bad .tsc-val { color: #c0392f; }
+.trp-card { padding: 14px; margin-bottom: 4px; }
+
+@media (max-width: 560px) {
+  .tsc-four { grid-template-columns: 1fr 1fr; }
+}
