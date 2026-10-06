@@ -30245,7 +30245,15 @@ function mushafSheet(n) {
   const L = QLINES && QLINES[String(n)];
   if (L && L.length) {
     const idx = musWordIndex(n);
-    const linesHTML = L.map(ln => {
+    /* موضعُ آخر سطرٍ فيه كلام — ما بعده ليس سطرَ نصّ */
+    let lastTextIdx = -1;
+    L.forEach((x, i) => { if (x[0] !== "h" && x[0] !== "b") lastTextIdx = i; });
+    const linesHTML = L.map((ln, li) => {
+      const last = li === lastTextIdx;
+      let wc = 0;
+      if (ln[0] !== "h" && ln[0] !== "b") {
+        (ln[1] || []).forEach(sg => { wc += Math.max(0, Number(sg[3]) - Number(sg[2]) + 1); });
+      }
       if (ln[0] === "h") {
         return `<div class="mus-surah"><span>سُورَةُ ${esc(sName(ln[1]) || ln[1])}</span></div>`;
       }
@@ -30272,7 +30280,9 @@ function mushafSheet(n) {
             toArabicDigits(seg[1])}</span> `;
         }
       });
-      return `<div class="mus-line">${html}</div>`;
+      /* سطرُ الصفحة الأخيرُ إن قصُر لا يُمطّ: في المصحف المطبوع يُتوسَّط،
+         وتمطيطُه يباعد بين كلماته الثلاث أو الأربع عرضَ الورقة كلَّه. */
+      return `<div class="mus-line${wc > 0 && wc <= 5 && last ? " mus-short" : ""}">${html}</div>`;
     }).join("");
 
     return `<div class="mus-page">
@@ -30282,7 +30292,8 @@ function mushafSheet(n) {
             <span>${esc(sName(first.s))}</span>
             <span>الجزء ${toArabicDigits(first.j || "—")}</span>
           </div>` : ""}
-          <div class="mus-text mus-lines${P.thick ? " thick" : ""}" dir="rtl"
+          <div class="mus-text mus-lines${P.thick ? " thick" : ""}${
+            n === 1 ? " mus-first" : ""}" dir="rtl"
             style="font-size:${Number(P.size) || 21}px">${linesHTML}</div>
           <div class="mus-pagenum">${toArabicDigits(n)}</div>
         </div>
@@ -30407,9 +30418,17 @@ function mushafPage() {
   const audBar = typeof musaBar === "function" ? musaBar() : "";
 
   /* ---- الفرشة ---- */
+  /* =======================================================================
+     ترتيبُ الورقتين — الأقدمُ رقماً على اليمين
+     -----------------------------------------------------------------------
+     الفرشةُ شبكةٌ (grid) في سياقٍ من اليمين لليسار، فأوّلُ عنصرٍ فيها يقع
+     في العمود الأيمن. وكان يُرسم left (وهو n+1) أوّلاً، فتقع الصفحةُ
+     الأحدثُ رقماً يميناً والأقدمُ يساراً — عكسَ المصحف المطبوع: فتُفتح
+     الصفحةُ الأولى فتظهر «البقرة» يميناً و«الفاتحة» يساراً.
+     ======================================================================= */
   const spread = `<div class="mus-spread ${left ? "two" : "one"}">
-    ${left ? mushafSheet(left) : ""}
     ${mushafSheet(right)}
+    ${left ? mushafSheet(left) : ""}
   </div>`;
 
   /* ---- التنقّل ---- */
@@ -44887,7 +44906,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-1750";
+  var APP_BUILD = "20261006-1905";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
