@@ -29619,7 +29619,127 @@ window.musNight = function (on) {
   } catch (e) {}
 };
 
+/* =========================================================================
+   تفسيرُ الآية ومعاني كلماتها
+   -------------------------------------------------------------------------
+   لا نصَّ تفسيرٍ في المشروع، فيُجلب عند الطلب من واجهة Quran.com العامّة
+   (api.quran.com/api/v4) — بطلبٍ صريحٍ منك باختيار «خدمةٍ خارجيّة».
+
+   والعنوانُ ورقمُ التفسير في إعدادات الإدارة لا في الشيفرة: إن غيّرت
+   الخدمةُ ترقيمَها، أو أردتَ تفسيراً آخر، فالضبطُ من هناك بلا رقعة.
+   ولا يُحفظ شيءٌ من التفسير في قاعدتك: يُجلب ويُعرض ويُنسى. */
+const TAFSIR_DEFAULT = {
+  on: true,
+  name: "التفسير الميسّر",
+  /* {key} = «سورة:آية» · {id} = رقم التفسير في الخدمة */
+  url: "https://api.quran.com/api/v4/quran/tafsirs/{id}?verse_key={key}",
+  id: 16,
+  /* معاني الكلمات: التفسيرُ المختصرُ لكلمات الآية في الخدمة نفسِها */
+  wordsUrl: "https://api.quran.com/api/v4/verses/by_key/{key}?words=true&word_fields=text_uthmani&translation_fields=text&language=ar",
+  credit: "المصدر: Quran.com"
+};
+
+function tafsirCfg() {
+  const s = (DB.settings || {}).tafsir;
+  const out = Object.assign({}, TAFSIR_DEFAULT);
+  if (s && typeof s === "object") Object.keys(out).forEach(k => {
+    if (s[k] !== undefined && s[k] !== "") out[k] = s[k];
+  });
+  return out;
+}
+
+const TAF = { key: "", text: "", state: "" };
+
+function tafsirStrip(h) {
+  try {
+    const d = document.createElement("div");
+    d.innerHTML = String(h || "");
+    return (d.textContent || "").replace(/\s+/g, " ").trim();
+  } catch (e) { return String(h || ""); }
+}
+
+window.musAyahOpen = function (sv, av) {
+  const key = String(sv) + ":" + String(av);
+  const c = tafsirCfg();
+  const rows = MUSHAF_CACHE[mushaf().page] || [];
+  const v = rows.find(x => String(x.s) === String(sv) && String(x.a) === String(av));
+  const txt = v ? v.w.join(" ") : "";
+  const nm = typeof surahName === "function" ? surahName(sv) : "";
+
+  TAF.key = key; TAF.state = c.on ? "load" : "off"; TAF.text = "";
+
+  openModal(esc(nm || "الآية") + " " + toArabicDigits(av), "",
+    `<div class="taf">
+      <div class="taf-ayah" dir="rtl">${esc(txt)}</div>
+      <div class="taf-h">${esc(c.name)}</div>
+      <div class="taf-body" id="tafBody">${c.on
+        ? `<div class="taf-wait">${ic("refresh", 15)} جارٍ جلب التفسير…</div>`
+        : `<div class="taf-wait">التفسيرُ موقوفٌ من إعدادات الإدارة.</div>`}</div>
+      ${c.credit ? `<div class="taf-src">${esc(c.credit)}</div>` : ""}
+    </div>`,
+    `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+
+  if (!c.on) return;
+  const url = String(c.url).replace("{id}", String(c.id)).replace("{key}", key);
+  fetch(url, { headers: { "Accept": "application/json" } })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)))
+    .then(j => {
+      const t = j && j.tafsir ? j.tafsir.text
+              : (j && j.tafsirs && j.tafsirs[0] ? j.tafsirs[0].text : "");
+      const box = document.getElementById("tafBody");
+      if (!box) return;
+      const clean = tafsirStrip(t);
+      box.innerHTML = clean
+        ? `<p dir="rtl">${esc(clean)}</p>`
+        : `<div class="taf-wait">لم تُرجع الخدمةُ تفسيراً لهذه الآية.</div>`;
+    })
+    .catch(e => {
+      const box = document.getElementById("tafBody");
+      if (box) box.innerHTML = `<div class="taf-err">${ic("alert", 15)}
+        تعذّر جلبُ التفسير — تأكّد من الاتصال، أو راجع عنوانَ الخدمة في
+        الإعدادات. <small>${esc(String(e && e.message || e))}</small></div>`;
+    });
+};
+
+/* =========================================================================
+   توزيعُ أسطر المصحف المدنيّ
+   -------------------------------------------------------------------------
+   كان النصُّ يتدفّق ويُبرَّر فتختلف نهاياتُ الأسطر عن المصحف المطبوع، فلا
+   يستقيم للحافظ ما حفظه بالصفحة. هنا تُرسم الصفحةُ خمسةَ عشرَ سطراً كما
+   في مصحف المدينة، وكلُّ سطرٍ يُبرَّر إلى عرض الورقة.
+
+   وملفُّ المواضع quran/lines.json مشتقٌّ من بياناتِ صفٍّ مفتوحةِ المصدر
+   (QCF v4 · رخصة MIT)، وطُوبقت على نصّ المشروع نفسِه فطابقت ٦١٦٦ آيةً من
+   ٦٢٣٦ حرفاً بحرف، والباقي آياتٌ تنقسم بين صفحتين وتُجلب صفحتُها الثانية
+   عند الحاجة. والنصُّ المعروضُ نصُّ المشروع لا نصٌّ مستورد. */
+let QLINES = null, QLINES_WAIT = false;
+
+function qlinesLoad() {
+  if (QLINES || QLINES_WAIT) return;
+  QLINES_WAIT = true;
+  fetch("quran/lines.json")
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { QLINES = j || {}; QLINES_WAIT = false; mount(); })
+    .catch(() => { QLINES = {}; QLINES_WAIT = false; });
+}
+
+/* كلماتُ الصفحة مفهرسةً بـ«سورة:آية» — ومعها الصفحةُ المجاورة للآيات
+   التي تنقسم بين ورقتين. */
+function musWordIndex(n) {
+  const out = {};
+  [n - 1, n, n + 1].forEach(p => {
+    (MUSHAF_CACHE[p] || []).forEach(v => {
+      const k = v.s + ":" + v.a;
+      if (!out[k]) out[k] = { s: v.s, a: v.a, w: [] };
+      out[k].w = out[k].w.concat(v.w);
+    });
+  });
+  return out;
+}
+
 /* رسم صفحة واحدة داخل الفرشة — تُستعمل لليمنى واليسرى معاً */
+const QNAME = ["", "الحزب", "ربع الحزب", "نصف الحزب", "ثلاثة أرباع الحزب"];
+
 function mushafSheet(n) {
   const rows = MUSHAF_CACHE[n];
   const m = mushaf();
@@ -29634,9 +29754,74 @@ function mushafSheet(n) {
 
   const first = rows[0] || {};
   const P = muspCfg();
+  qlinesLoad();
+
+  /* الكلمةُ الواحدة: لونُها من تأشير الأخطاء كما كان، ومفتاحُها لم يتغيّر */
+  const wordHTML = (sv, i) => {
+    const key = sv.s + ":" + sv.a + ":" + i;
+    const k = m.marks[key];
+    const cls = k ? " marked " + musMark(k).cls : "";
+    const dk = k ? (m.dkind || {})[key] : "";
+    const dc = dk && typeof musDutyColor === "function" ? musDutyColor(dk) : "";
+    const sty = dc ? ` style="background:${esc(dc)}"` : "";
+    const ttl = k ? ` title="${esc(musMark(k).h + (dk && MUSD.name && String(MUSD.kind) === String(dk)
+      ? " — " + MUSD.name : ""))}"` : "";
+    return `<span class="mus-w${cls}"${ttl}${sty} onclick="window.mushafMark('${key}')">${
+      esc(sv.w[i])}</span>`;
+  };
+
+  /* المسارُ المطابقُ للمصحف المطبوع متى وصل ملفُّ الأسطر */
+  const L = QLINES && QLINES[String(n)];
+  if (L && L.length) {
+    const idx = musWordIndex(n);
+    const linesHTML = L.map(ln => {
+      if (ln[0] === "h") {
+        return `<div class="mus-surah"><span>سُورَةُ ${esc(sName(ln[1]) || ln[1])}</span></div>`;
+      }
+      if (ln[0] === "b") {
+        return `<div class="mus-basmala">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</div>`;
+      }
+      let html = "";
+      (ln[1] || []).forEach(seg => {
+        const sv = idx[seg[0] + ":" + seg[1]];
+        if (!sv) { mushafLoad(seg[0] === (first.s || 0) ? n - 1 : n + 1); return; }
+        const rb = P.marks ? QRUB[seg[0] + ":" + seg[1]] : null;
+        if (rb && seg[2] === 1) {
+          const h = rb[1] === 1 ? "الحزب " + toArabicDigits(rb[0]) : QNAME[rb[1]];
+          html += `<span class="mus-hizb" title="${esc(h)}">${esc(h)}</span> `;
+        }
+        for (let p = seg[2]; p <= seg[3] && p <= sv.w.length; p++) {
+          html += wordHTML(sv, p - 1) + " ";
+        }
+        /* رقمُ الآية عند آخر كلمةٍ منها */
+        if (seg[3] >= sv.w.length) {
+          const hl = m.hl && m.hl === seg[0] + ":" + seg[1] ? " mus-hl" : "";
+          html += `<span class="mus-num tap${hl}" title="تفسير الآية"
+            onclick="window.musAyahOpen(${seg[0]},${seg[1]})">${
+            toArabicDigits(seg[1])}</span> `;
+        }
+      });
+      return `<div class="mus-line">${html}</div>`;
+    }).join("");
+
+    return `<div class="mus-page">
+      <div class="mus-orn${P.orn ? "" : " plain"}">
+        <div class="mus-inner">
+          ${P.top ? `<div class="mus-head">
+            <span>${esc(sName(first.s))}</span>
+            <span>الجزء ${toArabicDigits(first.j || "—")}</span>
+          </div>` : ""}
+          <div class="mus-text mus-lines${P.thick ? " thick" : ""}" dir="rtl"
+            style="font-size:${Number(P.size) || 21}px">${linesHTML}</div>
+          <div class="mus-pagenum">${toArabicDigits(n)}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  /* وإلى أن يصل ملفُّ الأسطر: التدفّقُ كما كان — لا شاشةَ فارغة */
   let body = "", lastSurah = null;
 
-  const QNAME = ["", "الحزب", "ربع الحزب", "نصف الحزب", "ثلاثة أرباع الحزب"];
 
   rows.forEach(v => {
     if (v.ss || v.s !== lastSurah) {
@@ -29671,7 +29856,9 @@ function mushafSheet(n) {
     }
 
     const hl = m.hl && m.hl === v.s + ":" + v.a ? " mus-hl" : "";
-    body += `<span class="mus-ayah${hl}">${words} <span class="mus-num">${toArabicDigits(v.a)}</span></span> `;
+    body += `<span class="mus-ayah${hl}">${words} <span class="mus-num tap"
+      title="تفسير الآية" onclick="window.musAyahOpen(${v.s},${v.a})">${
+      toArabicDigits(v.a)}</span></span> `;
   });
 
   return `<div class="mus-page">
@@ -42858,7 +43045,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-0740";
+  var APP_BUILD = "20261006-0900";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
