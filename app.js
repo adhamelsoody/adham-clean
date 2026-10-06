@@ -29587,6 +29587,7 @@ function studentMarks(st) {
   (Array.isArray(DB.mushafMarks) ? DB.mushafMarks : []).forEach(r => {
     if (!r || String(r.studentId) !== String(st.id)) return;
     if (f.kind && r.kind !== f.kind) return;
+    if (f.duty && String(r.asgKind || "") !== String(f.duty)) return;
     if (f.since && String(r.date) < f.since) return;
     out[r.key] = r.kind;
   });
@@ -29594,8 +29595,18 @@ function studentMarks(st) {
 }
 
 function musFilter() {
-  if (!STATE.musFilter) STATE.musFilter = { kind: "", since: "" };
+  if (!STATE.musFilter) STATE.musFilter = { kind: "", duty: "", since: "" };
+  if (STATE.musFilter.duty === undefined) STATE.musFilter.duty = "";
   return STATE.musFilter;
+}
+
+/* أنواعُ الواجبات كما ضبطتها الإدارةُ — «خطأ حفظ · خطأ تثبيت · خطأ مراجعة».
+   تُقرأ من hwTypes() نفسِها لا من قائمةٍ ثانيةٍ محفورةٍ هنا، فإن سمّت
+   الإدارةُ واجباً باسمٍ آخر أو أضافت واجباً تبعه الفلترُ بلا تعديل. */
+function musDutyKinds() {
+  const list = typeof hwTypes === "function" ? hwTypes() : [];
+  return list.map(t => ({ k: String(t.k), h: String(t.h || t.k),
+                          color: String(t.color || "") }));
 }
 
 window.musFilterSet = function (field, v) {
@@ -30541,6 +30552,9 @@ function mushafPage() {
   const since7 = (() => { const d = new Date(); d.setDate(d.getDate() - 7);
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();
 
+  /* فلترُ نوع الواجب: ما ضبطته الإدارةُ حرفياً — خطأ حفظ · خطأ تثبيت ·
+     خطأ مراجعة — بأسمائها وألوانها كما سمّتها، لا بقائمةٍ محفورةٍ هنا. */
+  const dutyKinds = musDutyKinds();
   const filters = (musSt || isReader) ? `<div class="mus-tools">
     <span class="mus-tools-lbl">عرض الأخطاء</span>
     <button type="button" class="mus-mode ${!f.kind ? "on" : ""}" onclick="window.musFilterSet('kind','')">الكل</button>
@@ -30550,7 +30564,15 @@ function mushafPage() {
     <button type="button" class="mus-mode ${!f.since ? "on" : ""}" onclick="window.musFilterSet('since','')">كل الفترات</button>
     <button type="button" class="mus-mode ${f.since === since30 ? "on" : ""}" onclick="window.musFilterSet('since','${since30}')">آخر شهر</button>
     <button type="button" class="mus-mode ${f.since === since7 ? "on" : ""}" onclick="window.musFilterSet('since','${since7}')">هذا الأسبوع</button>
-  </div>` : "";
+  </div>
+  ${dutyKinds.length ? `<div class="mus-tools">
+    <span class="mus-tools-lbl">نوع الواجب</span>
+    <button type="button" class="mus-mode ${!f.duty ? "on" : ""}"
+      onclick="window.musFilterSet('duty','')">كل الواجبات</button>
+    ${dutyKinds.map(t => `<button type="button" class="mus-mode mus-duty-f ${
+      f.duty === t.k ? "on" : ""}"${t.color ? ` style="--mus-dk:${esc(t.color)}"` : ""}
+      onclick="window.musFilterSet('duty','${jsAttr(t.k)}')"><i></i>خطأ ${esc(t.h)}</button>`).join("")}
+  </div>` : ""}` : "";
 
   /* ألوان اللوحة تُحقن متغيّراتٍ فيقرؤها التنسيق بلا تكرار */
   const colorVars = musColorVars();
@@ -39348,11 +39370,19 @@ const QA_RECITERS = [
   { id: "husary", name: "محمود خليل الحصري", nameEn: "Al-Husary",
     riwaya: "حفص عن عاصم — مرتَّل", letter: "ح",
     desc: "شيخُ عموم المقارئ المصرية، وأضبطُ التلاوات المسجَّلة أداءً للتجويد.",
-    base: "https://server13.mp3quran.net/download/husr/", image: "", ayahApi: 6 },
+    /* نقل المصدرُ ملفَّاته إلى cdn.mp3quran.net، فسقط server13 القديم.
+       الرابطُ أدناه هو ما تعرضه صفحةُ القارئ في mp3quran.net نفسِها. */
+    base: "https://cdn.mp3quran.net/download/audio/mahmoud-husary/r1/",
+    image: "", ayahApi: 6 },
   { id: "hudhaify", name: "علي بن عبدالرحمن الحذيفي", nameEn: "Al-Hudhaify",
     riwaya: "حفص عن عاصم", letter: "ع",
     desc: "إمامُ المسجد النبويّ، تلاوةٌ هادئةٌ واضحةُ المخارج.",
-    base: "https://server9.mp3quran.net/download/hthfi/", image: "", ayahApi: 0 },
+    base: "https://cdn.mp3quran.net/download/audio/ali-hudhaifi/r1/", image: "",
+    /* لا تلاوةَ له آيةً آية في Quran.com — تحقّقتُ من فهرس التلاواتِ هناك
+       فوجدتُه بالسورة وحدَها. وله في everyayah.com ملفُّ كلِّ آيةٍ على حدة،
+       فيُبثّ منه بثّاً ولا يُنسخ إلى خوادمنا. واسمُ الملفّ: سورةٌ ثلاثُ
+       خاناتٍ ثمّ آيةٌ ثلاثُ خانات. */
+    ayahApi: 0, ayahBase: "https://everyayah.com/data/Hudhaify_128kbps/" },
   { id: "tunaiji", name: "خليفة الطنيجي", nameEn: "Al-Tunaiji",
     riwaya: "حفص عن عاصم", letter: "خ",
     desc: "قارئٌ إماراتيٌّ معاصر، تلاوةٌ نديّةٌ مطمئنّة.",
@@ -39445,6 +39475,24 @@ const QA_AYAH_API  = "https://api.quran.com/api/v4/recitations/";
 const QA_AYAH_HOST = "https://verses.quran.com/";
 const QA_AYAH_CACHE = {};          /* "rid|surah" → [{s,a,url}] */
 
+/* هل لهذا القارئ تلاوةٌ آيةً آية؟ مصدران: فهرسُ Quran.com (ayahApi)،
+   وملفّاتُ everyayah.com (ayahBase). ومن لا مصدرَ له لا يُشغَّل بالآية. */
+function qaHasAyah(r) { return !!(r && (r.ayahApi || r.ayahBase)); }
+window.qaHasAyah = qaHasAyah;
+
+/* عددُ آيات سورةٍ من قائمة السور القائمة — لا جدولَ ثانٍ.
+   وقد يُفتح المصحفُ قبل تحميل الفهرس، فيُحمَّل هنا مرّةً ويُنتظر. */
+async function qaAyahCount(surah) {
+  const n = Number(surah) || 0;
+  if (!n) return 0;
+  if (!QSURAHS && typeof window.Quran !== "undefined" && window.Quran.surahs) {
+    try { QSURAHS = await window.Quran.surahs(); } catch (e) { return 0; }
+  }
+  if (!QSURAHS) return 0;
+  const x = QSURAHS.find(y => Number(y.i) === n);
+  return x ? Number(x.a) || 0 : 0;
+}
+
 function qaAyahAbs(u) {
   const s = String(u || "");
   if (!s) return "";
@@ -39455,9 +39503,24 @@ function qaAyahAbs(u) {
 /* آياتُ سورةٍ بصوت قارئ — تُجلب مرّةً وتُحفظ، ولا تُجلب قبل الطلب */
 async function qaAyahLoad(rid, surah) {
   const r = qaReciter(rid);
-  if (!r || !r.ayahApi) return null;
+  if (!qaHasAyah(r)) return null;
   const key = rid + "|" + surah;
   if (QA_AYAH_CACHE[key]) return QA_AYAH_CACHE[key];
+
+  /* مصدرٌ باسمِ ملفٍّ منتظم: تُبنى الروابطُ من عدد آيات السورة، فلا طلبَ
+     شبكةٍ لفهرسٍ ولا انتظار. ولا يُنسخ ملفٌّ — البثُّ من المصدر نفسِه. */
+  if (r.ayahBase) {
+    const cnt = await qaAyahCount(surah);
+    if (!cnt) return null;
+    const out = [];
+    for (let a = 1; a <= cnt; a++) {
+      out.push({ s: Number(surah), a: a,
+                 url: r.ayahBase + qaPad3(surah) + qaPad3(a) + ".mp3" });
+    }
+    QA_AYAH_CACHE[key] = out;
+    return out;
+  }
+
   const url = QA_AYAH_API + r.ayahApi + "/by_chapter/" + Number(surah) +
               "?per_page=300";
   try {
@@ -39501,7 +39564,7 @@ function qaAyahHi(s, a) {
 window.qaAyahPlay = async function (s, a) {
   if (!MUSA.rid) { showToast("اختر القارئ أولاً", "warn"); return; }
   const r = qaReciter(MUSA.rid);
-  if (!r || !r.ayahApi) {
+  if (!qaHasAyah(r)) {
     showToast("هذا القارئ لا تتوفّر له تلاوةٌ بالآية — استمع إليه بالسورة من «المسموع»", "warn");
     return;
   }
@@ -39601,7 +39664,7 @@ function musaBarSync() {
 function musaBar() {
   if (!stuAppOn("show.audio")) return "";
   const r = MUSA.rid ? qaReciter(MUSA.rid) : null;
-  const noAyah = r && !r.ayahApi;
+  const noAyah = r && !qaHasAyah(r);
   return `<div class="musa-bar${MUSA.on ? " on" : ""}">
     <button type="button" class="musa-btn${MUSA.on ? " on" : ""}" onclick="window.musaToggleOn()">
       ${ic(MUSA.on ? "pause" : "play", 15)} ${MUSA.on ? "إغلاق الاستماع" : "استماع بالآية"}</button>
@@ -39609,7 +39672,7 @@ function musaBar() {
       <option value="">— اختر القارئ —</option>
       ${QA_RECITERS.map(x => `<option value="${esc(x.id)}"${
         MUSA.rid === x.id ? " selected" : ""}>${esc(x.name)}${
-        x.ayahApi ? "" : " (بالسورة فقط)"}</option>`).join("")}
+        qaHasAyah(x) ? "" : " (بالسورة فقط)"}</option>`).join("")}
     </select>
     ${MUSA.on ? `<button type="button" class="musa-btn" onclick="window.musaFromPage()">
         ${ic("book", 14)} من أول الصفحة</button>
@@ -39984,7 +40047,7 @@ function qaDutyReciter() {
   if (MUSA.rid) return MUSA.rid;
   const l = qaPrefs().last;
   if (l && l.rid && qaReciter(l.rid)) return l.rid;
-  const r = QA_RECITERS.find(x => x.ayahApi);
+  const r = QA_RECITERS.find(qaHasAyah);
   return r ? r.id : QA_RECITERS[0].id;
 }
 
@@ -40003,7 +40066,7 @@ window.qaPlayDuty = async function (fromS, fromA, toS, toA) {
   const r = qaReciter(rid);
   const s = Number(fromS), a = Math.max(1, Number(fromA) || 1);
 
-  if (r && r.ayahApi) {
+  if (qaHasAyah(r)) {
     MUSA.on = true;
     MUSA.lim = { s: Number(toS) || s, a: Number(toA) || 0 };
     await window.qaAyahPlay(s, a);
@@ -40036,7 +40099,7 @@ function qaDutyBox() {
       <select class="musa-sel" onchange="window.qaDutyPick(this.value)">
         ${QA_RECITERS.map(x => `<option value="${esc(x.id)}"${
           rid === x.id ? " selected" : ""}>${esc(x.name)}${
-          x.ayahApi ? "" : " (بالسورة)"}</option>`).join("")}
+          qaHasAyah(x) ? "" : " (بالسورة)"}</option>`).join("")}
       </select>
     </div>
     <div class="qa-duty-list">${duties.map(d => `<button type="button"
@@ -40158,6 +40221,27 @@ window.validateReciterAudioSources = async function (opts) {
       out.push(row);
     }
   }
+  /* ومصدرُ التلاوة بالآية: أوّلُ آيةٍ من أوّل سورةٍ تكفي للحكم على المصدر */
+  for (const rid of only) {
+    const r = qaReciter(rid);
+    if (!qaHasAyah(r)) continue;
+    const row = { reciter: (r ? r.name : rid) + " — بالآية", reciterId: rid,
+                  surah: 1, url: "", status: "" };
+    try {
+      const list = await qaAyahLoad(rid, 1);
+      row.url = (list && list[0] && list[0].url) || "";
+      if (!row.url) { row.status = "unavailable"; row.error = "لا رابطَ للآية"; }
+      else {
+        const res = await fetch(row.url, { method: "HEAD", mode: "cors" });
+        row.status = res.ok ? "ok" : "unavailable";
+        if (!res.ok) row.error = "HTTP " + res.status;
+      }
+    } catch (e) {
+      row.status = "unknown"; row.error = String(e && e.message || e);
+    }
+    out.push(row);
+  }
+
   const bad = out.filter(x => x.status !== "ok");
   console.table(out.slice(0, 20));
   console.log("المجموع: " + out.length + " · سليم: " + (out.length - bad.length) +
@@ -45204,7 +45288,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-2150";
+  var APP_BUILD = "20261006-2325";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
