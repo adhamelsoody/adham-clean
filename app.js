@@ -20881,7 +20881,7 @@ const STUAPP_DEFAULTS = {
   chat: true,
   chatTo: { teacher: true, admin: true },
   /* النوافذُ الظاهرةُ في شريطه السفليّ */
-  show: { mushaf: true, reports: true, store: true },
+  show: { mushaf: true, reports: true, store: true, audio: true },
   /* ما يظهر في رئيسيته */
   home: { streaks: true, tasks: true, points: true, duty: true },
   /* أقسامُ تقاريره */
@@ -20934,6 +20934,7 @@ const STUAPP_ROWS = [
   ["show.mushaf",    "نافذة المصحف التفاعلي",   ""],
   ["show.reports",   "نافذة التقارير",          ""],
   ["show.store",     "نافذة المتجر",            ""],
+  ["show.audio",     "القرآن الكريم المسموع",   "زرُّ المسموع داخل المصحف التفاعلي"],
   ["home.streaks",   "استريكاتي في الرئيسية",   ""],
   ["home.tasks",     "مهامُّ اليوم",             ""],
   ["home.points",    "رصيدُ النقاط",             ""],
@@ -30328,6 +30329,9 @@ function mushafPage() {
       ${ic("book", 18)}<strong>المصحف التفاعلي</strong>
     </div>
     <div class="mus-top-l">
+      ${stuAppOn("show.audio") ? `<button type="button" class="mus-sel mus-aud"
+        title="القرآن الكريم المسموع" onclick="window.go('audio')">
+        ${ic("play", 14)}<span>المسموع</span></button>` : ""}
       <button type="button" class="mus-sel mus-idx" onclick="window.sidxOpen()">
         ${ic("list", 15)}<span>${esc(curSurahName || "فهرس المصحف")}</span>
         ${ic("arrowDown", 13)}</button>
@@ -34053,6 +34057,10 @@ const PAGES = {
   "student/messages": teacherMessages, "student/chat": teacherChat,
   "parent/chat": teacherChat,
   "teacher/messages": teacherMessages, "teacher/chat": teacherChat, "teacher/mushaf": mushafPage, "student/mushaf": mushafPage,
+  /* القرآنُ المسموع: شاشةٌ واحدةٌ لكلّ الواجهات — لا مصحفَ موازياً ولا
+     نافذةً سادسةً في قائمة الطالب، وإنما تُفتح من المصحف التفاعليّ. */
+  "admin/audio": qaudioPage, "teacher/audio": qaudioPage,
+  "student/audio": qaudioPage, "parent/audio": qaudioPage,
   "student/store": studentStore, "parent/store": studentStore,
   "student/reports": studentReports, "parent/reports": studentReports,
   "student/settings": studentSettings, "parent/settings": studentSettings,
@@ -34955,6 +34963,9 @@ function mount() {
   /* صفحةُ المحادثة بعد رسم محتواها: التمريرُ إلى الأحدث، وتبديلُ زرّ
      الصوت بالإرسال — ولا بدّ أن يكون بعد innerHTML لا قبله. */
   try { tchatAfterMount(); } catch (e) {}
+  /* مشغّلُ القرآن المسموع: يُركَّب مرّةً ويبقى خارج #pageContent، فيستمرّ
+     الصوتُ عند التنقّل بين الشاشات ولا يُعاد تحميله. */
+  try { if (QA.rid) qaBarMount(); } catch (e) {}
 }
 
 /* =========================================================
@@ -39045,6 +39056,501 @@ function setPanelAttCfg() {
       <button class="btn btn-primary btn-sm" onclick="window.attCfgSave()">حفظ إعدادات التحضير</button></div>`}
   </div>`;
 }
+
+/* =========================================================================
+   القرآنُ الكريم المسموع — أربعةُ قرّاءٍ بأصواتهم
+   -------------------------------------------------------------------------
+   المواصفات: «أريد إضافة نظام متكامل للقرآن الكريم المسموع… المنشاوي ←
+   ١١٤ سورة بصوته وحدَه… لا تخلط أصوات القرّاء… لا تكتب ٤٥٦ رابطاً يدوياً».
+
+   • مصدرُ الصوت: المكتبة الصوتية للقرآن الكريم (MP3Quran.net). تحقّقتُ من
+     صفحات القرّاء الأربعة: كلٌّ منهم ١١٤ سورةً كاملة، والملفُّ باسمٍ من
+     ثلاثة أرقامٍ بأصفارٍ بادئة. والموقعُ ينشر API للمطوّرين فالبثُّ منه
+     مقصودٌ مأذونٌ به — ولا ينشر ترخيصاً يبيح إعادةَ الاستضافة، فلا تُنسخ
+     ملفاتُه إلى Firebase Storage ولا يُعرض زرُّ تحميل. والمفتاحُ
+     allowDownload يفتحه في سطرٍ متى حصلت الإدارةُ على إذنٍ خطّيّ.
+
+   • الصور: لم يُوجد مصدرٌ بترخيصٍ واضحٍ لصور المشايخ، فالبطاقةُ بهويّة
+     المشروع — حرفُ الاسم في إطارٍ مزخرف. وحقلُ image يقبل صورةً مرخَّصةً
+     متى وُجدت بلا تغييرٍ آخر.
+
+   • السور: تُقرأ من quran/surahs.json القائم (QSURAHS) — لا قائمةَ ثانية.
+     ولا يُولَّد رابطٌ إلا عند الحاجة، ولا يُحمَّل صوتٌ إلا عند الضغط على
+     «تشغيل».
+   ========================================================================= */
+const QA_RECITERS = [
+  { id: "minshawi", name: "محمد صديق المنشاوي", nameEn: "Al-Minshawi",
+    riwaya: "حفص عن عاصم — مرتَّل", letter: "م",
+    desc: "من أعلام التلاوة المصرية، صاحبُ الصوت الخاشع والأداء المتمهّل.",
+    base: "https://cdn.mp3quran.net/download/audio/muhammad-minshawi/r1/", image: "" },
+  { id: "husary", name: "محمود خليل الحصري", nameEn: "Al-Husary",
+    riwaya: "حفص عن عاصم — مرتَّل", letter: "ح",
+    desc: "شيخُ عموم المقارئ المصرية، وأضبطُ التلاوات المسجَّلة أداءً للتجويد.",
+    base: "https://server13.mp3quran.net/download/husr/", image: "" },
+  { id: "hudhaify", name: "علي بن عبدالرحمن الحذيفي", nameEn: "Al-Hudhaify",
+    riwaya: "حفص عن عاصم", letter: "ع",
+    desc: "إمامُ المسجد النبويّ، تلاوةٌ هادئةٌ واضحةُ المخارج.",
+    base: "https://server9.mp3quran.net/download/hthfi/", image: "" },
+  { id: "tunaiji", name: "خليفة الطنيجي", nameEn: "Al-Tunaiji",
+    riwaya: "حفص عن عاصم", letter: "خ",
+    desc: "قارئٌ إماراتيٌّ معاصر، تلاوةٌ نديّةٌ مطمئنّة.",
+    base: "https://cdn.mp3quran.net/download/audio/khalifa-tunaiji/r1/", image: "" }
+];
+/* زرُّ التحميل موقوفٌ حتى يُؤذن به خطّياً — البند ١٩ من المواصفات */
+const QA_ALLOW_DOWNLOAD = false;
+
+/* أسماءُ السور بالإنجليزية — ما ينقص surahs.json وحدَه، بلا تكرارِ سواه */
+const QA_EN = ("Al-Fatihah,Al-Baqarah,Aal-Imran,An-Nisa,Al-Ma'idah,Al-An'am,Al-A'raf,Al-Anfal," +
+"At-Tawbah,Yunus,Hud,Yusuf,Ar-Ra'd,Ibrahim,Al-Hijr,An-Nahl,Al-Isra,Al-Kahf,Maryam,Ta-Ha," +
+"Al-Anbiya,Al-Hajj,Al-Mu'minun,An-Nur,Al-Furqan,Ash-Shu'ara,An-Naml,Al-Qasas,Al-Ankabut," +
+"Ar-Rum,Luqman,As-Sajdah,Al-Ahzab,Saba,Fatir,Ya-Sin,As-Saffat,Sad,Az-Zumar,Ghafir,Fussilat," +
+"Ash-Shura,Az-Zukhruf,Ad-Dukhan,Al-Jathiyah,Al-Ahqaf,Muhammad,Al-Fath,Al-Hujurat,Qaf," +
+"Adh-Dhariyat,At-Tur,An-Najm,Al-Qamar,Ar-Rahman,Al-Waqi'ah,Al-Hadid,Al-Mujadilah,Al-Hashr," +
+"Al-Mumtahanah,As-Saff,Al-Jumu'ah,Al-Munafiqun,At-Taghabun,At-Talaq,At-Tahrim,Al-Mulk," +
+"Al-Qalam,Al-Haqqah,Al-Ma'arij,Nuh,Al-Jinn,Al-Muzzammil,Al-Muddaththir,Al-Qiyamah,Al-Insan," +
+"Al-Mursalat,An-Naba,An-Nazi'at,Abasa,At-Takwir,Al-Infitar,Al-Mutaffifin,Al-Inshiqaq," +
+"Al-Buruj,At-Tariq,Al-A'la,Al-Ghashiyah,Al-Fajr,Al-Balad,Ash-Shams,Al-Layl,Ad-Duha," +
+"Ash-Sharh,At-Tin,Al-Alaq,Al-Qadr,Al-Bayyinah,Az-Zalzalah,Al-Adiyat,Al-Qari'ah,At-Takathur," +
+"Al-Asr,Al-Humazah,Al-Fil,Quraysh,Al-Ma'un,Al-Kawthar,Al-Kafirun,An-Nasr,Al-Masad," +
+"Al-Ikhlas,Al-Falaq,An-Nas").split(",");
+
+function qaReciter(id) {
+  return QA_RECITERS.find(r => r.id === String(id)) || null;
+}
+
+/* رقمُ السورة ← اسمُ الملفّ: ثلاثةُ أرقامٍ بأصفارٍ بادئة */
+function qaPad3(n) {
+  const v = Math.max(1, Math.min(114, Number(n) || 0));
+  return (v < 10 ? "00" : v < 100 ? "0" : "") + v;
+}
+
+/* الرابطُ يُولَّد ولا يُكتب: ٤٥٦ رابطاً من أربعة تعريفات */
+function qaUrl(reciterId, surahNumber) {
+  const r = qaReciter(reciterId);
+  if (!r) return "";
+  const n = Number(surahNumber);
+  if (!(n >= 1 && n <= 114)) return "";
+  return r.base + qaPad3(n) + ".mp3";
+}
+window.qaUrl = qaUrl;
+
+/* سورُ قارئٍ بعينه — من فهرس المشروع نفسِه لا من قائمةٍ ثانية */
+function getReciterSurahs(reciterId) {
+  const r = qaReciter(reciterId);
+  if (!r) return [];
+  const list = (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : [];
+  if (!list.length) return [];
+  return list.map(s => ({
+    reciterId: r.id,
+    surahNumber: Number(s.i),
+    name: s.n,
+    englishName: QA_EN[Number(s.i) - 1] || "",
+    ayahs: Number(s.a) || 0,
+    page: Number(s.p) || 0,
+    audioUrl: qaUrl(r.id, s.i),
+    status: "ok"
+  }));
+}
+window.getReciterSurahs = getReciterSurahs;
+
+/* =========================================================================
+   تفضيلاتُ الاستماع — آخرُ موضعٍ والمفضَّلة
+   -------------------------------------------------------------------------
+   في localStorage كتفضيلات المصحف (mus_prefs): كتابةُ الطالب في فايرستور
+   يردّها الخادمُ بقواعده، فلا تُحفظ هناك.
+   ========================================================================= */
+const QA_PREFS_KEY = "qa_prefs";
+let QA_PREFS = null;
+function qaPrefs() {
+  if (QA_PREFS) return QA_PREFS;
+  let o = {};
+  try { o = JSON.parse(localStorage.getItem(QA_PREFS_KEY) || "{}") || {}; } catch (e) {}
+  QA_PREFS = { last: o.last || null, fav: Array.isArray(o.fav) ? o.fav : [],
+               rate: Number(o.rate) || 1, vol: o.vol == null ? 1 : Number(o.vol),
+               auto: o.auto !== false };
+  return QA_PREFS;
+}
+function qaPrefsSave() {
+  try { localStorage.setItem(QA_PREFS_KEY, JSON.stringify(qaPrefs())); } catch (e) {}
+}
+function qaFavKey(rid, n) { return rid + ":" + n; }
+function qaIsFav(rid, n) { return qaPrefs().fav.indexOf(qaFavKey(rid, n)) > -1; }
+window.qaFavToggle = function (rid, n) {
+  const p = qaPrefs(), k = qaFavKey(rid, String(n)), i = p.fav.indexOf(k);
+  if (i > -1) p.fav.splice(i, 1); else p.fav.push(k);
+  qaPrefsSave();
+  showToast(i > -1 ? "أُزيلت من المفضّلة" : "أُضيفت إلى المفضّلة", "success");
+  mount();
+};
+
+/* =========================================================================
+   المشغّل — عنصرُ صوتٍ واحدٌ للنظام كلِّه
+   -------------------------------------------------------------------------
+   واحدٌ لا أكثر: فلا يختلط صوتُ قارئٍ بآخر مهما تنقّل المستخدم، لأن
+   الثاني يوقف الأول بالضرورة. وكلُّ تشغيلٍ يحمل reciterId صاحبَه.
+   ========================================================================= */
+const QA = { el: null, rid: "", n: 0, playing: false, dur: 0, pos: 0, ready: false };
+
+function qaAudio() {
+  if (QA.el) return QA.el;
+  const a = new Audio();
+  a.preload = "none";                 /* لا يُحمَّل شيءٌ قبل الضغط على تشغيل */
+  a.addEventListener("timeupdate", function () {
+    QA.pos = a.currentTime || 0; qaBarSync();
+    /* آخرُ موضعٍ يُحفظ كلَّ خمس ثوانٍ لا مع كلّ إطار */
+    if (Math.floor(QA.pos) % 5 === 0) qaRemember();
+  });
+  a.addEventListener("loadedmetadata", function () {
+    QA.dur = a.duration || 0; QA.ready = true; qaBarSync();
+  });
+  a.addEventListener("ended", function () { qaEnded(); });
+  a.addEventListener("error", function () {
+    QA.playing = false;
+    showToast("تعذّر تشغيل هذه السورة — تحقّق من اتصالك", "warn");
+    qaBarSync();
+  });
+  a.addEventListener("play",  function () { QA.playing = true;  qaBarSync(); });
+  a.addEventListener("pause", function () { QA.playing = false; qaBarSync(); });
+  QA.el = a;
+  return a;
+}
+
+function qaRemember() {
+  if (!QA.rid || !QA.n) return;
+  const p = qaPrefs();
+  p.last = { rid: QA.rid, n: QA.n, t: Math.floor(QA.pos || 0) };
+  qaPrefsSave();
+}
+
+window.qaPlay = function (rid, n, seek) {
+  const url = qaUrl(rid, n);
+  if (!url) { showToast("لم يُعثر على هذه السورة", "warn"); return; }
+  const a = qaAudio();
+  const same = QA.rid === String(rid) && Number(QA.n) === Number(n);
+  if (!same) {
+    QA.rid = String(rid); QA.n = Number(n);
+    QA.dur = 0; QA.pos = 0; QA.ready = false;
+    a.src = url;                      /* المصدرُ يُسند الآن لا قبلُ */
+  }
+  const p = qaPrefs();
+  a.playbackRate = p.rate; a.volume = p.vol;
+  if (seek != null) { try { a.currentTime = Number(seek) || 0; } catch (e) {} }
+  qaBarMount();
+  const pr = a.play();
+  if (pr && pr.catch) pr.catch(function () {
+    showToast("المتصفّح منع التشغيل التلقائيّ — اضغط «تشغيل» مرّةً أخرى", "warn");
+  });
+  qaRemember();
+  qaBarSync();
+};
+window.qaPause = function () { if (QA.el) QA.el.pause(); };
+window.qaToggle = function () {
+  if (!QA.el || !QA.rid) return;
+  if (QA.playing) QA.el.pause(); else window.qaPlay(QA.rid, QA.n);
+};
+window.qaStop = function () {
+  if (!QA.el) return;
+  QA.el.pause();
+  try { QA.el.currentTime = 0; } catch (e) {}
+  QA.pos = 0; qaBarSync();
+};
+/* التالي والسابق — داخل القارئ نفسِه لا غير */
+window.qaStep = function (d) {
+  if (!QA.rid) return;
+  const n = Number(QA.n) + Number(d);
+  if (n < 1 || n > 114) { showToast(n < 1 ? "هذه أولى السور" : "هذه آخر السور", "info"); return; }
+  window.qaPlay(QA.rid, n);
+  mount();
+};
+window.qaSeek = function (v) {
+  if (!QA.el || !QA.dur) return;
+  try { QA.el.currentTime = (Number(v) / 100) * QA.dur; } catch (e) {}
+};
+window.qaRate = function (v) {
+  const p = qaPrefs(); p.rate = Number(v) || 1; qaPrefsSave();
+  if (QA.el) QA.el.playbackRate = p.rate;
+  qaBarSync();
+};
+window.qaVol = function (v) {
+  const p = qaPrefs(); p.vol = Math.max(0, Math.min(1, Number(v) / 100)); qaPrefsSave();
+  if (QA.el) QA.el.volume = p.vol;
+};
+window.qaAuto = function (on) {
+  const p = qaPrefs(); p.auto = !!on; qaPrefsSave();
+  showToast(p.auto ? "سيتابع إلى السورة التالية" : "سيتوقّف عند نهاية السورة", "info");
+};
+function qaEnded() {
+  QA.playing = false;
+  const p = qaPrefs();
+  if (p.auto && QA.n < 114) { window.qaPlay(QA.rid, Number(QA.n) + 1); mount(); return; }
+  qaBarSync();
+}
+window.qaResume = function () {
+  const l = qaPrefs().last;
+  if (!l) return;
+  window.qaPlay(l.rid, l.n, l.t);
+  QAV.rid = l.rid; mount();
+};
+
+function qaClock(s) {
+  const t = Math.max(0, Math.floor(Number(s) || 0));
+  const m = Math.floor(t / 60), x = t % 60;
+  return toArabicDigits((m < 10 ? "0" : "") + m + ":" + (x < 10 ? "0" : "") + x);
+}
+
+/* ارتفاعُ الشريط السفليّ يُقاس ولا يُقدَّر: ارتفاعُه من محتواه ومن
+   safe-area-inset في الهواتف، فأيُّ رقمٍ ثابتٍ يجعل المشغّلَ يحجبه. */
+function qaLift() {
+  try {
+    const tb = document.querySelector(".tabbar");
+    if (!tb) return 0;
+    if (getComputedStyle(tb).display === "none") return 0;
+    return Math.round(tb.getBoundingClientRect().height || 0);
+  } catch (e) { return 0; }
+}
+
+/* وعرضُ الشريط الجانبيّ كذلك: في الشاشات العريضة يبدأ المشغّلُ بعده فلا
+   يغطّي قائمةَ التنقّل — والقياسُ لا التقدير، فعرضُه متغيّرٌ في المتغيّرات. */
+function qaSideGap() {
+  try {
+    const sb = document.querySelector(".sidebar");
+    if (!sb) return 0;
+    const st = getComputedStyle(sb);
+    if (st.display === "none" || st.position !== "fixed") return 0;
+    const r = sb.getBoundingClientRect();
+    /* المثبَّتُ خارجَ الشاشة (قائمةُ الهاتف المنزلقة) لا يُزاح له */
+    if (r.right <= 0 || r.left >= window.innerWidth) return 0;
+    return Math.round(r.width || 0);
+  } catch (e) { return 0; }
+}
+
+/* شريطُ المشغّل يُحدَّث في مكانه لا بإعادة رسم الصفحة — وإلا انقطع الصوت */
+function qaBarSync() {
+  try {
+    const bar = document.getElementById("qaBar");
+    if (!bar) return;
+    bar.style.bottom = qaLift() + "px";
+    bar.style.insetInlineStart = qaSideGap() + "px";
+    const r = qaReciter(QA.rid);
+    const nm = (typeof QSURAHS !== "undefined" && QSURAHS)
+      ? ((QSURAHS.find(x => Number(x.i) === Number(QA.n)) || {}).n || "") : "";
+    bar.classList.toggle("on", !!QA.rid);
+    const t = bar.querySelector(".qab-title");
+    if (t) t.textContent = nm ? nm + " — " + (r ? r.name : "") : "";
+    const pb = bar.querySelector(".qab-range");
+    if (pb) pb.value = QA.dur ? String(Math.round(QA.pos / QA.dur * 100)) : "0";
+    const tm = bar.querySelector(".qab-time");
+    if (tm) tm.textContent = qaClock(QA.pos) + " / " + qaClock(QA.dur);
+    const pl = bar.querySelector(".qab-play");
+    if (pl) pl.innerHTML = ic(QA.playing ? "pause" : "play", 20);
+  } catch (e) {}
+}
+window.qaBarSync = qaBarSync;
+
+/* =========================================================================
+   الواجهة — بطاقاتُ القرّاء ثمّ صفحةُ القارئ
+   ========================================================================= */
+const QAV = { rid: "", q: "", fav: false };
+window.qaOpen = function (rid) { QAV.rid = String(rid || ""); QAV.q = ""; QAV.fav = false; mount(); };
+window.qaBack = function () { QAV.rid = ""; QAV.fav = false; mount(); };
+window.qaSearch = function (v) {
+  QAV.q = String(v || "").trim();
+  const box = document.getElementById("qaList");
+  if (box) qaPaintList(box);
+};
+window.qaFavView = function (on) { QAV.fav = !!on; mount(); };
+
+function qaNorm(s) {
+  return String(s || "").replace(/[ً-ْٰ]/g, "")
+    .replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/\s+/g, " ").trim();
+}
+
+function qaRowsHTML(rid) {
+  const all = getReciterSurahs(rid);
+  const q = qaNorm(QAV.q);
+  const rows = all.filter(s => {
+    if (QAV.fav && !qaIsFav(rid, s.surahNumber)) return false;
+    if (!q) return true;
+    return qaNorm(s.name).indexOf(q) > -1 ||
+           String(s.surahNumber) === QAV.q ||
+           qaNorm(s.englishName).toLowerCase().indexOf(q.toLowerCase()) > -1;
+  });
+  if (!rows.length) {
+    return `<div class="qa-empty">${ic("search", 22)}
+      <span>${QAV.fav ? "لا سورةَ في مفضّلتك بعد" : "لا سورةَ بهذا الاسم"}</span></div>`;
+  }
+  return rows.map(s => {
+    const on = Number(QA.n) === s.surahNumber && QA.rid === rid;
+    return `<div class="qa-row${on ? " on" : ""}">
+      <button type="button" class="qa-rplay" title="تشغيل"
+        onclick="window.qaPlay('${jsAttr(rid)}',${s.surahNumber}); window.qaBarSync();">
+        ${ic(on && QA.playing ? "pause" : "play", 16)}</button>
+      <span class="qa-rnum">${toArabicDigits(s.surahNumber)}</span>
+      <span class="qa-rname">${esc(s.name)}<small>${esc(s.englishName)}</small></span>
+      <span class="qa-rayat">${toArabicDigits(s.ayahs)} آية</span>
+      <button type="button" class="qa-rfav${qaIsFav(rid, s.surahNumber) ? " on" : ""}"
+        title="المفضّلة" onclick="window.qaFavToggle('${jsAttr(rid)}',${s.surahNumber})">
+        ${ic("star", 15)}</button>
+      ${QA_ALLOW_DOWNLOAD ? `<a class="qa-rdl" title="تحميل" download
+        href="${esc(s.audioUrl)}">${ic("download", 15)}</a>` : ""}
+    </div>`;
+  }).join("");
+}
+function qaPaintList(box) { box.innerHTML = qaRowsHTML(QAV.rid); }
+
+/* بطاقةُ القارئ — بهويّة المشروع، بلا صورةٍ مجهولةِ الترخيص */
+function qaCard(r) {
+  return `<button type="button" class="qa-card" onclick="window.qaOpen('${jsAttr(r.id)}')">
+    <span class="qa-ava">${r.image
+      ? `<img src="${esc(r.image)}" alt="${esc(r.name)}">`
+      : `<i>${esc(r.letter)}</i>`}</span>
+    <strong class="qa-cname">${esc(r.name)}</strong>
+    <small class="qa-cen">${esc(r.nameEn)}</small>
+    <span class="qa-criw">${esc(r.riwaya)}</span>
+    <span class="qa-clisten">${ic("play", 14)} استماع</span>
+  </button>`;
+}
+
+function qaudioPage() {
+  reciteLoadSurahs();
+  const ready = typeof QSURAHS !== "undefined" && QSURAHS && QSURAHS.length;
+
+  /* ---- صفحةُ قارئٍ بعينه ---- */
+  if (QAV.rid) {
+    const r = qaReciter(QAV.rid);
+    if (!r) { QAV.rid = ""; return qaudioPage(); }
+    return `<div class="page qa-page">
+      ${pageHead("القرآن الكريم المسموع", r.name, backArrow())}
+      <div class="card qa-hero">
+        <span class="qa-ava big">${r.image
+          ? `<img src="${esc(r.image)}" alt="${esc(r.name)}">` : `<i>${esc(r.letter)}</i>`}</span>
+        <div class="qa-hero-t">
+          <strong>${esc(r.name)}</strong>
+          <small>${esc(r.nameEn)} · ${esc(r.riwaya)}</small>
+          <p>${esc(r.desc)}</p>
+        </div>
+      </div>
+
+      <div class="qa-tools">
+        <div class="qa-search">${ic("search", 16)}
+          <input placeholder="ابحث عن سورة" oninput="window.qaSearch(this.value)"
+            value="${esc(QAV.q)}"></div>
+        <button type="button" class="qa-chip${QAV.fav ? " on" : ""}"
+          onclick="window.qaFavView(${QAV.fav ? "false" : "true"})">
+          ${ic("star", 14)} المفضّلة</button>
+        <label class="qa-chip qa-auto"><input type="checkbox" ${qaPrefs().auto ? "checked" : ""}
+          onchange="window.qaAuto(this.checked)"> تشغيلٌ تلقائيٌّ للتالية</label>
+      </div>
+
+      ${ready ? `<div class="card qa-list" id="qaList">${qaRowsHTML(r.id)}</div>`
+              : `<div class="card"><div class="qa-empty">${ic("book", 22)}
+                   <span>يُحمَّل فهرسُ السور…</span></div></div>`}
+    </div>`;
+  }
+
+  /* ---- شبكةُ القرّاء ---- */
+  const last = qaPrefs().last;
+  const lastR = last ? qaReciter(last.rid) : null;
+  const lastN = last && typeof QSURAHS !== "undefined" && QSURAHS
+    ? ((QSURAHS.find(x => Number(x.i) === Number(last.n)) || {}).n || "") : "";
+
+  return `<div class="page qa-page">
+    ${pageHead("القرآن الكريم المسموع", "اختر القارئ ثمّ السورة")}
+    ${lastR && lastN ? `<button type="button" class="card qa-resume" onclick="window.qaResume()">
+      <span class="qa-res-ico">${ic("play", 18)}</span>
+      <span class="qa-res-t"><strong>متابعة الاستماع</strong>
+        <small>${esc(lastN)} — ${esc(lastR.name)} · ${qaClock(last.t)}</small></span>
+    </button>` : ""}
+    <div class="qa-grid">${QA_RECITERS.map(qaCard).join("")}</div>
+    <div class="qa-note">${ic("info", 14)}
+      <span>التلاواتُ تُبثّ من المكتبة الصوتية للقرآن الكريم (MP3Quran.net)،
+      ولا تُنسخ إلى خوادم النظام.</span></div>
+  </div>`;
+}
+
+/* شريطُ المشغّل الثابت — يُركَّب مرّةً فوق الشريط السفليّ ولا يحجبه */
+function qaBarMount() {
+  try {
+    if (document.getElementById("qaBar")) { qaBarSync(); return; }
+    const p = qaPrefs();
+    const bar = document.createElement("div");
+    bar.id = "qaBar";
+    bar.className = "qa-bar";
+    bar.innerHTML =
+      `<div class="qab-head">
+         <strong class="qab-title"></strong>
+         <button type="button" class="qab-x" title="إغلاق المشغّل"
+           onclick="window.qaStop(); document.getElementById('qaBar').classList.remove('on');">
+           ${ic("x", 15)}</button>
+       </div>
+       <input class="qab-range" type="range" min="0" max="100" value="0"
+         oninput="window.qaSeek(this.value)">
+       <div class="qab-row">
+         <span class="qab-time">٠٠:٠٠ / ٠٠:٠٠</span>
+         <div class="qab-ctrl">
+           <button type="button" class="qab-b qab-prev" title="السابقة" onclick="window.qaStep(-1)">${ic("arrowLeft", 17)}</button>
+           <button type="button" class="qab-b qab-play" title="تشغيل / إيقاف مؤقت" onclick="window.qaToggle()">${ic("play", 20)}</button>
+           <button type="button" class="qab-b" title="إيقاف" onclick="window.qaStop()">${ic("x", 17)}</button>
+           <button type="button" class="qab-b" title="التالية" onclick="window.qaStep(1)">${ic("arrowLeft", 17)}</button>
+         </div>
+         <div class="qab-more">
+           <select class="qab-rate" title="سرعة التشغيل" onchange="window.qaRate(this.value)">
+             ${[0.75, 1, 1.25, 1.5, 2].map(v =>
+               `<option value="${v}"${v === p.rate ? " selected" : ""}>${toArabicDigits(v)}×</option>`).join("")}
+           </select>
+           <span class="qab-vol">${ic("mic", 14)}
+             <input type="range" min="0" max="100" value="${Math.round(p.vol * 100)}"
+               oninput="window.qaVol(this.value)" title="الصوت"></span>
+         </div>
+       </div>`;
+    document.body.appendChild(bar);
+    /* ويُعاد القياسُ عند تغيّر العرض: الشريطُ السفليُّ يظهر ويختفي بالمقاس */
+    if (!window.__qaResize) {
+      window.__qaResize = true;
+      window.addEventListener("resize", function () { qaBarSync(); });
+    }
+    qaBarSync();
+  } catch (e) {}
+}
+window.qaBarMount = qaBarMount;
+
+/* =========================================================================
+   التحقّقُ من الروابط — أداةُ تطوير، لا تعمل عند فتح الصفحة
+   -------------------------------------------------------------------------
+   المواصفات: «لا تجعل التطبيق يفحص ٤٥٦ ملفاً عند كل فتح». تُنادى من
+   الطرفية عند تجهيز المصادر وحدَها. والفحصُ بـ HEAD لا يُنزّل الملف.
+   ========================================================================= */
+window.validateReciterAudioSources = async function (opts) {
+  opts = opts || {};
+  const only = opts.reciter ? [opts.reciter] : QA_RECITERS.map(r => r.id);
+  const nums = opts.surahs || Array.from({ length: 114 }, (_, i) => i + 1);
+  const out = [];
+  for (const rid of only) {
+    const r = qaReciter(rid);
+    for (const n of nums) {
+      const url = qaUrl(rid, n);
+      const row = { reciter: r ? r.name : rid, reciterId: rid, surah: n, url: url, status: "" };
+      if (!url) { row.status = "unavailable"; row.error = "تعذّر توليد الرابط"; out.push(row); continue; }
+      try {
+        const res = await fetch(url, { method: "HEAD", mode: "cors" });
+        row.status = res.ok ? "ok" : "unavailable";
+        if (!res.ok) row.error = "HTTP " + res.status;
+      } catch (e) {
+        /* المصدرُ قد يمنع الطلبَ الآليَّ أو يحجب CORS — لا يُتحايل عليه */
+        row.status = "unknown"; row.error = String(e && e.message || e);
+      }
+      out.push(row);
+    }
+  }
+  const bad = out.filter(x => x.status !== "ok");
+  console.table(out.slice(0, 20));
+  console.log("المجموع: " + out.length + " · سليم: " + (out.length - bad.length) +
+              " · غير متاح/مجهول: " + bad.length);
+  if (bad.length) console.table(bad.slice(0, 40));
+  window.__qaValidation = out;
+  return out;
+};
 
 function todayISO() {
   const d = new Date();
@@ -44083,7 +44589,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-1450";
+  var APP_BUILD = "20261006-1620";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

@@ -11560,3 +11560,176 @@ body[data-iface="student"] .content { padding-top: 14px; }
 .bdg-rule .bdg-no { color: #c24a4a; }
 [data-theme="dark"] .bdg-rule .bdg-ok { color: #4fc07f; }
 [data-theme="dark"] .bdg-rule .bdg-no { color: #e08080; }
+
+
+/* =========================================================================
+   القرآنُ الكريم المسموع — بطاقاتُ القرّاء · قائمةُ السور · المشغّل
+   -------------------------------------------------------------------------
+   المواصفات: «تصميمٌ احترافيٌّ متناسقٌ مع الهويّة البصرية الحالية وRTL…
+   Mobile First… ولا يغطّي المشغّلُ أزرارَ الموقع أو الشريطَ الجانبيّ».
+   فالمشغّلُ ثابتٌ أسفلَ الشاشة وفوق الشريط السفليّ لا عليه، ويُزاح عنه
+   بـ padding في المحتوى فلا يحجب آخرَ القائمة.
+   ========================================================================= */
+.qa-page { padding-bottom: 150px; }
+
+/* ---- شبكةُ القرّاء ---- */
+.qa-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 760px)  { .qa-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .qa-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 380px)  { .qa-grid { grid-template-columns: 1fr; } }
+
+.qa-card {
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  padding: 20px 14px 16px; border-radius: 16px; text-align: center;
+  background: var(--surface, #fff); border: 1px solid var(--border-soft, #e6eaea);
+  box-shadow: 0 2px 10px rgba(10, 50, 54, .05);
+  font-family: var(--ff); cursor: pointer;
+  transition: transform .18s var(--ease, ease), box-shadow .18s, border-color .18s;
+}
+.qa-card:hover { transform: translateY(-3px); border-color: #15a2a7;
+  box-shadow: 0 12px 28px rgba(10, 50, 54, .13); }
+.qa-card:active { transform: translateY(-1px); }
+
+.qa-ava {
+  width: 82px; height: 82px; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(145deg, #0d6e71, #0a4f52); color: #e8d9a8;
+  border: 3px solid #e8d9a8; box-shadow: 0 6px 18px rgba(13, 110, 113, .3);
+  overflow: hidden; flex: none;
+}
+.qa-ava i { font-style: normal; font-size: 34px; font-weight: 800; line-height: 1; }
+.qa-ava img { width: 100%; height: 100%; object-fit: cover; }
+.qa-ava.big { width: 96px; height: 96px; }
+.qa-ava.big i { font-size: 40px; }
+
+.qa-cname { font-size: 14.5px; font-weight: 800; color: var(--text-main, #223434); line-height: 1.5; }
+.qa-cen   { font-size: 11px; color: var(--text-faint, #6d7d7e); letter-spacing: .3px; }
+.qa-criw  { font-size: 11.5px; color: var(--text-muted, #4e6060); }
+.qa-clisten {
+  margin-top: 4px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 15px; border-radius: 999px; background: #e7fbfc; color: #0d6e71;
+  font-size: 12.5px; font-weight: 700;
+}
+.qa-card:hover .qa-clisten { background: #0d6e71; color: #fff; }
+
+/* ---- ترويسةُ القارئ ---- */
+.qa-hero { display: flex; align-items: center; gap: 16px; padding: 18px; margin-bottom: 14px; }
+.qa-hero-t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.qa-hero-t strong { font-size: 16.5px; color: var(--text-main, #223434); }
+.qa-hero-t small  { font-size: 12px; color: var(--text-faint, #6d7d7e); }
+.qa-hero-t p { margin: 5px 0 0; font-size: 13px; line-height: 1.8; color: var(--text-muted, #4e6060); }
+
+/* ---- متابعةُ الاستماع ---- */
+.qa-resume {
+  width: 100%; display: flex; align-items: center; gap: 12px; text-align: start;
+  padding: 14px 16px; margin-bottom: 14px; cursor: pointer; font-family: var(--ff);
+  border: 1px solid #a8dfe0; background: #e7fbfc;
+}
+.qa-res-ico { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: #0d6e71; color: #fff; flex: none; }
+.qa-res-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.qa-res-t strong { font-size: 14px; color: #09494c; }
+.qa-res-t small  { font-size: 12px; color: #2e6b6d; }
+
+/* ---- الأدوات ---- */
+.qa-tools { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-bottom: 12px; }
+.qa-search { flex: 1 1 220px; display: flex; align-items: center; gap: 8px;
+  height: 42px; padding: 0 13px; border-radius: 11px;
+  background: var(--surface, #fff); border: 1px solid var(--border, #e6eaea); color: #6d7d7e; }
+.qa-search input { flex: 1; border: 0; outline: none; background: transparent;
+  font-family: var(--ff); font-size: 14px; color: var(--text-main, #223434); min-width: 0; }
+.qa-chip { display: inline-flex; align-items: center; gap: 6px; height: 42px; padding: 0 14px;
+  border-radius: 11px; background: var(--surface, #fff); border: 1px solid var(--border, #e6eaea);
+  font-family: var(--ff); font-size: 12.5px; font-weight: 600; color: var(--text-muted, #4e6060);
+  cursor: pointer; }
+.qa-chip.on { background: #0d6e71; border-color: #0d6e71; color: #fff; }
+.qa-auto input { accent-color: #0d6e71; }
+
+/* ---- قائمةُ السور ---- */
+.qa-list { padding: 6px; }
+.qa-row { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 10px; }
+.qa-row + .qa-row { border-top: 1px solid var(--border-soft, #eef1f0); }
+.qa-row.on { background: #e7fbfc; }
+.qa-rplay { width: 36px; height: 36px; border-radius: 50%; flex: none; display: grid;
+  place-items: center; background: #0d6e71; color: #fff; cursor: pointer; }
+.qa-row.on .qa-rplay { background: #0a4f52; }
+.qa-rnum { width: 34px; flex: none; text-align: center; font-size: 12.5px; font-weight: 700;
+  color: var(--text-faint, #6d7d7e); font-variant-numeric: tabular-nums; }
+.qa-rname { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px;
+  font-size: 14.5px; font-weight: 700; color: var(--text-main, #223434); }
+.qa-rname small { font-size: 10.5px; font-weight: 500; color: var(--text-faint, #6d7d7e); }
+.qa-rayat { flex: none; font-size: 11.5px; color: var(--text-muted, #4e6060); }
+.qa-rfav, .qa-rdl { width: 32px; height: 32px; border-radius: 9px; flex: none; display: grid;
+  place-items: center; color: #9aa8a8; cursor: pointer; }
+.qa-rfav:hover, .qa-rdl:hover { background: #f1f5f5; color: #0d6e71; }
+.qa-rfav.on { color: #c4961e; }
+@media (max-width: 460px) { .qa-rayat { display: none; } }
+
+.qa-empty { display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 46px 16px; color: var(--text-faint, #6d7d7e); font-size: 14px; }
+.qa-note { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px;
+  padding: 10px 12px; border-radius: 11px; background: #f3f7f7;
+  border: 1px solid var(--border-soft, #e6eaea);
+  font-size: 11.5px; line-height: 1.8; color: var(--text-muted, #4e6060); }
+.qa-note svg { flex: 0 0 auto; margin-top: 3px; }
+
+/* ---- زرُّ المسموع في شريط المصحف ---- */
+.mus-sel.mus-aud { gap: 6px; background: #0d6e71; color: #fff; border-color: #0d6e71; }
+.mus-sel.mus-aud:hover { background: #0a4f52; }
+
+/* ---- المشغّل الثابت ---- */
+.qa-bar {
+  display: none; position: fixed; inset-inline: 0; bottom: 0; z-index: 45;
+  padding: 9px 14px 10px; background: var(--surface, #fff);
+  border-top: 1px solid var(--border, #e6eaea);
+  box-shadow: 0 -6px 24px rgba(10, 50, 54, .12);
+}
+.qa-bar.on { display: block; }
+/* فوق الشريط السفليّ لا عليه — فلا يحجب أزرار التنقّل في الهاتف.
+   والإزاحةُ تُقاس في qaBarSync ولا تُقدَّر هنا: ارتفاعُ الشريط من محتواه
+   ومن safe-area-inset في الهواتف، فأيُّ رقمٍ ثابتٍ يُخطئ في جهاز. */
+/* وفي الشاشات العريضة يبدأ بعد الشريط الجانبيّ — والإزاحةُ تُقاس كذلك */
+
+.qab-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.qab-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 700;
+  color: var(--text-main, #223434); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qab-x { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+  color: #9aa8a8; flex: none; cursor: pointer; }
+.qab-x:hover { background: #f1f5f5; color: #c24a4a; }
+
+.qab-range { width: 100%; height: 5px; accent-color: #0d6e71; cursor: pointer; margin: 2px 0 6px; }
+.qab-row { display: flex; align-items: center; gap: 10px; }
+.qab-time { flex: 0 0 auto; font-size: 11.5px; color: var(--text-muted, #4e6060);
+  font-variant-numeric: tabular-nums; }
+.qab-ctrl { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.qab-b { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  color: #0d6e71; cursor: pointer; }
+.qab-b:hover { background: #e7fbfc; }
+.qab-prev svg { transform: scaleX(-1); }
+.qab-play { width: 44px; height: 44px; background: #0d6e71; color: #fff; }
+.qab-play:hover { background: #0a4f52; }
+.qab-more { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.qab-rate { height: 32px; padding: 0 7px; border-radius: 8px; background: var(--surface, #fff);
+  border: 1px solid var(--border, #e6eaea); font-family: var(--ff); font-size: 12px;
+  color: var(--text-muted, #4e6060); }
+.qab-vol { display: flex; align-items: center; gap: 5px; color: #9aa8a8; }
+.qab-vol input { width: 74px; accent-color: #0d6e71; }
+@media (max-width: 620px) { .qab-vol { display: none; } .qab-time { font-size: 11px; } }
+
+/* ---- الوضعُ الداكن ---- */
+[data-theme="dark"] .qa-card,
+[data-theme="dark"] .qa-search,
+[data-theme="dark"] .qa-chip,
+[data-theme="dark"] .qab-rate,
+[data-theme="dark"] .qa-bar { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .qa-chip { color: var(--text-main); }
+[data-theme="dark"] .qa-clisten { background: #0a2e30; color: #4fc0c3; }
+[data-theme="dark"] .qa-row.on,
+[data-theme="dark"] .qa-resume { background: #0a2e30; border-color: #15555a; }
+[data-theme="dark"] .qa-res-t strong,
+[data-theme="dark"] .qa-res-t small { color: #67bcbf; }
+[data-theme="dark"] .qa-note { background: var(--surface-2, #1a2b2c); border-color: var(--border);
+  color: var(--text-muted); }
+[data-theme="dark"] .qa-rfav:hover,
+[data-theme="dark"] .qa-rdl:hover,
+[data-theme="dark"] .qab-b:hover,
+[data-theme="dark"] .qab-x:hover { background: #0a2e30; }
