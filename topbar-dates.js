@@ -52,7 +52,17 @@
      ======================================================================= */
   const AR_DAYS = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
   function toAr(s) { return String(s).replace(/[0-9]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩"[d]; }); }
-  function fmtDay(dt) { return AR_DAYS[dt.getDay()] + "، " + toAr(dt.getDate()) + "/" + toAr(dt.getMonth() + 1); }
+  /* يومُ القائمة هجريٌّ كبقيّة تواريخ النظام — وإن غاب المحوّلُ بقي ميلادياً */
+  function fmtDay(dt) {
+    try {
+      if (typeof window.hijriParts === "function") {
+        const h = window.hijriParts(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+        const p = function (n) { return (n < 10 ? "0" : "") + n; };
+        return AR_DAYS[dt.getDay()] + "، " + toAr(p(h.d)) + "/" + toAr(p(h.m));
+      }
+    } catch (e) {}
+    return AR_DAYS[dt.getDay()] + "، " + toAr(dt.getDate()) + "/" + toAr(dt.getMonth() + 1);
+  }
   function toInputVal(dt) { const p = function (n) { return (n < 10 ? "0" : "") + n; }; return dt.getFullYear() + "-" + p(dt.getMonth() + 1) + "-" + p(dt.getDate()); }
 
   const CHEV = '<svg class="tb-chev" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';

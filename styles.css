@@ -11471,3 +11471,68 @@ body[data-iface="student"] .content { padding-top: 14px; }
   border: 1px solid #e8d9a8; font-size: 12px; line-height: 1.75; color: #7a5c12; }
 .bdg-note svg { flex: 0 0 auto; margin-top: 2px; }
 [data-theme="dark"] .bdg-note { background: #2a2314; border-color: #6b551c; color: #e0bd63; }
+
+
+/* =========================================================================
+   ورقةُ الطباعة العامّة — تصديرُ أيِّ تقريرٍ إلى PDF
+   -------------------------------------------------------------------------
+   المواصفات: «أريد جعل أي تقارير من السهل أن تكون PDF».
+   لم تكن في المشروع ورقةُ طباعةٍ عامّة، وإنما قواعدُ متفرّقةٌ لكلّ شاشةٍ
+   تُخفي فلاترَها وحدَها. فكان كلُّ زرِّ PDF قائمٍ يُخرج معه القائمةَ
+   الجانبيةَ والشريطَ العلويَّ والسفليَّ والأزرارَ على الورق — فلا يصلح
+   ما يُنتجه تقريراً. وهذه الورقةُ تُبقي محتوى الصفحة وحدَه، فصار كلُّ
+   زرٍّ قائمٍ وكلُّ زرٍّ جديدٍ يُخرج ملفاً صالحاً من نافذة «حفظ كـ PDF».
+   ========================================================================= */
+@page { size: A4; margin: 12mm 10mm; }
+
+/* ترويسةُ التقرير: لا تُرى على الشاشة، وإنما في الورق وحدَه */
+.pdf-head { display: none; }
+
+@media print {
+  html, body { background: #fff !important; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* القوائمُ والأشرطةُ والطبقاتُ العائمةُ والأزرارُ لا تُطبع */
+  .sidebar, .topbar, .tabbar, .overlay, .toast-stack, .conn-badge, .cb-note,
+  .fab, .fab-wrap, .fab-menu, .fab-btn, .menu-toggle,
+  .pt-arrow, .rep-exp, .rep-tools, .rep-pager, .rep-size, .pt-panel,
+  .page-head-actions, .row-actions, .row-btn,
+  .btn, .icon-btn, .modal-close, .panel-close, .no-print { display: none !important; }
+
+  /* والمحتوى يملأ الورقة */
+  .app { display: block !important; }
+  .main { margin: 0 !important; padding: 0 !important; width: auto !important; max-width: none !important; }
+  .content { margin: 0 !important; padding: 0 !important; overflow: visible !important;
+    height: auto !important; max-height: none !important; }
+  .page { padding: 0 !important; margin: 0 !important; }
+  .page-head { margin-bottom: 6mm !important; }
+
+  /* الجداولُ تُكرّر رأسَها على كلّ ورقةٍ ولا تُقطع صفوفُها بينها */
+  .pt-wrap, .pt-scroll, .tbl-wrap, .rep-wrap, .srp-wrap {
+    overflow: visible !important; max-height: none !important; }
+  table { width: 100% !important; }
+  thead { display: table-header-group; }
+  tr, img, svg { break-inside: avoid; page-break-inside: avoid; }
+  .card { break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; }
+
+  /* الوضعُ الداكنُ يُطبع فاتحاً — وإلّا استُهلك الحبرُ ولم يُقرأ النصّ */
+  html[data-theme="dark"] {
+    --background: #ffffff; --surface: #ffffff; --surface-2: #ffffff; --cream: #ffffff;
+    --text-main: #1b2b2b; --text-muted: #4e6060; --text-faint: #6d7d7e;
+    --border: #d8dede; --border-soft: #e6eaea;
+    --shadow: none; --shadow-sm: none; --shadow-lg: none;
+  }
+  html[data-theme="dark"] body,
+  html[data-theme="dark"] .card,
+  html[data-theme="dark"] .ptable tbody td,
+  html[data-theme="dark"] .ptable thead th { background: #fff !important; color: #1b2b2b !important; }
+
+  /* ترويسةُ التقرير */
+  .pdf-head { display: block !important; text-align: center;
+    margin: 0 0 8mm; padding-bottom: 3mm; border-bottom: 2px solid #0d6e71; }
+  .pdf-head .pdfh-top { display: flex; justify-content: center; align-items: baseline; gap: 8px; }
+  .pdf-head .pdfh-top strong { font-size: 17pt; font-weight: 800; color: #0d6e71; }
+  .pdf-head .pdfh-top span { font-size: 8.5pt; color: #4e6060; }
+  .pdf-head .pdfh-title { font-size: 13pt; font-weight: 700; color: #223434; margin-top: 2.5mm; }
+  .pdf-head .pdfh-meta { font-size: 8.5pt; color: #4e6060; margin-top: 1.5mm; }
+}

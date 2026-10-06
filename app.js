@@ -358,6 +358,102 @@ function pageHead(title, sub, actions) {
 }
 function addBtn(label, action) { return `<button class="btn btn-primary" data-action="${action}">${ic("plus", 16)} ${esc(label)}</button>`; }
 
+/* =========================================================================
+   تصديرُ أيِّ تقريرٍ إلى PDF
+   -------------------------------------------------------------------------
+   المواصفات: «أريد جعل أي تقارير من السهل أن تكون PDF».
+   لا مكتبةَ PDF في المشروع ولا خطوةَ بناءٍ تُضيفها، فالتصديرُ عبر مطبعة
+   المتصفّح: «حفظ كـ PDF» في نافذة الطباعة — وهي تُخرج نصاً عربياً حقيقياً
+   يُبحث فيه ويُنسخ، بخلاف صورةٍ تُلتقط للصفحة.
+   وكانت أزرارُ PDF الموجودةُ تستدعي window.print مباشرةً بلا ورقةِ طباعةٍ
+   عامّةٍ في المشروع، فتُطبع معها القائمةُ الجانبيةُ والشريطان والأزرار.
+   فأُضيفت الورقةُ في styles.css، وهذا المساعدُ يضع ترويسةَ التقرير فوقه
+   (اسمُ النظام والعنوانُ والمنشأةُ وتاريخُ الإصدار هجرياً) ثمّ ينزعها بعد
+   الطباعة فلا يراها أحدٌ على الشاشة.
+   ========================================================================= */
+const PDF_ICON = '<svg viewBox="0 0 32 32" width="26" height="26" fill="none">' +
+  '<path d="M7 3.6h11.4L25 10.2V27a1.4 1.4 0 01-1.4 1.4H7A1.4 1.4 0 015.6 27V5A1.4 1.4 0 017 3.6z" fill="#fff" stroke="#d64541" stroke-width="1.7"/>' +
+  '<path d="M18.4 3.6V10h6.6" stroke="#d64541" stroke-width="1.7" stroke-linejoin="round"/>' +
+  '<rect x="4" y="16.4" width="20" height="8" rx="1.6" fill="#d64541"/>' +
+  '<text x="14" y="22.6" font-size="6" font-weight="700" fill="#fff" text-anchor="middle" font-family="Arial">PDF</text>' +
+  '</svg>';
+
+/* زرُّ التصدير — واحدٌ لكلّ الشاشات، بالشكل المعتمد في تقارير الإدارة */
+function pdfBtn(title) {
+  return `<button class="rep-exp e-pdf" title="تصدير PDF"
+    onclick="window.pdfPrint('${jsAttr(title || "")}')">${PDF_ICON}</button>`;
+}
+window.pdfBtn = pdfBtn;
+
+window.pdfPrint = function (title) {
+  const root = document.getElementById("pageContent") || document.body;
+  let t = String(title || "");
+  if (!t) {
+    const h = root.querySelector(".page-head h2");
+    t = h ? h.textContent.trim() : "تقرير";
+  }
+  let fac = "";
+  try {
+    const c = typeof currentComplex === "function" ? currentComplex() : null;
+    fac = c ? String(c.name || "") : "";
+  } catch (e) {}
+
+  const old = document.getElementById("pdfHead");
+  if (old) { try { old.remove(); } catch (e) {} }
+  const oldS = document.getElementById("pdfPage");
+  if (oldS) { try { oldS.remove(); } catch (e) {} }
+
+  /* الجداولُ العريضةُ لا تسع الورقةَ قائمةً: تُقلب الورقةُ عرضياً ثمّ
+     يُصغَّر المحتوى بقدر ما يُدخله في عرضها. وبلا هذا كان الجدولُ يُقصّ
+     عند حافّة الورقة فتضيع أعمدتُه بلا إشعار. العرضُ المطبوعُ من A4:
+     ١٩٠مم قائمةً و٢٧٧مم عرضيةً، وهي بالبكسل ٧١٨ و١٠٤٧ تقريباً. */
+  let wide = 0;
+  try {
+    root.querySelectorAll("table").forEach(function (tb) {
+      wide = Math.max(wide, tb.scrollWidth || 0, tb.offsetWidth || 0);
+    });
+  } catch (e) {}
+  const land = wide > 718;
+  const fitW = land ? 1047 : 718;
+  const fit = wide > fitW ? Math.round(fitW / wide * 100) / 100 : 1;
+  /* ولا يُصغَّر إلى ما لا يُقرأ: دون ذلك يُقصّ الجدولُ ويُنبَّه صاحبُه
+     ليُقلّل الأعمدةَ من «الأعمدة» — خيرٌ من ورقةٍ لا يُقرأ سطرُها. */
+  const zoom = Math.max(0.4, fit);
+  if (fit < 0.4) {
+    try { showToast("الجدولُ أعرضُ من الورقة — قلّل الأعمدة من «الأعمدة» ليظهر كاملاً", "warn"); } catch (e) {}
+  }
+  const st = document.createElement("style");
+  st.id = "pdfPage";
+  st.textContent = "@page{size:A4 " + (land ? "landscape" : "portrait") +
+    ";margin:10mm 8mm}" +
+    (zoom < 1 ? "@media print{#pageContent{zoom:" + zoom + "}}" : "");
+  document.head.appendChild(st);
+
+  const head = document.createElement("div");
+  head.id = "pdfHead";
+  head.className = "pdf-head";
+  head.innerHTML =
+    `<div class="pdfh-top"><strong>ذات القرآنية</strong>
+       <span>نظام إدارة الحلقات القرآنية</span></div>
+     <div class="pdfh-title">${esc(t)}</div>
+     <div class="pdfh-meta">${fac ? esc(fac) + " · " : ""}تاريخ الإصدار: ${
+       esc(typeof hijriOf === "function" ? (hijriOf(todayISO(), true) || todayISO()) : todayISO())}</div>`;
+  root.insertBefore(head, root.firstChild);
+
+  const done = function () {
+    try { head.remove(); } catch (e) {}
+    try { st.remove(); } catch (e) {}
+    window.removeEventListener("afterprint", done);
+  };
+  window.addEventListener("afterprint", done);
+  /* مهلةٌ قصيرةٌ ليُرسم العنصرُ قبل فتح نافذة الطباعة، ونزعٌ احتياطيٌّ
+     بعدها لمتصفّحٍ لا يُطلق afterprint. */
+  setTimeout(function () {
+    try { window.print(); } catch (e) {}
+    setTimeout(done, 1200);
+  }, 40);
+};
+
 /* =========================================================
    COMPLEXES HELPERS (المجمعات)
    ========================================================= */
@@ -5754,7 +5850,7 @@ function adminExamsHome() {
       <select class="rep-size" onchange="window.examSize(this.value)">
         ${[15, 30, 60, 120].map(n => `<option value="${n}"${n === EXAM_STATE.size ? " selected" : ""}>${n}</option>`).join("")}
       </select>
-      <button class="rep-exp e-pdf" onclick="window.print()" title="تصدير PDF">
+      <button class="rep-exp e-pdf" onclick="window.pdfPrint()" title="تصدير PDF">
         <svg viewBox="0 0 32 32" width="26" height="26" fill="none">
           <path d="M7 3.6h11.4L25 10.2V27a1.4 1.4 0 01-1.4 1.4H7A1.4 1.4 0 015.6 27V5A1.4 1.4 0 017 3.6z" fill="#fff" stroke="#d64541" stroke-width="1.7"/>
           <path d="M18.4 3.6V10h6.6" stroke="#d64541" stroke-width="1.7" stroke-linejoin="round"/>
@@ -6104,7 +6200,7 @@ const sheetSel = () => Object.keys(SHEET_STATE.sel);
 window.sheetExport = function (kind) {
   const rows = sheetRows();
   if (!rows.length) { showToast("لا توجد بيانات للتصدير", "warn"); return; }
-  if (kind === "print") { window.print(); return; }
+  if (kind === "print") { window.pdfPrint(); return; }
   const head = SHEET_COLS.map(c => c.h);
   const body = rows.map(r => SHEET_COLS.map(c => r[c.k] == null ? "" : String(r[c.k])));
   if (kind === "copy") {
@@ -6325,7 +6421,7 @@ window.logPick = function (what, v) {
 };
 window.logPrint = function () {
   if (!LOG_STATE.student) { showToast("اختر الطالب أولاً لطباعة سجله", "warn"); return; }
-  window.print();
+  window.pdfPrint();
 };
 
 function adminExamsLog() {
@@ -6508,7 +6604,7 @@ window.rwdMove = function (to) {
 window.rwdExport = function (kind) {
   const rows = rwdRows();
   if (!rows.length) { showToast("لا توجد بيانات للتصدير", "warn"); return; }
-  if (kind === "print") { window.print(); return; }
+  if (kind === "print") { window.pdfPrint(); return; }
   const head = RWD_COLS.map(c => c.h);
   const body = rows.map(r => RWD_COLS.map(c => r[c.k] == null ? "" : String(r[c.k])));
   if (kind === "copy") {
@@ -9292,7 +9388,8 @@ function adminDutyHome() {
   const present = dtyPresent();
   const CH = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
 
-  return `<div class="page">
+  /* دوامُ الموظفين مستثنى من التحويل الهجريّ بطلب الإدارة */
+  return `<div class="page" data-greg="1">
     ${pageHead("لوحة تحكم إدارة الدوام", "", backArrow())}
 
     <div class="card dty-head">
@@ -9393,7 +9490,7 @@ window.drpUnit  = function (v) { DRP.unit = v; mount(); };
 window.drpRange = function (r) { DRP.range = r; mount(); };
 window.drpPrint = function () {
   if (!drpStaff().length) { showToast("لا يوجد موظفون في هذا النطاق", "warn"); return; }
-  window.print();
+  window.pdfPrint();
 };
 
 function adminDutyReport() {
@@ -9407,7 +9504,8 @@ function adminDutyReport() {
   const today = new Date();
   const pill = (k, h) => `<button class="rep-pill${DRP.range === k ? " on" : ""}" onclick="window.drpRange('${k}')"><span>${esc(h)}</span>${DRP.range === k ? CH : ""}</button>`;
 
-  return `<div class="page">
+  /* تقريرُ دوام الموظفين مستثنى من التحويل الهجريّ */
+  return `<div class="page" data-greg="1">
     ${pageHead("تقرير الدوام", "", backArrow())}
 
     <div class="xct-tabs drp-tabs">
@@ -9510,7 +9608,7 @@ window.srpUnit   = function (v) { SRP.unit = v; mount(); };
 window.srpSearch = function (v) { SRP.q = String(v || "").trim(); mount(); };
 window.srpPrint  = function () {
   if (!srpRows().length) { showToast("لا يوجد موظفون في هذا النطاق", "warn"); return; }
-  window.print();
+  window.pdfPrint();
 };
 window.srpExport = function () {
   const rows = srpRows();
@@ -9537,7 +9635,8 @@ function adminStaffReport() {
   const cols = ["#4bdee4", "#48c8cc", "#cd6141", "#a318d2", "#1a999d", "#e98a1d"];
   const parts = byTitle.map(([l, v], i) => ({ l, v, c: cols[i % cols.length] }));
 
-  return `<div class="page">
+  /* تقريرُ دوام الموظفين مستثنى من التحويل الهجريّ */
+  return `<div class="page" data-greg="1">
     <div class="ex-head">
       ${pageHead("تقرير الموظفين", "", backArrow())}
       <button type="button" class="rep-exp e-pdf srp-pdf" onclick="window.srpPrint()" title="تصدير PDF">${PDFI}</button>
@@ -9674,7 +9773,7 @@ window.orpUnit  = function (v) { ORP.unit = v; ORP.staff = ""; mount(); };
 window.orpStaff = function (v) { ORP.staff = v; mount(); };
 window.orpPrint = function () {
   if (!ORP.staff) { showToast("اختر الموظف أولاً", "warn"); return; }
-  window.print();
+  window.pdfPrint();
 };
 window.orpFilter = function () {
   const recs = orpRecords();
@@ -9782,7 +9881,8 @@ function adminStaffOne() {
         .map(f => orpCard(f, orpFlex(f.k, kind), "", "window.orpShowFlex('" + f.k + "','" + kind + "')")).join("")}</div>
     </div>`;
 
-  return `<div class="page">
+  /* سجلُّ دوام الموظف مستثنى من التحويل الهجريّ */
+  return `<div class="page" data-greg="1">
     <div class="ex-head">
       ${pageHead("تقرير الموظف", "", backArrow())}
       <button type="button" class="rep-exp e-pdf srp-pdf" onclick="window.orpPrint()" title="تصدير PDF">${PDFI}</button>
@@ -17465,7 +17565,8 @@ function adminProcReport() {
 
   return `<div class="page">
     ${pageHead("تقرير كفاءة معالجة الإجراءات",
-      "كم تنبيهاً فُتح ولم يُتَّخذ بشأنه إجراء — ومنذ متى")}
+      "كم تنبيهاً فُتح ولم يُتَّخذ بشأنه إجراء — ومنذ متى",
+      pdfBtn("تقرير كفاءة معالجة الإجراءات"))}
 
     <div class="grid g-2" style="align-items:start">
       ${card(edu, "الإجراءات التعليمية")}
@@ -19405,7 +19506,8 @@ function adminPayroll() {
   </div>`;
 
   if (!PAY.rows) {
-    return `<div class="page">
+    /* مسيّراتُ الرواتب ميلاديةٌ بطلب الإدارة — data-greg يمنع التحويل */
+    return `<div class="page" data-greg="1">
       ${pageHead("مسيّرات الرواتب", "تُولَّد من سجلات الدوام تلقائياً")}
       ${bar}
       <div class="card">${emptyState("لم يُحسب مسيّر بعد",
@@ -19450,7 +19552,8 @@ function adminPayroll() {
     : `<tr><td colspan="14" style="text-align:center;padding:26px" class="muted">
         لا نتائج للفلترة.</td></tr>`;
 
-  return `<div class="page">
+  /* مسيّراتُ الرواتب ميلاديةٌ بطلب الإدارة — data-greg يمنع التحويل */
+  return `<div class="page" data-greg="1">
     ${pageHead("مسيّرات الرواتب",
       approved ? "مسيّر معتمد — للقراءة والطباعة" : PAY.sheetId ? "مسودّة محفوظة — تُحدَّث بالحفظ وتُقفل بالاعتماد" : "مسوّدة غير محفوظة")}
     ${bar}
@@ -19535,7 +19638,8 @@ function setPanelPayroll() {
   const c = payCfg();
   const st = payStatuses();
 
-  return `<div class="lv-wrap">
+  /* إعداداتُ المسيّر ميلاديةٌ كالمسيّر نفسِه */
+  return `<div class="lv-wrap" data-greg="1">
     <div class="card" style="margin-bottom:18px">
       <div class="fac-toolbar"><div><strong style="font-size:15px">قواعد الحساب</strong>
         <div class="muted" style="font-size:11.5px;margin-top:2px">
@@ -23260,7 +23364,7 @@ function adminStatsAll(cfg) {
 
 
     <div class="stat-top">
-      <button class="rep-exp e-pdf" onclick="window.print()" title="تصدير PDF">
+      <button class="rep-exp e-pdf" onclick="window.pdfPrint()" title="تصدير PDF">
         <svg viewBox="0 0 32 32" width="26" height="26" fill="none">
           <path d="M7 3.6h11.4L25 10.2V27a1.4 1.4 0 01-1.4 1.4H7A1.4 1.4 0 015.6 27V5A1.4 1.4 0 017 3.6z" fill="#fff" stroke="#d64541" stroke-width="1.7"/>
           <path d="M18.4 3.6V10h6.6" stroke="#d64541" stroke-width="1.7" stroke-linejoin="round"/>
@@ -23575,7 +23679,7 @@ window.repPage = function (n) { REP_STATE.page = n; mount(); };
 /* التصدير */
 window.repExport = function (kind) {
   const rows = repApply((REP_STATE.rows || repFacRows)());
-  if (kind === "print") { window.print(); return; }
+  if (kind === "print") { window.pdfPrint(); return; }
 
   if (kind === "copy") {
     const head = repCols().map(c => c.h).join("\t");
@@ -25592,8 +25696,9 @@ window.tchCheckIn = function () {
   const mine = tchMyCircles();
   const done = tchMyAtt(today);
 
+  /* تحضيرُ المعلّم ميلاديٌّ بطلب الإدارة — data-greg يُستثني النافذةَ كلَّها */
   openModal("تحضيري اليوم", urqDate(Date.now()),
-    `${done ? noteCard("سُجِّل حضورُك اليوم: <strong>" + esc(done.status || "—") +
+    `<div data-greg="1">${done ? noteCard("سُجِّل حضورُك اليوم: <strong>" + esc(done.status || "—") +
         "</strong>" + (done.circleName ? " — " + esc(done.circleName) : "") +
         ". والتسجيلُ ثانيةً يستبدله.") : ""}
      <div class="form-grid">
@@ -25608,7 +25713,7 @@ window.tchCheckIn = function () {
           `<option${done && done.status === s ? " selected" : ""}>${s}</option>`).join("")}</select></div>
       <div class="field full"><label>ملاحظة</label>
         <input id="ciNote" value="${done ? esc(done.note || "") : ""}" placeholder="اختياري"></div>
-     </div>`,
+     </div></div>`,
     `<button class="btn btn-primary" onclick="window.tchCheckInDo()">تسجيل حضوري</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 };
@@ -25750,7 +25855,7 @@ function teacherReport() {
        <div class="card trp-card">${body}</div>` : "";
 
   return `<div class="page">
-    ${pageHead("تقرير المعلم", "حضورك وأداؤك مع طلابك")}
+    ${pageHead("تقرير المعلم", "حضورك وأداؤك مع طلابك", pdfBtn("تقرير المعلم"))}
     ${sec("att", "إحصاء الحضور", `<div class="tsc-four">${cards}</div>`)}
     ${sec("perf", "إحصاء الأداء", `<div class="tsc-four">${perf}</div>`)}
     ${sec("weekly", "إحصاء الأسبوع", weekly)}
@@ -25759,7 +25864,9 @@ function teacherReport() {
           صلاحيةَ viewRating وحدَه — فالشرطان معاً لا أحدُهما. */
       (typeof teacherCan === "function" && teacherCan("viewRating"))
         ? sec("rating", "تقييم الإدارة", rateCard(sid)) : ""}
-    ${reportOn("attLog") ? `<div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
+    ${/* سجلُّ حضورِ المعلّم نفسِه: ميلاديٌّ كبقيّة ما يتعلّق بتحضير
+          المعلّمين — data-greg يمنع التحويلَ الهجريَّ في داخله وحدَه. */""}
+    ${reportOn("attLog") ? `<div class="pt-wrap" data-greg="1"><div class="pt-scroll"><table class="ptable">
       <thead><tr><th>التاريخ</th><th>الحلقة</th><th>الحالة</th><th>ملاحظة</th></tr></thead>
       <tbody>${rows.length ? rows.map(r => `<tr>
         <td class="pt-num">${esc(r.date || "—")}</td>
@@ -32660,7 +32767,7 @@ function studentReports() {
   ].join("");
 
   return `<div class="page">
-    ${pageHead("تقاريري", esc(st.name || ""))}
+    ${pageHead("تقاريري", esc(st.name || ""), pdfBtn("تقاريري — " + (st.name || "")))}
     ${typeof kidSwitcher === "function" ? kidSwitcher() : ""}
 
     ${stuAppOn("reports.att") ? `<div class="tsc-h">إحصاء الحضور</div>
@@ -33273,8 +33380,12 @@ function studentAttendance() {
     const r = map[iso];
     /* الأيام خارج جدول الطالب تظهر محايدة ولا تُحسب — نص الوثيقة */
     const cls = r ? TINT[r.status] || "" : (iso > todayISO() ? "future" : "none");
-    cells += `<div class="cal-cell ${cls}" title="${esc(iso)}${r ? " — " + esc(r.status) : ""}">
-      <span class="cal-n">${toArabicDigits(d)}</span>
+    /* رقمُ الخانة هجريٌّ كعنوان الشهر فوقها، وإلّا قرأ الطالبُ عنواناً
+       هجرياً فوق أرقامٍ ميلادية. والخاناتُ هي هي والأيامُ هي هي — إنما
+       تغيّر ما يُكتب فيها لا ما تمثّله. */
+    const dh = hijriParts(Y, M, d);
+    cells += `<div class="cal-cell ${cls}" title="${esc(hijriOf(iso) || iso)}${r ? " — " + esc(r.status) : ""}">
+      <span class="cal-n">${toArabicDigits(dh.d)}</span>
       ${r && r.reason ? `<span class="cal-dot"></span>` : ""}
     </div>`;
   }
@@ -34523,7 +34634,10 @@ function runAnimations(root) {
 function openModal(title, sub, body, foot) {
   const root = $("#modalRoot");
   if (!root) return;
-  root.innerHTML = `<div class="modal-back" data-action="close-modal">
+  /* نافذةٌ تُفتح فوق شاشةٍ مستثناةٍ من التحويل الهجريّ ترث استثناءها —
+     فنوافذُ «دوام الموظفين» في duty-plus.js تبقى ميلاديةً بلا تعديلٍ فيه. */
+  const greg = (typeof hijGregHere === "function" && hijGregHere()) ? ' data-greg="1"' : "";
+  root.innerHTML = `<div class="modal-back"${greg} data-action="close-modal">
     <div class="modal" data-stop>
       <div class="modal-head"><div><h3>${esc(title)}</h3>${sub ? `<div class="mh-sub">${esc(sub)}</div>` : ""}</div>
         <button class="modal-close" data-action="close-modal">${ic("x", 18)}</button></div>
@@ -34536,6 +34650,11 @@ function closeModal() { const r = $("#modalRoot"); if (r) r.innerHTML = ""; }
 function openPanel(html) {
   const r = $("#panelRoot");
   if (!r) return;
+  /* واللوحةُ كذلك ترث استثناءَ الشاشة التي فُتحت فوقها */
+  try {
+    if (typeof hijGregHere === "function" && hijGregHere()) r.setAttribute("data-greg", "1");
+    else r.removeAttribute("data-greg");
+  } catch (e) {}
   r.innerHTML = html;
   /* الصفحةُ خلف البطاقة تُقفل: كانت تُمرَّر تحتها ويظهر طرفُها من حولها،
      فتبدو البطاقةُ نافذةً على صفحةٍ لا صفحةً قائمةً بنفسها. */
@@ -38573,6 +38692,238 @@ function setPanelAttCfg() {
 function todayISO() {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+/* =========================================================================
+   التواريخُ الهجرية — طبقةُ عرضٍ لا طبقةُ تخزين
+   -------------------------------------------------------------------------
+   المواصفات: «أريد جعل التواريخ كلها بالهجري، ما عدا مسيّرات الرواتب في
+   موقع الإدارة وما يتعلق بتحضير المعلمين».
+   المخزونُ في فايرستور يبقى ميلادياً كما هو — لا يُمسّ منه حرفٌ، فالفلاترُ
+   والمقارناتُ والمسيّراتُ كلُّها تقرأ ISO — وإنما يُحوَّل ما يُعرض على
+   الشاشة وحدَه. ولذلك جُعل التحويلُ بعد الرسم لا داخلَه: فالتواريخُ تُطبع
+   في المشروع بعشرات الصيغ (ISO خاماً، وtoArabicDigits، وtoLocaleDateString)
+   في مئات الموضعِ، فتعديلُها موضعاً موضعاً يمسّ ما لا علاقة له بالطلب.
+   والاستثناءُ يُؤشَّر بـ data-greg على جذر الشاشة، فيمرّ المحوّلُ عنها
+   ولا يلمس شيئاً في داخلها — ونوافذُها ولوحاتُها ترث تأشيرَها.
+   ========================================================================= */
+const HIJ_MONTHS = ["محرم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى",
+  "جمادى الآخرة", "رجب", "شعبان", "رمضان", "شوال", "ذو القعدة", "ذو الحجة"];
+/* أسماءُ الشهور الميلادية كما يطبعها المتصفّحُ بالعربية — بها نتعرّف عليها */
+const GRG_MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+  "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+
+/* ميلادي → هجري: تقويمُ أمّ القرى من المتصفّح، وإن تعذّر فحسابٌ تقويميّ */
+function hijriParts(y, m, d) {
+  try {
+    const f = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura",
+      { day: "numeric", month: "numeric", year: "numeric", timeZone: "UTC" });
+    const p = {};
+    f.formatToParts(new Date(Date.UTC(y, m - 1, d, 12))).forEach(x => { p[x.type] = x.value; });
+    const hy = parseInt(p.year, 10), hm = parseInt(p.month, 10), hd = parseInt(p.day, 10);
+    if (hy > 1200 && hy < 1700 && hm >= 1 && hm <= 12 && hd >= 1 && hd <= 30) {
+      return { y: hy, m: hm, d: hd };
+    }
+  } catch (e) {}
+  return hijriCivil(y, m, d);
+}
+
+/* البديلُ عند غياب التقويم من المتصفّح — الحسابيُّ عبر اليوم اليوليانيّ */
+function hijriCivil(y, m, d) {
+  const a = Math.floor((14 - m) / 12), y2 = y + 4800 - a, m2 = m + 12 * a - 3;
+  const jd = d + Math.floor((153 * m2 + 2) / 5) + 365 * y2 + Math.floor(y2 / 4)
+    - Math.floor(y2 / 100) + Math.floor(y2 / 400) - 32045;
+  let l = jd - 1948440 + 10632;
+  const n = Math.floor((l - 1) / 10631);
+  l = l - 10631 * n + 354;
+  const j = Math.floor((10985 - l) / 5316) * Math.floor(50 * l / 17719)
+    + Math.floor(l / 5670) * Math.floor(43 * l / 15238);
+  l = l - Math.floor((30 - j) / 15) * Math.floor(17719 * j / 50)
+    - Math.floor(j / 16) * Math.floor(15238 * j / 43) + 29;
+  const hm = Math.floor(24 * l / 709);
+  return { y: 30 * n + j - 30, m: hm, d: l - Math.floor(709 * hm / 24) };
+}
+
+/* ١٤/٠٤/١٤٤٨هـ */
+function hijriShort(y, m, d) {
+  const h = hijriParts(y, m, d), p = n => (n < 10 ? "0" : "") + n;
+  return toArabicDigits(p(h.d) + "/" + p(h.m) + "/" + h.y) + "هـ";
+}
+/* ١٤ ربيع الآخر ١٤٤٨هـ */
+function hijriLong(y, m, d) {
+  const h = hijriParts(y, m, d);
+  return toArabicDigits(h.d) + " " + HIJ_MONTHS[h.m - 1] + " " + toArabicDigits(h.y) + "هـ";
+}
+/* شهرٌ ميلاديٌّ كاملٌ بلا يوم: لا يقابله شهرٌ هجريٌّ واحدٌ غالباً، فيُكتب
+   مدى الشهور التي يقع فيها — «ربيع الأول – ربيع الآخر ١٤٤٨هـ» — ولا يُنسب
+   إلى أحدهما فيُوهم أنّ الصفحةَ شهرٌ هجريٌّ كامل. */
+function hijriMonthName(y, m) {
+  const days = new Date(y, m, 0).getDate();
+  const a = hijriParts(y, m, 1), b = hijriParts(y, m, days);
+  if (a.m === b.m && a.y === b.y) return HIJ_MONTHS[a.m - 1] + " " + toArabicDigits(a.y) + "هـ";
+  if (a.y === b.y) {
+    return HIJ_MONTHS[a.m - 1] + " – " + HIJ_MONTHS[b.m - 1] + " " + toArabicDigits(a.y) + "هـ";
+  }
+  return HIJ_MONTHS[a.m - 1] + " " + toArabicDigits(a.y) + "هـ – " +
+         HIJ_MONTHS[b.m - 1] + " " + toArabicDigits(b.y) + "هـ";
+}
+
+/* تاريخٌ مخزَّنٌ (ISO أو طابعٌ زمنيّ) → نصٌّ هجريٌّ للعرض */
+function hijriOf(v, long) {
+  if (v == null || v === "") return "";
+  const s = String(v), iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  let y, m, d;
+  if (iso) { y = +iso[1]; m = +iso[2]; d = +iso[3]; }
+  else {
+    const n = Number(v), dt = new Date(s === String(n) ? n : s);
+    if (isNaN(dt.getTime())) return "";
+    y = dt.getFullYear(); m = dt.getMonth() + 1; d = dt.getDate();
+  }
+  if (!(y > 1900 && y < 2200 && m >= 1 && m <= 12 && d >= 1 && d <= 31)) return "";
+  return long ? hijriLong(y, m, d) : hijriShort(y, m, d);
+}
+window.hijriOf = hijriOf;
+window.hijriMonthName = hijriMonthName;
+window.hijriParts = hijriParts;
+
+/* ---- التعرّفُ على التواريخ في النصّ المعروض ---- */
+const HIJ_D = "[0-9٠-٩]";               /* رقمٌ لاتينيٌّ أو عربيّ */
+const HIJ_W = "[0-9٠-٩A-Za-z_]";        /* ما لا يصحّ أن يحدّ تاريخاً */
+/* علامةُ الاتجاه التي يحشرها المتصفّحُ بين أجزاء التاريخ العربيّ */
+const HIJ_RL = "[\\u200f\\u200e]?";
+function hijLatin(s) {
+  return String(s).replace(/[٠-٩]/g, c => String(c.charCodeAt(0) - 0x660));
+}
+/* والشَّرطةُ قبلَه أو بعدَه تُخرجه: «ref-2026-10-06» معرِّفٌ لا تاريخ */
+const HIJ_RE_ISO = new RegExp(
+  "(^|[^" + HIJ_W.slice(1, -1) + "-])(" + HIJ_D + "{4})-(" + HIJ_D + "{1,2})-(" + HIJ_D +
+  "{1,2})(?![" + HIJ_W.slice(1, -1) + "-])", "g");
+const HIJ_RE_SLASH = new RegExp(
+  "(^|[^" + HIJ_W.slice(1) + ")(" + HIJ_D + "{1,4})" + HIJ_RL + "/" + HIJ_RL +
+  "(" + HIJ_D + "{1,2})" + HIJ_RL + "/" + HIJ_RL + "(" + HIJ_D + "{1,4})(?!" + HIJ_W + ")", "g");
+const HIJ_RE_LONG = new RegExp(
+  "(^|[^" + HIJ_W.slice(1) + ")(" + HIJ_D + "{1,2})\\s+(" + GRG_MONTHS_AR.join("|") +
+  ")\\s+(" + HIJ_D + "{4})(?!" + HIJ_W + ")", "g");
+const HIJ_RE_MONTH = new RegExp(
+  "(^|[^\\u0621-\\u064aA-Za-z])(" + GRG_MONTHS_AR.join("|") + ")\\s+(" + HIJ_D +
+  "{4})(?!" + HIJ_W + ")", "g");
+
+function hijValid(y, m, d) {
+  return y > 1900 && y < 2200 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
+}
+
+/* يُبدّل كلَّ تاريخٍ ميلاديٍّ في النصّ بمقابله الهجريّ، ويترك ما ليس تاريخاً.
+   والنتيجةُ لا تُطابق هذه الأنماطَ من جديد (سنتُها هجريةٌ ومختومةٌ بـ هـ)،
+   فإعادةُ التمرير على النصّ نفسه لا تُغيّره. */
+function hijriText(s) {
+  let t = String(s);
+  if (!/[0-9٠-٩]/.test(t)) return t;
+  t = t.replace(HIJ_RE_ISO, function (all, pre, a, b, c) {
+    const y = +hijLatin(a), m = +hijLatin(b), d = +hijLatin(c);
+    return hijValid(y, m, d) ? pre + hijriShort(y, m, d) : all;
+  });
+  t = t.replace(HIJ_RE_LONG, function (all, pre, a, mon, c) {
+    const d = +hijLatin(a), y = +hijLatin(c), m = GRG_MONTHS_AR.indexOf(mon) + 1;
+    return hijValid(y, m, d) ? pre + hijriLong(y, m, d) : all;
+  });
+  t = t.replace(HIJ_RE_SLASH, function (all, pre, a, b, c) {
+    const x = +hijLatin(a), m = +hijLatin(b), z = +hijLatin(c);
+    /* السنةُ هي الجزءُ رباعيُّ الأرقام: ٢٠٢٦/١٠/٠٦ أو ٠٦/١٠/٢٠٢٦ */
+    if (String(hijLatin(c)).length === 4 && hijValid(z, m, x)) return pre + hijriShort(z, m, x);
+    if (String(hijLatin(a)).length === 4 && hijValid(x, m, z)) return pre + hijriShort(x, m, z);
+    return all;
+  });
+  t = t.replace(HIJ_RE_MONTH, function (all, pre, mon, c) {
+    const y = +hijLatin(c), m = GRG_MONTHS_AR.indexOf(mon) + 1;
+    return y > 1900 && y < 2200 ? pre + hijriMonthName(y, m) : all;
+  });
+  return t;
+}
+window.hijriText = hijriText;
+
+/* ---- المرورُ على الشاشة بعد رسمها ---- */
+const HIJ_SKIP_TAGS = {
+  INPUT: 1, TEXTAREA: 1, SELECT: 1, OPTION: 1, OPTGROUP: 1,
+  SCRIPT: 1, STYLE: 1, CODE: 1, PRE: 1, TEXT: 1, TSPAN: 1
+};
+
+/* هل هذا الموضعُ من المستثنى؟ مسيّراتُ الرواتب وشاشاتُ دوام الموظفين
+   تُؤشَّر بـ data-greg، وشريطُ الفلاتر الأعلى هجريٌّ أصلاً. */
+function hijExcluded(el) {
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    if (n.hasAttribute && n.hasAttribute("data-greg")) return true;
+    if (n.id === "topFilters") return true;
+    if (n.classList && n.classList.contains("topbar-filters")) return true;
+  }
+  return false;
+}
+/* نافذةٌ تُفتح فوق شاشةٍ مستثناةٍ ترث استثناءها — فنوافذُ «دوام الموظفين»
+   في duty-plus.js تبقى ميلاديةً بلا تعديلٍ في ملفّها. */
+function hijGregHere() {
+  try {
+    const r = document.getElementById("pageContent");
+    return !!(r && (r.hasAttribute("data-greg") || r.querySelector("[data-greg]")));
+  } catch (e) { return false; }
+}
+window.hijGregHere = hijGregHere;
+
+function hijriSweep(root) {
+  if (!root || !window.__hijOn) return;
+  try {
+    if (root.nodeType === 3) {
+      const v = root.nodeValue, p0 = root.parentElement;
+      if (!v || v.length < 5 || !p0 || HIJ_SKIP_TAGS[p0.tagName]) return;
+      if (!hijExcluded(p0)) {
+        const o = hijriText(v);
+        if (o !== v) root.nodeValue = o;
+      }
+      return;
+    }
+    if (root.nodeType !== 1) return;
+    if (HIJ_SKIP_TAGS[root.tagName] || hijExcluded(root)) return;
+    const hits = [];
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    for (let t = w.nextNode(); t; t = w.nextNode()) {
+      const v = t.nodeValue;
+      if (!v || v.length < 5 || !/[0-9٠-٩]/.test(v)) continue;
+      const p = t.parentElement;
+      if (!p || HIJ_SKIP_TAGS[p.tagName] || p.isContentEditable) continue;
+      if (p.ownerSVGElement || p.tagName === "svg") continue;
+      if (hijExcluded(p)) continue;
+      hits.push(t);
+    }
+    hits.forEach(function (t) {
+      const o = hijriText(t.nodeValue);
+      if (o !== t.nodeValue) t.nodeValue = o;
+    });
+  } catch (e) {}
+}
+window.hijriSweep = hijriSweep;
+
+/* المراقبُ: يمرّ على ما يُضاف إلى الصفحة وحدَه لا على الصفحة كلّها، فيلحق
+   كلَّ مسارات الرسم — mount والنوافذ واللوحات وملفّات الإدارة المستقلّة —
+   بلا تعديلٍ في أيٍّ منها. وتغييرُنا نصَّ عقدةٍ قائمةٍ لا يُشعله: هو لا
+   يراقب characterData. */
+function hijriWatch() {
+  if (window.__hijMo || !document.body) return;
+  window.__hijOn = true;
+  try {
+    const mo = new MutationObserver(function (recs) {
+      for (let i = 0; i < recs.length; i++) {
+        const a = recs[i].addedNodes;
+        for (let j = 0; j < a.length; j++) hijriSweep(a[j]);
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+    window.__hijMo = mo;
+  } catch (e) {}
+  hijriSweep(document.body);
+}
+window.hijriWatch = hijriWatch;
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () { hijriWatch(); });
+  } else setTimeout(hijriWatch, 0);
 }
 
 /* =========================================================================
@@ -43282,7 +43633,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-1020";
+  var APP_BUILD = "20261006-1140";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
