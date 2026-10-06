@@ -11339,3 +11339,54 @@ body[data-iface="student"] .content { padding-top: 14px; }
 [data-theme="dark"] .sidx-jrow,
 [data-theme="dark"] .sidx-tab { background: #16201e; border-color: #232f2c; }
 [data-theme="dark"] .sidx-search { background: #14201e; border-color: #232f2c; }
+
+/* ===== المصحف: علاماتُ الأحزاب · شريطُ القارئ · التفضيلات ===== */
+.mus-orn.plain { background-image: none; border-color: #cfd6b4; box-shadow: none; }
+.mus-text.thick { font-weight: 700; -webkit-text-stroke: .22px currentColor; }
+
+/* علامةُ الحزب في مجرى النصّ — كحاشية المصحف المطبوع */
+.mus-hizb {
+  display: inline-block; vertical-align: middle; margin: 0 4px;
+  padding: 1px 7px; border-radius: 999px;
+  border: 1px solid #b08b2e; background: #fbf4e0; color: #8a6a16;
+  font-family: system-ui, sans-serif; font-size: 10.5px; font-weight: 800;
+  white-space: nowrap;
+}
+
+/* شريطُ القارئ السفليّ */
+.mus-bar {
+  display: flex; align-items: center; justify-content: space-around;
+  gap: 8px; margin-top: 12px; padding: 9px 10px;
+  border-radius: 16px; border: 1px solid var(--border-soft, #eef1f0);
+  background: var(--surface, #fff);
+  box-shadow: 0 2px 12px rgba(10, 30, 35, .05);
+}
+.mus-bbtn {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border: 0; background: transparent; font: inherit; padding: 7px 12px;
+  border-radius: 12px; color: var(--brand-dark, #0f6f72);
+}
+.mus-bbtn:active { transform: scale(.96); }
+.mus-bpage b { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* لوحةُ التفضيلات */
+.msp { display: flex; flex-direction: column; gap: 2px; }
+.msp-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 2px; border-bottom: 1px solid var(--border-soft, #eef1f0);
+}
+.msp-row:last-child { border-bottom: 0; }
+.msp-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.msp-t strong { font-size: 13.5px; color: var(--text-main, #15302f); }
+.msp-t small { font-size: 11.5px; color: var(--text-faint, #9aa3ad); }
+.msp-size { display: inline-flex; gap: 6px; }
+.msp-size button {
+  width: 32px; height: 32px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--border-soft, #eef1f0); background: var(--surface, #fff);
+  font: inherit; font-size: 16px; font-weight: 800;
+  color: var(--brand-main, #0b7f83);
+}
+
+[data-theme="dark"] .mus-bar { background: #16201e; border-color: #232f2c; }
+[data-theme="dark"] .msp-size button { background: #16201e; border-color: #232f2c; }
+[data-theme="dark"] .mus-hizb { background: #2a2314; border-color: #6b551c; color: #e0bd63; }
