@@ -353,6 +353,16 @@ service cloud.firestore {
       allow write: if docId == "teacherPerms"
                    && (isTeacher() || isManager())
                    && request.resource.data.keys().hasOnly(['id', 'teacherPerms']);
+
+      /* مكتبةُ الشارات — صارت بيدِ مديرِ المسجد ومديرِ المجمّع والمشرف
+         بطلبٍ صريح، وخرجت من يد مدير النظام ومالكه. ومحصورةٌ في مستندٍ
+         واحدٍ لا يحمل إلا مفتاحَها، على منوال teacherPerms أعلاه: فلا
+         يبلغ مديرُ المنشأة بقيّةَ الإعدادات ولا يدسّ معها حقلاً آخر.
+         و _o يُضيفه persistSet إلى كلّ مستند، فلا بدّ من قبوله وإلّا
+         رُدّت الكتابةُ كلُّها. */
+      allow write: if docId == "badges"
+                   && isManager()
+                   && request.resource.data.keys().hasOnly(['id', 'badgeLib', '_o']);
     }
 
 

@@ -10836,6 +10836,11 @@ function cfgFor(mid) {
 /* حفظ الإعدادات: المديرُ يكتب العامّ، ومديرُ المسجد يكتب طبقة مسجده.
    يُرجِع وعداً إن حُوِّل، وإلا null فيمضي persistSet كما كان. */
 function cfgRouteSave(obj) {
+  /* مستندُ مكتبة الشارات يمرّ كما هو: قائمةٌ واحدةٌ للنظام كلِّه يضبطها
+     مديرُ المسجد والمجمّع والمشرف، لا طبقةً لكلّ مسجد. وقاعدةُ الخادم
+     تفتح هذا المستندَ وحدَه لهم، فلا يبلغون به سائرَ الإعدادات. */
+  if (obj && String(obj.id) === "badges") return null;
+
   if (isTopAdmin()) {
     const b = cfgClone(obj) || {}; delete b.id; delete b._o;
     CFG_BASE = b;
@@ -21053,7 +21058,7 @@ window.qaImagesSave = function () {
 };
 
 function setPanelBadges() {
-  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const edit = badgeMay();
   const c = badgeCfg(null);
   const list = badgeListAll();
 
@@ -21099,7 +21104,7 @@ function setPanelBadges() {
       وينالها الطالبُ متى تحقّق متطلّبُها — فقد ينال ثلاثاً في شهرٍ واحد.
       و«يدويّ» يعني أنّك تمنحها بنفسك من بطاقة الطالب.
       و«المدّة» أيامٌ <b>متتاليةٌ</b> من أيام الطالب المسجَّلة.
-      ${edit ? "" : "<b>الضبطُ من صلاحية مدير النظام.</b>"}</span>
+      ${edit ? "" : "<b>الضبطُ من صلاحية مدير المسجد أو مدير المجمّع.</b>"}</span>
     </div>
 
     <div class="sp-card bdg-card">
@@ -21155,16 +21160,23 @@ function badgeRead() {
   }).filter(b => b.name);
 }
 
-function badgeLibSave(list) {
+function badgeLibSave(list, extra) {
   DB.settings = DB.settings || {};
-  DB.settings.badgeList = list;
-  persistSet("settings", Object.assign({ id: "general" }, DB.settings));
+  const cur0 = badgeLib() || {};
+  const lib = {
+    list: Array.isArray(list) ? list : (cur0.list || []),
+    on:   (extra && extra.on !== undefined) ? !!extra.on
+          : (cur0.on !== undefined ? !!cur0.on : badgeCfg(null).on),
+    note: String((extra && extra.note !== undefined) ? extra.note
+          : (cur0.note !== undefined ? cur0.note : (badgeCfg(null).note || "")))
+  };
+  DB.settings.badgeLib = lib;
+  /* مستندٌ مستقلٌّ بمفتاحه وحدَه — لا كتلةُ الإعدادات كلُّها */
+  persistSet("settings", { id: "badges", badgeLib: lib });
 }
 
 window.badgeAdd = function () {
-  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
-    showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
-  }
+  if (!badgeMay()) { showToast(BADGE_DENY_MSG, "warn"); return; }
   const list = badgeRead();
   list.push(badgeNorm({ id: "bg" + Date.now(), name: "شارة جديدة", req: "",
                         rule: "", days: 8, icon: "trophy", on: true }, list.length));
@@ -21174,9 +21186,7 @@ window.badgeAdd = function () {
 };
 
 window.badgeDel = function (i) {
-  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
-    showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
-  }
+  if (!badgeMay()) { showToast(BADGE_DENY_MSG, "warn"); return; }
   const list = badgeRead();
   const b = list[Number(i)];
   if (!b) return;
@@ -21186,7 +21196,7 @@ window.badgeDel = function (i) {
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 };
 window.badgeDelDo = function (id) {
-  if (!(typeof isTopAdmin === "function" && isTopAdmin())) return;
+  if (!badgeMay()) return;
   badgeLibSave(badgeRead().filter(b => String(b.id) !== String(id)));
   closeModal();
   showToast("حُذفت الشارة", "success");
@@ -21194,18 +21204,12 @@ window.badgeDelDo = function (id) {
 };
 
 window.badgeCfgSave = function () {
-  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
-    showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
-  }
-  badgeLibSave(badgeRead());
+  if (!badgeMay()) { showToast(BADGE_DENY_MSG, "warn"); return; }
   const g = id => (document.getElementById(id) || {});
-  DB.settings = DB.settings || {};
-  const old = DB.settings.badges || {};
-  DB.settings.badges = Object.assign({}, old, {
+  badgeLibSave(badgeRead(), {
     on: !!g("bgx_on").checked,
     note: String(g("bgx_note").value || "").trim().slice(0, 90)
   });
-  persistSet("settings", Object.assign({ id: "general" }, DB.settings));
   showToast("حُفظت الشارات", "success");
   mount();
 };
@@ -21243,8 +21247,8 @@ window.spBadges = function (id) {
 };
 
 window.spBadgeGrant = function (id, bid, on) {
-  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
-    showToast("المنحُ من صلاحية مدير النظام", "warn"); return;
+  if (!badgeMay()) {
+    showToast("منحُ الشارات من صلاحية مدير المسجد أو مدير المجمّع", "warn"); return;
   }
   const st = (cur("students") || []).find(x => String(x.id) === String(id));
   if (!st) return;
@@ -22950,6 +22954,11 @@ function setPanelOther(k) {
 /* «مشرف» القديم يبقى على قيده كما كان — لا يُوسَّع له بلا طلب.
    والدوران الجديدان يريان المالَ بقرار الإدارة، فليسا هنا. */
 const SET_DENIED = {
+  /* الشاراتُ خرجت من يد مدير النظام ومالكه بطلبٍ صريح: «يتحكّم بها مشرفٌ
+     أو مديرُ المسجد أو مشرفٌ أو مديرُ المجمّع وشِلْها من مدير النظام».
+     فالقسمُ لا يظهر لهما أصلاً، ولا تُقبل كتابتُهما في الخادم. */
+  owner:      ["badges"],
+  admin:      ["badges"],
   supervisor: ["payroll", "supcat"],
   donor:      ["payroll", "supcat", "procs", "msgs", "terms", "perms", "tchapp"],
   /* المعلّمُ يرى «إدارة الصلاحيات» وحدَها: فُتحت له بطلبٍ صريح، ولا شأنَ
@@ -33056,6 +33065,9 @@ function badgeCfg(st) {
     });
   };
   put((DB.settings || {}).badges);
+  /* ما ضبطه مديرُ المنشأة في مستند المكتبة يعلو على الإعداد القديم */
+  const lb = badgeLib();
+  if (lb) put({ on: lb.on, note: lb.note });
 
   const cid = st && st.circleId;
   if (cid) {
@@ -33230,6 +33242,28 @@ function badgeMonth(st, ym) {
    والشاراتُ تُحفظ في settings/general، والممنوحُ يدوياً في سجلّ الطالب —
    بلا مجموعةٍ جديدةٍ في القاعدة.
    ========================================================================= */
+/* مَن يملك ضبطَ الشارات: مديرُ المسجد ومديرُ المجمّع والمشرف.
+   ومديرُ النظام ومالكُه لا يَضبطان ولا يريان القسمَ أصلاً — بطلبٍ صريح:
+   «يتحكّم بها مشرفٌ أو مديرُ المسجد أو مشرفٌ أو مديرُ المجمّع وشِلْها من
+   مدير النظام». */
+function badgeMay() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  return typeof isMgrRole === "function" ? isMgrRole(r) : false;
+}
+window.badgeMay = badgeMay;
+const BADGE_DENY_MSG = "ضبطُ الشارات من صلاحية مدير المسجد أو مدير المجمّع";
+
+/* المكتبةُ تُحفظ في مستندٍ مستقلٍّ (settings/badges) لا يحمل إلا مفتاحَها،
+   على منوال settings/teacherPerms: قاعدةُ الخادم تفتح هذا المستندَ وحدَه
+   لمدير المنشأة، فلو كُتبت كتلةُ الإعدادات كلُّها لداس بها النظامَ كلَّه.
+   والمفتاحُ badgeLib جديدٌ لا يصطدم بما في settings/general — فالدمجُ في
+   loadSettings بترتيب المعرّفات، وما حُفظ قديماً في badgeList يبقى يُقرأ
+   احتياطياً فلا يضيع. */
+function badgeLib() {
+  const l = (DB.settings || {}).badgeLib;
+  return l && typeof l === "object" ? l : null;
+}
+
 const BADGE_SEED = [
   { id: "b-att",   name: "الحضور المنتظم",       icon: "check",
     req: "حضورٌ متّصلٌ بلا غيابٍ ثمانيةَ أيامٍ متتالية.",
@@ -33258,14 +33292,17 @@ function badgeNorm(b, i) {
 
 /* الشاراتُ المعرَّفة — ما ضبطته الإدارةُ، وإلا ثلاثُ شاراتٍ ابتدائيةٌ
    تُعدَّل أو تُحذف. */
+function badgeRaw() {
+  const l = badgeLib();
+  if (l && Array.isArray(l.list)) return l.list;
+  const old = (DB.settings || {}).badgeList;     /* ما حُفظ قبل الفصل */
+  return Array.isArray(old) ? old : BADGE_SEED;
+}
 function badgeList() {
-  const raw = (DB.settings || {}).badgeList;
-  const src = Array.isArray(raw) ? raw : BADGE_SEED;
-  return src.map(badgeNorm).filter(b => b.on);
+  return badgeRaw().map(badgeNorm).filter(b => b.on);
 }
 function badgeListAll() {
-  const raw = (DB.settings || {}).badgeList;
-  return (Array.isArray(raw) ? raw : BADGE_SEED).map(badgeNorm);
+  return badgeRaw().map(badgeNorm);
 }
 window.badgeList = badgeList;
 
@@ -38152,7 +38189,7 @@ function panelStudent(id, keepDraft) {
       </div>
     </div>
     <div class="sp-acts">
-      ${(typeof isTopAdmin === "function" && isTopAdmin())
+      ${badgeMay()
         ? `<button class="sp-act" title="شارات الطالب — المنح اليدويّ"
             onclick="window.spBadges('${jsAttr(s.id)}')">${ic("trophy", 17)}</button>` : ""}
       <button class="sp-act" title="حذف الطالب"
@@ -45305,7 +45342,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261007-0045";
+  var APP_BUILD = "20261007-0155";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
