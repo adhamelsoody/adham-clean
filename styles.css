@@ -11733,3 +11733,63 @@ body[data-iface="student"] .content { padding-top: 14px; }
 [data-theme="dark"] .qa-rdl:hover,
 [data-theme="dark"] .qab-b:hover,
 [data-theme="dark"] .qab-x:hover { background: #0a2e30; }
+
+
+/* =========================================================================
+   التلاوةُ بالآية داخل المصحف · فحصُ الروابط · صورُ القرّاء
+   -------------------------------------------------------------------------
+   المواصفات: «تحديدُ الآية الحالية أثناء التشغيل وتمييزُها… والانتقالُ
+   إلى آيةٍ محددة وتكرارُها».
+   ========================================================================= */
+/* شريطُ الاستماع بالآية */
+.musa-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 0 0 10px; padding: 9px 11px; border-radius: 12px;
+  background: var(--surface, #fff); border: 1px solid var(--border-soft, #e6eaea);
+}
+.musa-bar.on { border-color: #15a2a7; background: #f2fbfb; }
+.musa-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px;
+  border-radius: 9px; background: #f1f5f5; color: #0d6e71;
+  font-family: var(--ff); font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.musa-btn:hover { background: #e7fbfc; }
+.musa-btn.on { background: #0d6e71; color: #fff; }
+.musa-sel {
+  height: 34px; padding: 0 9px; border-radius: 9px; background: var(--surface, #fff);
+  border: 1px solid var(--border, #e6eaea); font-family: var(--ff); font-size: 12.5px;
+  color: var(--text-muted, #4e6060); max-width: 210px;
+}
+.musa-rep { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+  color: var(--text-muted, #4e6060); }
+.musa-rep input { accent-color: #0d6e71; }
+.musa-state { font-size: 12.5px; font-weight: 700; color: #0d6e71; }
+.musa-note { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px;
+  color: #a06d10; }
+
+/* الآيةُ التي تُتلى الآن */
+.mus-w.mus-now {
+  background: rgba(21, 162, 167, .18);
+  box-shadow: 0 0 0 1px rgba(21, 162, 167, .35) inset;
+  border-radius: 4px;
+}
+[data-theme="dark"] .mus-w.mus-now { background: rgba(79, 192, 195, .22); }
+
+/* فحصُ الروابط في شاشة المسموع */
+.qa-admin { margin-top: 14px; padding: 12px 14px; border-radius: 12px;
+  background: var(--surface, #fff); border: 1px solid var(--border-soft, #e6eaea);
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.qa-chk { width: 100%; }
+.qa-chk table { width: 100%; }
+.qa-chk-run { display: flex; align-items: center; gap: 7px; padding: 10px 0;
+  font-size: 12.5px; color: var(--text-muted, #4e6060); }
+
+/* معاينةُ صورة القارئ في الإعدادات */
+.qa-ava.sm { width: 42px; height: 42px; border-width: 2px; }
+.qa-ava.sm i { font-size: 18px; }
+
+[data-theme="dark"] .musa-bar,
+[data-theme="dark"] .musa-sel,
+[data-theme="dark"] .qa-admin { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .musa-bar.on { background: #0a2e30; border-color: #15555a; }
+[data-theme="dark"] .musa-btn { background: #0a2e30; color: #4fc0c3; }

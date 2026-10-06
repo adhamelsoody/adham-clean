@@ -10028,6 +10028,7 @@ const SET_SECTIONS = [
   { k: "stuapp",   h: "تطبيق الطالب" },
   { k: "mushaf",   h: "المصحف والتقييم" },
   { k: "badges",   h: "الشارات والتحفيز" },
+  { k: "qaimg",    h: "صور القرّاء" },
   { k: "procs",    h: "الإجراءات التدرّجية" },
   /* «مسيّرات الرواتب» أُزيل من قائمة الإعدادات بطلب الإدارة: شاشةٌ لا
      تُستعمل. والدالّةُ setPanelPayroll باقيةٌ فلا ينكسر شيء، وإعادتُه
@@ -20999,6 +21000,58 @@ window.stuAppSave = function () {
    فكلُّ شرطٍ يُفعَّل وحدَه ولـه مدّتُه بالأيام، والشارةُ تُنال متى تحقّقت
    الشروطُ المفعَّلةُ كلُّها — أو منحَها مديرُ النظام بيده من بطاقة الطالب.
    ========================================================================= */
+/* =========================================================================
+   صورُ القرّاء — تضبطها الإدارةُ بروابطَ تملكها
+   -------------------------------------------------------------------------
+   لم يُشحن مع النظام صورةُ شيخٍ واحدة: لم يُوجد مصدرٌ بترخيصٍ واضح،
+   والمواصفاتُ تمنع الصورَ العشوائية. فالبطاقةُ بهويّة المشروع حتى تضع
+   الإدارةُ صورةً تملك حقَّها، وتُحفظ في settings/general لا في مجموعةٍ جديدة.
+   ========================================================================= */
+function setPanelQaImages() {
+  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const im = qaImages();
+  const rows = QA_RECITERS.map(r => `<tr>
+    <td class="pt-name">${esc(r.name)}
+      <div class="muted" style="font-size:11.5px">${esc(r.riwaya)}</div></td>
+    <td><span class="qa-ava sm">${im[r.id]
+      ? `<img src="${esc(im[r.id])}" alt="">` : `<i>${esc(r.letter)}</i>`}</span></td>
+    <td><input id="qai_${esc(r.id)}" dir="ltr" placeholder="https://… (اتركه فارغاً للبطاقة النصّية)"
+      value="${esc(String(im[r.id] || ""))}" ${edit ? "" : "disabled"}></td>
+  </tr>`).join("");
+
+  return `<div class="pm-wrap">
+    <div class="tm-top"><strong class="tm-title">صور القرّاء</strong></div>
+    <div class="tm-info">${ic("info", 18)}
+      <span>ضعْ رابطَ صورةٍ تملك حقَّ استعمالها. ولا يُشحن مع النظام صورةُ أحد:
+      ترخيصُ صور المشايخ غيرُ معلوم، فالبطاقةُ نصّيةٌ بهويّة المشروع حتى تضع بديلاً.
+      ${edit ? "" : "<b>الضبطُ من صلاحية مدير النظام.</b>"}</span></div>
+    <div class="sp-card">
+      <table class="ptable"><thead><tr><th>القارئ</th><th>المعاينة</th><th>رابط الصورة</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      ${edit ? `<div class="row-actions" style="margin-top:10px">
+        <button class="btn btn-primary btn-sm" onclick="window.qaImagesSave()">${
+          ic("check", 15)} حفظ الصور</button></div>` : ""}
+    </div>
+  </div>`;
+}
+
+window.qaImagesSave = function () {
+  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+    showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
+  }
+  const out = {};
+  QA_RECITERS.forEach(r => {
+    const v = String(((document.getElementById("qai_" + r.id) || {}).value) || "").trim();
+    /* روابطُ الصور وحدَها: ما ليس http(s) لا يُحفظ */
+    if (v && /^https?:\/\//i.test(v)) out[r.id] = v;
+  });
+  DB.settings = DB.settings || {};
+  DB.settings.qaImages = out;
+  persistSet("settings", Object.assign({ id: "general" }, DB.settings));
+  showToast("حُفظت صورُ القرّاء", "success");
+  mount();
+};
+
 function setPanelBadges() {
   const edit = typeof isTopAdmin === "function" && isTopAdmin();
   const c = badgeCfg(null);
@@ -22849,7 +22902,7 @@ function adminSettingsNew() {
       </aside>
       <section class="st-main">${!setSecAllowed(SET.sec)
         ? financeDenied(SET.sec === "payroll" ? "مسيّرات الرواتب" : "تصنيفات المشرفين")
-        : SET.sec === "main" ? setPanelMain() : SET.sec === "programs" ? setPanelPrograms() : SET.sec === "levels" ? setPanelLevels() : SET.sec === "duties" ? setPanelDuties() : SET.sec === "supcat" ? setPanelSupcat() : SET.sec === "perms" ? setPanelPerms() : SET.sec === "tchapp" ? setPanelTeacherApp() : SET.sec === "stuapp" ? setPanelStudentApp() : SET.sec === "badges" ? setPanelBadges() : SET.sec === "terms" ? setPanelTerms() : SET.sec === "mushaf" ? setPanelMushaf() : SET.sec === "procs" ? setPanelProcedures() : SET.sec === "payroll" ? setPanelPayroll() : SET.sec === "msgs" ? setPanelMessages() : SET.sec === "prayer" ? setPanelPrayer() : setPanelOther(SET.sec)}</section>
+        : SET.sec === "main" ? setPanelMain() : SET.sec === "programs" ? setPanelPrograms() : SET.sec === "levels" ? setPanelLevels() : SET.sec === "duties" ? setPanelDuties() : SET.sec === "supcat" ? setPanelSupcat() : SET.sec === "perms" ? setPanelPerms() : SET.sec === "tchapp" ? setPanelTeacherApp() : SET.sec === "stuapp" ? setPanelStudentApp() : SET.sec === "badges" ? setPanelBadges() : SET.sec === "qaimg" ? setPanelQaImages() : SET.sec === "terms" ? setPanelTerms() : SET.sec === "mushaf" ? setPanelMushaf() : SET.sec === "procs" ? setPanelProcedures() : SET.sec === "payroll" ? setPanelPayroll() : SET.sec === "msgs" ? setPanelMessages() : SET.sec === "prayer" ? setPanelPrayer() : setPanelOther(SET.sec)}</section>
     </div>
   </div>`;
 }
@@ -29678,6 +29731,15 @@ window.mushafSurah = function (id) {
 };
 
 window.mushafMark = function (key) {
+  /* وضعُ الاستماع يسبق التأشير: النقرةُ تُشغّل آيةَ الكلمة ولا تُغيّر
+     علامةً. وبإغلاقه يعود التأشيرُ كما كان بلا فرق. */
+  try {
+    if (MUSA.on) {
+      const p = String(arguments[0] || "").split(":");
+      if (p.length >= 2) { window.qaAyahPlay(Number(p[0]), Number(p[1])); return; }
+    }
+  } catch (e) {}
+
   const m = mushaf();
   const st = mushafStudent();
   const u = (STATE && STATE.user) || {};
@@ -30175,7 +30237,7 @@ function mushafSheet(n) {
     const sty = dc ? ` style="background:${esc(dc)}"` : "";
     const ttl = k ? ` title="${esc(musMark(k).h + (dk && MUSD.name && String(MUSD.kind) === String(dk)
       ? " — " + MUSD.name : ""))}"` : "";
-    return `<span class="mus-w${cls}"${ttl}${sty} onclick="window.mushafMark('${key}')">${
+    return `<span class="mus-w${cls}" data-k="${esc(key)}"${ttl}${sty} onclick="window.mushafMark('${key}')">${
       esc(sv.w[i])}</span>`;
   };
 
@@ -30251,7 +30313,7 @@ function mushafSheet(n) {
       const sty = dc ? ` style="background:${esc(dc)}"` : "";
       const ttl = k ? ` title="${esc(musMark(k).h + (dk && MUSD.name && String(MUSD.kind) === String(dk)
         ? " — " + MUSD.name : ""))}"` : "";
-      return `<span class="mus-w${cls}"${ttl}${sty} onclick="window.mushafMark('${key}')">${esc(w)}</span>`;
+      return `<span class="mus-w${cls}" data-k="${esc(key)}"${ttl}${sty} onclick="window.mushafMark('${key}')">${esc(w)}</span>`;
     }).join(" ");
     /* علامةُ الربع/الحزب قبل الآية التي يبدأ عندها. وموضعُها من جدولٍ
        مستخرجٍ من صفحات المشروع نفسِها (حقلا h و q)، لا من المقارنة داخل
@@ -30340,6 +30402,9 @@ function mushafPage() {
       <span class="mus-juz">الجزء ${toArabicDigits(juz)}</span>
     </div>
   </div>`;
+
+  /* ---- شريطُ الاستماع بالآية ---- */
+  const audBar = typeof musaBar === "function" ? musaBar() : "";
 
   /* ---- الفرشة ---- */
   const spread = `<div class="mus-spread ${left ? "two" : "one"}">
@@ -30446,6 +30511,7 @@ function mushafPage() {
 
   return `${colorVars}<div class="page mus-page-wrap">
     ${top}
+    ${audBar}
     ${dutyBar}
     ${picker}
     ${filters}
@@ -39082,22 +39148,26 @@ const QA_RECITERS = [
   { id: "minshawi", name: "محمد صديق المنشاوي", nameEn: "Al-Minshawi",
     riwaya: "حفص عن عاصم — مرتَّل", letter: "م",
     desc: "من أعلام التلاوة المصرية، صاحبُ الصوت الخاشع والأداء المتمهّل.",
-    base: "https://cdn.mp3quran.net/download/audio/muhammad-minshawi/r1/", image: "" },
+    base: "https://cdn.mp3quran.net/download/audio/muhammad-minshawi/r1/", image: "",
+    /* التلاوةُ آيةً آية: معرّفُ التلاوة في Quran.com — تحقّقتُ من وجوده
+       في صفحة القرّاء هناك. ومن لا معرّفَ له لا يُشغَّل بالآية ولا يُخمَّن. */
+    ayahApi: 9 },
   { id: "husary", name: "محمود خليل الحصري", nameEn: "Al-Husary",
     riwaya: "حفص عن عاصم — مرتَّل", letter: "ح",
     desc: "شيخُ عموم المقارئ المصرية، وأضبطُ التلاوات المسجَّلة أداءً للتجويد.",
-    base: "https://server13.mp3quran.net/download/husr/", image: "" },
+    base: "https://server13.mp3quran.net/download/husr/", image: "", ayahApi: 6 },
   { id: "hudhaify", name: "علي بن عبدالرحمن الحذيفي", nameEn: "Al-Hudhaify",
     riwaya: "حفص عن عاصم", letter: "ع",
     desc: "إمامُ المسجد النبويّ، تلاوةٌ هادئةٌ واضحةُ المخارج.",
-    base: "https://server9.mp3quran.net/download/hthfi/", image: "" },
+    base: "https://server9.mp3quran.net/download/hthfi/", image: "", ayahApi: 0 },
   { id: "tunaiji", name: "خليفة الطنيجي", nameEn: "Al-Tunaiji",
     riwaya: "حفص عن عاصم", letter: "خ",
     desc: "قارئٌ إماراتيٌّ معاصر، تلاوةٌ نديّةٌ مطمئنّة.",
-    base: "https://cdn.mp3quran.net/download/audio/khalifa-tunaiji/r1/", image: "" }
+    base: "https://cdn.mp3quran.net/download/audio/khalifa-tunaiji/r1/", image: "", ayahApi: 161 }
 ];
-/* زرُّ التحميل موقوفٌ حتى يُؤذن به خطّياً — البند ١٩ من المواصفات */
-const QA_ALLOW_DOWNLOAD = false;
+/* زرُّ التحميل: أذنت به الإدارةُ صراحةً. والرابطُ هو رابطُ التحميل الذي
+   يعرضه المصدرُ نفسُه لزوّاره — لا نسخةَ في خوادمنا ولا إعادةَ استضافة. */
+const QA_ALLOW_DOWNLOAD = true;
 
 /* أسماءُ السور بالإنجليزية — ما ينقص surahs.json وحدَه، بلا تكرارِ سواه */
 const QA_EN = ("Al-Fatihah,Al-Baqarah,Aal-Imran,An-Nisa,Al-Ma'idah,Al-An'am,Al-A'raf,Al-Anfal," +
@@ -39114,8 +39184,18 @@ const QA_EN = ("Al-Fatihah,Al-Baqarah,Aal-Imran,An-Nisa,Al-Ma'idah,Al-An'am,Al-A
 "Al-Asr,Al-Humazah,Al-Fil,Quraysh,Al-Ma'un,Al-Kawthar,Al-Kafirun,An-Nasr,Al-Masad," +
 "Al-Ikhlas,Al-Falaq,An-Nas").split(",");
 
+/* صورُ المشايخ: لا يُشحن مع النظام شيءٌ منها — ترخيصُها غيرُ معلوم.
+   وتضبطها الإدارةُ بروابطَ تملكها، فتُحفظ في settings/general وتعلو
+   الفارغَ في التعريف. */
+function qaImages() {
+  const s = (DB.settings || {}).qaImages;
+  return s && typeof s === "object" ? s : {};
+}
 function qaReciter(id) {
-  return QA_RECITERS.find(r => r.id === String(id)) || null;
+  const r = QA_RECITERS.find(x => x.id === String(id));
+  if (!r) return null;
+  const img = qaImages()[r.id];
+  return img ? Object.assign({}, r, { image: String(img) }) : r;
 }
 
 /* رقمُ السورة ← اسمُ الملفّ: ثلاثةُ أرقامٍ بأصفارٍ بادئة */
@@ -39152,6 +39232,182 @@ function getReciterSurahs(reciterId) {
   }));
 }
 window.getReciterSurahs = getReciterSurahs;
+
+/* =========================================================================
+   التلاوةُ آيةً آية داخل المصحف التفاعليّ
+   -------------------------------------------------------------------------
+   المواصفات: «أريد أن يستطيع المستخدم فتح المصحف واختيار القارئ وتشغيل
+   التلاوة والاستماع أثناء قراءة الآيات… تحديدُ الآية الحالية وتمييزُها
+   والانتقالُ إليها وتكرارُها».
+
+   المصدر: واجهةُ Quran.com (`/recitations/{id}/by_chapter/{n}`) وهي توثّق
+   ناتجَها `{ audio_files: [{ verse_key, url }] }`. ولا يُخمَّن شيء: ما
+   يعود مطلقاً يُستعمل كما هو، وما يعود نسبياً يُسبق بمضيف الملفّات. ومن
+   لا تلاوةَ آيةٍ له عند المصدر (الحذيفي) لا يُشغَّل بالآية ويُقال ذلك
+   صراحةً، ولا يُصطنع له مصدر.
+
+   وتمييزُ الآية بسمة data-k التي تحمل «سورة:آية:كلمة» في كلّ كلمة.
+   ========================================================================= */
+const QA_AYAH_API  = "https://api.quran.com/api/v4/recitations/";
+const QA_AYAH_HOST = "https://verses.quran.com/";
+const QA_AYAH_CACHE = {};          /* "rid|surah" → [{s,a,url}] */
+
+function qaAyahAbs(u) {
+  const s = String(u || "");
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  return QA_AYAH_HOST + s.replace(/^\/+/, "");
+}
+
+/* آياتُ سورةٍ بصوت قارئ — تُجلب مرّةً وتُحفظ، ولا تُجلب قبل الطلب */
+async function qaAyahLoad(rid, surah) {
+  const r = qaReciter(rid);
+  if (!r || !r.ayahApi) return null;
+  const key = rid + "|" + surah;
+  if (QA_AYAH_CACHE[key]) return QA_AYAH_CACHE[key];
+  const url = QA_AYAH_API + r.ayahApi + "/by_chapter/" + Number(surah) +
+              "?per_page=300";
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const j = await res.json();
+    const arr = (j && j.audio_files ? j.audio_files : []).map(function (f) {
+      const vk = String(f.verse_key || "").split(":");
+      return { s: Number(vk[0]) || Number(surah), a: Number(vk[1]) || 0,
+               url: qaAyahAbs(f.url || f.audio_url) };
+    }).filter(x => x.a > 0 && x.url);
+    if (!arr.length) throw new Error("لا آياتٍ في الناتج");
+    QA_AYAH_CACHE[key] = arr;
+    return arr;
+  } catch (e) {
+    console.warn("تلاوةُ الآيات:", rid, surah, e);
+    return null;
+  }
+}
+window.qaAyahLoad = qaAyahLoad;
+
+/* حالُ الاستماع داخل المصحف */
+const MUSA = { on: false, rid: "", s: 0, a: 0, list: null, i: -1, repeat: false, busy: false };
+window.MUSA = MUSA;
+
+function qaAyahHi(s, a) {
+  try {
+    document.querySelectorAll(".mus-w.mus-now").forEach(e => e.classList.remove("mus-now"));
+    if (!s || !a) return;
+    const sel = '.mus-w[data-k^="' + s + ':' + a + ':"]';
+    const els = document.querySelectorAll(sel);
+    els.forEach(e => e.classList.add("mus-now"));
+    if (els[0] && els[0].scrollIntoView) {
+      els[0].scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  } catch (e) {}
+}
+
+/* تشغيلُ آيةٍ بعينها ثمّ ما بعدها — أو تكرارُها إن طُلب */
+window.qaAyahPlay = async function (s, a) {
+  if (!MUSA.rid) { showToast("اختر القارئ أولاً", "warn"); return; }
+  const r = qaReciter(MUSA.rid);
+  if (!r || !r.ayahApi) {
+    showToast("هذا القارئ لا تتوفّر له تلاوةٌ بالآية — استمع إليه بالسورة من «المسموع»", "warn");
+    return;
+  }
+  if (MUSA.busy) return;
+  MUSA.busy = true;
+  try {
+    if (MUSA.s !== Number(s) || !MUSA.list) {
+      const list = await qaAyahLoad(MUSA.rid, s);
+      if (!list) {
+        showToast("تعذّر جلبُ تلاوة الآيات — تحقّق من اتصالك", "warn");
+        MUSA.busy = false; return;
+      }
+      MUSA.list = list; MUSA.s = Number(s);
+    }
+  } finally { MUSA.busy = false; }
+
+  const i = MUSA.list.findIndex(x => Number(x.a) === Number(a));
+  if (i < 0) { showToast("لم تُوجد هذه الآية عند هذا القارئ", "warn"); return; }
+  MUSA.i = i; MUSA.a = Number(a);
+
+  const au = qaAudio();
+  au.src = MUSA.list[i].url;
+  au.playbackRate = qaPrefs().rate;
+  au.volume = qaPrefs().vol;
+  QA.rid = ""; QA.n = 0;              /* وضعُ الآية لا وضعُ السورة */
+  const pr = au.play();
+  if (pr && pr.catch) pr.catch(function () {
+    showToast("المتصفّح منع التشغيل — اضغط «استماع» مرّةً أخرى", "warn");
+  });
+  qaAyahHi(MUSA.s, MUSA.a);
+  musaBarSync();
+};
+
+/* نهايةُ الآية: تُكرَّر أو تُتبع بالتي بعدها — وبصوت القارئ نفسِه */
+function qaAyahEnded() {
+  if (!MUSA.on || !MUSA.list || MUSA.i < 0) return false;
+  if (MUSA.repeat) { window.qaAyahPlay(MUSA.s, MUSA.a); return true; }
+  const nx = MUSA.list[MUSA.i + 1];
+  if (!nx) { MUSA.i = -1; qaAyahHi(0, 0); musaBarSync(); return true; }
+  window.qaAyahPlay(MUSA.s, nx.a);
+  return true;
+}
+
+window.musaPick = function (rid) {
+  MUSA.rid = String(rid || "");
+  MUSA.list = null; MUSA.s = 0; MUSA.i = -1;
+  musaBarSync();
+};
+window.musaToggleOn = function () {
+  MUSA.on = !MUSA.on;
+  if (!MUSA.on) { try { qaAudio().pause(); } catch (e) {} qaAyahHi(0, 0); }
+  showToast(MUSA.on ? "اضغط على أيّ آيةٍ لتبدأ التلاوةُ منها" : "أُغلق وضعُ الاستماع", "info");
+  mount();
+};
+window.musaRepeat = function (on) { MUSA.repeat = !!on; musaBarSync(); };
+window.musaStop = function () {
+  try { qaAudio().pause(); } catch (e) {}
+  MUSA.i = -1; qaAyahHi(0, 0); musaBarSync();
+};
+/* من أوّل آيةٍ في الصفحة المعروضة */
+window.musaFromPage = function () {
+  const m = mushaf();
+  const rows = MUSHAF_CACHE[m.page] || [];
+  const first = rows.find(v => v && v.s && v.a);
+  if (!first) { showToast("انتظر حتى تُحمَّل الصفحة", "warn"); return; }
+  MUSA.on = true;
+  window.qaAyahPlay(first.s, first.a);
+};
+function musaBarSync() {
+  try {
+    const b = document.querySelector(".musa-state");
+    if (b) b.textContent = MUSA.a
+      ? "الآية " + toArabicDigits(MUSA.a) : (MUSA.on ? "اختر آية" : "");
+  } catch (e) {}
+}
+
+/* شريطُ الاستماع في المصحف — يُدرج بين شريطه العلويّ والفرشة */
+function musaBar() {
+  if (!stuAppOn("show.audio")) return "";
+  const r = MUSA.rid ? qaReciter(MUSA.rid) : null;
+  const noAyah = r && !r.ayahApi;
+  return `<div class="musa-bar${MUSA.on ? " on" : ""}">
+    <button type="button" class="musa-btn${MUSA.on ? " on" : ""}" onclick="window.musaToggleOn()">
+      ${ic(MUSA.on ? "pause" : "play", 15)} ${MUSA.on ? "إغلاق الاستماع" : "استماع بالآية"}</button>
+    <select class="musa-sel" onchange="window.musaPick(this.value)">
+      <option value="">— اختر القارئ —</option>
+      ${QA_RECITERS.map(x => `<option value="${esc(x.id)}"${
+        MUSA.rid === x.id ? " selected" : ""}>${esc(x.name)}${
+        x.ayahApi ? "" : " (بالسورة فقط)"}</option>`).join("")}
+    </select>
+    ${MUSA.on ? `<button type="button" class="musa-btn" onclick="window.musaFromPage()">
+        ${ic("book", 14)} من أول الصفحة</button>
+      <label class="musa-rep"><input type="checkbox" ${MUSA.repeat ? "checked" : ""}
+        onchange="window.musaRepeat(this.checked)"> تكرار الآية</label>
+      <button type="button" class="musa-btn" onclick="window.musaStop()">${ic("x", 14)} إيقاف</button>
+      <span class="musa-state"></span>` : ""}
+    ${noAyah ? `<span class="musa-note">${ic("info", 13)}
+      لا تتوفّر تلاوةٌ بالآية لهذا القارئ — استمع إليه بالسورة من «المسموع».</span>` : ""}
+  </div>`;
+}
 
 /* =========================================================================
    تفضيلاتُ الاستماع — آخرُ موضعٍ والمفضَّلة
@@ -39203,7 +39459,10 @@ function qaAudio() {
   a.addEventListener("loadedmetadata", function () {
     QA.dur = a.duration || 0; QA.ready = true; qaBarSync();
   });
-  a.addEventListener("ended", function () { qaEnded(); });
+  a.addEventListener("ended", function () {
+    try { if (qaAyahEnded()) return; } catch (e) {}
+    qaEnded();
+  });
   a.addEventListener("error", function () {
     QA.playing = false;
     showToast("تعذّر تشغيل هذه السورة — تحقّق من اتصالك", "warn");
@@ -39462,10 +39721,15 @@ function qaudioPage() {
       <span class="qa-res-t"><strong>متابعة الاستماع</strong>
         <small>${esc(lastN)} — ${esc(lastR.name)} · ${qaClock(last.t)}</small></span>
     </button>` : ""}
-    <div class="qa-grid">${QA_RECITERS.map(qaCard).join("")}</div>
+    <div class="qa-grid">${QA_RECITERS.map(x => qaCard(qaReciter(x.id))).join("")}</div>
     <div class="qa-note">${ic("info", 14)}
       <span>التلاواتُ تُبثّ من المكتبة الصوتية للقرآن الكريم (MP3Quran.net)،
       ولا تُنسخ إلى خوادم النظام.</span></div>
+    ${(typeof isTopAdmin === "function" && isTopAdmin()) ? `<div class="qa-admin">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="window.qaCheckRun()">
+        ${ic("check", 15)} فحصُ روابط القرّاء الأربعة</button>
+      <span class="muted" style="font-size:11.5px">٤٥٦ رابطاً — يُفحص عند الطلب وحدَه</span>
+      <div id="qaCheckOut" class="qa-chk"></div></div>` : ""}
   </div>`;
 }
 
@@ -39521,6 +39785,40 @@ window.qaBarMount = qaBarMount;
    المواصفات: «لا تجعل التطبيق يفحص ٤٥٦ ملفاً عند كل فتح». تُنادى من
    الطرفية عند تجهيز المصادر وحدَها. والفحصُ بـ HEAD لا يُنزّل الملف.
    ========================================================================= */
+/* الفحصُ من زرٍّ في الشاشة — لمدير النظام وحدَه، وبطلبه لا تلقائياً */
+window.qaCheckRun = async function () {
+  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+    showToast("الفحصُ من صلاحية مدير النظام", "warn"); return;
+  }
+  const box = document.getElementById("qaCheckOut");
+  if (box) box.innerHTML = `<div class="qa-chk-run">${ic("refresh", 14)} جارٍ فحصُ ٤٥٦ رابطاً…</div>`;
+  const rows = await window.validateReciterAudioSources();
+  const by = {};
+  rows.forEach(function (r) {
+    by[r.reciterId] = by[r.reciterId] || { name: r.reciter, ok: 0, bad: 0, unk: 0, first: "" };
+    if (r.status === "ok") by[r.reciterId].ok++;
+    else if (r.status === "unknown") { by[r.reciterId].unk++; if (!by[r.reciterId].first) by[r.reciterId].first = r.error || ""; }
+    else { by[r.reciterId].bad++; if (!by[r.reciterId].first) by[r.reciterId].first = "سورة " + r.surah + " — " + (r.error || ""); }
+  });
+  if (!box) return;
+  box.innerHTML = `<table class="ptable"><thead><tr>
+      <th>القارئ</th><th>السور</th><th>المتاح</th><th>غير المتاح</th><th>مجهول</th><th>النتيجة</th>
+    </tr></thead><tbody>${Object.keys(by).map(function (k) {
+      const v = by[k];
+      const good = v.ok === 114;
+      return `<tr><td class="pt-name">${esc(v.name)}</td>
+        <td class="pt-num">${toArabicDigits(v.ok + v.bad + v.unk)}</td>
+        <td class="pt-num">${toArabicDigits(v.ok)}</td>
+        <td class="pt-num">${toArabicDigits(v.bad)}</td>
+        <td class="pt-num">${toArabicDigits(v.unk)}</td>
+        <td>${good ? '<span class="pt-badge on">سليم</span>'
+                   : `<span class="pt-badge off">${esc(v.first || "راجع الطرفية")}</span>`}</td></tr>`;
+    }).join("")}</tbody></table>
+    <div class="muted" style="font-size:11.5px;margin-top:6px">
+      «مجهول» يعني أنّ المصدر منع الطلبَ الآليَّ أو حجب CORS — ولا يعني أنّ الرابط معطوب.
+      التفصيلُ الكامل في الطرفية عبر <code>window.__qaValidation</code>.</div>`;
+};
+
 window.validateReciterAudioSources = async function (opts) {
   opts = opts || {};
   const only = opts.reciter ? [opts.reciter] : QA_RECITERS.map(r => r.id);
@@ -44589,7 +44887,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-1620";
+  var APP_BUILD = "20261006-1750";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
