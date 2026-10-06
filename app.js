@@ -30552,27 +30552,25 @@ function mushafPage() {
   const since7 = (() => { const d = new Date(); d.setDate(d.getDate() - 7);
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();
 
-  /* فلترُ نوع الواجب: ما ضبطته الإدارةُ حرفياً — خطأ حفظ · خطأ تثبيت ·
-     خطأ مراجعة — بأسمائها وألوانها كما سمّتها، لا بقائمةٍ محفورةٍ هنا. */
+  /* «عرض الأخطاء» صار بأنواع الواجبات التي ضبطتها الإدارةُ وحدَها —
+     خطأ حفظ · خطأ تثبيت · خطأ مراجعة — بأسمائها وألوانها كما سمّتها.
+     وأزرارُ أنواع الخطأ (نسي الآية · التشكيل · التجويد · أداء متميّز)
+     رُفعت من هذا الصفّ بطلبٍ صريح، وحلّت أنواعُ الواجبات محلَّها.
+     ومنطقُ الفلترة بنوع الخطأ (f.kind) باقٍ في studentMarks لم يُحذف،
+     وشريطُ التأشير أدناه لا يزال يعرض الأنواعَ الأربعةَ للتأشير بها. */
   const dutyKinds = musDutyKinds();
   const filters = (musSt || isReader) ? `<div class="mus-tools">
     <span class="mus-tools-lbl">عرض الأخطاء</span>
-    <button type="button" class="mus-mode ${!f.kind ? "on" : ""}" onclick="window.musFilterSet('kind','')">الكل</button>
-    ${musMarks().map(t => `<button type="button" class="mus-mode ${t.cls} ${f.kind === t.k ? "on" : ""}"
-      onclick="window.musFilterSet('kind','${t.k}')"><i></i>${esc(t.h)}</button>`).join("")}
+    <button type="button" class="mus-mode ${!f.duty ? "on" : ""}"
+      onclick="window.musFilterSet('duty','')">الكل</button>
+    ${dutyKinds.map(t => `<button type="button" class="mus-mode mus-duty-f ${
+      f.duty === t.k ? "on" : ""}"${t.color ? ` style="--mus-dk:${esc(t.color)}"` : ""}
+      onclick="window.musFilterSet('duty','${jsAttr(t.k)}')"><i></i>خطأ ${esc(t.h)}</button>`).join("")}
     <span class="mus-sp"></span>
     <button type="button" class="mus-mode ${!f.since ? "on" : ""}" onclick="window.musFilterSet('since','')">كل الفترات</button>
     <button type="button" class="mus-mode ${f.since === since30 ? "on" : ""}" onclick="window.musFilterSet('since','${since30}')">آخر شهر</button>
     <button type="button" class="mus-mode ${f.since === since7 ? "on" : ""}" onclick="window.musFilterSet('since','${since7}')">هذا الأسبوع</button>
-  </div>
-  ${dutyKinds.length ? `<div class="mus-tools">
-    <span class="mus-tools-lbl">نوع الواجب</span>
-    <button type="button" class="mus-mode ${!f.duty ? "on" : ""}"
-      onclick="window.musFilterSet('duty','')">كل الواجبات</button>
-    ${dutyKinds.map(t => `<button type="button" class="mus-mode mus-duty-f ${
-      f.duty === t.k ? "on" : ""}"${t.color ? ` style="--mus-dk:${esc(t.color)}"` : ""}
-      onclick="window.musFilterSet('duty','${jsAttr(t.k)}')"><i></i>خطأ ${esc(t.h)}</button>`).join("")}
-  </div>` : ""}` : "";
+  </div>` : "";
 
   /* ألوان اللوحة تُحقن متغيّراتٍ فيقرؤها التنسيق بلا تكرار */
   const colorVars = musColorVars();
@@ -39364,16 +39362,18 @@ const QA_RECITERS = [
     riwaya: "حفص عن عاصم — مرتَّل", letter: "م",
     desc: "من أعلام التلاوة المصرية، صاحبُ الصوت الخاشع والأداء المتمهّل.",
     base: "https://cdn.mp3quran.net/download/audio/muhammad-minshawi/r1/", image: "",
-    /* التلاوةُ آيةً آية: معرّفُ التلاوة في Quran.com — تحقّقتُ من وجوده
-       في صفحة القرّاء هناك. ومن لا معرّفَ له لا يُشغَّل بالآية ولا يُخمَّن. */
-    ayahApi: 9 },
+    /* التلاوةُ آيةً آية من everyayah.com — تحقّقتُ من مجلَّد كلِّ قارئٍ
+       بعينه. ومعرّفُ Quran.com (ayahApi) باقٍ مسلكاً احتياطياً لمن لا
+       مجلَّدَ له، ولا يُستعمل ما دام للقارئ ayahBase. */
+    ayahApi: 9, ayahBase: "https://everyayah.com/data/Minshawy_Murattal_128kbps/" },
   { id: "husary", name: "محمود خليل الحصري", nameEn: "Al-Husary",
     riwaya: "حفص عن عاصم — مرتَّل", letter: "ح",
     desc: "شيخُ عموم المقارئ المصرية، وأضبطُ التلاوات المسجَّلة أداءً للتجويد.",
     /* نقل المصدرُ ملفَّاته إلى cdn.mp3quran.net، فسقط server13 القديم.
        الرابطُ أدناه هو ما تعرضه صفحةُ القارئ في mp3quran.net نفسِها. */
     base: "https://cdn.mp3quran.net/download/audio/mahmoud-husary/r1/",
-    image: "", ayahApi: 6 },
+    image: "", ayahApi: 6,
+    ayahBase: "https://everyayah.com/data/Husary_128kbps/" },
   { id: "hudhaify", name: "علي بن عبدالرحمن الحذيفي", nameEn: "Al-Hudhaify",
     riwaya: "حفص عن عاصم", letter: "ع",
     desc: "إمامُ المسجد النبويّ، تلاوةٌ هادئةٌ واضحةُ المخارج.",
@@ -39386,7 +39386,8 @@ const QA_RECITERS = [
   { id: "tunaiji", name: "خليفة الطنيجي", nameEn: "Al-Tunaiji",
     riwaya: "حفص عن عاصم", letter: "خ",
     desc: "قارئٌ إماراتيٌّ معاصر، تلاوةٌ نديّةٌ مطمئنّة.",
-    base: "https://cdn.mp3quran.net/download/audio/khalifa-tunaiji/r1/", image: "", ayahApi: 161 }
+    base: "https://cdn.mp3quran.net/download/audio/khalifa-tunaiji/r1/", image: "",
+    ayahApi: 161, ayahBase: "https://everyayah.com/data/khalefa_al_tunaiji_64kbps/" }
 ];
 /* زرُّ التحميل: أذنت به الإدارةُ صراحةً. والرابطُ هو رابطُ التحميل الذي
    يعرضه المصدرُ نفسُه لزوّاره — لا نسخةَ في خوادمنا ولا إعادةَ استضافة. */
@@ -39424,6 +39425,13 @@ function qaReciter(id) {
 /* رقمُ السورة ← اسمُ الملفّ: ثلاثةُ أرقامٍ بأصفارٍ بادئة */
 function qaPad3(n) {
   const v = Math.max(1, Math.min(114, Number(n) || 0));
+  return (v < 10 ? "00" : v < 100 ? "0" : "") + v;
+}
+
+/* ترقيمُ الآية ثلاثَ خانات — بلا حدِّ السور (١١٤)، فأطولُ سورةٍ ٢٨٦ آية.
+   قياسُه على qaPad3 كان يقصُّ كلَّ آيةٍ بعد الرابعةَ عشرةَ بعد المئة. */
+function qaPad3a(n) {
+  const v = Math.max(1, Math.min(999, Number(n) || 0));
   return (v < 10 ? "00" : v < 100 ? "0" : "") + v;
 }
 
@@ -39515,7 +39523,7 @@ async function qaAyahLoad(rid, surah) {
     const out = [];
     for (let a = 1; a <= cnt; a++) {
       out.push({ s: Number(surah), a: a,
-                 url: r.ayahBase + qaPad3(surah) + qaPad3(a) + ".mp3" });
+                 url: r.ayahBase + qaPad3(surah) + qaPad3a(a) + ".mp3" });
     }
     QA_AYAH_CACHE[key] = out;
     return out;
@@ -39741,7 +39749,16 @@ function qaAudio() {
   });
   a.addEventListener("error", function () {
     QA.playing = false;
-    showToast("تعذّر تشغيل هذه السورة — تحقّق من اتصالك", "warn");
+    /* قولُ ما سقط بعينه: سقط مرّتين ولم يُعرف أهو ملفُّ السورة أم الآية.
+       واسمُ القارئ معه لأنّ مصدرَ كلِّ قارئٍ على حدة. */
+    const inAyah = typeof MUSA !== "undefined" && MUSA.rid && MUSA.a;
+    const r = inAyah ? qaReciter(MUSA.rid) : (QA.rid ? qaReciter(QA.rid) : null);
+    const who = r ? (r.name || "") : "";
+    showToast(inAyah
+      ? "تعذّر تشغيل الآية" + (who ? " بصوت " + who : "") + " — تحقّقْ من اتصالك"
+      : "تعذّر تشغيل السورة" + (who ? " بصوت " + who : "") + " — تحقّقْ من اتصالك",
+      "warn");
+    try { console.warn("تعذّر الصوت:", a.src); } catch (e) {}
     qaBarSync();
   });
   a.addEventListener("play",  function () { QA.playing = true;  qaBarSync(); });
@@ -45288,7 +45305,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-2325";
+  var APP_BUILD = "20261007-0045";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
