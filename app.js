@@ -4743,6 +4743,8 @@ const TEACHER_PERMS = [
 
   { g: "التحفيز" },
   { k: "points",      h: "إضافة نقاط للطلاب", d: "منحُ نقاط التحفيز والمكافآت" },
+  { k: "badgeRules",  h: "وضع شروط الشارات",
+    d: "يضع المعلّمُ شروطَ الشارة الشهرية لحلقته — وإلّا سرت شروطُ الإدارة" },
 
   { g: "الاختبارات" },
   { k: "examRequest", h: "طلب اختبار", d: "رفعُ طلب اختبارٍ لطالبٍ أنهى مقرَّره" },
@@ -20704,7 +20706,7 @@ const STUAPP_DEFAULTS = {
   /* ما يظهر في رئيسيته */
   home: { streaks: true, tasks: true, points: true, duty: true },
   /* أقسامُ تقاريره */
-  reports: { att: true, perf: true, path: true, qmap: true }
+  reports: { att: true, perf: true, path: true, qmap: true, badges: true }
 };
 
 /* الإعداداتُ المدموجة: الافتراضُ ثمّ ما حفظته الإدارةُ (وطبقةُ المسجد
@@ -20760,7 +20762,8 @@ const STUAPP_ROWS = [
   ["reports.att",    "تقارير: إحصاءُ الحضور",    ""],
   ["reports.perf",   "تقارير: إحصاءُ التسميع",   ""],
   ["reports.path",   "تقارير: المسار",           ""],
-  ["reports.qmap",   "تقارير: خريطةُ التقدّم",    ""]
+  ["reports.qmap",   "تقارير: خريطةُ التقدّم",    ""],
+  ["reports.badges", "تقارير: الشاراتُ الشهرية", ""]
 ];
 
 function setPanelStudentApp() {
@@ -27867,6 +27870,70 @@ function tchCircleCards() {
 
 
 /* إعداداتُ الحلقة كما يراها المعلّم — عرضٌ لا تعديل، والتعديلُ من الإدارة */
+
+/* شروطُ شارات الحلقة — يضعها معلّمُها إن أذنت له الإدارة (badgeRules).
+   تُحفظ في سجلّ الحلقة، فتسري على طلابها وحدَهم. */
+window.tchBadgeRules = function (id) {
+  const c = (cur("circles") || []).find(x => String(x.id) === String(id));
+  if (!c) { showToast("الحلقة غير موجودة", "warn"); return; }
+  if (typeof teacherCan === "function" && !teacherCan("badgeRules")) {
+    showToast("وضعُ شروط الشارات غيرُ مفعَّلٍ لحسابك", "warn"); return;
+  }
+  const d = Object.assign({}, BADGE_DEFAULTS, (DB.settings || {}).badges || {},
+                          c.badgeRules || {});
+  openModal("شروط الشارة الشهرية", esc(c.name || ""),
+    `${noteCard("ما تضعه هنا يسري على طلاب حلقتك وحدَهم. واتركْ ما لا تريد تغييرَه كما هو.")}
+     <div class="form-grid">
+       <div class="field"><label>أقلُّ أيام الحضور في الشهر</label>
+         <input id="bg_days" type="number" min="1" max="31" value="${esc(String(d.minDays))}"></div>
+       <div class="field"><label>الغيابُ المسموح</label>
+         <input id="bg_abs" type="number" min="0" max="31" value="${esc(String(d.maxAbsent))}"></div>
+       <div class="field"><label>أدنى متوسّطٍ للتقدير (٪)</label>
+         <input id="bg_score" type="number" min="1" max="100" value="${esc(String(d.minScore))}"></div>
+       <div class="field full"><label>شرطٌ إضافيٌّ يراه الطالب (اختياريّ)</label>
+         <input id="bg_note" maxlength="90"
+           placeholder="مثال: إتمامُ حفظ جزءٍ كاملٍ في الشهر"
+           value="${esc(String(d.note || ""))}"></div>
+     </div>`,
+    `<button class="btn btn-primary" onclick="window.tchBadgeSave('${jsAttr(id)}')">${
+      ic("check", 16)} حفظ الشروط</button>
+     <button class="btn btn-ghost" onclick="window.tchBadgeClear('${jsAttr(id)}')">${
+      ic("refresh", 15)} العودة لشروط الإدارة</button>`);
+};
+
+window.tchBadgeSave = function (id) {
+  if (typeof teacherCan === "function" && !teacherCan("badgeRules")) {
+    showToast("وضعُ شروط الشارات غيرُ مفعَّلٍ لحسابك", "warn"); return;
+  }
+  const c = (cur("circles") || []).find(x => String(x.id) === String(id));
+  if (!c) return;
+  const num = (sel, lo, hi, dflt) => {
+    const v = Math.round(Number(val(sel)));
+    return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : dflt;
+  };
+  c.badgeRules = {
+    minDays:   num("#bg_days", 1, 31, BADGE_DEFAULTS.minDays),
+    maxAbsent: num("#bg_abs", 0, 31, 0),
+    minScore:  num("#bg_score", 1, 100, BADGE_DEFAULTS.minScore),
+    note:      String(val("#bg_note") || "").trim().slice(0, 90)
+  };
+  try { persistSet("circles", c); } catch (e) {}
+  closeModal();
+  showToast("حُفظت شروطُ شارات " + (c.name || "الحلقة"), "success");
+  mount();
+};
+
+window.tchBadgeClear = function (id) {
+  if (typeof teacherCan === "function" && !teacherCan("badgeRules")) return;
+  const c = (cur("circles") || []).find(x => String(x.id) === String(id));
+  if (!c) return;
+  c.badgeRules = null;
+  try { persistSet("circles", c); } catch (e) {}
+  closeModal();
+  showToast("عادت حلقتُك إلى شروط الإدارة", "success");
+  mount();
+};
+
 window.tchCircleInfo = function (id) {
   const c = (cur("circles") || []).find(x => String(x.id) === String(id));
   if (!c) { showToast("الحلقة غير موجودة", "warn"); return; }
@@ -27890,7 +27957,11 @@ window.tchCircleInfo = function (id) {
       <span>${esc(r[0])}</span><strong>${esc(String(r[1]))}</strong></div>`).join("")}
      </div>
      ${noteCard("هذه بياناتُ حلقتك كما ضبطتها الإدارة. لتعديلها راجع مدير المسجد.")}`,
-    `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+    `${(typeof teacherCan !== "function" || teacherCan("badgeRules"))
+      ? `<button class="btn btn-primary"
+          onclick="closeModal(); window.tchBadgeRules('${jsAttr(id)}')">${
+          ic("trophy", 16)} شروط الشارات</button>` : ""}
+     <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
 };
 
 function teacherDashboard() {
@@ -32390,6 +32461,169 @@ function quranMapCard(st) {
   </div>`;
 }
 
+/* =========================================================================
+   الشاراتُ الشهرية — حافزُ الحضور المثاليّ والتقدير الجيّد
+   -------------------------------------------------------------------------
+   لكلّ شهرٍ شارةٌ باهتة، تتحوّل ذهباً متى أتمّ الطالبُ شهرَه بلا غياب
+   وبتقديرٍ جيّدٍ في تسميعه. تُحسب من سجلّات الحضور والتسميع المحفوظة ولا
+   تُخزَّن — فلا مجموعةَ جديدةَ في القاعدة ولا كتابةَ من جهاز الطالب.
+
+   وشروطُها من إعدادات الإدارة لا من الشيفرة: أقلُّ أيام الحضور في الشهر،
+   وكم غياباً يُتسامح فيه، وأدنى متوسّطٍ للتقدير. */
+const BADGE_DEFAULTS = { on: true, minDays: 8, maxAbsent: 0, minScore: 80, note: "" };
+
+/* الشروطُ: ما ضبطته الإدارةُ عامّاً، ثمّ ما وضعه معلّمُ الحلقة لحلقته —
+   فلكلّ حلقةٍ شرطُها إن شاء معلّمُها، وإلّا سرى شرطُ الإدارة. ويُحفظ في
+   سجلّ الحلقة نفسِه (badgeRules) لا في مجموعةٍ جديدة. */
+function badgeCfg(st) {
+  const s = (DB.settings || {}).badges;
+  const out = Object.assign({}, BADGE_DEFAULTS);
+  if (s && typeof s === "object") Object.keys(out).forEach(k => {
+    if (s[k] !== undefined && s[k] !== "") out[k] = s[k];
+  });
+
+  const cid = st && st.circleId;
+  if (cid) {
+    const c = (cur("circles") || []).find(x => String(x.id) === String(cid));
+    const r = c && c.badgeRules;
+    if (r && typeof r === "object") Object.keys(r).forEach(k => {
+      if (r[k] !== undefined && r[k] !== "") out[k] = r[k];
+    });
+  }
+  out.note = String(out.note || "");
+  out.minDays   = Math.max(1, Number(out.minDays)   || BADGE_DEFAULTS.minDays);
+  out.maxAbsent = Math.max(0, Number(out.maxAbsent) || 0);
+  out.minScore  = Math.max(1, Math.min(100, Number(out.minScore) || BADGE_DEFAULTS.minScore));
+  return out;
+}
+
+const BADGE_MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+                      "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+const BADGE_ICONS  = ["star", "book", "target", "trophy", "flag", "shield",
+                      "graph", "check", "pen", "layers", "gift", "calendar"];
+
+/* تقديرُ التسميع رقماً: الدرجةُ المحفوظة إن وُجدت، وإلا فمن التقدير النصّيّ */
+const GRADE_SCORE = { "ممتاز": 95, "جيد جداً": 85, "جيد": 75, "إعادة": 50 };
+function badgeScoreOf(r) {
+  const n = Number(r && r.score);
+  if (isFinite(n) && n > 0) return n;
+  const g = String((r && r.grade) || "");
+  return GRADE_SCORE[g] != null ? GRADE_SCORE[g] : 0;
+}
+
+/* حالُ شهرٍ بعينه: "ym" على هيئة 2026-03 */
+function badgeMonth(st, ym) {
+  const c = badgeCfg(st);
+  const att = (typeof studentAtt === "function" ? studentAtt(st, ym) : [])
+    .filter(r => r && r.status);
+  const recs = (typeof studentRecs === "function" ? studentRecs(st) : [])
+    .filter(r => r && String(r.date || "").slice(0, 7) === ym);
+
+  const days = att.length;
+  const absent = att.filter(r => String(r.status) === "غائب").length;
+  const scores = recs.map(badgeScoreOf).filter(x => x > 0);
+  const avg = scores.length
+    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+
+  const earned = days >= c.minDays && absent <= c.maxAbsent &&
+                 scores.length > 0 && avg >= c.minScore;
+
+  /* سببُ عدم النيل — يُقال للطالب بدل أن يبقى يخمّن */
+  let why = "";
+  if (!earned) {
+    if (!days) why = "لا حضورَ مسجَّلٌ في هذا الشهر";
+    else if (days < c.minDays) why = "أيامُ الحضور " + toArabicDigits(days) +
+      " والمطلوب " + toArabicDigits(c.minDays);
+    else if (absent > c.maxAbsent) why = "غيابٌ " + toArabicDigits(absent) + " يوم";
+    else if (!scores.length) why = "لا تسميعَ مسجَّلٌ في هذا الشهر";
+    else why = "متوسّطُ التقدير " + toArabicDigits(avg) + "٪ والمطلوب " +
+               toArabicDigits(c.minScore) + "٪";
+  }
+  return { earned, days, absent, avg, why };
+}
+
+/* السنواتُ التي للطالب فيها سجلّ — من الأحدث */
+function badgeYears(st) {
+  const ys = {};
+  (typeof studentAtt === "function" ? studentAtt(st) : []).forEach(r => {
+    const y = String(r.date || "").slice(0, 4); if (y) ys[y] = 1;
+  });
+  (typeof studentRecs === "function" ? studentRecs(st) : []).forEach(r => {
+    const y = String(r.date || "").slice(0, 4); if (y) ys[y] = 1;
+  });
+  const now = String(new Date().getFullYear());
+  ys[now] = 1;
+  return Object.keys(ys).sort().reverse();
+}
+
+window.badgeWhy = function (ym, nm) {
+  const st = typeof activeStudent === "function" ? activeStudent() : null;
+  if (!st) return;
+  const soon = String(ym) > todayISO().slice(0, 7);
+  const b = soon ? { earned: false, why: "لم يأتِ هذا الشهرُ بعد", days: 0, absent: 0, avg: 0 }
+                 : badgeMonth(st, ym);
+  const c = badgeCfg(st);
+  openModal("شارة " + nm, b.earned ? "نلتَها — أحسنت" : (soon ? "لم يأتِ بعد" : "لم تُنَل بعد"),
+    `${noteCard(b.earned
+      ? `أتممتَ الشهرَ بحضورٍ مثاليٍّ وتقديرٍ جيّد:
+         <strong>${toArabicDigits(b.days)}</strong> يومَ حضورٍ بلا غياب،
+         ومتوسّطُ تقديرك <strong>${toArabicDigits(b.avg)}٪</strong>.`
+      : esc(b.why))}
+     <div class="bdg-rule">
+       <div class="kv"><span>أيامُ الحضور المطلوبة</span><strong>${
+         toArabicDigits(c.minDays)} فأكثر</strong></div>
+       <div class="kv"><span>الغيابُ المسموح</span><strong>${
+         c.maxAbsent ? toArabicDigits(c.maxAbsent) + " يوم" : "لا غياب"}</strong></div>
+       <div class="kv"><span>أدنى متوسّطٍ للتقدير</span><strong>${
+         toArabicDigits(c.minScore)}٪</strong></div>
+       ${c.note ? `<div class="kv"><span>شرطُ معلّمك</span><strong>${
+         esc(c.note)}</strong></div>` : ""}
+     </div>`,
+    `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+};
+
+/* بطاقةُ الشارات في تقارير الطالب */
+function badgeCard(st) {
+  if (!st || !badgeCfg(st).on) return "";
+  const years = badgeYears(st);
+  const thisYm = todayISO().slice(0, 7);
+
+  const grids = years.map(y => {
+    /* شهورُ السنة كلُّها تُعرض — وما لم يأتِ بعدُ يظهر مقفلاً لا محذوفاً،
+       فيرى الطالبُ رحلتَه كاملةً ويعرف ما أمامه. */
+    const cells = BADGE_MONTHS.map((nm, i) => {
+      const ym = y + "-" + String(i + 1).padStart(2, "0");
+      const soon = ym > thisYm;
+      const b = soon ? { earned: false, why: "لم يأتِ هذا الشهرُ بعد" }
+                     : badgeMonth(st, ym);
+      return `<button type="button" class="bdg${b.earned ? " on" : ""}${soon ? " soon" : ""}"
+        onclick="window.badgeWhy('${ym}','${jsAttr(nm + " " + y)}')"
+        title="${esc(b.earned ? "نلتَها" : b.why)}">
+        <span class="bdg-c">${ic(soon ? "lock" : BADGE_ICONS[i], soon ? 22 : 26)}</span>
+        <span class="bdg-m">${esc(nm)}</span>
+      </button>`;
+    }).join("");
+    const got = BADGE_MONTHS.filter((_, i) => {
+      const ym = y + "-" + String(i + 1).padStart(2, "0");
+      return ym <= thisYm && badgeMonth(st, ym).earned;
+    }).length;
+    return `<div class="bdg-year">
+      <div class="bdg-yh"><strong>شارات ${toArabicDigits(y)}</strong>
+        <span>${toArabicDigits(got)} ذهبية</span></div>
+      <div class="bdg-grid">${cells}</div>
+    </div>`;
+  }).join("");
+
+  const c0 = badgeCfg(st);
+  return `<div class="card trp-card bdg-wrap">
+    <div class="bdg-top">${ic("trophy", 16)}
+      <span>أتمِمْ شهرَك بلا غيابٍ وبتقديرٍ جيّدٍ تتحوّل شارتُه إلى الذهبيّ.</span></div>
+    ${c0.note ? `<div class="bdg-note">${ic("flag", 14)}
+      <span><strong>شرطُ معلّمك:</strong> ${esc(c0.note)}</span></div>` : ""}
+    ${grids}
+  </div>`;
+}
+
 function studentReports() {
   const st = typeof activeStudent === "function" ? activeStudent() : null;
   if (!st) return typeof noKidPage === "function"
@@ -32440,6 +32674,9 @@ function studentReports() {
 
     ${stuAppOn("reports.qmap") ? `<div class="tsc-h">خريطة التقدم في القرآن</div>
     ${quranMapCard(st)}` : ""}
+
+    ${stuAppOn("reports.badges") && badgeCfg(st).on
+      ? `<div class="tsc-h">الشارات الشهرية</div>${badgeCard(st)}` : ""}
   </div>`;
 }
 
@@ -43045,7 +43282,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-0900";
+  var APP_BUILD = "20261006-1020";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

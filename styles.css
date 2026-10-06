@@ -11426,3 +11426,48 @@ body[data-iface="student"] .content { padding-top: 14px; }
 .taf-src { font-size: 11px; color: var(--text-faint, #9aa3ad); text-align: center; }
 [data-theme="dark"] .taf-ayah { background: #14201e; }
 [data-theme="dark"] .taf-err { background: #2a1a18; color: #e8a79e; }
+
+/* ===== الشاراتُ الشهرية ===== */
+.bdg-top { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 14px;
+  font-size: 12px; line-height: 1.8; color: var(--text-soft, #5d6b6a); }
+.bdg-top svg { flex: 0 0 auto; color: #c9a227; margin-top: 2px; }
+.bdg-year { margin-bottom: 18px; }
+.bdg-year:last-child { margin-bottom: 0; }
+.bdg-yh { display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 10px; }
+.bdg-yh strong { font-size: 14px; color: var(--text-main, #15302f); }
+.bdg-yh span { font-size: 11.5px; font-weight: 700; color: #b08b2e; }
+.bdg-grid { display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); }
+.bdg { display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 4px 2px; border: 0; background: transparent; font: inherit;
+  cursor: pointer; }
+.bdg-c { display: grid; place-items: center; width: 56px; height: 56px;
+  border-radius: 50%; background: var(--surface-soft, #eef1f0);
+  color: #aab2b1; border: 2px solid rgba(0,0,0,.05);
+  transition: transform .18s, box-shadow .18s; }
+.bdg-m { font-size: 11px; font-weight: 700; color: var(--text-faint, #9aa3ad); }
+.bdg:active .bdg-c { transform: scale(.94); }
+
+/* الذهبيّة: نالها الطالب */
+.bdg.on .bdg-c {
+  background: linear-gradient(160deg, #f6d978, #d9a62a 62%, #b2831a);
+  color: #6b4e08; border-color: #e8c76a;
+  box-shadow: 0 4px 14px rgba(196, 150, 30, .38);
+}
+.bdg.on .bdg-m { color: #a7801d; font-weight: 800; }
+
+.bdg-rule { margin-top: 12px; display: grid; gap: 4px; }
+
+[data-theme="dark"] .bdg-c { background: #1b2422; color: #5f6b69;
+  border-color: rgba(255,255,255,.05); }
+[data-theme="dark"] .bdg.on .bdg-c { color: #4a3505; }
+
+/* الشهرُ الذي لم يأتِ بعد: مقفلٌ لا محذوف */
+.bdg.soon { opacity: .45; }
+.bdg.soon .bdg-c { border-style: dashed; }
+.bdg-note { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 14px;
+  padding: 9px 11px; border-radius: 12px; background: #fbf4e0;
+  border: 1px solid #e8d9a8; font-size: 12px; line-height: 1.75; color: #7a5c12; }
+.bdg-note svg { flex: 0 0 auto; margin-top: 2px; }
+[data-theme="dark"] .bdg-note { background: #2a2314; border-color: #6b551c; color: #e0bd63; }
