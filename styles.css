@@ -11854,3 +11854,63 @@ body[data-iface="student"] .content { padding-top: 14px; }
 [data-theme="dark"] .qa-duty-head strong { color: #67bcbf; }
 [data-theme="dark"] .qa-duty-row { background: var(--surface); border-color: var(--border); }
 [data-theme="dark"] .qa-duty-ico { background: #0a2e30; color: #4fc0c3; }
+
+/* =========================================================================
+   مكتبةُ الشارات — جدولُ التعريف في الإعدادات
+   -------------------------------------------------------------------------
+   المواصفات: «الشاراتُ ليست متعلّقةً بالأشهر… خلِّ الشاراتِ مفتوحةً للإدارة
+   يحدّد الشاراتِ بنفسه، يحدّد اسمها ويحدّد متطلّباتِ الإنجاز يدوياً».
+   فصار لكلّ شارةٍ سطرٌ فيه اسمُها ومتطلَّبها وطريقةُ نيلها وأيقونتُها.
+   ========================================================================= */
+.bdg-sel {
+  width: 100%; min-width: 0; height: 34px; padding: 0 8px;
+  border: 1px solid var(--border, #e6eaea); border-radius: 9px;
+  background: #fff; font-family: var(--ff); font-size: 13px; color: #3a4d4e;
+}
+.bdg-sel:focus { outline: none; border-color: #15a2a7; box-shadow: 0 0 0 3px rgba(0,139,138,.12); }
+.bdg-sel:disabled { background: #f4f7f7; color: var(--text-faint, #6d7d7e); }
+[data-theme="dark"] .bdg-sel { background: var(--surface); border-color: var(--border); color: var(--text-main); }
+[data-theme="dark"] .bdg-sel:disabled { background: var(--surface-2, #1a2b2c); }
+
+/* خانتا الاسم والمتطلَّب: المتطلَّبُ أوسعُ لأنّه جملةٌ يقرؤها الطالب */
+.bdg-lib input[type="text"], .bdg-lib input:not([type]) {
+  height: 34px; padding: 0 10px; width: 100%;
+  border: 1px solid var(--border, #e6eaea); border-radius: 9px;
+  background: #fff; font-family: var(--ff); font-size: 13.5px; color: #3a4d4e;
+}
+.bdg-lib input:focus { outline: none; border-color: #15a2a7; box-shadow: 0 0 0 3px rgba(0,139,138,.12); }
+.bdg-lib input:disabled { background: #f4f7f7; color: var(--text-faint, #6d7d7e); }
+/* الجدولُ يسع عرضَ البطاقة مهما ضاق: أربعةُ أعمدةٍ بنِسَبٍ لا بأعراضٍ ثابتة،
+   والشارةُ سطران — اسمُها وأيقونتُها، ثمّ متطلَّبُها — فلا تمريرَ أفقيّ. */
+.bdg-lib { table-layout: fixed; width: 100%; }
+.bdg-lib th, .bdg-lib td { padding-inline: 8px; vertical-align: middle; }
+.bdg-lib th:nth-child(1), .bdg-lib td:nth-child(1) { width: auto; }
+.bdg-lib th:nth-child(2), .bdg-lib td:nth-child(2) { width: 34%; min-width: 180px; }
+.bdg-lib th:nth-child(3), .bdg-lib td:nth-child(3) { width: 64px; text-align: center; }
+.bdg-lib th:nth-child(4), .bdg-lib td:nth-child(4) { width: 48px; }
+.bdg-lib td { padding-block: 10px; }
+
+/* سطرٌ داخل الخانة: عناصرُه متجاورةٌ والنصُّ يأخذ ما بقي */
+.bdg-line { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.bdg-line:last-child { margin-bottom: 0; }
+.bdg-line > input:not(.bdg-days) { flex: 1 1 auto; min-width: 0; }
+.bdg-lib td input.bdg-days { width: 72px; flex: 0 0 auto; min-width: 0;
+  padding-inline: 4px; }
+.bdg-unit { font-size: 11.5px; color: var(--text-faint, #9aa3ad); white-space: nowrap; }
+.bdg-sel.ico { width: 92px; flex: 0 0 auto; }
+.bdg-cway > .bdg-sel { margin-bottom: 6px; }
+
+/* بطاقةُ المكتبة لا تتمدّد بعرض جدولها */
+.bdg-card, .bdg-card .pt-wrap, .bdg-card .pt-scroll { min-width: 0; max-width: 100%; }
+.bdg-card .pt-scroll { overflow-x: auto; }
+
+/* الأيقونةُ: معاينتُها إلى جانب قائمتها */
+.bdg-ico { display: flex; align-items: center; gap: 8px; }
+.bdg-ico-p { display: grid; place-items: center; width: 30px; height: 30px;
+  flex: 0 0 auto; border-radius: 8px; background: #f2f7f7; color: #0d6e71; }
+[data-theme="dark"] .bdg-ico-p { background: #15262a; color: #4fc0c3; }
+[data-theme="dark"] .bdg-lib input { background: var(--surface); border-color: var(--border); color: var(--text-main); }
+[data-theme="dark"] .bdg-lib input:disabled { background: var(--surface-2, #1a2b2c); }
+
+/* متطلَّبُ الشارة تحت اسمها في نافذة المنح وبطاقة الطالب */
+.bdg-req { font-size: 11.5px; color: var(--text-faint, #9aa3ad); margin-top: 2px; }
