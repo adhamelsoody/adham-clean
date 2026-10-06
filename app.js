@@ -2707,7 +2707,7 @@ window.bulkAssignDo = function () {
     const rec = {
       id: old ? old.id : ("pl" + Date.now() + "-" + i),
       templateId: tid,
-      complexId: st.complexId || STATE.complexId || "",
+      complexId: st.complexId || "",
       studentId: String(st.id), student: st.name || "",
       circle: st.circle || "", circleId: st.circleId || "",
 
@@ -4461,6 +4461,14 @@ function syncStudentRecord(u) {
     || (u.name && String(x.name || "").trim() === String(u.name).trim());
 
   let st = DB.students.find(key);
+  /* المطابقةُ بالاسم تُعرض ولا يُكتب بها: متشابها الاسمِ كانا يتبادلان
+     المنشأةَ والحسابَ حين تُوجد الصلةُ بالاسم ثمّ تُكتب. */
+  const byId = x =>
+       (u.studentId && String(x.id) === String(u.studentId))
+    || (u.uid && String(x.uid || "") === String(u.uid))
+    || (u.email && String(x.email || "").toLowerCase() === String(u.email).toLowerCase());
+  const matchedById = !!(st && byId(st));
+  const byNameOnly  = !!st && !matchedById;
   const mq = Array.isArray(DB.mosques) ? DB.mosques : [];
   const fields = {
     name: u.name || "—",
@@ -4470,7 +4478,9 @@ function syncStudentRecord(u) {
     photo: u.photo || "",
     gender: u.gender || "ذكر",
     nationality: u.nationality || "",
-    complexId: u.complexId || STATE.complexId,
+    /* لا STATE.complexId هنا: هو المجمّعُ المفتوحُ على الشاشة، وكتابتُه
+       تُسكن الطالبَ مجمَّعَ مَن صادف أن حمّل الصفحة. الفارغُ يبقى فارغاً. */
+    complexId: u.complexId || "",
     mosqueId: u.mosqueId || "",
     mosque: u.mosqueId ? ((mq.find(m => String(m.id) === String(u.mosqueId)) || {}).name || "—") : "—",
     status: u.active === false ? "متوقف" : "نشط"
@@ -4499,6 +4509,7 @@ function syncStudentRecord(u) {
       if (OWNED.indexOf(k) > -1) { if (String(st[k] || "") !== String(nv || "")) patch[k] = nv; return; }
       if (empty(st[k]) && !empty(nv)) patch[k] = nv;
     });
+    if (!matchedById) return st;          /* طوبق بالاسم وحدَه: لا يُكتب فيه */
     if (Object.keys(patch).length) { Object.assign(st, patch); persistSet("students", st); }
   } else {
     /* طالب جديد بلا حلقة — تُسنده الإدارة لاحقاً من صفحة الطلاب */
@@ -4511,10 +4522,13 @@ function syncStudentRecord(u) {
     persistSet("students", st);
   }
 
-  /* الربط بالمعرّف في حساب المستخدم */
-  if (String(u.studentId || "") !== String(st.id)) {
-    u.studentId = String(st.id);
-    persistSet("users", u);
+  /* الربطُ بالمعرّف في حساب المستخدم — لِما طوبق بالمعرّف أو أُنشئ الآن،
+     لا لِما وُجد بالاسم: ذاك ربطٌ بالظنّ يُسلّم حسابَ هذا لذاك. */
+  if (matchedById || !byNameOnly) {
+    if (String(u.studentId || "") !== String(st.id)) {
+      u.studentId = String(st.id);
+      persistSet("users", u);
+    }
   }
   return st;
 }
@@ -4546,8 +4560,34 @@ function syncTeacherRecord(u) {
      القاعدةُ الآن: ما في مستند users يُقدَّم إن كان مملوءاً، وإلا بقي ما في
      سجلّ المعلّم كما هو. ولا يُمحى حقلٌ بفراغٍ أبداً.
      ======================================================================= */
-  const mid0 = String(u.mosqueId || (t && t.mosqueId) || "");
-  const cid0 = u.complexId || (t && t.complexId) || STATE.complexId;
+  /* =======================================================================
+     سجلُّ المعلّم هو مصدرُ الحقيقة في منشأته — لا مستندُ users
+     -----------------------------------------------------------------------
+     كان هنا ثلاثةُ أعطابٍ في سطرين، وهي سببُ «النظام نقل المعلّم بنفسه»:
+
+     ١) cid0 كان ينتهي بـ || STATE.complexId — والمجمّعُ في STATE هو
+        المفتوحُ على شاشة مَن يحمّل الصفحة. فمعلّمٌ بلا مجمّعٍ يُكتب له
+        مجمَّعُ المدير الذي صادف أن فتح الموقع، ويختلف بين مديرٍ وآخر.
+        نُزع نهائياً: الفارغُ يبقى فارغاً حتى تُسنده الإدارة قصداً.
+
+     ٢) u.mosqueId كان يغلب دائماً، ثمّ Object.assign يدهس السجلَّ كلَّه.
+        فمن نقل معلّماً من صفحة المعلّمين رآه ينتقل، ثمّ أعادت المزامنةُ
+        التاليةُ مسجدَه القديم من مستند users. الآن: حقولُ الارتباط لا
+        تُنسخ من users إلى سجلّ المعلّم البتّة — الاتجاهُ الوحيد هو
+        سجلُّ المعلّم ← users، وتتولّاه syncMyScope.
+
+     ٣) المطابقةُ بالاسم كانت تُنشئ الصلة ثمّ تكتب. الآن: ما طوبق بالاسم
+        وحدَه يُعرض ولا يُكتب فيه شيء — فلا يأخذ متشابها الاسمِ منشأةَ
+        بعضهما.
+     ======================================================================= */
+  const byId = x =>
+       (u.uid && String(x.uid || "") === String(u.uid))
+    || (u.username && String(x.username || "") === String(u.username))
+    || (u.email && String(x.username || "").toLowerCase() === String(u.email).toLowerCase());
+  const matchedById = !!(t && byId(t));
+
+  const mid0 = String((t && t.mosqueId) || u.mosqueId || "");
+  const cid0 = String((t && t.complexId) || u.complexId || "");
 
   const fields = {
     name: u.name || "—",
@@ -4562,11 +4602,21 @@ function syncTeacherRecord(u) {
   };
 
   if (t) {
-    /* الكتابة عند التغيّر فقط — وإلا صار كل تحميل للصفحة يكتب في قاعدة
-       البيانات مرة لكل معلم بلا فائدة. */
-    const same = Object.keys(fields).every(k => String(t[k] == null ? "" : t[k]) === String(fields[k] == null ? "" : fields[k]));
-    if (same) return t;
-    Object.assign(t, fields);
+    /* ما طوبق بالاسم وحدَه: يُعاد كما هو بلا كتابة */
+    if (!matchedById) return t;
+
+    /* المزامنةُ تملأ ولا تدهس — كما في سجلّ الطالب سواءً بسواء */
+    const BLANK = ["", "—", "-", "null", "undefined"];
+    const empty = v => BLANK.indexOf(String(v == null ? "" : v).trim()) > -1;
+    const OWNED = ["uid"];               /* للحساب وحدَه */
+    const patch = {};
+    Object.keys(fields).forEach(k => {
+      const nv = fields[k];
+      if (OWNED.indexOf(k) > -1) { if (String(t[k] || "") !== String(nv || "")) patch[k] = nv; return; }
+      if (empty(t[k]) && !empty(nv)) patch[k] = nv;
+    });
+    if (!Object.keys(patch).length) return t;
+    Object.assign(t, patch);
   } else {
     t = Object.assign({ id: Date.now(), circle: "—", circleId: "", students: 0,
                         session: "لم تعتمد", attDone: false, recite: 0, late: 0 }, fields);
@@ -8268,8 +8318,15 @@ window.mvsRun = function () {
   if (String(MVS.fromCir) === String(MVS.toCir)) { showToast("الحلقة المصدر والوجهة متطابقتان", "warn"); return; }
 
   const toC = cur("circles").find(c => String(c.id) === String(MVS.toCir));
+  const frC = cur("circles").find(c => String(c.id) === String(MVS.fromCir));
+  /* يُسمّى المنقولُ منه وإليه: «من مسجد النور إلى مسجد الأمل» — لا عددٌ
+     مجرَّدٌ لا يُعرف منه ما يُغيَّر. */
+  const frFac = frC ? (frC.mosque || complexName(frC.complexId) || "—") : "—";
+  const toFac = toC ? (toC.mosque || complexName(toC.complexId) || "—") : "—";
   openModal("تأكيد نقل الطلاب", ids.length + " طالب",
-    noteCard(`سيُنقل <strong>${ids.length}</strong> طالب إلى حلقة <strong>${esc(toC ? toC.name : "—")}</strong>،
+    noteCard(`هل أنت متأكد من نقل <strong>${ids.length}</strong> طالب
+      من حلقة <strong>${esc(frC ? frC.name : "—")}</strong> (${esc(frFac)})
+      إلى حلقة <strong>${esc(toC ? toC.name : "—")}</strong> (${esc(toFac)})؟
       و<strong>ستُحذف جميع النقاط والأرصدة</strong>. تأكد من تحميل نسخة قبل التنفيذ.`),
     `<button class="btn btn-danger" data-action="mvs-run-do">تنفيذ النقل</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
@@ -8833,10 +8890,13 @@ window.mvcRun = function () {
   if (!ids.length) { showToast("حدّد حلقة واحدة على الأقل", "warn"); return; }
   if (String(MVC.fromFac) === String(MVC.toFac)) { showToast("المنشأة المصدر والوجهة متطابقتان", "warn"); return; }
   const to = mvsFacs().find(f => String(f.id) === String(MVC.toFac));
+  const fr = mvsFacs().find(f => String(f.id) === String(MVC.fromFac));
   const studs = mvcStudentsOf(ids).length;
   openModal("تأكيد نقل الحلقات", ids.length + " حلقة",
-    noteCard(`ستُنقل <strong>${ids.length}</strong> حلقة بكامل طلابها (<strong>${studs}</strong> طالب)
-      إلى <strong>${esc(to ? to.name : "—")}</strong>، و<strong>ستُحذف جميع النقاط والأرصدة</strong>.`),
+    noteCard(`هل أنت متأكد من نقل <strong>${ids.length}</strong> حلقة بكامل طلابها
+      (<strong>${studs}</strong> طالب) من <strong>${esc(fr ? fr.name : "—")}</strong>
+      إلى <strong>${esc(to ? to.name : "—")}</strong>؟
+      و<strong>ستُحذف جميع النقاط والأرصدة</strong>.`),
     `<button class="btn btn-danger" data-action="mvc-run-do">تنفيذ النقل</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 };
@@ -19727,7 +19787,21 @@ const LOG_FIELDS = {
   frozen: "التجميد", name: "الاسم", phone: "الجوال", email: "البريد",
   "in": "وقت الحضور", out: "وقت الانصراف", lateMin: "دقائق التأخّر",
   qty: "المقدار", cost: "التكلفة", net: "الصافي", cut: "الخصم",
-  reason: "السبب", note: "الملاحظة", days: "الأيام", capacity: "السعة"
+  reason: "السبب", note: "الملاحظة", days: "الأيام", capacity: "السعة",
+  /* =======================================================================
+     حقولُ الارتباط — لم تكن تُرصد، وهي أخطرُ ما يُرصد
+     -----------------------------------------------------------------------
+     كان السجلُّ يرصد «الحلقة» و«المعلم» و«المستوى» بأسمائها ولا يرصد
+     معرّفاتِها ولا المسجدَ ولا المجمّعَ ولا البرنامج. فإذا انتقل طالبٌ من
+     مسجدٍ إلى مسجدٍ لم يُكتب في السجلّ شيء، ولم يُعرف مَن نقله ولا متى —
+     وهو ما جعل المشكلةَ تمرّ بلا أثر.
+     وإدخالُها هنا يفيد مرّتين: يُسجّلها، ويضعها في ظلّ المقارنة
+     (auditKeep) فيصير للحارس أدناه قيمةٌ سابقةٌ موثوقةٌ يردّ إليها.
+     ======================================================================= */
+  mosqueId: "المسجد", complexId: "المجمّع", circleId: "معرّف الحلقة",
+  programId: "معرّف البرنامج", planId: "معرّف الخطة", levelId: "معرّف المستوى",
+  studentId: "الطالب المرتبط", teacherId: "المعلم المرتبط",
+  mosque: "اسم المسجد", program: "البرنامج"
 };
 
 /* نصّ مقروء لقيمة: القوائم والمفاتيح لا تُعرض كما هي */
@@ -27774,7 +27848,9 @@ window.tstuMove = function () {
       : `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
 };
 
-window.tstuMoveDo = function () {
+/* خطوةُ التأكيد قبل النقل: تُسمّي الطالبَ وما يُنقل منه وإليه، كما نصّت
+   المواصفات. وكان النقلُ يقع بالضغطة الأولى بلا أن يُعرض ما سيتغيّر. */
+window.tstuMoveDo = function (confirmed) {
   const st = tstuStudent();
   if (!st) return;
   if (!teacherCan("moveStudent")) {
@@ -27784,6 +27860,19 @@ window.tstuMoveDo = function () {
   const c = (cur("circles") || []).find(x => String(x.id) === String(to));
   if (!c) { showToast("اختر الحلقة", "warn"); return; }
   const from = st.circle || "";
+  const why0 = (val("#tsm_why") || "").trim();
+
+  if (!confirmed) {
+    openModal("تأكيد نقل الطالب", esc(st.name || ""),
+      noteCard(`هل أنت متأكد من نقل <strong>${esc(st.name || "")}</strong>
+        من حلقة <strong>${esc(from || "—")}</strong>
+        إلى حلقة <strong>${esc(c.name || "—")}</strong>؟`) +
+      `<input type="hidden" id="tsm_to" value="${jsAttr(to)}">
+       <input type="hidden" id="tsm_why" value="${jsAttr(why0)}">`,
+      `<button class="btn btn-danger" onclick="window.tstuMoveDo(1)">تأكيد النقل</button>
+       <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+    return;
+  }
   st.circleId = String(c.id);
   st.circle = c.name || "";
   st.teacher = c.teacher || st.teacher || "";
@@ -29403,7 +29492,7 @@ function saveMark(st, key, kind) {
     asgId:   (typeof MUSD !== "undefined" && MUSD.asgId) ? String(MUSD.asgId) : "",
     /* وسم الدورة: بدونه تختلط أخطاء فصلٍ بفصل، ولا تُفرز شهادةُ دورةٍ قديمة */
     termId: typeof activeTermId === "function" ? (activeTermId() || termOfDate(attDate())) : "",
-    complexId: st.complexId || STATE.complexId, mosqueId: st.mosqueId || "",
+    complexId: st.complexId || "", mosqueId: st.mosqueId || "",
     by: u.email || "", ts: Date.now()
   };
   const i = DB.mushafMarks.findIndex(x => String(x.id) === id);
@@ -30666,7 +30755,8 @@ function normalizePlan(p) {
   DUTY_FIELDS.forEach(k => { if (d[k] !== undefined) p[k] = d[k]; });
   p.pending = null;
   if (p.status === "بانتظار الاعتماد") p.status = "نشطة";
-  try { persistSet("plans", p); } catch (e) { /* الكتابة قد تفشل — العرض صحيح على أي حال */ }
+  /* الدمجُ في الذاكرة يكفي للعرض، والكتابةُ تلحق أوّلَ حفظٍ مشروعٍ لهذه
+     الخطة. وكانت تُكتب هنا — أي عند أوّل قراءةٍ من أيّ شاشة. */
   return p;
 }
 
@@ -30678,11 +30768,16 @@ function planOfStudent(st) {
     (x.studentId != null && String(x.studentId) === sid) ||
     (sname && nameKey(x.student) === sname)) || null;
 
-  /* ترميم الصلة: إن وُجدت بالاسم بلا معرّف، يُكتب المعرّف فلا تنكسر ثانية */
-  if (p && (p.studentId == null || String(p.studentId) !== sid)) {
-    p.studentId = sid;
-    try { persistSet("plans", p); } catch (e) {}
-  }
+  /* =======================================================================
+     قراءةٌ محضة — لا ترميمَ ولا كتابة
+     -----------------------------------------------------------------------
+     كانت تكتب معرّفَ هذا الطالب في أيّ خطةٍ وجدتها باسمه. وهي تُنادى من
+     عشرين موضعاً أثناء الرسم. فمتشابها الاسمِ كان أحدُهما ينتزع خطةَ
+     الآخر — ببرنامجها ومستواها وموضعها — بمجرّد فتح الشاشة، وهو ما رآه
+     العميل: «الخطة والبرنامج تغيّرا بلا أن يغيّرهما أحد».
+     والترميمُ باقٍ ولم يُحذف: زرّ «ربط الخطط بأصحابها» (fix-plan-links)
+     يفعله بإجراءٍ صريحٍ من المسؤول.
+     ======================================================================= */
   return normalizePlan(p);
 }
 
@@ -30896,7 +30991,7 @@ function saveDuty() {
   const isNew = !p;
   if (!p) {
     p = { id: Date.now(), studentId: String(st.id), student: st.name || "",
-          complexId: st.complexId || STATE.complexId, circle: st.circle || "",
+          complexId: st.complexId || "", circle: st.circle || "",
           delays: 0, status: "نشطة" };
     DB.plans.unshift(p);
   }
@@ -31333,7 +31428,7 @@ async function saveBulkDuty() {
     let p = planOfStudent(st);
     if (!p) {
       p = { id: Date.now() + Math.floor(Math.random() * 1000), studentId: String(st.id),
-            student: st.name || "", complexId: st.complexId || STATE.complexId,
+            student: st.name || "", complexId: st.complexId || "",
             circle: st.circle || "", progress: 0, delays: 0, status: "نشطة" };
       DB.plans.unshift(p);
     }
@@ -34768,7 +34863,9 @@ function runPeriodicScans(force) {
     if (typeof autoHolidayScan === "function" && FB_LOADED) autoHolidayScan();
   } catch (e) {}
 
-  try { if (typeof syncMyScope === "function" && FB_LOADED) syncMyScope(); } catch (e) {}
+  /* مزامنةُ النطاق تلقائيةٌ تجري كلّ دقيقتين: تُحاط بـ linkAuto فلا تمسّ
+     ارتباطاً — وإنما تكتب circleIds التي تقوم عليها قواعدُ الخادم. */
+  try { if (typeof syncMyScope === "function" && FB_LOADED) linkAuto(syncMyScope); } catch (e) {}
   try { if (typeof runDailyRoll === "function") runDailyRoll(); } catch (e) {}
 
   try {
@@ -38247,7 +38344,8 @@ function spSyncEnginePlan(st) {
   if (!rec) {
     if (!Array.isArray(DB.plans)) DB.plans = [];
     rec = { id: "pl" + Date.now(), studentId: String(st.id), student: st.name || "",
-            complexId: st.complexId || STATE.complexId, mosqueId: st.mosqueId || "",
+            /* من ملفّ الطالب لا من الشاشة المفتوحة */
+            complexId: st.complexId || "", mosqueId: st.mosqueId || "",
             circle: st.circle || "", delays: 0, status: "نشطة" };
     DB.plans.push(rec);
   }
@@ -41115,11 +41213,10 @@ async function loadAllData(source) {
   DB.plans.forEach(p => { if (p.ext) { PLAN_EXTRA[p.id] = p.ext; delete p.ext; } });
   FB_READY = true; FB_LOADED = true;
 
-  /* فحصةٌ أولى فور وصول البيانات: بدونها تتأخّر التنبيهات دقيقتين */
-  try { if (typeof runPeriodicScans === "function") runPeriodicScans(true); } catch (e) {}
-
   /* ظلّ ما جاء من السحابة: بدونه يظهر أول تعديل على سجلٍّ قديم كأنه
-     «إضافة» لا «تعديل»، ولا يُعرف ما تغيّر فيه. */
+     «إضافة» لا «تعديل»، ولا يُعرف ما تغيّر فيه.
+     ويُؤخذ قبل الفحص الدوريّ لا بعده: الفحصُ يكتب، فلو سبق الظلَّ لم يجد
+     الحارسُ قيمةً سابقةً يردّ إليها — وهو أوّلُ ما يحتاجه. */
   try {
     if (typeof auditKeep === "function") {
       Object.keys(LOG_COLLS).forEach(c => {
@@ -41127,6 +41224,9 @@ async function loadAllData(source) {
       });
     }
   } catch (e) {}
+
+  /* فحصةٌ أولى فور وصول البيانات: بدونها تتأخّر التنبيهات دقيقتين */
+  try { if (typeof runPeriodicScans === "function") runPeriodicScans(true); } catch (e) {}
   if (denied.length) console.warn("مجموعات لم تُقرأ:", denied.join("، "));
   return true;
 }
@@ -41164,6 +41264,10 @@ async function loadDataFast(onData) {
 
   /* تطبيق الواجبات التي عَلِقت في طابور الاعتماد قبل إلغائه — وإلا بقيت
      معلَّقة إلى الأبد ولا يراها الطالب. */
+  /* تُطبَّق في الذاكرة ولا تُكتب: الكتابةُ عند التحميل هي عينُ ما مُنع —
+     كانت تكتب program و level و موضعَ الخطة لكلّ سجلٍّ عالقٍ مع كلّ فتحةٍ
+     للموقع ولأيّ دور. والعرضُ صحيحٌ بالتطبيق في الذاكرة، والكتابةُ تلحق
+     أوّلَ مرّةٍ يحفظ فيها مخوَّلٌ تلك الخطة. */
   try {
     const stuck = (Array.isArray(DB.plans) ? DB.plans : []).filter(x => x && x.pending);
     stuck.forEach(x => {
@@ -41173,9 +41277,8 @@ async function loadDataFast(onData) {
         .forEach(k => { if (d[k] !== undefined) x[k] = d[k]; });
       x.pending = null;
       x.status = "نشطة";
-      persistSet("plans", x);
     });
-    if (stuck.length) console.log("طُبّق " + stuck.length + " واجباً كان عالقاً في الاعتماد");
+    if (stuck.length) console.log("طُبّق في الذاكرة " + stuck.length + " واجباً كان عالقاً في الاعتماد");
   } catch (e) { console.warn("stuck duties:", e); }
 
   /* استدراك الحسابات القديمة: معلّمون في users بلا سجل في teachers.
@@ -41183,7 +41286,9 @@ async function loadDataFast(onData) {
   try {
     const role = ((STATE && STATE.user) || {}).role;
     if (role === "admin" || isMgrRole(role)) {
-      const n = syncAllTeachers();
+      /* تلقائيةٌ بالتعريف: تجري بلا طلبٍ من أحدٍ عقب كلّ تحميل، فتُحاط
+         بـ linkAuto ليمنعها الحارسُ من مسّ أيّ ارتباط. */
+      const n = linkAuto(syncAllTeachers);
       if (n) console.log("أُنشئ سجل معلم لـ " + n + " حساباً كان بلا سجل");
     }
   } catch (e) { console.warn("syncAllTeachers:", e); }
@@ -41816,6 +41921,88 @@ function scopeStamp(coll, data) {
   return data;
 }
 
+/* =========================================================================
+   حارسُ الارتباطات — «بياناتُ الارتباط لا تتغيّر تلقائياً»
+   -------------------------------------------------------------------------
+   المواصفات: «الطالب أحمد ← مسجد النور ← حلقة الأشبال ← برنامج الحفظ ←
+   الخطة الحالية. يجب أن تظل هذه البيانات كما هي… ولا تتغيّر إلا بواسطة
+   مسؤولٍ مخوَّل + إجراءٍ واضح + تأكيد + صلاحيةِ Firestore».
+
+   الدواءُ هنا في بوّابة الكتابة الوحيدة (persistSet) لا في الأزرار: الأزرارُ
+   تُخفى والدوالُّ تُنادى، وقد كان ثلاثةٌ منها تكتب أثناء القراءة. فأيُّ
+   كتابةٍ تمسّ حقلَ ارتباطٍ خارجَ إجراءٍ صريحٍ من مستخدم تُردّ إلى قيمتها
+   السابقة قبل أن تغادر الجهاز — وبقيّةُ الحقول في الكتابة نفسِها تمضي،
+   فلا يضيع عملٌ مشروع.
+
+   وما يميّز الإجراءَ الصريحَ من التلقائيّ:
+     • لمسةُ مستخدمٍ حديثةٌ (نقرة أو إرسالُ نموذج) — تُختم في مرحلة الالتقاط.
+     • أو إجراءٌ معلَّمٌ بـ linkChange(fn) — للنقل الذي يمتدّ بعد النقرة.
+     • والمزامناتُ التلقائية تُعلن نفسَها بـ linkAuto(fn) فتُمنع ولو جرت
+       عقب نقرةٍ مباشرة — فهي ليست من النقرة في شيء.
+   ========================================================================= */
+const LINK_FIELDS = ["mosqueId", "complexId", "circleId", "programId",
+                     "planId", "levelId", "studentId", "teacherId"];
+const LINK_COLLS  = { students: 1, teachers: 1, plans: 1, circles: 1, users: 1 };
+
+let LINK_ACT = 0;      /* وقتُ آخر لمسةٍ من المستخدم */
+let LINK_OPEN = 0;     /* إجراءُ ارتباطٍ صريحٌ مفتوح */
+let LINK_AUTO = 0;     /* مزامنةٌ تلقائيةٌ جارية */
+
+/* يُحيط الإجراءَ الصريح: نقلُ طالبٍ أو حلقةٍ أو تغييرُ برنامجٍ أو مستوى */
+window.linkChange = function (fn) {
+  LINK_OPEN++;
+  try { return fn(); } finally { LINK_OPEN--; }
+};
+/* يُحيط كلَّ مزامنةٍ تعمل من تلقائها — فلا تمسّ ارتباطاً أبداً */
+function linkAuto(fn) {
+  LINK_AUTO++;
+  try { return fn(); } finally { LINK_AUTO--; }
+}
+window.linkAuto = linkAuto;
+
+function linkAllowed() {
+  if (LINK_AUTO > 0) return false;
+  if (LINK_OPEN > 0) return true;
+  return Date.now() - LINK_ACT < 8000;
+}
+
+/* ختمُ اللمسة في مرحلة الالتقاط: لا يفوتها شيءٌ ولو أوقف المعالِجُ الحدث */
+if (typeof document !== "undefined" && document.addEventListener) {
+  ["click", "submit", "change", "keydown"].forEach(function (ev) {
+    document.addEventListener(ev, function () { LINK_ACT = Date.now(); }, true);
+  });
+}
+
+/* ما مُنع من التغيير في هذه الجلسة — يُعرض لصاحب النظام عند الطلب */
+const LINK_BLOCKED = [];
+window.linkBlocked = function () { return LINK_BLOCKED.slice(); };
+
+function linkGuard(coll, obj) {
+  if (!LINK_COLLS[coll] || !obj || obj.id == null) return 0;
+  if (linkAllowed()) return 0;
+  const before = typeof auditShadow === "function" ? auditShadow(coll, obj.id) : null;
+  if (!before) return 0;          /* سجلٌّ جديدٌ لا ارتباطَ سابقَ له يُحرس */
+
+  let n = 0;
+  LINK_FIELDS.forEach(function (k) {
+    const a = before[k], b = obj[k];
+    if (a === undefined && b === undefined) return;
+    const sa = String(a == null ? "" : a), sb = String(b == null ? "" : b);
+    if (sa === sb) return;
+    /* يُردّ إلى ما كان — ولا يُحذف الحقل، فالكتابةُ set تمحو الغائب */
+    if (a === undefined) delete obj[k]; else obj[k] = a;
+    n++;
+    LINK_BLOCKED.push({ ts: Date.now(), coll: coll, id: String(obj.id),
+                        field: k, from: sa, to: sb });
+    if (LINK_BLOCKED.length > 200) LINK_BLOCKED.shift();
+  });
+  if (n) {
+    console.warn("[حارس الارتباط] مُنع تغييرٌ تلقائيٌّ في " + coll + "/" + obj.id +
+                 " — " + n + " حقلاً. اطبع linkBlocked() لتفصيله.");
+  }
+  return n;
+}
+
 function persistSet(coll, obj) {
   const db = FDB(); if (!db || obj == null) return Promise.resolve(false);
 
@@ -41839,6 +42026,9 @@ function persistSet(coll, obj) {
   /* الرصد: أكثر التعديلات تُغيّر السجل في مكانه ثم تُنادي persistSet،
      فالقديم قد ضاع من الذاكرة. لذلك يُحفظ «ظلّ» لآخر حالة كُتبت، وتُقارن
      به. بدونه يقول السجل «عُدّل» ولا يقول ماذا تغيّر — وهو لبّ الرقابة. */
+  /* الحارسُ قبل الرصد: يُسجَّل ما استقرّ عليه السجلّ لا ما طُلب له */
+  try { linkGuard(coll, obj); } catch (e) {}
+
   try {
     if (typeof auditWrite === "function") {
       const before = auditShadow(coll, obj.id);
@@ -42348,9 +42538,10 @@ window.syncMyScope = function (force) {
 
   /* حلقات المعلّم: ما أُسند إليه أصالةً أو مساعداً */
   if (rec.role === "teacher") {
+    /* بالمعرّف وحدَه: المطابقةُ بالاسم كانت تنسخ منشأةَ معلّمٍ آخرَ
+       يشاركه الاسمَ إلى مستند هذا الحساب، ومنه تعود إلى سجلّه. */
     const t = (Array.isArray(DB.teachers) ? DB.teachers : []).find(x =>
-      String(x.uid) === String(u.uid) ||
-      (x.name && u.name && nameKey(x.name) === nameKey(u.name)));
+      String(x.uid) === String(u.uid));
 
     const ids = (Array.isArray(DB.circles) ? DB.circles : []).filter(c => {
       if (!c) return false;
@@ -43892,7 +44083,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-1310";
+  var APP_BUILD = "20261006-1450";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

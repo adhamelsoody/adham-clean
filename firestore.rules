@@ -122,6 +122,14 @@ service cloud.firestore {
       return ['name', 'phone', 'nationality', 'gender', 'photo'];
     }
 
+    /* حقولُ الارتباط: المسجدُ والمجمّعُ والحلقةُ والبرنامجُ والخطةُ
+       والمستوى وصاحبُ السجلّ. «بياناتُ الارتباط لا تتغيّر تلقائياً» —
+       والمعلّمُ لا يغيّرها أصلاً، إنما الإدارة بإجراءٍ صريح. */
+    function linkFields() {
+      return ['mosqueId', 'complexId', 'circleId', 'programId',
+              'planId', 'levelId', 'studentId', 'teacherId'];
+    }
+
     function changed() {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
@@ -256,9 +264,15 @@ service cloud.firestore {
                     && request.resource.data.studentId is string;
     }
 
+    /* الخططُ: كانت مفتوحةً لكلّ معلّمٍ بلا حصرِ نطاقٍ ولا حصرِ حقول —
+       فيعدّل خطةَ أيّ طالبٍ في النظام ويبدّل صاحبَها ومنشأتَها وبرنامجَها.
+       الآن: نطاقُه يحصره كسائر الكتابة، وحقولُ الارتباط ممنوعةٌ عليه.
+       ولا يُمسّ عملُه: المسارُ والموضعُ والتجميدُ والمقدار كلُّها باقية. */
     match /plans/{docId} {
       allow read: if canRead();
-      allow create, update: if teacherMay('plan_edit', true);
+      allow create: if teacherMay('plan_edit', true) && scopeOk();
+      allow update: if teacherMay('plan_edit', true) && scopeOk()
+                    && (canWrite() || !changed().hasAny(linkFields()));
       /* الحذف للإدارة وحدها: إزالة خطة طالب أخطر من تعديلها،
          والمعلّم يملك التجميد وتعديل المسار وهما يكفيان عمله. */
       allow delete: if canWrite();
