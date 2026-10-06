@@ -11536,3 +11536,27 @@ body[data-iface="student"] .content { padding-top: 14px; }
   .pdf-head .pdfh-title { font-size: 13pt; font-weight: 700; color: #223434; margin-top: 2.5mm; }
   .pdf-head .pdfh-meta { font-size: 8.5pt; color: #4e6060; margin-top: 1.5mm; }
 }
+
+
+/* =========================================================================
+   شروطُ الشارة الخمسة — خانةُ المدّة وحالُ كلّ شرط
+   -------------------------------------------------------------------------
+   المواصفات: «انضباط حضور (المدة) · انضباط تسميع (المدة) · بدون أخطاء
+   (المدة) · تسميع كل الواجبات (المدة) · يدوي — من قبل مدير النظام».
+   ========================================================================= */
+.bdg-days {
+  width: 76px; height: 34px; padding: 0 10px; text-align: center;
+  border: 1px solid var(--border, #e6eaea); border-radius: 9px;
+  background: #fff; font-family: var(--ff); font-size: 14px; color: #3a4d4e;
+  font-variant-numeric: tabular-nums;
+}
+.bdg-days:focus { outline: none; border-color: #15a2a7; box-shadow: 0 0 0 3px rgba(0,139,138,.12); }
+.bdg-days:disabled { background: #f4f7f7; color: var(--text-faint, #6d7d7e); }
+[data-theme="dark"] .bdg-days { background: var(--surface); border-color: var(--border); color: var(--text-main); }
+[data-theme="dark"] .bdg-days:disabled { background: var(--surface-2, #1a2b2c); }
+
+/* بلوغُ الشرط من عدمه في نافذة الشارة */
+.bdg-rule .bdg-ok { color: #168a45; }
+.bdg-rule .bdg-no { color: #c24a4a; }
+[data-theme="dark"] .bdg-rule .bdg-ok { color: #4fc07f; }
+[data-theme="dark"] .bdg-rule .bdg-no { color: #e08080; }
