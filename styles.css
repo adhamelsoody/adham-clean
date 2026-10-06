@@ -11811,3 +11811,46 @@ body[data-iface="student"] .content { padding-top: 14px; }
 }
 /* وسطرُ الصفحة الأخيرُ القصير يُتوسَّط ولا يُمطّ */
 .mus-line.mus-short { text-align-last: center; word-spacing: normal; }
+
+
+/* =========================================================================
+   «استمع إلى واجبك» — من الواجب إلى تلاوته بضغطةٍ واحدة
+   -------------------------------------------------------------------------
+   المواصفات: «يدخل على الاستماع فيذهب مباشرةً إلى الواجب المطلوب دون
+   البحث عنه».
+   ========================================================================= */
+.qa-duty { padding: 14px; margin-bottom: 14px; border: 1px solid #a8dfe0; background: #f2fbfb; }
+.qa-duty-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 10px;
+  color: #0d6e71; }
+.qa-duty-head strong { flex: 1; font-size: 14.5px; color: #09494c; }
+.qa-duty-list { display: grid; gap: 8px; }
+.qa-duty-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: start;
+  padding: 10px 12px; border-radius: 11px; cursor: pointer; font-family: var(--ff);
+  background: var(--surface, #fff); border: 1px solid var(--border-soft, #e6eaea);
+  transition: border-color .15s, transform .15s;
+}
+.qa-duty-row:hover { border-color: #15a2a7; transform: translateY(-1px); }
+.qa-duty-row.done { opacity: .62; }
+.qa-duty-ico { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid;
+  place-items: center; background: #e7fbfc; color: #0d6e71; }
+.qa-duty-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qa-duty-t strong { font-size: 13.5px; color: var(--text-main, #223434); }
+.qa-duty-t small  { font-size: 12px; color: var(--text-muted, #4e6060); }
+.qa-duty-go { flex: none; display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 999px; background: #0d6e71; color: #fff;
+  font-size: 12px; font-weight: 700; }
+@media (max-width: 420px) { .qa-duty-go span { display: none; } }
+
+/* زرُّ الاستماع على بطاقة الواجب */
+.duty-listen {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+  padding: 6px 13px; border-radius: 999px; cursor: pointer; font-family: var(--ff);
+  background: #0d6e71; color: #fff; font-size: 12px; font-weight: 700;
+}
+.duty-listen:hover { background: #0a4f52; }
+
+[data-theme="dark"] .qa-duty { background: #0a2e30; border-color: #15555a; }
+[data-theme="dark"] .qa-duty-head strong { color: #67bcbf; }
+[data-theme="dark"] .qa-duty-row { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .qa-duty-ico { background: #0a2e30; color: #4fc0c3; }

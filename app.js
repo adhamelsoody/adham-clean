@@ -32350,12 +32350,20 @@ function studentDuties(st, forTomorrow) {
           ? `<span class="muted">${esc(a.note)}</span>`
           : `<span class="muted">لم يُحدَّد موضعه بعد — يحدّده معلمك.</span>`);
 
-    const extra = a.status === "done"
+    const extra = (a.status === "done"
       ? `<span class="duty-done">${ic("checkCircle", 15)} سُمِّع${
           a.score != null ? " · " + toArabicDigits(a.score) + "٪" : ""}</span>`
       : a.status === "failed"
         ? `<span class="duty-done" style="color:#b3261e">${ic("alert", 15)} يُعاد غداً</span>`
-        : "";
+        : "") +
+      /* زرُّ الاستماع على الواجب نفسِه: ضغطةٌ واحدةٌ تُسمعه موضعَه بلا
+         بحثٍ عن السورة — وبواجب الغد كذلك ليستعدّ له. */
+      (a.fromS && stuAppOn("show.audio")
+        ? `<button type="button" class="duty-listen" onclick="window.qaPlayDuty(${
+            Number(a.fromS)},${Math.max(1, Number(a.fromA) || 1)},${
+            Number(a.toS) || Number(a.fromS)},${Number(a.toA) || 0})">${
+            ic("play", 14)} استمع لواجبك</button>`
+        : "");
 
     return dutyCard(base, TINT[base] || "t-teal", ICON[base] || "book",
       (forTomorrow ? "غداً: " : "") + (a.kindName || base) +
@@ -39306,7 +39314,8 @@ async function qaAyahLoad(rid, surah) {
 window.qaAyahLoad = qaAyahLoad;
 
 /* حالُ الاستماع داخل المصحف */
-const MUSA = { on: false, rid: "", s: 0, a: 0, list: null, i: -1, repeat: false, busy: false };
+const MUSA = { on: false, rid: "", s: 0, a: 0, list: null, i: -1, repeat: false,
+               busy: false, lim: null };
 window.MUSA = MUSA;
 
 function qaAyahHi(s, a) {
@@ -39364,8 +39373,27 @@ window.qaAyahPlay = async function (s, a) {
 function qaAyahEnded() {
   if (!MUSA.on || !MUSA.list || MUSA.i < 0) return false;
   if (MUSA.repeat) { window.qaAyahPlay(MUSA.s, MUSA.a); return true; }
+
+  /* حدُّ الواجب: يقف عند آخر آيةٍ منه لا عند آخر السورة */
+  const lim = MUSA.lim;
+  if (lim && lim.a && Number(MUSA.s) === Number(lim.s) && Number(MUSA.a) >= Number(lim.a)) {
+    MUSA.i = -1; MUSA.lim = null; qaAyahHi(0, 0); musaBarSync();
+    try { showToast("انتهى واجبك — أحسنت", "success"); } catch (e) {}
+    return true;
+  }
+
   const nx = MUSA.list[MUSA.i + 1];
-  if (!nx) { MUSA.i = -1; qaAyahHi(0, 0); musaBarSync(); return true; }
+  if (!nx) {
+    /* واجبٌ يمتدّ إلى السورة التالية: تُجلب ويُستأنف منها */
+    if (lim && Number(lim.s) > Number(MUSA.s)) {
+      const ns = Number(MUSA.s) + 1;
+      MUSA.list = null;
+      window.qaAyahPlay(ns, 1);
+      return true;
+    }
+    MUSA.i = -1; qaAyahHi(0, 0); musaBarSync();
+    return true;
+  }
   window.qaAyahPlay(MUSA.s, nx.a);
   return true;
 }
@@ -39384,7 +39412,7 @@ window.musaToggleOn = function () {
 window.musaRepeat = function (on) { MUSA.repeat = !!on; musaBarSync(); };
 window.musaStop = function () {
   try { qaAudio().pause(); } catch (e) {}
-  MUSA.i = -1; qaAyahHi(0, 0); musaBarSync();
+  MUSA.i = -1; MUSA.lim = null; qaAyahHi(0, 0); musaBarSync();
 };
 /* من أوّل آيةٍ في الصفحة المعروضة */
 window.musaFromPage = function () {
@@ -39735,6 +39763,7 @@ function qaudioPage() {
 
   return `<div class="page qa-page">
     ${pageHead("القرآن الكريم المسموع", "اختر القارئ ثمّ السورة")}
+    ${qaDutyBox()}
     ${lastR && lastN ? `<button type="button" class="card qa-resume" onclick="window.qaResume()">
       <span class="qa-res-ico">${ic("play", 18)}</span>
       <span class="qa-res-t"><strong>متابعة الاستماع</strong>
@@ -39749,6 +39778,109 @@ function qaudioPage() {
         ${ic("check", 15)} فحصُ روابط القرّاء الأربعة</button>
       <span class="muted" style="font-size:11.5px">٤٥٦ رابطاً — يُفحص عند الطلب وحدَه</span>
       <div id="qaCheckOut" class="qa-chk"></div></div>` : ""}
+  </div>`;
+}
+
+/* =========================================================================
+   الاستماعُ إلى الواجب مباشرةً — بلا بحثٍ عن السورة
+   -------------------------------------------------------------------------
+   المواصفات: «إذا وُجّه إلى الطالب واجبُ سورة آل عمران مثلاً أو تثبيت،
+   يدخل على الاستماع فيذهب مباشرةً إلى الواجب المطلوب لسماعه دون البحث عنه».
+
+   الواجباتُ من محرّك الخطط نفسِه الذي يراه المعلّم (generateAssignments)،
+   لا من قائمةٍ ثانية. والاستماعُ بالآية متى توفّر للقارئ — من أوّل آيةٍ
+   في الواجب إلى آخرها ثمّ يقف، لا إلى آخر السورة. وإن لم تتوفّر تلاوةُ
+   آيةٍ لذلك القارئ شُغّلت السورةُ كاملةً وقيل له ذلك.
+   ========================================================================= */
+function qaDuties(st) {
+  if (!st) return [];
+  let list = [];
+  try { list = generateAssignments(st.id, todayISO()) || []; } catch (e) { list = []; }
+  return list.filter(a => a && a.fromS).map(a => {
+    const fromS = Number(a.fromS), fromA = Math.max(1, Number(a.fromA) || 1);
+    const toS = Number(a.toS) || fromS, toA = Number(a.toA) || 0;
+    const nm = i => (typeof surahName === "function" ? surahName(i) : "");
+    /* اسمُ السورة مرّةً واحدةً إن لم يتغيّر: «آل عمران ١ — ١٠» لا
+       «آل عمران ١ — آل عمران ١٠» */
+    const range = !(toS && toA)
+      ? nm(fromS) + " " + toArabicDigits(fromA) + " فما بعدها"
+      : (toS === fromS
+          ? nm(fromS) + " " + toArabicDigits(fromA) + " — " + toArabicDigits(toA)
+          : nm(fromS) + " " + toArabicDigits(fromA) + " — " + nm(toS) + " " + toArabicDigits(toA));
+    return { kind: String(a.kind).replace("_makeup", ""),
+             kindName: a.kindName || a.kind, fromS, fromA, toS, toA,
+             range, done: a.status === "done" };
+  });
+}
+
+/* القارئُ المختار: آخرُ مَن استُمع إليه، وإلا أوّلُ من له تلاوةُ آية */
+function qaDutyReciter() {
+  if (MUSA.rid) return MUSA.rid;
+  const l = qaPrefs().last;
+  if (l && l.rid && qaReciter(l.rid)) return l.rid;
+  const r = QA_RECITERS.find(x => x.ayahApi);
+  return r ? r.id : QA_RECITERS[0].id;
+}
+
+window.qaDutyPick = function (rid) {
+  MUSA.rid = String(rid || "");
+  const p = qaPrefs();
+  p.last = Object.assign({ n: 1, t: 0 }, p.last || {}, { rid: MUSA.rid });
+  qaPrefsSave();
+  mount();
+};
+
+/* تشغيلُ الواجب: من أوّل آيةٍ فيه، ويقف عند آخرها */
+window.qaPlayDuty = async function (fromS, fromA, toS, toA) {
+  const rid = qaDutyReciter();
+  MUSA.rid = rid;
+  const r = qaReciter(rid);
+  const s = Number(fromS), a = Math.max(1, Number(fromA) || 1);
+
+  if (r && r.ayahApi) {
+    MUSA.on = true;
+    MUSA.lim = { s: Number(toS) || s, a: Number(toA) || 0 };
+    await window.qaAyahPlay(s, a);
+    showToast("تلاوةُ واجبك — " + (r.name || ""), "success");
+    mount();
+    return;
+  }
+  /* بلا تلاوةِ آية: السورةُ كاملةً وقولُ السبب — لا تخمين */
+  MUSA.lim = null;
+  window.qaPlay(rid, s);
+  showToast((r ? r.name : "") + ": لا تتوفّر تلاوةٌ بالآية — شُغّلت السورةُ كاملة", "info");
+  QAV.rid = rid; mount();
+};
+
+/* بطاقةُ «استمع إلى واجبك» في أعلى شاشة المسموع */
+function qaDutyBox() {
+  const u = (STATE && STATE.user) || {};
+  if (u.role !== "student" && u.role !== "parent") return "";
+  const st = typeof activeStudent === "function" ? activeStudent() : null;
+  if (!st) return "";
+  const duties = qaDuties(st);
+  if (!duties.length) return "";
+
+  const rid = qaDutyReciter();
+  const ICON = { hifz: "book", fix: "refresh", rev: "list", tilawah: "book" };
+
+  return `<div class="card qa-duty">
+    <div class="qa-duty-head">${ic("target", 17)}
+      <strong>استمع إلى واجبك اليوم</strong>
+      <select class="musa-sel" onchange="window.qaDutyPick(this.value)">
+        ${QA_RECITERS.map(x => `<option value="${esc(x.id)}"${
+          rid === x.id ? " selected" : ""}>${esc(x.name)}${
+          x.ayahApi ? "" : " (بالسورة)"}</option>`).join("")}
+      </select>
+    </div>
+    <div class="qa-duty-list">${duties.map(d => `<button type="button"
+      class="qa-duty-row${d.done ? " done" : ""}"
+      onclick="window.qaPlayDuty(${d.fromS},${d.fromA},${d.toS},${d.toA})">
+      <span class="qa-duty-ico">${ic(ICON[d.kind] || "book", 16)}</span>
+      <span class="qa-duty-t"><strong>${esc(d.kindName)}</strong>
+        <small>${esc(d.range)}</small></span>
+      <span class="qa-duty-go">${ic("play", 15)} استماع</span>
+    </button>`).join("")}</div>
   </div>`;
 }
 
@@ -44906,7 +45038,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261006-1905";
+  var APP_BUILD = "20261006-2030";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
