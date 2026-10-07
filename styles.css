@@ -11933,26 +11933,109 @@ body[data-iface="student"] .content { padding-top: 14px; }
 .mus-mode.on { background: #0f6f72; }
 
 /* =========================================================================
-   ورقةُ المصحف على هيئة المصحف المدنيّ
+   ورقةُ المصحف — PREMIUM MUSHAF · GREEN ORNATE
    -------------------------------------------------------------------------
-   المواصفات: «أريد في المصحف أن يكون نفسَ الإطار، ويكون نفسَ ترتيب آيات
-   مصحف المدينة».
+   المواصفات: صفحةٌ تشبه ورقةَ المصحف المطبوعة، بإطارٍ إسلاميٍّ أخضرَ
+   مزخرف، وعنوانِ سورةٍ مزخرف، وعلاماتِ آياتٍ دائرية، ورقمِ صفحةٍ أسفلها.
 
-   • الترتيب: كلُّ سطرٍ في الورقة سطرٌ واحدٌ على الشاشة — nowrap، ويضبطه
-     musFit بعد الرسم. وكان يُبرَّر بـ justify فينكسر إلى سطرين في العمود
-     الضيّق، فيرى الطالبُ ثلاثين سطراً حيث في ورقته خمسةَ عشر.
-   • الإطار: حاشيةٌ مزخرفةٌ بين خطّين أخضرين وفي أركانها ميدالياتٌ، تُرسم
-     بـ border-image فتتكرّر على الأضلاع وتستقيم في الزوايا. والزخرفةُ من
-     وضعنا على سَنن الزخرفة الإسلامية — لا نقلَ لتذهيب مصحفٍ بعينه.
-   • الرأسُ فوق الإطار والرقمُ تحته، كما هما في الورقة المطبوعة.
+   البناءُ طبقاتٌ لكلٍّ وظيفةٌ واحدة:
+     .mus-page    الورقةُ كلُّها (رأسٌ · إطارٌ · قدم)
+     .mus-ptop    رأسُ الورقة فوق الإطار: الجزءُ واسمُ السورة
+     .mus-orn     الإطارُ المزخرف — border-image من mushaf-frame.svg
+     .mus-inner   الحدُّ الداخليُّ ومساحةُ النصّ
+     .mus-surah   شريطُ اسم السورة
+     .mus-lines   النصُّ: سطرٌ لكلّ سطرٍ في الورقة المطبوعة
+     .mus-num     علامةُ الآية
+     .mus-pfoot   رقمُ الصفحة تحت الإطار
+
+   والأسماءُ تبقى .mus-* كما هي: هي نطاقُ المصحف في المشروع أصلاً،
+   ومرتبطةٌ بـ app.js في التأشير والصوت والتفسير — وتغييرُها إلى .mushaf-*
+   يمسّ مئاتِ المواضع ويكسر ما يعمل، وهو ما نهت عنه المواصفات نفسُها.
    ========================================================================= */
 
-/* ---- السطر: واحدٌ لا ينكسر ---- */
+/* لوحةُ ألوان المصحف — مستقلّةٌ عن ألوان لوحة الإدارة */
+.mus-spread {
+  --mq-dark:  #285C45;
+  --mq-mid:   #3F7558;
+  --mq-light: #789C7E;
+  --mq-cream: #FFFDF5;
+  --mq-pink:  #C76A78;
+  --mq-gold:  #B79A5B;
+  --mq-ink:   #10201a;
+}
+
+/* ---- الورقة: Portrait، في المنتصف، وحولها مساحة ---- */
+.mus-spread.one { grid-template-columns: min(650px, 90vw); justify-content: center; }
+.mus-page { display: flex; flex-direction: column; min-width: 0; }
+
+/* ---- رأسُ الورقة وقدمُها: خارج الإطار كما في المطبوع ---- */
+.mus-ptop {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0 6px 6px; font-size: 12.5px; font-weight: 700;
+  color: var(--mq-dark, #285C45);
+  font-family: "Amiri", "Scheherazade New", serif;
+}
+.mus-pfoot {
+  text-align: center; padding-top: 8px;
+  font-size: 14px; font-weight: 700; color: var(--mq-dark, #285C45);
+  font-family: "Amiri", "Scheherazade New", serif;
+}
+
+/* ---- الإطارُ المزخرف: أصلٌ مستقلٌّ لا زخرفةٌ مرسومةٌ بالحدود ---- */
+.mus-orn {
+  height: auto; flex: 1 1 auto;
+  padding: 0; border-radius: 0;
+  background-color: var(--mq-cream, #FFFDF5);
+  background-image: none;
+  border: 18px solid transparent;
+  border-image-source: url("mushaf-frame.svg");
+  border-image-slice: 40;
+  border-image-repeat: round;
+  border-image-width: 18px;
+  box-shadow: 0 2px 10px rgba(16,32,26,.10), 0 10px 28px rgba(16,32,26,.07);
+}
+.mus-orn.plain {
+  border: 1.6px solid var(--mq-dark, #285C45);
+  border-image: none; background-image: none; box-shadow: none;
+}
+
+/* ---- الحدُّ الداخليُّ: خطٌّ رفيعٌ ثمّ فراغٌ ثمّ خطٌّ ثانٍ ثمّ النصّ ---- */
+.mus-inner {
+  background: var(--mq-cream, #FFFDF5);
+  border: 1.4px solid var(--mq-dark, #285C45);
+  border-radius: 0;
+  padding: 13px 12px 15px;
+  box-shadow: inset 0 0 0 2.4px var(--mq-cream, #FFFDF5),
+              inset 0 0 0 3.3px var(--mq-light, #789C7E);
+}
+
+/* ---- شريطُ اسم السورة ---- */
+.mus-lines .mus-surah, .mus-surah {
+  border: 1.6px solid var(--mq-dark, #285C45); border-radius: 0;
+  background-color: var(--mq-mid, #3F7558);
+  background-image: none;
+  padding: 5px 8px; margin: 5px 0 4px;
+  box-shadow: inset 0 0 0 1.6px var(--mq-cream, #FFFDF5),
+              inset 0 0 0 2.4px var(--mq-light, #789C7E);
+}
+.mus-surah span {
+  display: inline-block; padding: 1px 18px; border-radius: 2px;
+  background: var(--mq-cream, #FFFDF5);
+  border: 1px solid var(--mq-light, #789C7E);
+  font-size: 1.05em; font-weight: 700; color: var(--mq-dark, #285C45);
+  font-family: "Amiri", "Scheherazade New", serif;
+}
+
+.mus-basmala { color: var(--mq-dark, #285C45); font-size: 1.05em; margin: 6px 0 8px; }
+
+/* ---- النصّ: كلُّ سطرٍ في الورقة سطرٌ واحدٌ على الشاشة ----
+   وكان يُبرَّر بـ justify فينكسر في العمود الضيّق إلى سطرين، فيرى الطالبُ
+   ثلاثين سطراً حيث في ورقته خمسةَ عشر. ويضبطه musFit بعد الرسم. */
+.mus-text.mus-lines { line-height: 1.95; color: var(--mq-ink, #10201a); }
 .mus-lines .mus-line {
   display: block;
   white-space: nowrap;
-  text-align: right;
-  text-align-last: right;
+  text-align: right; text-align-last: right;
   word-spacing: normal;
   transform-origin: right center;
 }
@@ -11962,100 +12045,36 @@ body[data-iface="student"] .content { padding-top: 14px; }
   white-space: normal; word-spacing: normal; transform: none;
 }
 
-/* ---- رأسُ الورقة وقدمُها: خارج الإطار ---- */
-.mus-ptop {
-  display: flex; justify-content: space-between; align-items: baseline;
-  padding: 0 6px 6px; font-size: 12.5px; font-weight: 700;
-  color: #2f6b4f; font-family: "Amiri", "Scheherazade New", serif;
-}
-.mus-pfoot {
-  text-align: center; padding-top: 8px;
-  font-size: 14px; font-weight: 700; color: #2f6b4f;
-  font-family: "Amiri", "Scheherazade New", serif;
-}
-
-/* ---- الإطار: حاشيةٌ رفيعةٌ بين خطّين، وفي أركانها ميدالياتٌ صغيرة ---- */
-.mus-orn {
-  padding: 0;
-  border: 11px solid transparent;
-  border-radius: 0;
-  background-color: #fdfaf0;
-  background-image: none;
-  box-shadow: 0 10px 30px rgba(0,0,0,.14);
-  border-image-source: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'><defs><g id='p'><path d='M0 0C2.6 -2 5.4 -1.3 6.2 1.4C3.6 3.2 .8 2.6 0 0Z' fill='%232e6b4e'/></g><g id='e'><path d='M30 1.8H90M30 28.2H90' stroke='%232e6b4e' stroke-width='1.7'/><path d='M30 15h60' stroke='%232e6b4e' stroke-width='.8' opacity='.45'/><g><use href='%23p' transform='translate(33 15) rotate(-52) scale(.92)'/><use href='%23p' transform='translate(41 15) rotate(128) scale(.92)'/><use href='%23p' transform='translate(49 15) rotate(-52) scale(.92)'/><use href='%23p' transform='translate(57 15) rotate(128) scale(.92)'/><use href='%23p' transform='translate(65 15) rotate(-52) scale(.92)'/><use href='%23p' transform='translate(73 15) rotate(128) scale(.92)'/><use href='%23p' transform='translate(81 15) rotate(-52) scale(.92)'/><use href='%23p' transform='translate(89 15) rotate(128) scale(.92)'/></g><g fill='%23c05070'><circle cx='37' cy='7.4' r='1.5'/><circle cx='53' cy='7.4' r='1.5'/><circle cx='69' cy='7.4' r='1.5'/><circle cx='85' cy='7.4' r='1.5'/><circle cx='45' cy='22.6' r='1.5'/><circle cx='61' cy='22.6' r='1.5'/><circle cx='77' cy='22.6' r='1.5'/></g></g><g id='k'><path d='M1.8 1.8H30M1.8 1.8V30' stroke='%232e6b4e' stroke-width='1.7'/><path d='M28.2 28.2H30M28.2 28.2V30' stroke='%232e6b4e' stroke-width='1.7'/><circle cx='15' cy='15' r='7.6' fill='none' stroke='%232e6b4e' stroke-width='1.5'/><circle cx='15' cy='15' r='2.6' fill='%23c05070'/><path d='M15 7.4V4.2M15 22.6V25.8M7.4 15H4.2M22.6 15H25.8' stroke='%232e6b4e' stroke-width='1.3' stroke-linecap='round'/></g></defs><use href='%23e'/><use href='%23e' transform='rotate(90 60 60)'/><use href='%23e' transform='rotate(180 60 60)'/><use href='%23e' transform='rotate(270 60 60)'/><use href='%23k'/><use href='%23k' transform='rotate(90 60 60)'/><use href='%23k' transform='rotate(180 60 60)'/><use href='%23k' transform='rotate(270 60 60)'/></svg>");
-  border-image-slice: 30;
-  border-image-repeat: round;
-  border-image-width: 11px;
-  border-image-outset: 0;
-}
-.mus-orn.plain {
-  border: 1.4px solid #2e6b4e; border-image: none;
-  background-image: none; box-shadow: none;
-}
-
-.mus-inner {
-  background: #fdfaf0;
-  border: 1.2px solid #2e6b4e;
-  border-radius: 0;
-  padding: 9px 9px 10px;
-  box-shadow: inset 0 0 0 1.8px #fdfaf0, inset 0 0 0 2.6px #2e6b4e;
-}
-
-/* أسطرُ الورقة أكثفُ ممّا كانت: في المطبوع خمسةَ عشرَ سطراً تملأ الورقة */
-.mus-text.mus-lines { line-height: 1.95; }
-
-/* ---- شريطُ اسم السورة: حاشيةٌ نباتيةٌ والاسمُ في وسطها ---- */
-.mus-lines .mus-surah, .mus-surah {
-  border: 1.5px solid #2e6b4e; border-radius: 0;
-  background-color: #fdfaf0;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='26' viewBox='0 0 40 26'><g id='l'><path d='M0 0C3 -2.3 6.2 -1.6 7 1.6C4 3.7 .9 3 0 0Z' fill='%232f6b4f'/></g><path d='M0 13a10 10 0 0 1 20 0a10 10 0 0 0 20 0' fill='none' stroke='%232f6b4f' stroke-width='1.6'/><use href='%23l' transform='translate(5 8) rotate(-58) scale(.85)'/><use href='%23l' transform='translate(15 8) rotate(-122) scale(-.85 .85)'/><use href='%23l' transform='translate(25 18) rotate(58) scale(.85 -.85)'/><use href='%23l' transform='translate(35 18) rotate(122) scale(-.85 -.85)'/><g transform='translate(10 3.4)'><g fill='%23b8455f'><ellipse cy='-2.9' rx='1.35' ry='2.05'/><ellipse cy='-2.9' rx='1.35' ry='2.05' transform='rotate(72)'/><ellipse cy='-2.9' rx='1.35' ry='2.05' transform='rotate(144)'/><ellipse cy='-2.9' rx='1.35' ry='2.05' transform='rotate(216)'/><ellipse cy='-2.9' rx='1.35' ry='2.05' transform='rotate(288)'/></g><circle r='1.2' fill='%23d8a52e'/></g><g transform='translate(30 22.6)'><g fill='%23b8455f'><ellipse cy='-2.9' rx='1.35' ry='2.05'/><ellipse cy='-2.9' rx='1.35' ry='2.05' transform='rotate(72)'/><ellipse cy='-2.9' rx='1.35' ry='2.05' transform='rotate(144)'/><ellipse cy='-2.9' rx='1.35' ry='2.05' transform='rotate(216)'/><ellipse cy='-2.9' rx='1.35' ry='2.05' transform='rotate(288)'/></g><circle r='1.2' fill='%23d8a52e'/></g></svg>");
-  background-repeat: repeat-x; background-position: center;
-  background-size: auto 46%;
-  padding: 3px 8px; margin: 4px 0 3px;
-  box-shadow: inset 0 0 0 1.6px #fdfaf0, inset 0 0 0 2.3px #2e6b4e;
-}
-.mus-surah span {
-  display: inline-block; padding: 0 16px; background: #fdfaf0;
-  font-size: 1.02em; font-weight: 700; color: #1f4f3a; letter-spacing: 0;
-  font-family: "Amiri", "Scheherazade New", serif;
-}
-
-.mus-basmala { color: #1f4f3a; font-size: 1.05em; margin-bottom: 6px; }
-
-/* علامةُ الحزب: نجمةٌ صغيرةٌ في مسار السطر لا كلمةٌ تُطيله */
-.mus-lines .mus-hizb {
-  border: 0; background: transparent; padding: 0; margin: 0 2px;
-  color: #b08b2e; font-size: 1em; font-weight: 400;
-  font-family: "Amiri", "Scheherazade New", serif;
-}
-
-/* ---- رقمُ الآية: وردةٌ صغيرةٌ كما في الورقة المطبوعة ---- */
+/* ---- علامةُ الآية: وردةٌ مدوّرةٌ لا دائرةٌ صمّاء ---- */
 .mus-num {
-  min-width: 1.45em; height: 1.45em; line-height: 1.45em;
-  color: #1f4f3a; border: 0; background: transparent;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><g fill='none' stroke='%232f6b4f' stroke-width='1.5'><circle cx='16' cy='16' r='10.5'/><circle cx='16' cy='16' r='13' stroke-dasharray='1.6 3.1' stroke-linecap='round'/></g></svg>");
+  min-width: 1.5em; height: 1.5em; line-height: 1.5em;
+  color: var(--mq-dark, #285C45); border: 0; background: transparent;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><g fill='none' stroke='%23285C45'><circle cx='16' cy='16' r='9.6' stroke-width='1.5'/><circle cx='16' cy='16' r='13' stroke-width='1.3' stroke-dasharray='1.5 3.2' stroke-linecap='round'/></g><g fill='%23C76A78'><circle cx='16' cy='2.6' r='1.5'/><circle cx='29.4' cy='16' r='1.5'/><circle cx='16' cy='29.4' r='1.5'/><circle cx='2.6' cy='16' r='1.5'/></g></svg>");
   background-repeat: no-repeat; background-position: center;
   background-size: 100% 100%;
-  font-size: .62em; font-family: "Amiri", "Scheherazade New", serif; font-weight: 700;
+  font-size: .62em; font-weight: 700;
+  font-family: "Amiri", "Scheherazade New", serif;
 }
-.mus-num.tap:hover { background-color: transparent; border: 0; color: #0b7f83; }
+.mus-num.tap:hover { background-color: transparent; border: 0; color: var(--mq-pink, #C76A78); }
 
-[data-theme="dark"] .mus-ptop, [data-theme="dark"] .mus-pfoot { color: #6fae8e; }
+/* علامةُ الحزب: نجمةٌ في مسار السطر لا كلمةٌ تُطيله */
+.mus-lines .mus-hizb {
+  border: 0; background: transparent; padding: 0; margin: 0 2px;
+  color: var(--mq-gold, #B79A5B); font-size: 1em; font-weight: 400;
+  font-family: "Amiri", "Scheherazade New", serif;
+}
 
-/* ورقةٌ واحدةٌ عمودياً: الرأسُ ثمّ الإطارُ ثمّ الرقم. وكان الإطارُ
-   height:100% من الورقة وهي تشمل الرأسَ والرقم، فيطول عنها بقدرهما
-   فيبقى تحت آخر سطرٍ فراغٌ لا سببَ له. والآن يأخذ ما بقي وحسب، فتتساوى
-   الورقتان في الفرشة. */
-.mus-page { display: flex; flex-direction: column; }
-.mus-orn { height: auto; flex: 1 1 auto; }
+/* ---- الانتقالُ بين الصفحات: ظهورٌ هادئٌ لا أكثر ---- */
+@keyframes musFade { from { opacity: .4; } to { opacity: 1; } }
+.mus-page { animation: musFade .18s ease-out; }
+@media (prefers-reduced-motion: reduce) { .mus-page { animation: none; } }
 
-/* على الهاتف تُضيَّق الهوامشُ لا الخطّ: كلُّ نقطةٍ تُوفَّر من الحاشية
-   والحشو تذهب إلى عمود النصّ، فيكبُر الخطُّ بقدرها وترتيبُ الأسطر على
-   حاله — «لا تجعل الخط صغيراً جداً على الهاتف». */
+/* ---- الهاتف: تُضيَّق الهوامشُ لا الخطّ ---- */
 @media (max-width: 560px) {
   .mus-spread { padding: 6px; gap: 8px; }
-  .mus-orn { border-width: 9px; border-image-width: 9px; }
-  .mus-inner { padding: 7px 5px 8px; }
+  .mus-spread.one { grid-template-columns: calc(100vw - 20px); }
+  .mus-orn { border-width: 11px; border-image-width: 11px; }
+  .mus-inner { padding: 8px 6px 9px; }
   .mus-ptop { padding: 0 2px 4px; font-size: 11.5px; }
   .mus-pfoot { padding-top: 5px; font-size: 13px; }
   .mus-surah span { padding: 0 10px; }

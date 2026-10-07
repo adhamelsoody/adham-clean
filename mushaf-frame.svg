@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+  <!--
+    إطارُ ورقة المصحف — أصلٌ واحدٌ يُعاد استعماله
+    ·
+    يُستعمل في styles.css عبر border-image، فيتكرّر على الأضلاع الأربعة
+    وتستقيم زواياه. تقسيمه (slice) ٤٠: المربّعات الأربعة في الأركان
+    ٤٠×٤٠، وما بينها شريطٌ يتكرّر.
+
+    لوحة الألوان من المواصفات:
+      #285C45 أخضر داكن · #3F7558 أخضر متوسّط · #789C7E أخضر فاتح
+      #FFFDF5 كريمي     · #C76A78 ورديّ      · #B79A5B ذهبيّ (قليلاً)
+
+    والزخرفة من وضعنا على سَنن الزخرفة الإسلامية — أرضيةٌ خضراء وعليها
+    فصوصٌ كريميةٌ وزهراتٌ ورديّة، لا نقلَ لتذهيب مصحفٍ بعينه.
+  -->
+  <defs>
+    <!-- زهرةٌ سداسيّةٌ ورديّة -->
+    <g id="fl">
+      <g fill="#C76A78">
+        <ellipse cy="-3.5" rx="1.9" ry="2.9"/>
+        <ellipse cy="-3.5" rx="1.9" ry="2.9" transform="rotate(60)"/>
+        <ellipse cy="-3.5" rx="1.9" ry="2.9" transform="rotate(120)"/>
+        <ellipse cy="-3.5" rx="1.9" ry="2.9" transform="rotate(180)"/>
+        <ellipse cy="-3.5" rx="1.9" ry="2.9" transform="rotate(240)"/>
+        <ellipse cy="-3.5" rx="1.9" ry="2.9" transform="rotate(300)"/>
+      </g>
+      <circle r="1.6" fill="#B79A5B"/>
+    </g>
+
+    <!-- فصٌّ كريميٌّ: ورقةٌ مدبّبةٌ تتعاقب فوق الشريط وتحته -->
+    <g id="lb">
+      <path d="M0 0C-4.6 -3.4 -4.6 -10.4 0 -13.4C4.6 -10.4 4.6 -3.4 0 0Z"
+            fill="#FFFDF5" stroke="#789C7E" stroke-width=".8"/>
+    </g>
+
+    <!-- ضلعٌ واحد: أرضيةٌ خضراء بين خطّين داكنين، وعليها الفصوصُ والزهرات -->
+    <g id="side">
+      <rect x="40" y="3" width="80" height="34" fill="#3F7558"/>
+      <path d="M40 1.5H120M40 38.5H120" stroke="#285C45" stroke-width="3"/>
+      <path d="M40 5.6H120M40 34.4H120" stroke="#789C7E" stroke-width=".9" opacity=".7"/>
+      <!-- فصوصٌ متعاقبة: علويةٌ ثمّ سفليةٌ على طول الشريط -->
+      <use href="#lb" transform="translate(50 23) scale(1.35)"/>
+      <use href="#lb" transform="translate(70 17) rotate(180) scale(1.35)"/>
+      <use href="#lb" transform="translate(90 23) scale(1.35)"/>
+      <use href="#lb" transform="translate(110 17) rotate(180) scale(1.35)"/>
+      <!-- زهراتٌ في الفواصل -->
+      <use href="#fl" transform="translate(60 20) scale(1.2)"/>
+      <use href="#fl" transform="translate(80 20) scale(1.2)"/>
+      <use href="#fl" transform="translate(100 20) scale(1.2)"/>
+      <use href="#fl" transform="translate(120 20) scale(1.2)"/>
+    </g>
+
+    <!-- ركنٌ: مربّعٌ أخضرُ فيه ميداليةٌ كريميةٌ بقلبٍ ورديّ -->
+    <g id="corner">
+      <rect x="3" y="3" width="34" height="34" fill="#3F7558"/>
+      <path d="M1.5 1.5H40M1.5 1.5V40" stroke="#285C45" stroke-width="3"/>
+      <path d="M38.5 38.5H40M38.5 38.5V40" stroke="#285C45" stroke-width="3"/>
+      <path d="M5.6 5.6H40M5.6 5.6V40" stroke="#789C7E" stroke-width=".9" opacity=".7"/>
+      <g transform="translate(20 20)">
+        <g fill="#FFFDF5" stroke="#789C7E" stroke-width=".7">
+          <ellipse cy="-8.4" rx="3.2" ry="5.4"/>
+          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(45)"/>
+          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(90)"/>
+          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(135)"/>
+          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(180)"/>
+          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(225)"/>
+          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(270)"/>
+          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(315)"/>
+        </g>
+        <circle r="4.6" fill="#FFFDF5" stroke="#B79A5B" stroke-width=".9"/>
+        <use href="#fl" transform="scale(.82)"/>
+      </g>
+    </g>
+  </defs>
+
+  <use href="#side"/>
+  <use href="#side" transform="rotate(90 80 80)"/>
+  <use href="#side" transform="rotate(180 80 80)"/>
+  <use href="#side" transform="rotate(270 80 80)"/>
+  <use href="#corner"/>
+  <use href="#corner" transform="rotate(90 80 80)"/>
+  <use href="#corner" transform="rotate(180 80 80)"/>
+  <use href="#corner" transform="rotate(270 80 80)"/>
+</svg>
