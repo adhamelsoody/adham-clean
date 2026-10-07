@@ -11931,3 +11931,105 @@ body[data-iface="student"] .content { padding-top: 14px; }
    الجديد يقع عليه الحكمُ نفسُه، جُعل للمختار لونُ النظام، وتبقى
    الأنواعُ الملوَّنةُ على ألوانها لأنّ قاعدتَها أخصُّ منه. */
 .mus-mode.on { background: #0f6f72; }
+
+/* =========================================================================
+   ورقةُ المصحف على هيئة المصحف المدنيّ
+   -------------------------------------------------------------------------
+   المواصفات: «أريد في المصحف أن يكون نفسَ الإطار، ويكون نفسَ ترتيب آيات
+   مصحف المدينة».
+
+   • الترتيب: كلُّ سطرٍ في الورقة سطرٌ واحدٌ على الشاشة — nowrap، ويضبطه
+     musFit بعد الرسم. وكان يُبرَّر بـ justify فينكسر إلى سطرين في العمود
+     الضيّق، فيرى الطالبُ ثلاثين سطراً حيث في ورقته خمسةَ عشر.
+   • الإطار: حاشيةٌ مزخرفةٌ بين خطّين أخضرين وفي أركانها ميدالياتٌ، تُرسم
+     بـ border-image فتتكرّر على الأضلاع وتستقيم في الزوايا. والزخرفةُ من
+     وضعنا على سَنن الزخرفة الإسلامية — لا نقلَ لتذهيب مصحفٍ بعينه.
+   • الرأسُ فوق الإطار والرقمُ تحته، كما هما في الورقة المطبوعة.
+   ========================================================================= */
+
+/* ---- السطر: واحدٌ لا ينكسر ---- */
+.mus-lines .mus-line {
+  display: block;
+  white-space: nowrap;
+  text-align: right;
+  text-align-last: right;
+  word-spacing: normal;
+  transform-origin: right center;
+}
+.mus-lines.mus-first .mus-line,
+.mus-lines .mus-line.mus-short {
+  text-align: center; text-align-last: center;
+  white-space: normal; word-spacing: normal; transform: none;
+}
+
+/* ---- رأسُ الورقة وقدمُها: خارج الإطار ---- */
+.mus-ptop {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0 6px 6px; font-size: 12.5px; font-weight: 700;
+  color: #2f6b4f; font-family: "Amiri", "Scheherazade New", serif;
+}
+.mus-pfoot {
+  text-align: center; padding-top: 8px;
+  font-size: 14px; font-weight: 700; color: #2f6b4f;
+  font-family: "Amiri", "Scheherazade New", serif;
+}
+
+/* ---- الإطار المزخرف ---- */
+.mus-orn {
+  padding: 0;
+  border: 13px solid transparent;
+  border-radius: 0;
+  background-color: #fdfaf0;
+  background-image: none;
+  box-shadow: 0 10px 30px rgba(0,0,0,.14);
+  border-image-source: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'><defs><g id='v'><path d='M36 18c6-11 12 11 18 0s12 11 18 0 12 11 18 0' fill='none' stroke='%232f6b4f' stroke-width='2.2' stroke-linecap='round'/><circle cx='45' cy='12' r='2.6' fill='%23b4476b'/><circle cx='63' cy='24' r='2.6' fill='%23b4476b'/><circle cx='81' cy='12' r='2.6' fill='%23b4476b'/></g><g id='c'><path d='M6 6h24v24H6z' fill='none' stroke='%232f6b4f' stroke-width='2.2'/><circle cx='18' cy='18' r='7.5' fill='none' stroke='%232f6b4f' stroke-width='2'/><circle cx='18' cy='18' r='3.2' fill='%23b4476b'/><path d='M18 7.5v3M18 25.5v3M7.5 18h3M25.5 18h3' stroke='%232f6b4f' stroke-width='2' stroke-linecap='round'/></g></defs><rect x='1.6' y='1.6' width='116.8' height='116.8' fill='none' stroke='%232f6b4f' stroke-width='3.2'/><rect x='33' y='33' width='54' height='54' fill='none' stroke='%232f6b4f' stroke-width='2.2'/><use href='%23v'/><use href='%23v' transform='rotate(90 60 60)'/><use href='%23v' transform='rotate(180 60 60)'/><use href='%23v' transform='rotate(270 60 60)'/><use href='%23c'/><use href='%23c' transform='rotate(90 60 60)'/><use href='%23c' transform='rotate(180 60 60)'/><use href='%23c' transform='rotate(270 60 60)'/></svg>");
+  border-image-slice: 34;
+  border-image-repeat: round;
+  border-image-width: 13px;
+}
+.mus-orn.plain {
+  border: 1.6px solid #2f6b4f; border-image: none;
+  background-image: none; box-shadow: none;
+}
+
+.mus-inner {
+  background: #fdfaf0;
+  border: 1.4px solid #2f6b4f;
+  border-radius: 0;
+  padding: 14px 13px 16px;
+}
+
+/* ---- شريطُ اسم السورة: خطّان أخضران والاسمُ بينهما ---- */
+.mus-lines .mus-surah, .mus-surah {
+  border: 1.6px solid #2f6b4f; border-radius: 0;
+  background: #f3efdd; background-image: none;
+  padding: 4px 10px; margin: 6px 0 4px;
+  box-shadow: inset 0 0 0 2.4px #fdfaf0, inset 0 0 0 3.6px #2f6b4f;
+}
+.mus-surah span {
+  display: inline-block; padding: 0 10px;
+  font-size: 1.15em; font-weight: 700; color: #1f4f3a; letter-spacing: 0;
+  font-family: "Amiri", "Scheherazade New", serif;
+}
+
+.mus-basmala { color: #1f4f3a; font-size: 1.05em; margin-bottom: 6px; }
+
+/* علامةُ الحزب: نجمةٌ صغيرةٌ في مسار السطر لا كلمةٌ تُطيله */
+.mus-lines .mus-hizb {
+  border: 0; background: transparent; padding: 0; margin: 0 2px;
+  color: #b08b2e; font-size: 1em; font-weight: 400;
+  font-family: "Amiri", "Scheherazade New", serif;
+}
+
+/* ---- رقمُ الآية: وردةٌ صغيرةٌ كما في الورقة المطبوعة ---- */
+.mus-num {
+  min-width: 1.45em; height: 1.45em; line-height: 1.45em;
+  color: #1f4f3a; border: 0; background: transparent;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><g fill='none' stroke='%232f6b4f' stroke-width='1.5'><circle cx='16' cy='16' r='10.5'/><circle cx='16' cy='16' r='13' stroke-dasharray='1.6 3.1' stroke-linecap='round'/></g></svg>");
+  background-repeat: no-repeat; background-position: center;
+  background-size: 100% 100%;
+  font-size: .62em; font-family: "Amiri", "Scheherazade New", serif; font-weight: 700;
+}
+.mus-num.tap:hover { background-color: transparent; border: 0; color: #0b7f83; }
+
+[data-theme="dark"] .mus-ptop, [data-theme="dark"] .mus-pfoot { color: #6fae8e; }

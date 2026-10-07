@@ -30313,6 +30313,100 @@ function musWordIndex(n) {
 /* رسم صفحة واحدة داخل الفرشة — تُستعمل لليمنى واليسرى معاً */
 const QNAME = ["", "الحزب", "ربع الحزب", "نصف الحزب", "ثلاثة أرباع الحزب"];
 
+/* ترتيبُ الجزء كما يُكتب في رأس الورقة: «الجزء الرابع» لا «الجزء ٤» */
+const JUZ_ORD = ["", "الأول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس",
+  "السابع", "الثامن", "التاسع", "العاشر", "الحادي عشر", "الثاني عشر",
+  "الثالث عشر", "الرابع عشر", "الخامس عشر", "السادس عشر", "السابع عشر",
+  "الثامن عشر", "التاسع عشر", "العشرون", "الحادي والعشرون", "الثاني والعشرون",
+  "الثالث والعشرون", "الرابع والعشرون", "الخامس والعشرون", "السادس والعشرون",
+  "السابع والعشرون", "الثامن والعشرون", "التاسع والعشرون", "الثلاثون"];
+function juzOrd(j) {
+  const n = Number(j) || 0;
+  return JUZ_ORD[n] || (n ? toArabicDigits(n) : "—");
+}
+
+/* =========================================================================
+   السطرُ الواحدُ في الورقة سطرٌ واحدٌ على الشاشة
+   -------------------------------------------------------------------------
+   المواصفات: «يكون نفسَ ترتيب آيات مصحف المدينة». ومواضعُ الأسطر كانت
+   صحيحةً في quran/lines.json، لكنّ السطرَ كان يُبرَّر بـ text-align:justify
+   فإن ضاق العمودُ عن طوله انكسر إلى سطرين على الشاشة — فيرى الطالبُ
+   ثلاثين سطراً حيث في ورقته خمسةَ عشر، ويختلّ ما حفظه بالصفحة.
+
+   فصار السطرُ nowrap ويُقاس بعد الرسم: إن قصُر وُزّع فراغُه على مواضع
+   الكلمات كما يفعل التبرير، وإن طال ضُمّ أفقياً كما يُضَمّ في الطبع.
+   والقياسُ بـ Range لأنّ scrollWidth لعنصرٍ كتليٍّ لا ينزل عن عرض الصندوق.
+   ========================================================================= */
+function musLineW(ln) {
+  try {
+    const r = document.createRange();
+    r.selectNodeContents(ln);
+    return r.getBoundingClientRect().width;
+  } catch (e) { return ln.scrollWidth || 0; }
+}
+
+function musFit(root) {
+  const host = root && root.querySelectorAll ? root : document;
+  const boxes = host.querySelectorAll(".mus-lines");
+  if (!boxes.length) return;
+
+  boxes.forEach(box => {
+    const C = box.clientWidth;
+    if (!C) return;
+    const lines = [].slice.call(box.querySelectorAll(".mus-line"));
+    if (!lines.length) return;
+
+    /* المقاسُ المختارُ سقفٌ لا قاعدة: الورقةُ تُصغَّر لتسع أطولَ سطرٍ
+       فيها، وإلّا انكسر السطرُ وبطل ترتيبُ المصحف. */
+    const base = Math.max(9, Number(box.getAttribute("data-size")) || 21);
+    box.style.fontSize = base + "px";
+    lines.forEach(ln => { ln.style.wordSpacing = ""; ln.style.transform = ""; });
+
+    if (box.classList.contains("mus-first")) return;   /* الفاتحةُ متوسّطة */
+
+    let max = 0;
+    lines.forEach(ln => {
+      if (ln.classList.contains("mus-short")) return;
+      const w = musLineW(ln);
+      if (w > max) max = w;
+    });
+    if (max > C + 0.5) {
+      box.style.fontSize = Math.max(8.5, base * (C / max)).toFixed(2) + "px";
+    }
+
+    /* ثمّ يُبرَّر كلُّ سطرٍ إلى عرض الورقة بتوزيع فراغه على مواضع كلماته */
+    lines.forEach(ln => {
+      if (ln.classList.contains("mus-short")) return;
+      const w0 = musLineW(ln);
+      if (!w0) return;
+      /* أقصرُ من نصف الورقة: سطرُ ختامٍ — يُتوسَّط ولا يُمطّ */
+      if (w0 < C * 0.55) { ln.classList.add("mus-short"); return; }
+      const gaps = Math.max(1,
+        ln.querySelectorAll(".mus-w, .mus-num, .mus-hizb").length - 1);
+      let ws = (C - w0) / gaps;
+      ln.style.wordSpacing = ws.toFixed(3) + "px";
+      /* تصحيحٌ واحد: عددُ المواضع تقديريّ، فيُقاس الناتجُ ويُعدَّل */
+      const w1 = musLineW(ln);
+      if (Math.abs(w1 - C) > 0.5) {
+        ws += (C - w1) / gaps;
+        ln.style.wordSpacing = ws.toFixed(3) + "px";
+      }
+    });
+  });
+}
+window.musFit = musFit;
+
+/* القياسُ يتغيّر بتغيّر العرض وبوصول الخطّ: الأمِيريّ يُحمَّل بعد الرسم
+   فتتبدّل أعراضُ الكلمات، ولو لم يُعَد الضبطُ بقيت الأسطرُ على قياس خطٍّ
+   احتياطيّ. */
+(function () {
+  let t = 0;
+  const again = () => { clearTimeout(t); t = setTimeout(() => musFit(), 80); };
+  try { window.addEventListener("resize", again); } catch (e) {}
+  try { window.addEventListener("orientationchange", again); } catch (e) {}
+  try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(again); } catch (e) {}
+})();
+
 function mushafSheet(n) {
   const rows = MUSHAF_CACHE[n];
   const m = mushaf();
@@ -30369,7 +30463,9 @@ function mushafSheet(n) {
         const rb = P.marks ? QRUB[seg[0] + ":" + seg[1]] : null;
         if (rb && seg[2] === 1) {
           const h = rb[1] === 1 ? "الحزب " + toArabicDigits(rb[0]) : QNAME[rb[1]];
-          html += `<span class="mus-hizb" title="${esc(h)}">${esc(h)}</span> `;
+          /* في الورقة المطبوعة علامةُ الحزب نجمةٌ صغيرةٌ لا كلمةٌ في
+             صدر السطر — والكلمةُ كانت تُطيل السطرَ فيُضَمّ ما بعدها. */
+          html += `<span class="mus-hizb" title="${esc(h)}">۞</span> `;
         }
         for (let p = seg[2]; p <= seg[3] && p <= sv.w.length; p++) {
           html += wordHTML(sv, p - 1) + " ";
@@ -30383,23 +30479,32 @@ function mushafSheet(n) {
         }
       });
       /* سطرُ الصفحة الأخيرُ إن قصُر لا يُمطّ: في المصحف المطبوع يُتوسَّط،
-         وتمطيطُه يباعد بين كلماته الثلاث أو الأربع عرضَ الورقة كلَّه. */
-      return `<div class="mus-line${wc > 0 && wc <= 5 && last ? " mus-short" : ""}">${html}</div>`;
+         وتمطيطُه يباعد بين كلماته الثلاث أو الأربع عرضَ الورقة كلَّه.
+         والفراغُ الأخيرُ يُقصّ لأنّ القياسَ في musFit يحسبه عرضاً. */
+      return `<div class="mus-line${wc > 0 && wc <= 5 && last ? " mus-short" : ""}">${
+        html.replace(/\s+$/, "")}</div>`;
     }).join("");
 
+    /* الضبطُ بعد الرسم لا قبله: يُجدوَل هنا فيقع بعد وضع الورقة في
+       الصفحة مهما كان مَن استدعى الرسم. */
+    try { requestAnimationFrame(function () { musFit(); }); } catch (e) {}
+
+    /* الرأسُ فوق الإطار والرقمُ تحته — هكذا هما في المصحف المطبوع،
+       وكانا داخل الإطار. */
     return `<div class="mus-page">
+      ${P.top ? `<div class="mus-ptop">
+        <span>الجزء ${esc(juzOrd(first.j))}</span>
+        <span>سُورَةُ ${esc(sName(first.s))}</span>
+      </div>` : ""}
       <div class="mus-orn${P.orn ? "" : " plain"}">
         <div class="mus-inner">
-          ${P.top ? `<div class="mus-head">
-            <span>${esc(sName(first.s))}</span>
-            <span>الجزء ${toArabicDigits(first.j || "—")}</span>
-          </div>` : ""}
           <div class="mus-text mus-lines${P.thick ? " thick" : ""}${
             n === 1 ? " mus-first" : ""}" dir="rtl"
+            data-size="${Number(P.size) || 21}"
             style="font-size:${Number(P.size) || 21}px">${linesHTML}</div>
-          <div class="mus-pagenum">${toArabicDigits(n)}</div>
         </div>
       </div>
+      <div class="mus-pfoot">${toArabicDigits(n)}</div>
     </div>`;
   }
 
@@ -35234,6 +35339,8 @@ function mount() {
   /* والشريطُ الجانبيُّ يُراجَع مع كلّ رسم: زرُّ الخروج يضعه auth.js بعد
      أوّل رسمٍ للقائمة، فلا يكفي مراجعتُه عند إعادتها. */
   try { hideSideNavFor(STATE.iface); } catch (e) {}
+  /* وأسطرُ المصحف تُضبط على عرض الورقة بعد الرسم — القياسُ لا يصحّ قبله */
+  try { if (typeof musFit === "function") musFit(); } catch (e) {}
 
   /* الواجهة تُصحَّح عند كل رسم، فلا يكفي تعديل STATE.iface يدوياً للتحايل */
   const allow = allowedIface();
@@ -45342,7 +45449,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261007-0155";
+  var APP_BUILD = "20261007-2140";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
