@@ -30350,46 +30350,72 @@ function musFit(root) {
   const boxes = host.querySelectorAll(".mus-lines");
   if (!boxes.length) return;
 
+  /* التضييقُ والتوسيعُ الأفقيُّ للحروف — كالكشيدة في الطبع، والفراغُ بين
+     الكلمات آخرُ ما يُلجأ إليه لا أوّلُه.
+     MIN_S هدفٌ لا حدٌّ: يُقاس عليه الخطُّ، فإن بقي سطرٌ أعرضَ من الورقة
+     ضُيِّق دونه — فالخروجُ عن الورقة لا يُحتمل. و MAX_S حدٌّ قاطعٌ للتوسيع.
+     وما عجز عنه التوسيعُ يُوزَّع فراغاً بسقفٍ، وما زاد تُرك السطرُ قصيراً
+     ولا يُمطّ — فالمطُّ أقبحُ من القِصَر. */
+  const MIN_S = 0.90, MAX_S = 1.12, WS_CAP = 0.22;
+
   boxes.forEach(box => {
     const C = box.clientWidth;
     if (!C) return;
     const lines = [].slice.call(box.querySelectorAll(".mus-line"));
     if (!lines.length) return;
 
-    /* المقاسُ المختارُ سقفٌ لا قاعدة: الورقةُ تُصغَّر لتسع أطولَ سطرٍ
-       فيها، وإلّا انكسر السطرُ وبطل ترتيبُ المصحف. */
     const base = Math.max(9, Number(box.getAttribute("data-size")) || 21);
     box.style.fontSize = base + "px";
     lines.forEach(ln => { ln.style.wordSpacing = ""; ln.style.transform = ""; });
 
     if (box.classList.contains("mus-first")) return;   /* الفاتحةُ متوسّطة */
 
-    let max = 0;
-    lines.forEach(ln => {
-      if (ln.classList.contains("mus-short")) return;
-      const w = musLineW(ln);
-      if (w > max) max = w;
-    });
-    if (max > C + 0.5) {
-      box.style.fontSize = Math.max(8.5, base * (C / max)).toFixed(2) + "px";
-    }
+    /* الأسطرُ التي تُقاس: ما عدا سطورَ الختام القصيرة */
+    const meas = lines.filter(ln => !ln.classList.contains("mus-short"));
+    let wide = 0;
+    meas.forEach(ln => { const w = musLineW(ln); if (w > wide) wide = w; });
+    if (!wide) return;
 
-    /* ثمّ يُبرَّر كلُّ سطرٍ إلى عرض الورقة بتوزيع فراغه على مواضع كلماته */
+    /* أكبرُ خطٍّ يسع أعرضَ سطرٍ بعد تضييقه إلى حدّه — فيكبُر الخطُّ
+       ويقلّ الفراغ معاً، بدل تصغيره حتى يسع أعرضَ سطرٍ بلا تضييق. */
+    const f = Math.min(1, (C / (wide * MIN_S)));
+    const size = Math.max(8.5, base * f);
+    box.style.fontSize = size.toFixed(2) + "px";
+
     lines.forEach(ln => {
       if (ln.classList.contains("mus-short")) return;
+      /* القياسُ بعد التحويل لا قبله: Range يُرجع إحداثياتِ الشاشة، فعرضُه
+         يحمل مقياسَ السطر أصلاً. ولذلك يُقاس أوّلاً بلا تحويل، ثمّ يُقاس
+         المرسومُ ويُقارَن بعرض الورقة مباشرةً. */
       const w0 = musLineW(ln);
       if (!w0) return;
       /* أقصرُ من نصف الورقة: سطرُ ختامٍ — يُتوسَّط ولا يُمطّ */
       if (w0 < C * 0.55) { ln.classList.add("mus-short"); return; }
+
+      let sc = Math.min(MAX_S, C / w0);      /* بلا حدٍّ أدنى: يسع دائماً */
+      if (Math.abs(sc - 1) > 0.002) ln.style.transform = "scaleX(" + sc.toFixed(4) + ")";
+
+      /* ما بقي بعد التوسيع يُوزَّع على مواضع الكلمات بسقف. والمباعدةُ
+         تُضرب في مقياس السطر، فتُقسَّم عليه هنا. */
       const gaps = Math.max(1,
         ln.querySelectorAll(".mus-w, .mus-num, .mus-hizb").length - 1);
-      let ws = (C - w0) / gaps;
-      ln.style.wordSpacing = ws.toFixed(3) + "px";
-      /* تصحيحٌ واحد: عددُ المواضع تقديريّ، فيُقاس الناتجُ ويُعدَّل */
-      const w1 = musLineW(ln);
-      if (Math.abs(w1 - C) > 0.5) {
-        ws += (C - w1) / gaps;
+      const cap = WS_CAP * size;
+      let w1 = musLineW(ln);
+      if (C - w1 > 0.5) {
+        let ws = Math.min(cap, (C - w1) / (gaps * sc));
         ln.style.wordSpacing = ws.toFixed(3) + "px";
+        w1 = musLineW(ln);
+        if (ws < cap - 0.01 && C - w1 > 0.5) {
+          ws = Math.min(cap, ws + (C - w1) / (gaps * sc));
+          ln.style.wordSpacing = ws.toFixed(3) + "px";
+          w1 = musLineW(ln);
+        }
+      }
+      /* ضمانٌ أخير: ما تجاوز الورقةَ يُضيَّق إلى عرضها بالضبط، فلا يخرج
+         حرفٌ عن الإطار ولا يظهر تمريرٌ أفقيّ. */
+      if (w1 > C + 0.5) {
+        sc = sc * (C / w1);
+        ln.style.transform = "scaleX(" + sc.toFixed(4) + ")";
       }
     });
   });
@@ -45449,7 +45475,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261007-2350";
+  var APP_BUILD = "20261008-0030";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

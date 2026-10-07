@@ -12031,7 +12031,16 @@ body[data-iface="student"] .content { padding-top: 14px; }
 /* ---- النصّ: كلُّ سطرٍ في الورقة سطرٌ واحدٌ على الشاشة ----
    وكان يُبرَّر بـ justify فينكسر في العمود الضيّق إلى سطرين، فيرى الطالبُ
    ثلاثين سطراً حيث في ورقته خمسةَ عشر. ويضبطه musFit بعد الرسم. */
-.mus-text.mus-lines { line-height: 1.95; color: var(--mq-ink, #10201a); }
+.mus-text.mus-lines {
+  line-height: 1.82; color: var(--mq-ink, #10201a);
+  /* توسيعُ السطر أفقياً يمطّ صندوقَه كلَّه لا نصَّه، فيخرج الفارغُ منه
+     عن الورقة ويظهر تمريرٌ أفقيّ. والنصُّ نفسُه لا يتجاوز العرضَ أبداً
+     (يضمنه musFit)، فقصُّ ما زاد أفقياً آمنٌ ويُنهي التمرير. */
+  overflow-x: clip;
+}
+@supports not (overflow-x: clip) {
+  .mus-text.mus-lines { overflow: hidden; padding-block: 2px; }
+}
 .mus-lines .mus-line {
   display: block;
   white-space: nowrap;
