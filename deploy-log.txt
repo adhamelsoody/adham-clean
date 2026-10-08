@@ -1,0 +1,97 @@
+﻿المجلّد: C:\Users\DELL\Desktop\adham-clean
+الوقت:  09/25/2026 11:47:00
+
+=== نسخة الملف المحلّي ===
+> Get-Content .\version.json -Raw
+{"build":"20260925-1130"}
+
+exit code = 0
+
+=== آخر التزام ===
+> git log --oneline -1
+8f1bee9 صفحة الطالب مطابقة للتصميم: بلا بطاقة الخطة، وزر فتح، وثلاث شارات، وشارة الكاميرا
+
+exit code = 0
+
+=== حالة العمل ===
+> git status --porcelain
+?? _backup-20260924-185945/
+?? _backup-20260924-220237/
+?? _backup-20260925-003828/
+?? _backup-20260925-004643/
+?? _backup-20260925-010853/
+?? _backup-20260925-103615/
+?? _backup-20260925-105429/
+?? _backup-20260925-111957/
+?? _backup-20260925-112841/
+?? deploy-log.txt
+?? zat-deploy-check.ps1
+?? zat-update-11.ps1
+?? zat-update-12.ps1
+?? zat-update-13.ps1
+?? zat-update-14.ps1
+?? zat-update-15b.ps1
+?? zat-update-16.ps1
+?? zat-update-17.ps1
+
+exit code = 0
+
+=== نسخة firebase ===
+> firebase --version
+15.30.0
+
+exit code = 0
+
+=== المشروع المرتبط ===
+> firebase use
+mirath-72e2f
+
+exit code = 0
+
+=== ملف firebaserc ===
+> Get-Content .\.firebaserc -Raw
+{
+  "projects": {
+    "default": "mirath-72e2f"
+  }
+}
+
+
+exit code = 0
+
+=== مواقع الاستضافة ===
+> firebase hosting:sites:list
+
+Sites for project [1mmirath-72e2f[22m
+
+[90m┌──────────────[39m[90m┬──────────────────────────────[39m[90m┬─────────────────┐[39m
+[90m│[39m[32m Site ID      [39m[90m│[39m[32m Default URL                  [39m[90m│[39m[32m App ID (if set) [39m[90m│[39m
+[90m├──────────────[39m[90m┼──────────────────────────────[39m[90m┼─────────────────┤[39m
+[90m│[39m mirath-72e2f [90m│[39m https://mirath-72e2f.web.app [90m│[39m --              [90m│[39m
+[90m└──────────────[39m[90m┴──────────────────────────────[39m[90m┴─────────────────┘[39m
+
+exit code = 0
+
+=== النشر ===
+> firebase deploy --only hosting
+
+[1m[37m===[39m Deploying to 'mirath-72e2f'...[22m
+
+[36m[1mi [22m[39m deploying [1mhosting[22m
+[36m[1mi  hosting[mirath-72e2f]:[22m[39m beginning deploy...
+[36m[1mi  hosting[mirath-72e2f]:[22m[39m found 704 files in [1m.[22m
+[32m[1m+  hosting[mirath-72e2f]:[22m[39m file upload complete
+[36m[1mi  hosting[mirath-72e2f]:[22m[39m finalizing version...
+[32m[1m+  hosting[mirath-72e2f]:[22m[39m version finalized
+[36m[1mi  hosting[mirath-72e2f]:[22m[39m releasing new version...
+[32m[1m+  hosting[mirath-72e2f]:[22m[39m release complete
+
+[32m[1m+ [22m[39m [1m[4mDeploy complete![24m[22m
+
+[1mProject Console:[22m https://console.firebase.google.com/project/mirath-72e2f/overview
+[1mHosting URL:[22m https://mirath-72e2f.web.app
+
+exit code = 0
+
+=== تمّ الفحص ===
+أرسِل الملفّ: C:\Users\DELL\Desktop\adham-clean\deploy-log.txt
