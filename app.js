@@ -26691,11 +26691,11 @@ function teacherStudent() {
       <div class="section-head"><h3>خطة التسميع</h3></div>
       <div class="duty-grid">
         ${dutyCard("hifz", "t-green", "book", "الحفظ الجديد",
-          p.current ? `<strong class="duty-range">${esc(p.current)}</strong>
+          planPosText(p, "hifz") ? `<strong class="duty-range">${esc(planPosText(p, "hifz"))}</strong>
             ${p.amount ? `<div class="duty-sum">المقدار: ${esc(p.amount)} ${esc(p.unit || "")}</div>` : ""}`
           : `<span class="muted">لم يُحدَّد بعد.</span>`)}
         ${dutyCard("rev", "t-blue", "list", "المراجعة",
-          p.start ? `<strong class="duty-range">${esc(p.start)}</strong>`
+          planPosText(p, "rev") ? `<strong class="duty-range">${esc(planPosText(p, "rev"))}</strong>`
                   : `<span class="muted">لم تُحدَّد بعد.</span>`)}
         ${dutyCard("fix", "t-amber", "target", "المستوى",
           `<strong class="duty-range">${esc(p.level || "—")}</strong>
@@ -31733,6 +31733,31 @@ function normalizePlan(p) {
   return p;
 }
 
+/* =========================================================================
+   موضعُ الخطة نصّاً حين لم يُكتب نصُّه بعد
+   -------------------------------------------------------------------------
+   «عند وضع الخطة لا تظهر للمعلّم ولا للطالب»: ضبطُ البرنامج والمستوى
+   وموضعِ البداية من بطاقة الطالب يمرُّ بـ spSyncEnginePlan، وهي تكتب في
+   الخطة حقولَ المحرّك (hifzFromS/hifzFromA و revFromS/revFromA) ولا تكتب
+   نصَّي العرض (current/start). وبطاقةُ المعلّم وشاشةُ الطالب تقرآن النصَّين
+   وحدَهما، فتقولان «لم يُحدَّد بعد» والموضعُ محفوظٌ في الخطة فعلاً.
+
+   فيُشتقُّ النصُّ هنا من حقول المحرّك عند العرض. ولا كتابةَ ألبتة: بياناتُ
+   الخطة لا تتغيّر إلا بإجراءٍ صريحٍ من مسؤول، وأوّلُ حفظٍ للواجب يكتب
+   النصَّ كما كان.
+   ========================================================================= */
+function planPosText(p, which) {
+  if (!p) return "";
+  const txt = which === "rev" ? p.start : p.current;
+  if (txt) return String(txt);
+  const s = Number(which === "rev" ? p.revFromS : p.hifzFromS) || 0;
+  const a = Number(which === "rev" ? p.revFromA : p.hifzFromA) || 1;
+  if (!s) return "";
+  const nm = typeof surahName === "function" ? surahName(s) : "";
+  if (!nm) return "";
+  return "من " + nm + " " + a;
+}
+
 function planOfStudent(st) {
   if (!st) return null;
   /* تُسوّى الهمزات والمسافات كذلك — لا يكفي تسوية المسافات وحدها */
@@ -32718,11 +32743,11 @@ function teacherPlans() {
 
     <div class="duty-grid">
       ${dutyCard("hifz", "t-green", "book", "الحفظ الجديد",
-        p.current ? `<strong class="duty-range">${esc(p.current)}</strong>
+        planPosText(p, "hifz") ? `<strong class="duty-range">${esc(planPosText(p, "hifz"))}</strong>
           ${p.amount ? `<div class="duty-sum">المقدار: ${esc(p.amount)} ${esc(p.unit || "")}</div>` : ""}`
         : `<span class="muted">لم يُحدَّد بعد.</span>`)}
       ${dutyCard("rev", "t-blue", "list", "المراجعة",
-        p.start ? `<strong class="duty-range">${esc(p.start)}</strong>` : `<span class="muted">لم تُحدَّد بعد.</span>`)}
+        planPosText(p, "rev") ? `<strong class="duty-range">${esc(planPosText(p, "rev"))}</strong>` : `<span class="muted">لم تُحدَّد بعد.</span>`)}
       ${dutyCard("fix", "t-amber", "target", "المستوى",
         `<strong class="duty-range">${esc(p.level || "—")}</strong>
          <div class="duty-sum">${esc(p.program || "—")}</div>`)}
@@ -34755,7 +34780,8 @@ function studentProgress() {
 
   const info = [
     ["البرنامج", p.program || "—"], ["المستوى", p.level || "—"],
-    ["بداية الخطة", p.start || "—"], ["الموضع الحالي", p.current || "—"],
+    ["بداية الخطة", planPosText(p, "rev") || "—"],
+    ["الموضع الحالي", planPosText(p, "hifz") || "—"],
     ["نهاية الخطة", p.end || "—"],
     ["المقدار اليومي", (p.amount || "—") + " " + (p.unit || "")]
   ].map(r => `<div class="kv"><span>${esc(r[0])}</span><strong>${esc(String(r[1]))}</strong></div>`).join("");
@@ -39423,9 +39449,24 @@ let SP_SURAHS = null;
 
 function spSurahIdx(name) {
   const n = String(name || "").trim();
-  if (!n || !Array.isArray(SP_SURAHS)) return 0;
-  const hit = SP_SURAHS.find(x => String(x.n) === n);
-  return hit ? Number(hit.i) : 0;
+  if (!n) return 0;
+  /* =======================================================================
+     الفهرسُ الاحتياطيّ — وإلّا ضاعت سورةُ الابتداء بلا خبر
+     -----------------------------------------------------------------------
+     SP_SURAHS لا تُملأ إلا من spFillSurahs، وهي تنصرف إن لم تكن قوائمُ
+     السور مرسومةً في الصفحة، وتملؤها بعد ردِّ الشبكة. فمن حفظ بطاقةَ
+     الطالب قبل ذلك عادت هذه الدالّةُ صفراً، فلم يُكتب hifzFromS ولا
+     revFromS، فخلت الخطةُ من موضعها ولم يظهر للمعلّم ولا للطالب شيء —
+     بلا رسالةِ خطأ. والفهرسُ العامُّ QSURAHS حاضرٌ متى حُمّل من أيّ شاشة،
+     فيُسأل عند غياب الأوّل.
+     ======================================================================= */
+  const hit = Array.isArray(SP_SURAHS) ? SP_SURAHS.find(x => String(x.n) === n) : null;
+  if (hit) return Number(hit.i);
+  if (typeof QSURAHS !== "undefined" && Array.isArray(QSURAHS)) {
+    const q = QSURAHS.find(x => String(x.n) === n);
+    if (q) return Number(q.i);
+  }
+  return 0;
 }
 
 /* =========================================================================
@@ -46119,7 +46160,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261008-2210";
+  var APP_BUILD = "20261008-2320";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
