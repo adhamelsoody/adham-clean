@@ -30832,9 +30832,9 @@ function q4Glyph(c) { return String.fromCharCode(c); }
    يضيع الاسم. فيُقاسان هنا ويُضبط مقاسُهما ليشغلا من عرض الورقة ما
    يشغلانه في المطبوع: العنوانُ يملؤه تقريباً، والبسملةُ نحوَ نصفِه.
    ========================================================================= */
-const Q4_BAN = 0.34, Q4_BSM = 0.54, Q4_REF = 40;
+const Q4_BAN = 0.34, Q4_REF = 40;
 const Q4_BAN_H = 0.66;          /* اسمُ السورة لا يتجاوز صفَّه ارتفاعاً */
-const Q4_BSM_H = 0.82;          /* والبسملةُ كذلك — وإلّا طغت على ما تحتها */
+/* والبسملةُ مقاسُها في التنسيق — رسمٌ لا حرف، فلا تحتاج قياساً */
 
 function q4FitBanner(root) {
   const host = root && root.querySelectorAll ? root : document;
@@ -30843,8 +30843,7 @@ function q4FitBanner(root) {
     if (!C) return;
     let row = 0;
     try { row = parseFloat(getComputedStyle(box).getPropertyValue("--qv-row")) || 0; } catch (e) {}
-    [[".qv-h .qv-ban", Q4_BAN, Q4_BAN_H],
-     [".qv-b .mus-basmala", Q4_BSM, Q4_BSM_H]].forEach(function (p) {
+    [[".qv-h .qv-ban", Q4_BAN, Q4_BAN_H]].forEach(function (p) {
       const e = box.querySelector(p[0]);
       if (!e) return;
       e.style.fontSize = Q4_REF + "px";
@@ -30895,7 +30894,10 @@ function q4Sheet(n, L, idx, wordHTML, first, P, sName) {
      عناوين السور (QBSML) فإن تعذّر كُتب اسمُ السورة نصّاً ولم تُحجب
      الورقةُ كلُّها — فالاسمُ يظهر على كلّ حال. */
   const stems = {};
-  rows.forEach(r => r.forEach(x => { if (x.t !== "h") stems[x.f] = 1; }));
+  rows.forEach(r => r.forEach(x => {
+    if (x.t === "h" || x.t === "b") return;      /* العنوانُ والبسملةُ لهما مخرجٌ آخر */
+    stems[x.f] = 1;
+  }));
   let ready = true;
   Object.keys(stems).forEach(s => { if (q4Font(s) !== "ok") ready = false; });
   if (!ready) return "";                     /* ريثما يصل الخطّ */
@@ -30920,9 +30922,12 @@ function q4Sheet(n, L, idx, wordHTML, first, P, sName) {
     }
     if (ln[0] === "b") {
       if (items.length !== 1 || items[0].t !== "b") return bad("بسملةُ السطر " + (li + 1));
-      linesHTML.push(`<div class="qv-line qv-b"><span class="mus-basmala"
-        style="font-family:'q4-${esc(items[0].f)}'"
-        title="بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ">${q4Glyph(items[0].c)}</span></div>`);
+      /* البسملةُ رسمُها من المصحف المطبوع لا حرفٌ من خطّ الصفحة: فهي
+         واحدةٌ في الصفحات كلِّها مهما تعثّر خطٌّ أو اختلف متصفّح، وتأخذ
+         لونَ النصّ فتصلح في الوضعين النهاريّ والليليّ. */
+      linesHTML.push(`<div class="qv-line qv-b"><span class="mus-basmala qv-bsm"
+        role="img" aria-label="بسم الله الرحمن الرحيم"
+        title="بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ"></span></div>`);
       continue;
     }
 
@@ -46114,7 +46119,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261008-2100";
+  var APP_BUILD = "20261008-2210";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

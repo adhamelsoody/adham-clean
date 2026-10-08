@@ -12307,3 +12307,41 @@ html.mus-fs-on, html.mus-fs-on body { overflow: hidden; }
 .mus-page-wrap.mus-fs .mus-spread.two {
   grid-template-columns: repeat(2, min(46vw, calc((100vh - 84px) / 1.62)));
 }
+
+/* =========================================================================
+   البسملةُ رسماً واحداً، والوضعُ الليليُّ يشمل الورقة، والنوافذُ فوق التكبير
+   -------------------------------------------------------------------------
+   ١) «اريد شكل بسم الله الرحمن الرحيم موحّد دون أي لغبطة»: كانت حرفاً من
+      خطّ الصفحة، فإن تعثّر الخطُّ عند المستخدم رسمه المتصفّحُ بخطٍّ آخرَ
+      يملك الرمزَ نفسَه فخرج مشوّشاً. وهنا رسمُها مقتطعٌ من المصحف المطبوع
+      ويُلوَّن بلون النصّ (mask)، فهو واحدٌ في الصفحات كلِّها ولا يتعلّق
+      بخطٍّ ألبتة، ويصلح في الوضعين النهاريّ والليليّ.
+   ٢) «الوضع الليلي يجعل كل شيء حول المصحف أغمق والمصحف يظل فاتح»: ورقةُ
+      المصحف كانت بلونٍ ثابتٍ لا يتبع السمة. فتُعتَّم هنا ويُفتَّح حبرُها.
+   ٣) «الأزرار لا تعمل عند التكبير»: لفافةُ ملء الشاشة بـ z-index ٩٠٠٠
+      والنوافذُ بـ ٩٠، فكانت تُفتح خلفها فتبدو الأزرارُ ميّتة. تُرفع
+      النوافذُ والتنبيهاتُ فوقها ما دام التكبيرُ قائماً.
+   ========================================================================= */
+.qv-lines .qv-b .mus-basmala.qv-bsm {
+  display: block; width: 54%; aspect-ratio: 281 / 39;
+  margin: 0; padding: 0; font-size: 0; line-height: 0;
+  background: currentColor;
+  color: var(--mq-ink, #10201a);
+  -webkit-mask: url("mushaf-basmala.webp") center / contain no-repeat;
+  mask: url("mushaf-basmala.webp") center / contain no-repeat;
+}
+
+/* ---- الوضعُ الليليّ: الورقةُ معه لا حولَه ---- */
+[data-theme="dark"] .mus-orn,
+[data-theme="dark"] .mus-inner { background: #141d1a; }
+[data-theme="dark"] .mus-text.qv-lines,
+[data-theme="dark"] .mus-text.mus-lines { color: #ece5d2; }
+[data-theme="dark"] .qv-lines .qv-b .mus-basmala.qv-bsm { color: #ece5d2; }
+[data-theme="dark"] .mus-ptop,
+[data-theme="dark"] .mus-pfoot { color: #8fb79f; }
+[data-theme="dark"] .qv-lines .mus-num.qv-end { color: inherit; }
+[data-theme="dark"] .mus-lines .mus-num { color: #cdbd84; }
+
+/* ---- نوافذُ التفضيلات والفهرس والتفسير فوق وضع التكبير ---- */
+html.mus-fs-on .modal-back { z-index: 9200; }
+html.mus-fs-on .toast-stack { z-index: 9300; }
