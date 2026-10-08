@@ -31754,7 +31754,14 @@ function planPosText(p, which) {
   const a = Number(which === "rev" ? p.revFromA : p.hifzFromA) || 1;
   if (!s) return "";
   const nm = typeof surahName === "function" ? surahName(s) : "";
-  if (!nm) return "";
+  if (!nm) {
+    /* فهرسُ السور لم يصل بعد — وهو لا يُحمَّل في شاشات الخطة أصلاً، فكانت
+       هذه الدالّةُ تعود فارغةً فيُقال «لم يُحدَّد» والموضعُ محدَّدٌ في الخطة.
+       فيُطلب الفهرسُ الآن (reciteLoadSurahs تُعيد الرسمَ حين يصل)، ويُعرض
+       الموضعُ برقم سورته ريثما يصل — لا فراغاً. */
+    try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {}
+    return "سورة " + s + " · آية " + a;
+  }
   return "من " + nm + " " + a;
 }
 
@@ -46160,7 +46167,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261008-2320";
+  var APP_BUILD = "20261008-2350";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
