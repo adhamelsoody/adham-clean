@@ -75,7 +75,10 @@ const ICONS = {
   /* شريطُ كتابة المحادثة: ميكروفونٌ وكاميرا، وعلامةُ قراءةٍ مزدوجة */
   mic: 'M12 2a3 3 0 013 3v6a3 3 0 01-6 0V5a3 3 0 013-3zM19 10v1a7 7 0 01-14 0v-1M12 18v4M8 22h8',
   camera: 'M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z',
-  checkDouble: 'M1 12l5 5L17 6M9 17l1.5 1.5L22 7'
+  checkDouble: 'M1 12l5 5L17 6M9 17l1.5 1.5L22 7',
+  /* تكبيرُ المصحف ملءَ الشاشة وإنهاؤه — سهمانِ خارجانِ وآخرانِ داخلان */
+  expand: 'M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7',
+  shrink: 'M4 10h6V4M20 14h-6v6M10 10L4 4M14 14l6 6'
 };
 /* أيقونات مصمتة — تُرسم بالتعبئة لا بالحد */
 const ICONS_SOLID = {
@@ -30193,6 +30196,71 @@ window.musNight = function (on) {
 };
 
 /* =========================================================================
+   تكبيرُ المصحف — ملءَ الشاشة
+   -------------------------------------------------------------------------
+   طلبُ ملء الشاشة يُوجَّه إلى جذرِ الصفحة لا إلى الورقة نفسِها: الورقةُ
+   يُعاد رسمُها عند التأشير والتنقّل، ولو كان الطلبُ عليها لخرجنا من ملء
+   الشاشة مع كلّ إعادةِ رسم. وإلى جانبه صنفٌ على اللفافة يُثبّتها على
+   الشاشة كلِّها، فيعمل التكبيرُ حتى في متصفّحٍ يمنع واجهةَ ملء الشاشة.
+   ويُعاد ضبطُ الأسطر بعد التغيير لأنّ عرضَ العمود تبدّل.
+   ========================================================================= */
+let MUS_FS = false;
+
+function musFullSync() {
+  try {
+    const b = document.querySelector(".mus-bfull");
+    if (!b) return;
+    b.innerHTML = ic(MUS_FS ? "shrink" : "expand", 20);
+    b.setAttribute("title", MUS_FS ? "إنهاء التكبير" : "تكبير المصحف ملءَ الشاشة");
+    b.classList.toggle("on", MUS_FS);
+  } catch (e) {}
+}
+
+window.musFull = function (on) {
+  MUS_FS = (on == null) ? !MUS_FS : !!on;
+  try {
+    const w = document.querySelector(".mus-page-wrap");
+    if (w) w.classList.toggle("mus-fs", MUS_FS);
+    document.documentElement.classList.toggle("mus-fs-on", MUS_FS);
+  } catch (e) {}
+  try {
+    const el = document.documentElement;
+    if (MUS_FS) {
+      const rq = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (rq) { const p = rq.call(el); if (p && p.catch) p.catch(function () {}); }
+    } else if (document.fullscreenElement || document.webkitFullscreenElement) {
+      const ex = document.exitFullscreen || document.webkitExitFullscreen;
+      if (ex) { const p = ex.call(document); if (p && p.catch) p.catch(function () {}); }
+    }
+  } catch (e) {}
+  musFullSync();
+  /* مساري الرسم كلاهما: ورقةُ خطوط الصفحات (qv2Fit) والورقةُ القائمة (musFit) */
+  try {
+    requestAnimationFrame(function () {
+      try { if (typeof qv2Fit === "function") qv2Fit(); } catch (e) {}
+      try { if (typeof musFit === "function") musFit(); } catch (e) {}
+    });
+  } catch (e) {}
+};
+
+/* خروجُ المستخدم بمفتاح Escape: تُرفع آثارُ التكبير ولا يبقى الصنفُ معلّقاً */
+(function () {
+  const sync = function () {
+    const real = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    if (!real && MUS_FS) window.musFull(false);
+  };
+  try { document.addEventListener("fullscreenchange", sync); } catch (e) {}
+  try { document.addEventListener("webkitfullscreenchange", sync); } catch (e) {}
+})();
+
+/* فتحُ لوحةِ الاستماع وإغلاقُها من زرّ التشغيل في الشريط السفليّ */
+window.musaPanel = function () {
+  MUSA.panel = !(MUSA.panel || MUSA.on);
+  if (!MUSA.panel && MUSA.on) window.musaToggleOn();
+  else mount();
+};
+
+/* =========================================================================
    تفسيرُ الآية ومعاني كلماتها
    -------------------------------------------------------------------------
    لا نصَّ تفسيرٍ في المشروع، فيُجلب عند الطلب من واجهة Quran.com العامّة
@@ -30866,8 +30934,12 @@ function mushafPage() {
     </div>
   </div>`;
 
-  /* ---- شريطُ الاستماع بالآية ---- */
-  const audBar = typeof musaBar === "function" ? musaBar() : "";
+  /* ---- شريطُ الاستماع بالآية ----
+     انتقل من فوقِ الفرشة إلى داخلِ شريطِ القارئ السفليّ (readBar أدناه)،
+     يفتحه زرُّ التشغيل فيه: «وعايز اخلي الصوتيات ايضا بداخلها».
+     ولم يُحذف منه شيء — القارئُ والتكرارُ و«من أول الصفحة» والإيقافُ كما هي. */
+  const audBar = (typeof musaBar === "function" && (MUSA.panel || MUSA.on))
+    ? musaBar() : "";
 
   /* ---- الفرشة ---- */
   /* =======================================================================
@@ -30973,25 +31045,33 @@ function mushafPage() {
     </div>`;
   })();
 
-  /* شريطُ القارئ السفليّ: التفضيلاتُ والوضعُ الليليُّ والفهرسُ ورقمُ الصفحة.
-     ولا زرَّ تشغيلٍ صوتيّ: لا ملفّاتِ تلاوةٍ في المشروع ولا مصدرَ لها،
-     وزرٌّ لا يعمل أسوأُ من غيابه. */
-  const readBar = `<div class="mus-bar">
-    <button type="button" class="mus-bbtn" title="التفضيلات"
-      onclick="window.muspOpen()">${ic("settings", 20)}</button>
-    <button type="button" class="mus-bbtn" title="الوضع الليليّ"
-      onclick="window.musNight(document.documentElement.getAttribute('data-theme') !== 'dark')"
-      >${ic("eye", 20)}</button>
-    <button type="button" class="mus-bbtn mus-bpage" title="فهرس المصحف"
-      onclick="window.sidxOpen()">${ic("book", 20)}
-      <b>${toArabicDigits(n)}</b></button>
-    <button type="button" class="mus-bbtn" title="ابحث عن سورة"
-      onclick="window.sidxOpen()">${ic("search", 20)}</button>
+  /* شريطُ القارئ السفليّ: التفضيلاتُ والوضعُ الليليُّ والفهرسُ ورقمُ الصفحة
+     وزرُّ الاستماع وزرُّ البحث وزرُّ التكبير ملءَ الشاشة. ولوحةُ الاستماع
+     تُفتح فوقَه من زرّ التشغيل، فالصوتياتُ داخلَ الشريط لا في سطرٍ مستقلّ. */
+  const readBar = `<div class="mus-barwrap${MUSA.on ? " aud" : ""}">
+    ${audBar}
+    <div class="mus-bar">
+      <button type="button" class="mus-bbtn" title="التفضيلات"
+        onclick="window.muspOpen()">${ic("settings", 20)}</button>
+      <button type="button" class="mus-bbtn" title="الوضع الليليّ"
+        onclick="window.musNight(document.documentElement.getAttribute('data-theme') !== 'dark')"
+        >${ic("eye", 20)}</button>
+      <button type="button" class="mus-bbtn mus-bpage" title="فهرس المصحف"
+        onclick="window.sidxOpen()">${ic("book", 20)}
+        <b>${toArabicDigits(n)}</b></button>
+      ${stuAppOn("show.audio") ? `<button type="button" class="mus-bbtn mus-baud${
+        MUSA.on ? " on" : ""}" title="${MUSA.on ? "إغلاق الاستماع" : "الاستماع بالآية"}"
+        onclick="window.musaPanel()">${ic(MUSA.on ? "pause" : "play", 20)}</button>` : ""}
+      <button type="button" class="mus-bbtn" title="ابحث عن سورة"
+        onclick="window.sidxOpen()">${ic("search", 20)}</button>
+      <button type="button" class="mus-bbtn mus-bfull${MUS_FS ? " on" : ""}"
+        title="${MUS_FS ? "إنهاء التكبير" : "تكبير المصحف ملءَ الشاشة"}"
+        onclick="window.musFull()">${ic(MUS_FS ? "shrink" : "expand", 20)}</button>
+    </div>
   </div>`;
 
-  return `${colorVars}<div class="page mus-page-wrap">
+  return `${colorVars}<div class="page mus-page-wrap${MUS_FS ? " mus-fs" : ""}">
     ${top}
-    ${audBar}
     ${dutyBar}
     ${picker}
     ${filters}
@@ -39943,8 +40023,9 @@ async function qaAyahLoad(rid, surah) {
 window.qaAyahLoad = qaAyahLoad;
 
 /* حالُ الاستماع داخل المصحف */
+/* panel: لوحةُ الاستماع مفتوحةٌ داخلَ شريطِ القارئ السفليّ */
 const MUSA = { on: false, rid: "", s: 0, a: 0, list: null, i: -1, repeat: false,
-               busy: false, lim: null };
+               busy: false, lim: null, panel: false };
 window.MUSA = MUSA;
 
 function qaAyahHi(s, a) {
@@ -40060,7 +40141,8 @@ function musaBarSync() {
   } catch (e) {}
 }
 
-/* شريطُ الاستماع في المصحف — يُدرج بين شريطه العلويّ والفرشة */
+/* شريطُ الاستماع في المصحف — يُدرج داخلَ شريطِ القارئ السفليّ فوقَ أزراره،
+   يفتحه زرُّ التشغيل هناك (window.musaPanel) */
 function musaBar() {
   if (!stuAppOn("show.audio")) return "";
   const r = MUSA.rid ? qaReciter(MUSA.rid) : null;
@@ -45697,7 +45779,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261008-0030";
+  var APP_BUILD = "20261008-0415";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

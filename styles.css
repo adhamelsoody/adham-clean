@@ -12168,6 +12168,40 @@ body[data-iface="student"] .content { padding-top: 14px; }
 }
 
 /* =========================================================================
+   شريطُ القارئ السفليّ: الصوتياتُ داخلَه وزرُّ التكبير ملءَ الشاشة
+   -------------------------------------------------------------------------
+   الطلب: «عايز في المصحف زر لتكبير المصحف ياخد الشاشه كامله ويكون في اسفل
+   المصحف الازرار زي الي موجوده في الصوره وعايز اخلي الصوتيات ايضا بداخلها».
+   فلوحةُ الاستماع (musa-bar) انتقلت من فوقِ الفرشة إلى لفافةِ الشريط
+   السفليّ، تُفتح من زرّ التشغيل فيه؛ وزرُّ التكبير يُثبّت المصحفَ على
+   الشاشة كلِّها بصنفٍ على اللفافة إلى جانب واجهةِ ملء الشاشة.
+   ========================================================================= */
+.mus-barwrap { margin-top: 12px; }
+.mus-barwrap .mus-bar { margin-top: 0; }
+.mus-barwrap .musa-bar { margin: 0 0 8px; }
+
+/* زرُّ الاستماع وزرُّ التكبير حين يعملان */
+.mus-bbtn.on { background: var(--brand-dark, #0f6f72); color: #fff; }
+
+/* ملءُ الشاشة: اللفافةُ تشغل المنفذَ كلَّه فوق كلِّ شيء، والشريطُ السفليُّ
+   ملتصقٌ بأسفله فلا يغيب مع طول الورقة */
+.mus-page-wrap.mus-fs {
+  position: fixed; inset: 0; z-index: 9000;
+  margin: 0; overflow: auto; -webkit-overflow-scrolling: touch;
+  padding: 10px 10px 14px;
+  background: var(--background, #f6f7f4);
+}
+html.mus-fs-on, html.mus-fs-on body { overflow: hidden; }
+.mus-page-wrap.mus-fs .mus-barwrap {
+  position: sticky; bottom: 0; z-index: 2; padding-top: 6px;
+  background: linear-gradient(to top, var(--background, #f6f7f4) 72%, transparent);
+}
+[data-theme="dark"] .mus-page-wrap.mus-fs { background: #0e1715; }
+[data-theme="dark"] .mus-page-wrap.mus-fs .mus-barwrap {
+  background: linear-gradient(to top, #0e1715 72%, transparent);
+}
+
+/* =========================================================================
    مسارُ الأميريّ (الاحتياطيّ) — ثلاثُ ملاحظاتٍ من العميل
    -------------------------------------------------------------------------
    ١) أرقامُ الآيات كانت بـ ٠٫٦٢ من الخطّ ورفيعة — تُكبَّر وتُغمَّق.
