@@ -12232,3 +12232,33 @@ html.mus-fs-on, html.mus-fs-on body { overflow: hidden; }
    ويملأ musFit السطرَ بعده بتوسيع الحروف قبل المباعدة. */
 .mus-lines .mus-line { word-spacing: -.12em; }
 .mus-lines .mus-w { padding: 0; }
+/* =========================================================================
+   إطارُ الورقة — من المصحف المطبوع نفسِه
+   -------------------------------------------------------------------------
+   كان الإطارُ رسماً من وضعنا في mushaf-frame.svg، وقلتَ مرّتين إنّه لا
+   يشبه المطبوع. وهنا حاشيةُ الورقة مقتطعةٌ من ملفّ المصحف الذي أرسلتَه
+   (standard1-quran.pdf)، فهي حاشيتُه هو لا محاكاةٌ لها: ٥٦٨×٨٦٧ وسمكُ
+   شريطها ٣٣، وداخلُها مفرَّغٌ لأنّ border-image لا يرسم الوسط.
+   وملفُّ SVG باقٍ في المشروع ولم يُحذف.
+   ========================================================================= */
+.mus-orn {
+  border: 26px solid transparent;
+  border-image-source: url("mushaf-frame.webp");
+  border-image-slice: 33;
+  border-image-width: 26px;
+  border-image-repeat: stretch;
+  background-image: none;
+}
+.mus-orn.plain { border-image-source: none; border-width: 1px; }
+
+@media (max-width: 560px) {
+  .mus-orn { border-width: 15px; border-image-width: 15px; }
+}
+
+/* عنوانُ السورة بخطّ المصحف: الحرفُ نفسُه زخرفتُه الكاملة — فلا إطارَ
+   ولا أرضيّةَ من تنسيقنا فوقه */
+.qv-lines .qv-h .mus-surah,
+.qv-lines .qv-h .mus-surah span {
+  background: none; border: 0; box-shadow: none; border-radius: 0;
+  color: var(--mq-dark, #285C45); padding: 0;
+}

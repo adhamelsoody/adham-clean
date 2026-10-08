@@ -29688,6 +29688,87 @@ function mushafGo(n) {
 
 window.mushafJump = function (v) { mushafGo(v); };
 
+/* =========================================================================
+   تقليبُ الورقة بالسحب — وبسهمَي لوحة المفاتيح
+   -------------------------------------------------------------------------
+   «وانا اقلب من بين الازرار»: الأزرارُ باقيةٌ كما هي ولم يُمسّ منها شيء،
+   وإنّما أُضيف السحبُ إليها. واتجاهُه كاتجاه أزرار التنقّل نفسِها
+   (← السابق · → التالي): سحبُ الإصبع يميناً يُقدّم الورقة كما تُقلَّب في
+   المصحف المفتوح، ويساراً يُرجعها. وعلى الشاشة العريضة يتقدّم بورقتين
+   لأنّ الفرشة ورقتان.
+
+   وحدُّ السحب خمسةٌ وأربعون بكسلاً مع ميلٍ أفقيٍّ غالب: فالنقرةُ على
+   الكلمة تبقى نقرةً تؤشّر، والتمريرُ الرأسيُّ يبقى تمريراً. وتُبتلع
+   النقرةُ التي تعقب السحبَ مباشرةً لئلّا يُؤشَّر على كلمةٍ بلا قصد.
+   ========================================================================= */
+const MUSW = { x: 0, y: 0, t: 0, on: false, sw: 0 };
+
+function musStep() {
+  return (typeof window !== "undefined" && window.matchMedia &&
+          !window.matchMedia("(max-width: 900px)").matches) ? 2 : 1;
+}
+
+/* +١ التالي · −١ السابق */
+function musFlip(dir) {
+  const to = mushaf().page + (dir > 0 ? 1 : -1) * musStep();
+  if (to < 1 || to > 604) return;
+  mushafGo(to);
+}
+window.musFlip = musFlip;
+
+(function () {
+  function spreadOf(e) {
+    const t = e && e.target;
+    return t && t.closest ? t.closest(".mus-spread") : null;
+  }
+  function inMushaf() {
+    try {
+      return !!(STATE && STATE.page === "mushaf") &&
+             !document.querySelector("#modalRoot .modal");
+    } catch (e) { return false; }
+  }
+  function start(e) {
+    MUSW.on = false;
+    if (!inMushaf() || !spreadOf(e)) return;
+    const t = e.touches ? e.touches[0] : e;
+    if (!t) return;
+    MUSW.x = t.clientX; MUSW.y = t.clientY; MUSW.t = Date.now(); MUSW.on = true;
+  }
+  function end(e) {
+    if (!MUSW.on) return;
+    MUSW.on = false;
+    const t = (e.changedTouches && e.changedTouches[0]) || e;
+    if (!t) return;
+    const dx = t.clientX - MUSW.x, dy = t.clientY - MUSW.y;
+    if (Date.now() - MUSW.t > 900) return;        /* ضغطةٌ مطوَّلةٌ لا سحب */
+    if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+    MUSW.sw = Date.now();
+    musFlip(dx > 0 ? 1 : -1);
+  }
+  try {
+    document.addEventListener("touchstart", start, { passive: true });
+    document.addEventListener("touchend", end, { passive: true });
+  } catch (e) {}
+  /* النقرةُ الناتجةُ عن السحب تُبتلع قبل أن تبلغ الكلمة */
+  try {
+    document.addEventListener("click", function (e) {
+      if (!MUSW.sw || Date.now() - MUSW.sw > 400) return;
+      if (!spreadOf(e)) return;
+      e.stopPropagation(); e.preventDefault();
+    }, true);
+  } catch (e) {}
+  /* سهما لوحة المفاتيح — للحاسوب */
+  try {
+    document.addEventListener("keydown", function (e) {
+      if (!inMushaf() || e.ctrlKey || e.altKey || e.metaKey) return;
+      const a = document.activeElement;
+      if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName || "")) return;
+      if (e.key === "ArrowRight") { musFlip(1); e.preventDefault(); }
+      else if (e.key === "ArrowLeft") { musFlip(-1); e.preventDefault(); }
+    });
+  } catch (e) {}
+})();
+
 /* الانتقال إلى أول صفحة في سورة */
 /* =========================================================================
    فهرسُ السور — بدلاً من قائمةٍ منسدلةٍ بمئةٍ وأربعَ عشرةَ سطراً
@@ -30659,6 +30740,191 @@ window.qv2Fit = qv2Fit;
   try { window.addEventListener("orientationchange", again); } catch (e) {}
 })();
 
+/* =========================================================================
+   المصحف المدنيّ ١٤٤١هـ بخطوط صفحاته (QCF4) — الطبقةُ المطابقة للمطبوع
+   -------------------------------------------------------------------------
+   «لا تعيد رسم صفحات المصحف بـ CSS» — فهنا لا يُوزِّع المتصفّحُ شيئاً:
+   كلُّ كلمةٍ حرفٌ واحدٌ في خطّ صفحتها، ومواضعُها وأسطرُها كما في المطبوع.
+
+   التخطيطُ في quran/qcf4.json: لكلّ صفحةٍ خمسةَ عشرَ سطراً، ولكلّ عنصرٍ
+   رمزُه. مصدرُه MohamadHajjRabee/quran-qcf4 وبياناتُه برخصة MIT.
+   والخطوطُ لا تُنسخ إلى المشروع — رخصتُها تمنع إعادةَ التوزيع — بل
+   تُحمَّل من مستودعها عبر jsDelivr، كما يُفعل بالتلاوات.
+
+   ولا يُكتب هنا حرفٌ من نصّ القرآن: الكلماتُ من quran/pages كما هي،
+   وسطورُها من quran/lines.json. وأيُّ صفحةٍ لا يُطابق تخطيطُها عددَ
+   كلماتها في المشروع تُرسم بالمسار القائم ويُسجَّل السبب.
+
+   وعقدُ الكلمة لم يتغيّر: span يحمل data-k «سورة:آية:كلمة» وonclick
+   نفسَه — فالتأشيرُ والصوتُ والتفسيرُ تعمل كما كانت.
+   ========================================================================= */
+const Q4 = { d: null, wait: false, fail: false, font: {}, bad: {}, try: {}, wn: {} };
+const Q4_TRIES = 3;                 /* انقطاعةٌ عابرةٌ لا تُسقط الخطَّ للأبد */
+const Q4_KIND = { w: "w", e: "e", q: "q", j: "j" };
+
+function q4Remount() {
+  try { if (STATE && STATE.page === "mushaf") mount(); } catch (e) {}
+}
+
+function q4Load() {
+  if (Q4.d || Q4.wait || Q4.fail) return;
+  Q4.wait = true;
+  fetch("quran/qcf4.json")
+    .then(r => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))))
+    .then(o => {
+      if (!o || !o.p || !Array.isArray(o.f) || !o.cdn) throw new Error("بنيةٌ غيرُ متوقّعة");
+      Q4.d = o; q4Remount();
+    })
+    .catch(e => { Q4.fail = true; console.warn("المصحف: تعذّر تحميل تخطيط الصفحات", e); })
+    .then(() => { Q4.wait = false; });
+}
+
+/* خطُّ الصفحة يُحمَّل عند الحاجة، ثمّ تُعاد الورقةُ لتُرسم به */
+function q4Font(stem) {
+  const st = Q4.font[stem];
+  if (st === "ok" || st === "wait") return st;
+  if (st === "fail" && (Q4.try[stem] || 0) >= Q4_TRIES) return "fail";
+  if (typeof FontFace === "undefined" || !document.fonts) { Q4.font[stem] = "fail"; return "fail"; }
+  Q4.font[stem] = "wait";
+  Q4.try[stem] = (Q4.try[stem] || 0) + 1;
+  try {
+    const ff = new FontFace("q4-" + stem,
+      "url(" + Q4.d.cdn + stem + ".woff2) format('woff2')", { display: "block" });
+    ff.load()
+      .then(f => { document.fonts.add(f); Q4.font[stem] = "ok"; q4Remount(); })
+      .catch(e => {
+        Q4.font[stem] = "fail";
+        console.warn("المصحف: تعذّر خطُّ " + stem +
+          " (محاولة " + Q4.try[stem] + " من " + Q4_TRIES + ")", e);
+      });
+  } catch (e) { Q4.font[stem] = "fail"; }
+  return Q4.font[stem];
+}
+
+/* فكُّ سلسلة الصفحة: أسطرٌ، كلُّ سطرٍ عناصرُه { t, c, f } */
+function q4Decode(n) {
+  const row = Q4.d.p[String(n)];
+  if (!row) return null;
+  const i1 = row.indexOf(";"), i2 = row.indexOf(";", i1 + 1);
+  if (i1 < 0 || i2 < 0) return null;
+  const pf = Q4.d.f[Number(row.slice(0, i1))];
+  const qb = Q4.d.f[Q4.d.qb], bs = Q4.d.f[Q4.d.bs];
+  let prev = Number(row.slice(i1 + 1, i2)) - 1;
+  return row.slice(i2 + 1).split("|").map(line => {
+    if (!line) return [];
+    return line.split(",").map(it => {
+      const t = it[0], rest = it.slice(1);
+      if (t === "h") return { t: "h", c: 61695 + parseInt(rest, 36), f: qb };
+      if (t === "b") return { t: "b", c: parseInt(rest, 36), f: bs };
+      prev += rest ? parseInt(rest, 36) : 1;
+      return { t: Q4_KIND[t] || "x", c: prev, f: pf };
+    });
+  });
+}
+
+function q4Glyph(c) { return String.fromCharCode(c); }
+
+/* الورقةُ بخطوط صفحتها — أو "" ليُرسم ما بعدَها */
+function q4Sheet(n, L, idx, wordHTML, first, P, sName) {
+  if (Q4.fail || Q4.bad[n]) return "";
+  if (!Q4.d) { q4Load(); return ""; }
+  const rows = q4Decode(n);
+  const bad = why => {
+    Q4.bad[n] = why;
+    console.warn("المصحف: الصفحة " + n + " تُعرض بالمسار القائم — " + why);
+    return "";
+  };
+  if (!rows) return bad("لا تخطيطَ لها");
+  if (rows.length !== L.length) return bad("أسطرٌ " + rows.length + " لا " + L.length);
+
+  /* الخطوطُ المطلوبة: خطُّ الصفحة وما يخالفه في العنوان والبسملة */
+  const stems = {};
+  rows.forEach(r => r.forEach(x => { stems[x.f] = 1; }));
+  const need = Object.keys(stems);
+  let ready = true;
+  need.forEach(s => { if (q4Font(s) !== "ok") ready = false; });
+  if (!ready) return "";                     /* ريثما يصل الخطّ */
+
+  let cur = null;                            /* آخرُ آيةٍ مرّت — لعلامة الآية */
+  const linesHTML = [];
+  for (let li = 0; li < L.length; li++) {
+    const ln = L[li], items = rows[li];
+
+    if (ln[0] === "h") {
+      if (items.length !== 1 || items[0].t !== "h") return bad("عنوانُ السطر " + (li + 1));
+      linesHTML.push(`<div class="qv-line qv-h"><div class="mus-surah"
+        ><span style="font-family:'q4-${esc(items[0].f)}'"
+          title="سُورَةُ ${esc(sName(ln[1]) || ln[1])}">${q4Glyph(items[0].c)}</span></div></div>`);
+      continue;
+    }
+    if (ln[0] === "b") {
+      if (items.length !== 1 || items[0].t !== "b") return bad("بسملةُ السطر " + (li + 1));
+      linesHTML.push(`<div class="qv-line qv-b"><span class="mus-basmala"
+        style="font-family:'q4-${esc(items[0].f)}'"
+        title="بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ">${q4Glyph(items[0].c)}</span></div>`);
+      continue;
+    }
+
+    /* كلماتُ السطر كما يحدّدها المشروع — هي المرجع، لا المصدر */
+    const want = [];
+    (ln[1] || []).forEach(sg => {
+      for (let p = sg[2]; p <= sg[3]; p++) want.push({ s: sg[0], a: sg[1], p: p });
+    });
+    if (items.filter(x => x.t === "w").length !== want.length) {
+      return bad("كلماتُ السطر " + (li + 1));
+    }
+
+    let wi = 0, html = "";
+    for (let k = 0; k < items.length; k++) {
+      const x = items[k];
+      if (x.t === "w") {
+        const w = want[wi++];
+        const sv = idx[w.s + ":" + w.a];
+        if (!sv) {
+          /* آيةٌ من صفحةٍ مجاورةٍ لم تُحمَّل بعد: تُطلب الجارتان معاً —
+             mushafLoad يحمّل واحدةً في المرّة ويُعيد الرسم، فتصل الثانية
+             في الدورة التالية. وإن لم تصل بعد محاولاتٍ فالمسارُ القائم. */
+          Q4.wn[n] = (Q4.wn[n] || 0) + 1;
+          if (Q4.wn[n] > 8) return bad("آيةٌ من صفحةٍ مجاورةٍ لم تصل: " + w.s + ":" + w.a);
+          mushafLoad(n - 1); mushafLoad(n + 1);
+          return "";
+        }
+        if (w.p > sv.w.length) return bad("كلمةٌ زائدة " + w.s + ":" + w.a);
+        cur = w;
+        html += wordHTML(sv, w.p - 1, q4Glyph(x.c));
+      } else if (x.t === "e") {
+        if (!cur) return bad("علامةُ آيةٍ بلا آية");
+        const hl = (typeof mushaf === "function" && mushaf().hl === cur.s + ":" + cur.a)
+          ? " mus-hl" : "";
+        html += `<span class="mus-num qv-end tap${hl}" title="تفسير الآية"
+          onclick="window.musAyahOpen(${cur.s},${cur.a})">${q4Glyph(x.c)}</span>`;
+      } else {
+        /* علامةُ الربع أو السجدة — حرفٌ من الخطّ لا يُؤشَّر عليه */
+        html += `<span class="qv-x${x.t === "j" ? " qv-sajda" : ""}"${
+          x.t === "j" ? ' title="موضعُ سجدة"' : ""}>${q4Glyph(x.c)}</span>`;
+      }
+    }
+    linesHTML.push(`<div class="qv-line qv-t">${html}</div>`);
+  }
+
+  try { requestAnimationFrame(function () { qv2Fit(); }); } catch (e) {}
+
+  const pf = Q4.d.f[Number(String(Q4.d.p[String(n)]).split(";")[0])];
+  return `<div class="mus-page">
+    ${P.top ? `<div class="mus-ptop">
+      <span>الجزء ${esc(juzOrd(first.j))}</span>
+      <span>سُورَةُ ${esc(sName(first.s))}</span>
+    </div>` : ""}
+    <div class="mus-orn${P.orn ? "" : " plain"}">
+      <div class="mus-inner">
+        <div class="mus-text qv-lines${P.thick ? " thick" : ""}${n <= 2 ? " qv-first" : ""}"
+          dir="rtl" style="font-family:'q4-${esc(pf)}'">${linesHTML.join("")}</div>
+      </div>
+    </div>
+    <div class="mus-pfoot">${toArabicDigits(n)}</div>
+  </div>`;
+}
+
 /* الورقةُ بخطّ صفحتها — أو "" ليُرسم المسارُ القائم */
 function qv2Sheet(n, L, idx, wordHTML, first, P, sName) {
   qv2Load(n);
@@ -30751,7 +31017,11 @@ function mushafSheet(n) {
   const L = QLINES && QLINES[String(n)];
   if (L && L.length) {
     const idx = musWordIndex(n);
-    /* بخطّ الصفحة متى وصلت كلماتُها وخطُّها وطابقت — وإلّا فالمسارُ القائم */
+    /* بخطّ الصفحة متى وصلت كلماتُها وخطُّها وطابقت — وإلّا فالمسارُ القائم.
+       الترتيب: تخطيطُ المصحف المدنيّ (QCF4) أوّلاً فهو محليٌّ لا يحتاج
+       دالّةَ سحابة، ثمّ مسارُ QPC V2، ثمّ الرسمُ القائم. */
+    const q4 = q4Sheet(n, L, idx, wordHTML, first, P, sName);
+    if (q4) return q4;
     const qv = qv2Sheet(n, L, idx, wordHTML, first, P, sName);
     if (qv) return qv;
     /* موضعُ آخر سطرٍ فيه كلام — ما بعده ليس سطرَ نصّ */
@@ -31077,7 +31347,11 @@ function mushafPage() {
     ${filters}
     ${spread}
     ${navBar}
-    ${Object.keys(QV2.font).some(k => QV2.font[k] === "ok")
+    ${Object.keys(Q4.font).some(k => Q4.font[k] === "ok")
+      ? `<div class="qv-credit">خطُّ المصحف المدنيّ (١٤٤١هـ) بخطّ عثمان طه —
+          <a href="https://qurancomplex.gov.sa/" target="_blank" rel="noopener"
+            >مجمّع الملك فهد لطباعة المصحف الشريف</a></div>`
+      : Object.keys(QV2.font).some(k => QV2.font[k] === "ok")
       ? `<div class="qv-credit">خطوط المصحف مقدَّمة من
           <a href="https://quran.foundation/" target="_blank" rel="noopener">Quran Foundation</a></div>` : ""}
     ${readBar}
@@ -45779,7 +46053,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261008-0415";
+  var APP_BUILD = "20261008-1925";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
