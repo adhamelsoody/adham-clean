@@ -12255,10 +12255,25 @@ html.mus-fs-on, html.mus-fs-on body { overflow: hidden; }
   .mus-orn { border-width: 15px; border-image-width: 15px; }
 }
 
-/* عنوانُ السورة بخطّ المصحف: الحرفُ نفسُه زخرفتُه الكاملة — فلا إطارَ
-   ولا أرضيّةَ من تنسيقنا فوقه */
-.qv-lines .qv-h .mus-surah,
+/* عنوانُ السورة والبسملةُ يُضبط مقاسُهما بالقياس (q4FitBanner في app.js):
+   فالحاويةُ تترك لهما ارتفاعَ الصفّ ولا تقصّهما، ولا تفرض مقاساً عليهما.
+   وإن تعذّر خطُّ العناوين كُتب الاسمُ نصّاً — فلا تخلو الورقةُ من اسمها. */
+.qv-lines .qv-h .mus-surah {
+  height: var(--qv-row, 2.2em); font-size: inherit;
+  /* عنوانُ السورة كما هو في المصحف المطبوع: شريطٌ مزخرفٌ وسطُه معيَّنٌ
+     فاتحٌ يُكتب فيه الاسم. مقتطعٌ من ملفّ المصحف الذي أرسله صاحبُ المشروع
+     (standard1-quran.pdf)، ومُفرَّغٌ من اسمه ليُكتب فيه اسمُ كلّ سورة. */
+  background: url("mushaf-surah.webp") center / 100% 100% no-repeat;
+  border: 0; box-shadow: none; border-radius: 0;
+}
 .qv-lines .qv-h .mus-surah span {
-  background: none; border: 0; box-shadow: none; border-radius: 0;
-  color: var(--mq-dark, #285C45); padding: 0;
+  padding: 0; background: none; border: 0; box-shadow: none; border-radius: 0;
+  color: var(--mq-dark, #285C45);
+}
+.qv-lines .qv-h .qv-ban { line-height: 1; display: inline-block; }
+.qv-lines .qv-b .mus-basmala { line-height: 1; display: inline-block; }
+.qv-lines .qv-h .mus-surah.qv-txt span {
+  font-size: calc(var(--qv-row, 2.2em) * .40);
+  font-family: "Amiri", "Scheherazade New", serif;
+  color: var(--mq-dark, #285C45);
 }

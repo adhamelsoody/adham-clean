@@ -30824,6 +30824,58 @@ function q4Decode(n) {
 
 function q4Glyph(c) { return String.fromCharCode(c); }
 
+/* =========================================================================
+   عنوانُ السورة والبسملة — حرفان مفردان في خطَّيهما
+   -------------------------------------------------------------------------
+   عرضُهما الطبيعيُّ لا علاقةَ له بمقاس سطر النصّ: فإن تُركا على مقاسه
+   خرجا عن الورقة فظهرا شريطين ممدودين لا يُقرأ منهما اسمٌ، أو صغُرا حتى
+   يضيع الاسم. فيُقاسان هنا ويُضبط مقاسُهما ليشغلا من عرض الورقة ما
+   يشغلانه في المطبوع: العنوانُ يملؤه تقريباً، والبسملةُ نحوَ نصفِه.
+   ========================================================================= */
+const Q4_BAN = 0.34, Q4_BSM = 0.54, Q4_REF = 40;
+const Q4_BAN_H = 0.66;          /* اسمُ السورة لا يتجاوز صفَّه ارتفاعاً */
+
+function q4FitBanner(root) {
+  const host = root && root.querySelectorAll ? root : document;
+  [].slice.call(host.querySelectorAll(".qv-lines")).forEach(function (box) {
+    const C = box.clientWidth;
+    if (!C) return;
+    let row = 0;
+    try { row = parseFloat(getComputedStyle(box).getPropertyValue("--qv-row")) || 0; } catch (e) {}
+    [[".qv-h .qv-ban", Q4_BAN, Q4_BAN_H], [".qv-b .mus-basmala", Q4_BSM, 0]].forEach(function (p) {
+      const e = box.querySelector(p[0]);
+      if (!e) return;
+      e.style.fontSize = Q4_REF + "px";
+      let w = 0;
+      try {
+        const r = document.createRange(); r.selectNodeContents(e);
+        w = r.getBoundingClientRect().width;
+      } catch (x) { w = e.getBoundingClientRect().width; }
+      if (!w) { e.style.fontSize = ""; return; }
+      let size = Q4_REF * (C * p[1] / w);
+      /* سقفٌ بالارتفاع: حرفُ الاسم عريضُ الرسم، فلو ضُبط بالعرض وحدَه
+         طال على صفّه وركب ما تحته. */
+      if (p[2] && row) size = Math.min(size, row * p[2]);
+      e.style.fontSize = Math.max(8, size).toFixed(2) + "px";
+    });
+  });
+}
+
+function q4Fit(root) {
+  try { if (typeof qv2Fit === "function") qv2Fit(root); } catch (e) {}
+  try { q4FitBanner(root); } catch (e) {}
+}
+window.q4Fit = q4Fit;
+
+/* العرضُ يتغيّر فيتغيّر مقاسُهما معه */
+(function () {
+  let t = 0;
+  const again = () => { clearTimeout(t); t = setTimeout(function () { q4FitBanner(); }, 90); };
+  try { window.addEventListener("resize", again); } catch (e) {}
+  try { window.addEventListener("orientationchange", again); } catch (e) {}
+  try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(again); } catch (e) {}
+})();
+
 /* الورقةُ بخطوط صفحتها — أو "" ليُرسم ما بعدَها */
 function q4Sheet(n, L, idx, wordHTML, first, P, sName) {
   if (Q4.fail || Q4.bad[n]) return "";
@@ -30837,13 +30889,16 @@ function q4Sheet(n, L, idx, wordHTML, first, P, sName) {
   if (!rows) return bad("لا تخطيطَ لها");
   if (rows.length !== L.length) return bad("أسطرٌ " + rows.length + " لا " + L.length);
 
-  /* الخطوطُ المطلوبة: خطُّ الصفحة وما يخالفه في العنوان والبسملة */
+  /* الخطوطُ المطلوبة. خطُّ الصفحة والبسملةِ شرطٌ لا بدّ منه، أمّا خطُّ
+     عناوين السور (QBSML) فإن تعذّر كُتب اسمُ السورة نصّاً ولم تُحجب
+     الورقةُ كلُّها — فالاسمُ يظهر على كلّ حال. */
   const stems = {};
-  rows.forEach(r => r.forEach(x => { stems[x.f] = 1; }));
-  const need = Object.keys(stems);
+  rows.forEach(r => r.forEach(x => { if (x.t !== "h") stems[x.f] = 1; }));
   let ready = true;
-  need.forEach(s => { if (q4Font(s) !== "ok") ready = false; });
+  Object.keys(stems).forEach(s => { if (q4Font(s) !== "ok") ready = false; });
   if (!ready) return "";                     /* ريثما يصل الخطّ */
+  const qbStem = Q4.d.f[Q4.d.qb];
+  const qbOk = q4Font(qbStem) === "ok";
 
   let cur = null;                            /* آخرُ آيةٍ مرّت — لعلامة الآية */
   const linesHTML = [];
@@ -30852,9 +30907,13 @@ function q4Sheet(n, L, idx, wordHTML, first, P, sName) {
 
     if (ln[0] === "h") {
       if (items.length !== 1 || items[0].t !== "h") return bad("عنوانُ السطر " + (li + 1));
-      linesHTML.push(`<div class="qv-line qv-h"><div class="mus-surah"
-        ><span style="font-family:'q4-${esc(items[0].f)}'"
-          title="سُورَةُ ${esc(sName(ln[1]) || ln[1])}">${q4Glyph(items[0].c)}</span></div></div>`);
+      const nm = esc(sName(ln[1]) || ln[1]);
+      linesHTML.push(qbOk
+        ? `<div class="qv-line qv-h"><div class="mus-surah"
+            ><span class="qv-ban" style="font-family:'q4-${esc(items[0].f)}'"
+              title="سُورَةُ ${nm}">${q4Glyph(items[0].c)}</span></div></div>`
+        : `<div class="qv-line qv-h"><div class="mus-surah qv-txt"
+            ><span>سُورَةُ ${nm}</span></div></div>`);
       continue;
     }
     if (ln[0] === "b") {
@@ -30907,7 +30966,7 @@ function q4Sheet(n, L, idx, wordHTML, first, P, sName) {
     linesHTML.push(`<div class="qv-line qv-t">${html}</div>`);
   }
 
-  try { requestAnimationFrame(function () { qv2Fit(); }); } catch (e) {}
+  try { requestAnimationFrame(function () { q4Fit(); }); } catch (e) {}
 
   const pf = Q4.d.f[Number(String(Q4.d.p[String(n)]).split(";")[0])];
   return `<div class="mus-page">
@@ -46053,7 +46112,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261008-1925";
+  var APP_BUILD = "20261008-2010";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
