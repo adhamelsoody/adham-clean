@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 .firebase/
 *.bak
 *.bak-*
@@ -9,6 +9,7 @@ Thumbs.db
 
 # مخرجات سكربتات التحديث — كلُّ تشغيلٍ يُنشئ مجلداً فيه نسخةٌ من app.js
 _backup_*/
+_backup-*/
 CLAUDE.md.قبل_*
 *.ps1
 

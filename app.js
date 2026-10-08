@@ -30378,7 +30378,10 @@ function musFit(root) {
 
     /* أكبرُ خطٍّ يسع أعرضَ سطرٍ بعد تضييقه إلى حدّه — فيكبُر الخطُّ
        ويقلّ الفراغ معاً، بدل تصغيره حتى يسع أعرضَ سطرٍ بلا تضييق. */
-    const f = Math.min(1, (C / (wide * MIN_S)));
+    /* وكان الخطُّ لا يكبُر فوق مقاس التفضيلات، فعلى الشاشة العريضة يقصُر
+       كلُّ سطرٍ عن الورقة ويُملأ فراغاً بين الكلمات. الورقةُ المطبوعةُ يملأ
+       السطرُ عرضَها، فيكبُر الخطُّ هنا حتى يملأه (بسقفٍ يمنع الشطط). */
+    const f = Math.min(2.2, (C / (wide * MIN_S)));
     const size = Math.max(8.5, base * f);
     box.style.fontSize = size.toFixed(2) + "px";
 
@@ -30400,14 +30403,18 @@ function musFit(root) {
       const gaps = Math.max(1,
         ln.querySelectorAll(".mus-w, .mus-num, .mus-hizb").length - 1);
       const cap = WS_CAP * size;
+      /* المباعدةُ تُضاف على أساس السطر في التنسيق (سالبٌ يضيّق فراغ الأميريّ)
+         لا تحلّ محلّه — وإلّا عاد الفراغُ واسعاً في السطر الذي تُضاف إليه. */
+      let ws0 = 0;
+      try { ws0 = parseFloat(getComputedStyle(ln).wordSpacing) || 0; } catch (e) {}
       let w1 = musLineW(ln);
       if (C - w1 > 0.5) {
         let ws = Math.min(cap, (C - w1) / (gaps * sc));
-        ln.style.wordSpacing = ws.toFixed(3) + "px";
+        ln.style.wordSpacing = (ws0 + ws).toFixed(3) + "px";
         w1 = musLineW(ln);
         if (ws < cap - 0.01 && C - w1 > 0.5) {
           ws = Math.min(cap, ws + (C - w1) / (gaps * sc));
-          ln.style.wordSpacing = ws.toFixed(3) + "px";
+          ln.style.wordSpacing = (ws0 + ws).toFixed(3) + "px";
           w1 = musLineW(ln);
         }
       }
@@ -30628,6 +30635,19 @@ function qv2Sheet(n, L, idx, wordHTML, first, P, sName) {
   </div>`;
 }
 
+/* علامةُ الوقف في آخر الكلمة (ۖ ۗ ۚ ۛ …) — الأميريُّ يرسمها بين ١٫٣٢
+   و١٫٧٦ من الخطّ فوق السطر، فتقع في فراغ السطر السابق وتُقرأ كأنها تحت
+   كلمةٍ أخرى (كـ«ج» تحت علامة الربع). لا تُحذف — هي من رسم المصحف —
+   بل تُفصل في عنصرٍ يُنزَّل إلى موضعها فوق آخر كلمتها كما في المطبوع.
+   والنصُّ المحفوظ والبحثُ والتفسير لا يمسّها شيء: هذا عرضٌ فقط. */
+function musWaqfHTML(w) {
+  const raw = String(w == null ? "" : w);
+  const mw = raw.match(/[\u06D6-\u06DC]+$/);
+  if (!mw || mw[0].length === raw.length) return esc(raw);
+  return esc(raw.slice(0, -mw[0].length)) +
+    `<span class="mus-waqf">\u00A0${esc(mw[0])}</span>`;
+}
+
 function mushafSheet(n) {
   const rows = MUSHAF_CACHE[n];
   const m = mushaf();
@@ -30656,7 +30676,7 @@ function mushafSheet(n) {
     const ttl = k ? ` title="${esc(musMark(k).h + (dk && MUSD.name && String(MUSD.kind) === String(dk)
       ? " — " + MUSD.name : ""))}"` : "";
     return `<span class="mus-w${cls}" data-k="${esc(key)}"${ttl}${sty} onclick="window.mushafMark('${key}')">${
-      inner != null ? inner : esc(sv.w[i])}</span>`;
+      inner != null ? inner : musWaqfHTML(sv.w[i])}</span>`;
   };
 
   /* المسارُ المطابقُ للمصحف المطبوع متى وصل ملفُّ الأسطر */
