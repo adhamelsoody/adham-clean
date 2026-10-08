@@ -12277,3 +12277,33 @@ html.mus-fs-on, html.mus-fs-on body { overflow: hidden; }
   font-family: "Amiri", "Scheherazade New", serif;
   color: var(--mq-dark, #285C45);
 }
+
+/* =========================================================================
+   ملءُ الشاشة: ورقةُ المصحف وأزرارُها فحسب
+   -------------------------------------------------------------------------
+   «اريده ثابت لا يتحرك… لا يظهر لي اي تفاصيل اخرى سوى صفحة القرآن
+   والازرار السفلى»: فيُخفى في هذا الوضع كلُّ ما عدا الفرشةَ والشريطَ
+   السفليّ — الشريطُ العلويُّ واختيارُ الطالب والفلاتر والتنقّلُ وأدواتُ
+   التأشير والإحصاء — ويُقفل التمرير.
+   وعرضُ الورقة يُشتقُّ من ارتفاع الشاشة لا من عرضها: نسبةُ الورقة
+   ١ : ١٫٦٢، فتُحسب من الارتفاع المتاح بعد الشريط السفليّ، فتدخل الورقةُ
+   كاملةً في الشاشة بلا تمريرٍ ولا تضخُّمٍ في الخطّ.
+   ========================================================================= */
+.mus-page-wrap.mus-fs {
+  display: flex; flex-direction: column; gap: 0;
+  overflow: hidden; padding: 8px 8px 0;
+}
+.mus-page-wrap.mus-fs > *:not(.mus-spread):not(.mus-barwrap) { display: none !important; }
+.mus-page-wrap.mus-fs .mus-spread {
+  flex: 1 1 auto; min-height: 0; margin: 0;
+  align-content: center; align-items: center;
+}
+.mus-page-wrap.mus-fs .mus-barwrap {
+  flex: 0 0 auto; position: static; background: none; padding-top: 4px;
+}
+.mus-page-wrap.mus-fs .mus-spread.one {
+  grid-template-columns: min(94vw, calc((100vh - 84px) / 1.62));
+}
+.mus-page-wrap.mus-fs .mus-spread.two {
+  grid-template-columns: repeat(2, min(46vw, calc((100vh - 84px) / 1.62)));
+}

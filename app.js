@@ -30834,6 +30834,7 @@ function q4Glyph(c) { return String.fromCharCode(c); }
    ========================================================================= */
 const Q4_BAN = 0.34, Q4_BSM = 0.54, Q4_REF = 40;
 const Q4_BAN_H = 0.66;          /* اسمُ السورة لا يتجاوز صفَّه ارتفاعاً */
+const Q4_BSM_H = 0.82;          /* والبسملةُ كذلك — وإلّا طغت على ما تحتها */
 
 function q4FitBanner(root) {
   const host = root && root.querySelectorAll ? root : document;
@@ -30842,7 +30843,8 @@ function q4FitBanner(root) {
     if (!C) return;
     let row = 0;
     try { row = parseFloat(getComputedStyle(box).getPropertyValue("--qv-row")) || 0; } catch (e) {}
-    [[".qv-h .qv-ban", Q4_BAN, Q4_BAN_H], [".qv-b .mus-basmala", Q4_BSM, 0]].forEach(function (p) {
+    [[".qv-h .qv-ban", Q4_BAN, Q4_BAN_H],
+     [".qv-b .mus-basmala", Q4_BSM, Q4_BSM_H]].forEach(function (p) {
       const e = box.querySelector(p[0]);
       if (!e) return;
       e.style.fontSize = Q4_REF + "px";
@@ -46112,7 +46114,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261008-2010";
+  var APP_BUILD = "20261008-2100";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
