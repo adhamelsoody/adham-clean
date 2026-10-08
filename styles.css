@@ -12088,3 +12088,81 @@ body[data-iface="student"] .content { padding-top: 14px; }
   .mus-pfoot { padding-top: 5px; font-size: 13px; }
   .mus-surah span { padding: 0 10px; }
 }
+
+/* =========================================================================
+   المصحف بخطوط صفحات مجمع الملك فهد (QPC V2) — .qv-*
+   -------------------------------------------------------------------------
+   كانت الأسطرُ تُرسم بالأميريّ فتُمطّ وتُضغط وتتباعد كلماتُها؛ وهنا كلُّ
+   كلمةٍ حرفٌ واحدٌ في خطّ صفحتها، فيمتلئ السطرُ بطبيعته. الصفحةُ خمسةَ
+   عشرَ صفّاً متساوياً (--qv-row يحسبه qv2Fit من عرض الورقة) كالمطبوع،
+   وعنوانُ السورة والبسملةُ كلٌّ منهما صفٌّ واحدٌ لا أكثر.
+
+   والإطارُ صار أعرضَ بأصلٍ جديدٍ في mushaf-frame.svg (تقسيم ٨٠) — يسري
+   على المسارين معاً.
+   ========================================================================= */
+.mus-orn {
+  border-width: 30px;
+  border-image-source: url("mushaf-frame.svg");
+  border-image-slice: 80;
+  border-image-width: 30px;
+  border-image-repeat: round;
+}
+
+.mus-text.qv-lines {
+  line-height: 1; text-align: initial;
+  overflow: hidden;
+  padding-block: 2px;
+}
+.qv-lines .qv-line {
+  display: flex; align-items: center;
+  height: var(--qv-row, 2.2em);
+  white-space: nowrap;
+}
+.qv-lines .qv-line.qv-t { column-gap: .12em; }
+.qv-lines .qv-line.qv-j { justify-content: space-between; }
+.qv-lines .qv-line.qv-c,
+.qv-lines .qv-line.qv-h,
+.qv-lines .qv-line.qv-b { justify-content: center; }
+
+/* الفاتحةُ وأوّلُ البقرة: الأسطرُ في وسط الورقة كما في المطبوع */
+.qv-lines.qv-first {
+  display: flex; flex-direction: column; justify-content: center;
+  min-height: calc(var(--qv-row, 2.2em) * 15);
+}
+
+/* الكلمةُ حرفٌ واحد: لا حشوَ حولها يُطيل السطر */
+.qv-lines .mus-w { padding: 0; border-radius: 3px; }
+
+/* علامةُ الآية حرفٌ في خطّ الصفحة نفسِه — لا وردةَ مرسومةً حوله */
+.qv-lines .mus-num.qv-end {
+  display: inline; min-width: 0; height: auto; line-height: inherit;
+  margin: 0; padding: 0; border: 0; border-radius: 3px;
+  background: none; font-size: 1em; font-weight: 400;
+  font-family: inherit; color: inherit;
+}
+.qv-lines .mus-num.qv-end:hover { background: rgba(199,106,120,.14); color: inherit; }
+
+/* عنوانُ السورة: صفٌّ واحدٌ بعرض الورقة */
+.qv-lines .qv-h .mus-surah {
+  width: 100%; height: calc(var(--qv-row, 2.2em) * .82);
+  margin: 0; padding: 0; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--qv-row, 2.2em) * .40);
+}
+.qv-lines .qv-h .mus-surah span { font-size: 1em; line-height: 1.45; padding: 0 2.2em; }
+
+.qv-lines .qv-b .mus-basmala {
+  margin: 0; font-size: calc(var(--qv-row, 2.2em) * .50);
+  font-family: "Amiri", "Scheherazade New", serif;
+}
+
+/* إسنادُ الخطوط — من شروط Quran Foundation */
+.qv-credit {
+  text-align: center; font-size: 11.5px; margin: 2px 0 6px;
+  color: var(--text-muted, #4e6060);
+}
+.qv-credit a { color: inherit; text-decoration: underline; }
+
+@media (max-width: 560px) {
+  .mus-orn { border-width: 16px; border-image-width: 16px; }
+}

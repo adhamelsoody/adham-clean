@@ -1,84 +1,106 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
   <!--
     إطارُ ورقة المصحف — أصلٌ واحدٌ يُعاد استعماله
     ·
-    يُستعمل في styles.css عبر border-image، فيتكرّر على الأضلاع الأربعة
-    وتستقيم زواياه. تقسيمه (slice) ٤٠: المربّعات الأربعة في الأركان
-    ٤٠×٤٠، وما بينها شريطٌ يتكرّر.
+    يُستعمل في styles.css عبر border-image بتقسيم (slice) ٨٠: الأركانُ
+    الأربعة مربّعاتٌ ٨٠×٨٠، والضلعُ بينها شريطٌ دورتُه ٤٠ فيتكرّر بلا فاصل.
 
-    لوحة الألوان من المواصفات:
-      #285C45 أخضر داكن · #3F7558 أخضر متوسّط · #789C7E أخضر فاتح
-      #FFFDF5 كريمي     · #C76A78 ورديّ      · #B79A5B ذهبيّ (قليلاً)
+    التصميمُ من وضع المشروع على سَنن التذهيب الإسلاميّ — سلسلةُ لوزاتٍ
+    خضراء متعاقبة في كلٍّ منها زهرةٌ ورديّة، وبين اللوزات براعمُ صغيرة —
+    وليس نقلاً لإطار طبعةٍ بعينها.
 
-    والزخرفة من وضعنا على سَنن الزخرفة الإسلامية — أرضيةٌ خضراء وعليها
-    فصوصٌ كريميةٌ وزهراتٌ ورديّة، لا نقلَ لتذهيب مصحفٍ بعينه.
+    الألوان: #285C45 أخضر داكن · #3F7558 أخضر متوسّط · #789C7E أخضر فاتح
+             #EAF1E4 أرضيةٌ فاتحة · #FFFDF5 كريمي · #C76A78 ورديّ · #B79A5B ذهبيّ
   -->
   <defs>
     <!-- زهرةٌ سداسيّةٌ ورديّة -->
     <g id="fl">
-      <g fill="#C76A78">
-        <ellipse cy="-3.5" rx="1.9" ry="2.9"/>
-        <ellipse cy="-3.5" rx="1.9" ry="2.9" transform="rotate(60)"/>
-        <ellipse cy="-3.5" rx="1.9" ry="2.9" transform="rotate(120)"/>
-        <ellipse cy="-3.5" rx="1.9" ry="2.9" transform="rotate(180)"/>
-        <ellipse cy="-3.5" rx="1.9" ry="2.9" transform="rotate(240)"/>
-        <ellipse cy="-3.5" rx="1.9" ry="2.9" transform="rotate(300)"/>
+      <g fill="#C76A78" stroke="#9E4F5B" stroke-width=".5">
+        <ellipse cy="-4.6" rx="2.6" ry="3.9" transform="rotate(0)"/><ellipse cy="-4.6" rx="2.6" ry="3.9" transform="rotate(60)"/><ellipse cy="-4.6" rx="2.6" ry="3.9" transform="rotate(120)"/><ellipse cy="-4.6" rx="2.6" ry="3.9" transform="rotate(180)"/><ellipse cy="-4.6" rx="2.6" ry="3.9" transform="rotate(240)"/><ellipse cy="-4.6" rx="2.6" ry="3.9" transform="rotate(300)"/>
       </g>
-      <circle r="1.6" fill="#B79A5B"/>
+      <circle r="2.1" fill="#B79A5B"/>
+    </g>
+    <!-- برعمٌ صغيرٌ بين اللوزتين -->
+    <g id="bud">
+      <path d="M0 4C-4 1 -4 -4 0 -7C4 -4 4 1 0 4Z" fill="#C76A78" stroke="#9E4F5B" stroke-width=".5"/>
+      <path d="M0 4C-6 6 -9 3 -9 0M0 4C6 6 9 3 9 0" fill="none" stroke="#3F7558" stroke-width="1.2"/>
     </g>
 
-    <!-- فصٌّ كريميٌّ: ورقةٌ مدبّبةٌ تتعاقب فوق الشريط وتحته -->
-    <g id="lb">
-      <path d="M0 0C-4.6 -3.4 -4.6 -10.4 0 -13.4C4.6 -10.4 4.6 -3.4 0 0Z"
-            fill="#FFFDF5" stroke="#789C7E" stroke-width=".8"/>
-    </g>
-
-    <!-- ضلعٌ واحد: أرضيةٌ خضراء بين خطّين داكنين، وعليها الفصوصُ والزهرات -->
+    <!-- ضلعٌ واحد: أرضيةٌ فاتحةٌ بين حدّين، وعليها سلسلةُ اللوزات -->
     <g id="side">
-      <rect x="40" y="3" width="80" height="34" fill="#3F7558"/>
-      <path d="M40 1.5H120M40 38.5H120" stroke="#285C45" stroke-width="3"/>
-      <path d="M40 5.6H120M40 34.4H120" stroke="#789C7E" stroke-width=".9" opacity=".7"/>
-      <!-- فصوصٌ متعاقبة: علويةٌ ثمّ سفليةٌ على طول الشريط -->
-      <use href="#lb" transform="translate(50 23) scale(1.35)"/>
-      <use href="#lb" transform="translate(70 17) rotate(180) scale(1.35)"/>
-      <use href="#lb" transform="translate(90 23) scale(1.35)"/>
-      <use href="#lb" transform="translate(110 17) rotate(180) scale(1.35)"/>
-      <!-- زهراتٌ في الفواصل -->
-      <use href="#fl" transform="translate(60 20) scale(1.2)"/>
-      <use href="#fl" transform="translate(80 20) scale(1.2)"/>
-      <use href="#fl" transform="translate(100 20) scale(1.2)"/>
-      <use href="#fl" transform="translate(120 20) scale(1.2)"/>
+      <rect x="0" y="0" width="240" height="80" fill="#EAF1E4"/>
+      <rect x="0" y="0" width="240" height="5" fill="#285C45"/>
+      <path d="M0 8H240" stroke="#789C7E" stroke-width="1.2"/>
+      <path d="M0 40C0 11 40 11 40 40C40 69 0 69 0 40Z" fill="#3F7558" stroke="#285C45" stroke-width="2.6"/>
+      <path d="M7 40C7 22 33 22 33 40C33 58 7 58 7 40Z" fill="#FFFDF5" stroke="#789C7E" stroke-width="1"/>
+      <use href="#fl" transform="translate(20 40) scale(1.25)"/>
+      <path d="M40 40C40 11 80 11 80 40C80 69 40 69 40 40Z" fill="#3F7558" stroke="#285C45" stroke-width="2.6"/>
+      <path d="M47 40C47 22 73 22 73 40C73 58 47 58 47 40Z" fill="#FFFDF5" stroke="#789C7E" stroke-width="1"/>
+      <use href="#fl" transform="translate(60 40) scale(1.05)"/>
+      <path d="M80 40C80 11 120 11 120 40C120 69 80 69 80 40Z" fill="#3F7558" stroke="#285C45" stroke-width="2.6"/>
+      <path d="M87 40C87 22 113 22 113 40C113 58 87 58 87 40Z" fill="#FFFDF5" stroke="#789C7E" stroke-width="1"/>
+      <use href="#fl" transform="translate(100 40) scale(1.25)"/>
+      <path d="M120 40C120 11 160 11 160 40C160 69 120 69 120 40Z" fill="#3F7558" stroke="#285C45" stroke-width="2.6"/>
+      <path d="M127 40C127 22 153 22 153 40C153 58 127 58 127 40Z" fill="#FFFDF5" stroke="#789C7E" stroke-width="1"/>
+      <use href="#fl" transform="translate(140 40) scale(1.05)"/>
+      <path d="M160 40C160 11 200 11 200 40C200 69 160 69 160 40Z" fill="#3F7558" stroke="#285C45" stroke-width="2.6"/>
+      <path d="M167 40C167 22 193 22 193 40C193 58 167 58 167 40Z" fill="#FFFDF5" stroke="#789C7E" stroke-width="1"/>
+      <use href="#fl" transform="translate(180 40) scale(1.25)"/>
+      <path d="M200 40C200 11 240 11 240 40C240 69 200 69 200 40Z" fill="#3F7558" stroke="#285C45" stroke-width="2.6"/>
+      <path d="M207 40C207 22 233 22 233 40C233 58 207 58 207 40Z" fill="#FFFDF5" stroke="#789C7E" stroke-width="1"/>
+      <use href="#fl" transform="translate(220 40) scale(1.05)"/>
+      <use href="#bud" transform="translate(0 15)"/>
+      <use href="#bud" transform="translate(0 65) rotate(180)"/>
+      <circle cx="0" cy="40" r="3.2" fill="#B79A5B" stroke="#285C45" stroke-width="1"/>
+      <use href="#bud" transform="translate(40 15)"/>
+      <use href="#bud" transform="translate(40 65) rotate(180)"/>
+      <circle cx="40" cy="40" r="3.2" fill="#B79A5B" stroke="#285C45" stroke-width="1"/>
+      <use href="#bud" transform="translate(80 15)"/>
+      <use href="#bud" transform="translate(80 65) rotate(180)"/>
+      <circle cx="80" cy="40" r="3.2" fill="#B79A5B" stroke="#285C45" stroke-width="1"/>
+      <use href="#bud" transform="translate(120 15)"/>
+      <use href="#bud" transform="translate(120 65) rotate(180)"/>
+      <circle cx="120" cy="40" r="3.2" fill="#B79A5B" stroke="#285C45" stroke-width="1"/>
+      <use href="#bud" transform="translate(160 15)"/>
+      <use href="#bud" transform="translate(160 65) rotate(180)"/>
+      <circle cx="160" cy="40" r="3.2" fill="#B79A5B" stroke="#285C45" stroke-width="1"/>
+      <use href="#bud" transform="translate(200 15)"/>
+      <use href="#bud" transform="translate(200 65) rotate(180)"/>
+      <circle cx="200" cy="40" r="3.2" fill="#B79A5B" stroke="#285C45" stroke-width="1"/>
+      <use href="#bud" transform="translate(240 15)"/>
+      <use href="#bud" transform="translate(240 65) rotate(180)"/>
+      <circle cx="240" cy="40" r="3.2" fill="#B79A5B" stroke="#285C45" stroke-width="1"/>
+      <path d="M0 72H240" stroke="#789C7E" stroke-width="1.2"/>
+      <path d="M0 77H240" stroke="#285C45" stroke-width="3"/>
     </g>
 
-    <!-- ركنٌ: مربّعٌ أخضرُ فيه ميداليةٌ كريميةٌ بقلبٍ ورديّ -->
+    <!-- ركنٌ: مربّعٌ أخضرُ فيه ميداليةٌ ثمانيّةٌ كريميةٌ بقلبٍ ورديّ -->
     <g id="corner">
-      <rect x="3" y="3" width="34" height="34" fill="#3F7558"/>
-      <path d="M1.5 1.5H40M1.5 1.5V40" stroke="#285C45" stroke-width="3"/>
-      <path d="M38.5 38.5H40M38.5 38.5V40" stroke="#285C45" stroke-width="3"/>
-      <path d="M5.6 5.6H40M5.6 5.6V40" stroke="#789C7E" stroke-width=".9" opacity=".7"/>
-      <g transform="translate(20 20)">
-        <g fill="#FFFDF5" stroke="#789C7E" stroke-width=".7">
-          <ellipse cy="-8.4" rx="3.2" ry="5.4"/>
-          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(45)"/>
-          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(90)"/>
-          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(135)"/>
-          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(180)"/>
-          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(225)"/>
-          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(270)"/>
-          <ellipse cy="-8.4" rx="3.2" ry="5.4" transform="rotate(315)"/>
+      <rect x="0" y="0" width="80" height="80" fill="#285C45"/>
+      <rect x="6" y="6" width="68" height="68" fill="#3F7558" stroke="#789C7E" stroke-width="1.2"/>
+      <g transform="translate(40 40)">
+        <g fill="#FFFDF5" stroke="#789C7E" stroke-width=".9">
+          <path d="M0 0C-7 -8 -7 -20 0 -27C7 -20 7 -8 0 0Z" transform="rotate(0)"/>
+          <path d="M0 0C-7 -8 -7 -20 0 -27C7 -20 7 -8 0 0Z" transform="rotate(45)"/>
+          <path d="M0 0C-7 -8 -7 -20 0 -27C7 -20 7 -8 0 0Z" transform="rotate(90)"/>
+          <path d="M0 0C-7 -8 -7 -20 0 -27C7 -20 7 -8 0 0Z" transform="rotate(135)"/>
+          <path d="M0 0C-7 -8 -7 -20 0 -27C7 -20 7 -8 0 0Z" transform="rotate(180)"/>
+          <path d="M0 0C-7 -8 -7 -20 0 -27C7 -20 7 -8 0 0Z" transform="rotate(225)"/>
+          <path d="M0 0C-7 -8 -7 -20 0 -27C7 -20 7 -8 0 0Z" transform="rotate(270)"/>
+          <path d="M0 0C-7 -8 -7 -20 0 -27C7 -20 7 -8 0 0Z" transform="rotate(315)"/>
         </g>
-        <circle r="4.6" fill="#FFFDF5" stroke="#B79A5B" stroke-width=".9"/>
-        <use href="#fl" transform="scale(.82)"/>
+        <circle r="11" fill="#FFFDF5" stroke="#B79A5B" stroke-width="1.4"/>
+        <use href="#fl" transform="scale(1.45)"/>
       </g>
     </g>
   </defs>
 
   <use href="#side"/>
-  <use href="#side" transform="rotate(90 80 80)"/>
-  <use href="#side" transform="rotate(180 80 80)"/>
-  <use href="#side" transform="rotate(270 80 80)"/>
+  <use href="#side" transform="rotate(90 120 120)"/>
+  <use href="#side" transform="rotate(180 120 120)"/>
+  <use href="#side" transform="rotate(270 120 120)"/>
   <use href="#corner"/>
-  <use href="#corner" transform="rotate(90 80 80)"/>
-  <use href="#corner" transform="rotate(180 80 80)"/>
-  <use href="#corner" transform="rotate(270 80 80)"/>
+  <use href="#corner" transform="rotate(90 120 120)"/>
+  <use href="#corner" transform="rotate(180 120 120)"/>
+  <use href="#corner" transform="rotate(270 120 120)"/>
 </svg>

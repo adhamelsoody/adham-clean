@@ -30433,6 +30433,201 @@ window.musFit = musFit;
   try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(again); } catch (e) {}
 })();
 
+/* =========================================================================
+   خطوطُ صفحات مجمع الملك فهد (QPC V2) — مسارُ الرسم المطابق للورقة
+   -------------------------------------------------------------------------
+   الأسطرُ كانت تُرسم بالأميريّ، وعرضُ السطر الطبيعيّ به يتفاوت ربعاً بين
+   أسطر الصفحة الواحدة، فكان musFit يمطّ ويضغط ويباعد ولا يستقيم السطر.
+   هنا تُرسم كلُّ كلمةٍ بحرفها في خطّ صفحتها، فيمتلئ السطرُ بطبيعته.
+
+   ورموزُ الكلمات تُجلب من الدالة quranPage (وسيطٌ إلى Quran Foundation)
+   وتُحفظ عند المستخدم أسبوعاً على الأكثر كما تشترط شروطُهم، والخطُّ من
+   مستودعهم الرسميّ. ولا يتغيّر شيءٌ ممّا يُحفظ: كلُّ كلمةٍ span يحمل
+   data-k نفسَه «سورة:آية:كلمة» — فالتأشيرُ والصوتُ والتفسيرُ كما هي.
+
+   وأيُّ صفحةٍ لا تطابق فيها كلماتُ المصدر نصَّ المشروع وأسطرَه كلمةً
+   كلمة، أو تعذّر جلبُها أو خطُّها، تُرسم بالمسار القائم كما كانت.
+   ========================================================================= */
+const QV2 = { data: {}, wait: {}, fail: {}, font: {}, bad: {}, size: 0 };
+const QV2_TTL = 7 * 24 * 3600 * 1000;
+const QV2_FONT = n => "https://verses.quran.foundation/fonts/quran/hafs/v2/woff2/p" + n + ".woff2";
+
+function qv2Remount() {
+  try { if (STATE && STATE.page === "mushaf") mount(); } catch (e) {}
+}
+
+function qv2Font(n) {
+  if (QV2.font[n]) return;
+  if (typeof FontFace === "undefined" || !document.fonts) { QV2.font[n] = "fail"; return; }
+  QV2.font[n] = "wait";
+  try {
+    const ff = new FontFace("qpc-p" + n, "url(" + QV2_FONT(n) + ") format('woff2')", { display: "block" });
+    ff.load()
+      .then(f => { document.fonts.add(f); QV2.font[n] = "ok"; qv2Remount(); })
+      .catch(e => { QV2.font[n] = "fail"; console.warn("المصحف: تعذّر تحميل خطّ الصفحة " + n, e); });
+  } catch (e) { QV2.font[n] = "fail"; }
+}
+
+function qv2Load(n) {
+  if (QV2.data[n] || QV2.wait[n] || QV2.fail[n]) { if (QV2.data[n]) qv2Font(n); return; }
+  /* المحفوظُ عند المستخدم — لا يُستعمل بعد أسبوع */
+  try {
+    const raw = localStorage.getItem("qv2:" + n);
+    if (raw) {
+      const o = JSON.parse(raw);
+      if (o && Array.isArray(o.w) && o.t && Date.now() - o.t < QV2_TTL) {
+        QV2.data[n] = o.w; qv2Font(n); return;
+      }
+      localStorage.removeItem("qv2:" + n);
+    }
+  } catch (e) {}
+  if (typeof spCallFn !== "function") { QV2.fail[n] = 1; return; }
+  QV2.wait[n] = 1;
+  spCallFn("quranPage", { page: n })
+    .then(r => {
+      const w = r && Array.isArray(r.w) ? r.w : null;
+      if (!w || !w.length) throw new Error("لا كلمات");
+      QV2.data[n] = w;
+      try { localStorage.setItem("qv2:" + n, JSON.stringify({ t: Date.now(), w: w })); } catch (e) {}
+      qv2Font(n);
+    })
+    .catch(e => { QV2.fail[n] = 1; console.warn("المصحف: تعذّر جلب الصفحة " + n + " بخطّها", e); })
+    .then(() => { QV2.wait[n] = 0; });
+}
+
+/* مطابقةُ كلمات المصدر بأسطر المشروع كلمةً كلمة. ما لم يطابق لا يُرسم به */
+function qv2Layout(n, L, idx) {
+  if (QV2.bad[n]) return null;
+  const W = QV2.data[n];
+  const bad = why => {
+    QV2.bad[n] = why;
+    console.warn("المصحف: الصفحة " + n + " تُعرض بالخطّ الاحتياطيّ — " + why);
+    return null;
+  };
+  const byLine = {};
+  W.forEach(w => { (byLine[w.l] = byLine[w.l] || []).push(w); });
+  const nums = Object.keys(byLine).map(Number).sort((a, b) => a - b);
+  const textSlots = [];
+  L.forEach((x, i) => { if (x[0] !== "h" && x[0] !== "b") textSlots.push(i); });
+  if (nums.length !== textSlots.length) return bad("عددُ الأسطر " + nums.length + " لا " + textSlots.length);
+
+  const slots = {};
+  for (let k = 0; k < nums.length; k++) {
+    const api = byLine[nums[k]];
+    const ln = L[textSlots[k]];
+    const exp = [];
+    (ln[1] || []).forEach(sg => { for (let p = sg[2]; p <= sg[3]; p++) exp.push(sg[0] + ":" + sg[1] + ":" + p); });
+    const got = api.filter(w => w.t === "w").map(w => w.s + ":" + w.a + ":" + w.p);
+    if (exp.join("|") !== got.join("|")) return bad("كلماتُ السطر " + (k + 1));
+    for (let i = 0; i < api.length; i++) {
+      const w = api[i];
+      if (!w.c) return bad("رمزٌ فارغ " + w.s + ":" + w.a);
+      const sv = idx[w.s + ":" + w.a];
+      if (!sv) {                      /* صفحةٌ مجاورةٌ لم تُحمَّل بعد — لا حكمَ قبلها */
+        mushafLoad(w.s === ((MUSHAF_CACHE[n] || [])[0] || {}).s ? n - 1 : n + 1);
+        return null;
+      }
+      if (w.t === "w" && w.p > sv.w.length) return bad("كلمةٌ زائدة " + w.s + ":" + w.a);
+      /* علامةُ الآية: آخرُ كلمةٍ قبلها آخرُ كلمات الآية في المشروع */
+      if (w.t === "e") {
+        const prev = W.filter(x => x.t === "w" && x.s === w.s && x.a === w.a);
+        const last = prev.length ? prev[prev.length - 1].p : 0;
+        if (last !== sv.w.length) return bad("عددُ كلمات " + w.s + ":" + w.a);
+      }
+    }
+    slots[textSlots[k]] = api;
+  }
+  return slots;
+}
+
+/* ضبطُ الصفحة: خطٌّ واحدٌ يسع أعرضَ سطرٍ، ثمّ يُوزَّع الباقي القليلُ بين
+   الكلمات. والأسطرُ القصيرة (ختامُ سورة) تُتوسَّط ولا تُمطّ. */
+function qv2Fit(root) {
+  const host = root && root.querySelectorAll ? root : document;
+  const boxes = [].slice.call(host.querySelectorAll(".qv-lines"));
+  if (!boxes.length) return;
+  const REF = 40;
+  const plan = [];
+  boxes.forEach(box => {
+    const C = box.clientWidth;
+    if (!C) return;
+    const lines = [].slice.call(box.querySelectorAll(".qv-line.qv-t"));
+    box.style.fontSize = REF + "px";
+    lines.forEach(ln => { ln.classList.remove("qv-j", "qv-c"); });
+    const ws = lines.map(musLineW);
+    const wide = Math.max.apply(null, ws.concat([0]));
+    if (!wide) return;
+    plan.push({ box, C, lines, ws, wide, size: REF * (C / wide) * 0.995, first: box.classList.contains("qv-first") });
+  });
+  /* الورقتان المتقابلتان بخطٍّ واحد — أصغرُ ما تحتاجه إحداهما */
+  const normal = plan.filter(x => !x.first).map(x => x.size);
+  const common = normal.length ? Math.min.apply(null, normal) : 0;
+  if (common) QV2.size = common;
+  plan.forEach(x => {
+    /* الفاتحةُ وأوّلُ البقرة أسطرُها قصيرةٌ في الوسط — بخطّ الصفحات العاديّة */
+    const size = x.first ? Math.min(x.size, QV2.size || x.size * 0.7) : common;
+    x.box.style.fontSize = size.toFixed(2) + "px";
+    /* ارتفاعُ الصفّ من عرض الورقة: نسبةُ مساحة النصّ في المطبوع ١٥ صفّاً
+       إلى عرضٍ واحدٍ ≈ ١٫٥٨ — فلا يطول الوجهُ ولا يقصُر بتغيّر الخطّ */
+    x.box.style.setProperty("--qv-row", Math.max(x.C * 0.105, size * 1.7).toFixed(2) + "px");
+    x.lines.forEach((ln, i) => {
+      ln.classList.add(!x.first && x.ws[i] >= x.wide * 0.8 ? "qv-j" : "qv-c");
+    });
+  });
+}
+window.qv2Fit = qv2Fit;
+
+(function () {
+  let t = 0;
+  const again = () => { clearTimeout(t); t = setTimeout(() => qv2Fit(), 80); };
+  try { window.addEventListener("resize", again); } catch (e) {}
+  try { window.addEventListener("orientationchange", again); } catch (e) {}
+})();
+
+/* الورقةُ بخطّ صفحتها — أو "" ليُرسم المسارُ القائم */
+function qv2Sheet(n, L, idx, wordHTML, first, P, sName) {
+  qv2Load(n);
+  if (!QV2.data[n] || QV2.font[n] !== "ok") return "";
+  const lay = qv2Layout(n, L, idx);
+  if (!lay) return "";
+  const m = mushaf();
+
+  const linesHTML = L.map((ln, li) => {
+    if (ln[0] === "h") {
+      return `<div class="qv-line qv-h"><div class="mus-surah"><span>سُورَةُ ${esc(sName(ln[1]) || ln[1])}</span></div></div>`;
+    }
+    if (ln[0] === "b") {
+      return `<div class="qv-line qv-b"><span class="mus-basmala">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</span></div>`;
+    }
+    const h = (lay[li] || []).map(w => {
+      if (w.t === "w") return wordHTML(idx[w.s + ":" + w.a], w.p - 1, esc(w.c));
+      if (w.t === "e") {
+        const hl = m.hl && m.hl === w.s + ":" + w.a ? " mus-hl" : "";
+        return `<span class="mus-num qv-end tap${hl}" title="تفسير الآية"
+          onclick="window.musAyahOpen(${w.s},${w.a})">${esc(w.c)}</span>`;
+      }
+      return `<span class="qv-x">${esc(w.c)}</span>`;
+    }).join("");
+    return `<div class="qv-line qv-t">${h}</div>`;
+  }).join("");
+
+  try { requestAnimationFrame(function () { qv2Fit(); }); } catch (e) {}
+
+  return `<div class="mus-page">
+    ${P.top ? `<div class="mus-ptop">
+      <span>الجزء ${esc(juzOrd(first.j))}</span>
+      <span>سُورَةُ ${esc(sName(first.s))}</span>
+    </div>` : ""}
+    <div class="mus-orn${P.orn ? "" : " plain"}">
+      <div class="mus-inner">
+        <div class="mus-text qv-lines${P.thick ? " thick" : ""}${n <= 2 ? " qv-first" : ""}"
+          dir="rtl" style="font-family:'qpc-p${n}'">${linesHTML}</div>
+      </div>
+    </div>
+    <div class="mus-pfoot">${toArabicDigits(n)}</div>
+  </div>`;
+}
+
 function mushafSheet(n) {
   const rows = MUSHAF_CACHE[n];
   const m = mushaf();
@@ -30450,7 +30645,8 @@ function mushafSheet(n) {
   qlinesLoad();
 
   /* الكلمةُ الواحدة: لونُها من تأشير الأخطاء كما كان، ومفتاحُها لم يتغيّر */
-  const wordHTML = (sv, i) => {
+  /* inner: ما يُعرض داخل الكلمة — حرفُها في خطّ الصفحة متى رُسمت به */
+  const wordHTML = (sv, i, inner) => {
     const key = sv.s + ":" + sv.a + ":" + i;
     const k = m.marks[key];
     const cls = k ? " marked " + musMark(k).cls : "";
@@ -30460,13 +30656,16 @@ function mushafSheet(n) {
     const ttl = k ? ` title="${esc(musMark(k).h + (dk && MUSD.name && String(MUSD.kind) === String(dk)
       ? " — " + MUSD.name : ""))}"` : "";
     return `<span class="mus-w${cls}" data-k="${esc(key)}"${ttl}${sty} onclick="window.mushafMark('${key}')">${
-      esc(sv.w[i])}</span>`;
+      inner != null ? inner : esc(sv.w[i])}</span>`;
   };
 
   /* المسارُ المطابقُ للمصحف المطبوع متى وصل ملفُّ الأسطر */
   const L = QLINES && QLINES[String(n)];
   if (L && L.length) {
     const idx = musWordIndex(n);
+    /* بخطّ الصفحة متى وصلت كلماتُها وخطُّها وطابقت — وإلّا فالمسارُ القائم */
+    const qv = qv2Sheet(n, L, idx, wordHTML, first, P, sName);
+    if (qv) return qv;
     /* موضعُ آخر سطرٍ فيه كلام — ما بعده ليس سطرَ نصّ */
     let lastTextIdx = -1;
     L.forEach((x, i) => { if (x[0] !== "h" && x[0] !== "b") lastTextIdx = i; });
@@ -30778,6 +30977,9 @@ function mushafPage() {
     ${filters}
     ${spread}
     ${navBar}
+    ${Object.keys(QV2.font).some(k => QV2.font[k] === "ok")
+      ? `<div class="qv-credit">خطوط المصحف مقدَّمة من
+          <a href="https://quran.foundation/" target="_blank" rel="noopener">Quran Foundation</a></div>` : ""}
     ${readBar}
     ${tools}
     ${stats}

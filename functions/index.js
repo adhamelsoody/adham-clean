@@ -300,3 +300,94 @@ exports.approveUser = onCall(opts, async (req) => {
 
   return { ok: true, role };
 });
+
+/* =========================================================================
+   ٦) صفحةُ المصحف بخطوط مجمع الملك فهد (QPC V2) — وسيطٌ إلى Quran Foundation
+   -------------------------------------------------------------------------
+   المصحفُ التفاعليّ يرسم كلَّ كلمةٍ بحرفها في خطّ صفحتها، فيطابق السطرُ
+   الورقةَ المطبوعة بلا مطٍّ ولا مباعدة. ورموزُ الكلمات (code_v2) ومواضعُ
+   أسطرها تُجلب من Content API الرسميّ، وهو يشترط مفتاحاً سرّياً لا يجوز
+   أن يصل إلى المتصفّح — فيُجلب هنا ويُعاد إلى المتصفّح المختصرُ وحده.
+
+   الشروط (Quran Foundation Developer Terms): لا تُحفظ البياناتُ في المشروع،
+   ولا تُخزَّن عند المستخدم أكثرَ من أسبوع، ويُذكر المصدرُ في الواجهة.
+
+   الأسرار تُضبط مرّةً من جهازك:
+     firebase functions:secrets:set QF_CLIENT_ID
+     firebase functions:secrets:set QF_CLIENT_SECRET
+   ثمّ:  firebase deploy --only functions:quranPage
+   ========================================================================= */
+const { defineSecret } = require("firebase-functions/params");
+const QF_CLIENT_ID = defineSecret("QF_CLIENT_ID");
+const QF_CLIENT_SECRET = defineSecret("QF_CLIENT_SECRET");
+const QF_OAUTH = "https://oauth2.quran.foundation/oauth2/token";
+const QF_API = "https://apis.quran.foundation/content/api/v4";
+
+/* الرمزُ صالحٌ ساعةً — يُحفظ في ذاكرة النسخة ويُجدَّد قبل انتهائه بدقيقة */
+let QF_TOKEN = { v: "", exp: 0 };
+
+async function qfToken(force) {
+  if (!force && QF_TOKEN.v && Date.now() < QF_TOKEN.exp - 60000) return QF_TOKEN.v;
+  const id = QF_CLIENT_ID.value(), secret = QF_CLIENT_SECRET.value();
+  if (!id || !secret) throw new HttpsError("failed-precondition", "مفاتيح Quran Foundation غير مضبوطة.");
+  const r = await fetch(QF_OAUTH, {
+    method: "POST",
+    headers: {
+      "Authorization": "Basic " + Buffer.from(id + ":" + secret).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: "grant_type=client_credentials&scope=content"
+  });
+  if (!r.ok) throw new HttpsError("unavailable", "تعذّر الحصول على رمز الدخول (" + r.status + ").");
+  const j = await r.json();
+  QF_TOKEN = { v: j.access_token, exp: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
+  return QF_TOKEN.v;
+}
+
+async function qfGet(path) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const tok = await qfToken(attempt > 0);
+    const r = await fetch(QF_API + path, {
+      headers: { "x-auth-token": tok, "x-client-id": QF_CLIENT_ID.value(), "Accept": "application/json" }
+    });
+    if (r.status === 401 && attempt === 0) continue;       /* رمزٌ منتهٍ: يُجدَّد مرّةً */
+    if (!r.ok) throw new HttpsError("unavailable", "تعذّر جلب الصفحة من المصدر (" + r.status + ").");
+    return r.json();
+  }
+  throw new HttpsError("unavailable", "رُفض الدخول إلى المصدر.");
+}
+
+exports.quranPage = onCall(
+  Object.assign({}, opts, { secrets: [QF_CLIENT_ID, QF_CLIENT_SECRET] }),
+  async (req) => {
+    if (!req.auth || !req.auth.uid) throw new HttpsError("unauthenticated", "سجّل الدخول أولاً.");
+    const n = Number(req.data && req.data.page);
+    if (!Number.isInteger(n) || n < 1 || n > 604) {
+      throw new HttpsError("invalid-argument", "رقم صفحة خارج المدى.");
+    }
+
+    /* mushaf=1 تخطيطُ QCF V2 — رقمُ الصفحة والسطر لكلّ كلمةٍ بحسبه */
+    const out = [];
+    for (let pg = 1, guard = 0; pg && guard < 10; guard++) {
+      const j = await qfGet("/verses/by_page/" + n + "?mushaf=1&words=true&per_page=50&page=" + pg +
+        "&word_fields=code_v2,line_number,page_number&fields=verse_key");
+      (j.verses || []).forEach(v => {
+        const k = String(v.verse_key || "").split(":");
+        const s = Number(k[0]), a = Number(k[1]);
+        (v.words || []).forEach(w => {
+          if (Number(w.page_number) !== n) return;
+          out.push({
+            s, a,
+            p: Number(w.position),
+            t: w.char_type_name === "word" ? "w" : w.char_type_name === "end" ? "e" : "x",
+            c: String(w.code_v2 || ""),
+            l: Number(w.line_number)
+          });
+        });
+      });
+      pg = j.pagination && j.pagination.next_page ? Number(j.pagination.next_page) : 0;
+    }
+    if (!out.length) throw new HttpsError("not-found", "لا كلماتٍ لهذه الصفحة عند المصدر.");
+    return { page: n, w: out };
+  }
+);
