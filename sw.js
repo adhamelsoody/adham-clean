@@ -20,7 +20,9 @@
 /* v3: رفعُ الرقم يمحو كلَّ ما خزّنته v2 عند التفعيل (انظر activate
    أدناه)، فيتخلّص كلُّ عميلٍ من ملفاتٍ حُجزت في متصفّحه بإعداد
    التخزين القديم (سنةٌ كاملة) قبل تصحيحه في firebase.json. */
-const SW_VERSION = "mirath-v4";
+/* v5: يمحو كلَّ ما خزّنته v4. ورُفع لأنّ العملاءَ كانوا يُخدَمون ملفّاتٍ
+   قديمةً بعد النشر — «تظهر الصفحةُ الجديدةُ ثمّ تختفي». */
+const SW_VERSION = "mirath-v5";
 const SHELL_CACHE = SW_VERSION + "-shell";
 const QURAN_CACHE = SW_VERSION + "-quran";
 
@@ -28,7 +30,7 @@ const QURAN_CACHE = SW_VERSION + "-quran";
 const SHELL = [
   "/", "/index.html", "/app.js", "/styles.css",
   "/auth.js", "/firebase-config.js", "/quran.js",
-  "/hijri.js", "/topbar-dates.js", "/update.js",
+  "/topbar-dates.js",
   "/admin/shell.js", "/admin/dashboard.html", "/admin/soon.html",
 
   /* الملحقات: مربوطةٌ بكلّ صفحة، فتخزينُها يوفّر مئةَ كيلو في كلّ فتحة */
@@ -39,8 +41,9 @@ const SHELL = [
   "/manager-link.js", "/manager-link.css",
 
   /* الأصول: ٣٦٠ كيلو كانت تُحمَّل مع كلّ فتحة */
-  "/logo.svg", "/logo-mark.svg", "/logo-mark.png", "/favicon.png",
-  "/icons/icon-192.png", "/icons/apple-touch-icon.png"
+  /* hijri.js و update.js و logo-mark.png و favicon.png كانت هنا ولا وجودَ
+     لها في المشروع — تُطلب في كلّ تنصيبٍ فتسقط. أُخرجت. */
+  "/logo.svg", "/logo-mark.svg", "/icons/apple-touch-icon.png"
 ];
 
 /* لا تُخزَّن: لها تخزينها الخاص أو تتغيّر بطبيعتها */
@@ -50,7 +53,12 @@ function skip(url) {
          url.includes("identitytoolkit") ||
          url.includes("securetoken") ||
          url.includes("aladhan.com") ||          /* مواقيت اليوم تُخزَّن في التطبيق */
-         url.includes("wa.me");
+         url.includes("wa.me") ||
+         /* رقمُ البناء لا يُخزَّن ألبتة: به يُعرف أنّ ثمّة تحديثاً، فإن
+            خُزِّن بقي العميلُ يقرأ رقماً قديماً ويظنّ نفسَه محدَّثاً. */
+         /\/version\.json(\?|$)/.test(url) ||
+         /* وعاملُ الخدمة نفسُه: تخزينُه يمنع تحديثَه */
+         /\/sw\.js(\?|$)/.test(url);
 }
 
 self.addEventListener("install", e => {
@@ -96,7 +104,7 @@ self.addEventListener("fetch", e => {
           caches.open(QURAN_CACHE).then(c => c.put(req, copy));
         }
         return res;
-      }).catch(() => hit))
+      }).catch(() => hit || new Response("", { status: 504 })))
     );
     return;
   }
