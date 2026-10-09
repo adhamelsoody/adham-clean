@@ -26271,6 +26271,41 @@ function attRecordedFor(sid) {
   return !!m[String(sid)];
 }
 
+/* =========================================================================
+   لماذا لم يجد الحارسُ تحضيرَ هذا الطالب
+   -------------------------------------------------------------------------
+   «حضّرتُ يحيى، ومع ذلك يقول: سجّل حالته في التحضير أوّلاً».
+   الحارسُ يبحث عن سجلٍّ يطابق ثلاثةً معاً: تاريخَ الشاشة، وحلقةَ الطالب،
+   وألّا يكون سجلَّ معلّم. فيكفي اختلافُ واحدٍ ليخفى السجلُّ وهو مكتوب —
+   وأشيعُها اختلافُ اليوم، إذ لشاشة الطالب يومُها ولشاشة الحضور يومُها.
+   وكانت الرسالةُ تقول «سجّل أوّلاً» ولا تقول أيُّ الثلاثة تخلّف، فيُعيد
+   المعلّمُ التحضيرَ مراراً بلا طائل. السببُ الآن مكتوبٌ في الرسالة.
+   قراءةٌ محضة: لا تكتب شيئاً ولا تغيّر حكمَ الحارس.
+   ========================================================================= */
+function attWhyMissing(sid) {
+  try {
+    const d = typeof attDate === "function" ? attDate() : todayISO();
+    const st = (cur("students") || []).find(x => String(x.id) === String(sid));
+    if (!st) return "";
+    const cid = String(st.circleId || "");
+    const mine = (cur("attendance") || []).filter(r => r &&
+      String(r.studentId) === String(sid) && !r.staffId);
+    if (!mine.length) return "لا سجلَّ تحضيرٍ له أصلاً";
+
+    const sameDay = mine.filter(r => String(r.date) === String(d));
+    if (!sameDay.length) {
+      const last = mine.map(r => String(r.date)).sort().pop();
+      return "تحضيرُه مسجَّلٌ ليوم " + toArabicDigits(last) +
+             " واليومُ المعروض " + toArabicDigits(d);
+    }
+    if (cid && sameDay.every(r => String(r.circleId || "") &&
+                                  String(r.circleId) !== cid)) {
+      return "تحضيرُه مسجَّلٌ في حلقةٍ غير حلقته الحالية";
+    }
+    return "";
+  } catch (e) { return ""; }
+}
+
 window.tchOpenCircle = function (id) {
   TCRC.id = String(id || "");
   /* بوّابةُ التحضير: السؤالُ مرّةً واحدةً لمن لم يسجّل حضورَه بعد */
@@ -28013,7 +28048,9 @@ window.recvSave = function () {
   if (!st) { showToast("الطالب غير موجود", "warn"); return; }
   /* الشرطُ نفسُه: لا تسميعَ قبل التحضير */
   if (typeof attRecordedFor === "function" && !attRecordedFor(st.id)) {
-    showToast("سجّل حالةَ «" + (st.name || "الطالب") + "» في التحضير أوّلاً", "warn"); return;
+    const why1 = (typeof attWhyMissing === "function") ? attWhyMissing(st.id) : "";
+    showToast("سجّل حالةَ «" + (st.name || "الطالب") + "» في التحضير أوّلاً" +
+              (why1 ? " — " + why1 : ""), "warn"); return;
   }
 
   const u = (STATE && STATE.user) || {};
@@ -29511,7 +29548,9 @@ function reciteSave() {
      للطالب إلا بعد تسجيل حالته في التحضير». يُفحص هنا — في بوّابة الحفظ
      — لا في الزرّ وحدَه، فلا يُتجاوز بنداءٍ مباشر. */
   if (typeof attRecordedFor === "function" && !attRecordedFor(st.id)) {
-    showToast("سجّل حالةَ «" + (st.name || "الطالب") + "» في التحضير أوّلاً", "warn");
+    const why2 = (typeof attWhyMissing === "function") ? attWhyMissing(st.id) : "";
+    showToast("سجّل حالةَ «" + (st.name || "الطالب") + "» في التحضير أوّلاً" +
+              (why2 ? " — " + why2 : ""), "warn");
     return false;
   }
 
@@ -46739,7 +46778,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0300";
+  var APP_BUILD = "20261010-0325";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

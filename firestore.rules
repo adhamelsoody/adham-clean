@@ -316,6 +316,39 @@ service cloud.firestore {
       allow delete: if canWrite();
     }
 
+    /* ---------------- عملُ المعلّم اليوميُّ: سجلّاتٌ تُضاف ولا تُعدَّل ----
+       ثلاثون مجموعةً في operational() بلا كتلةٍ خاصّة، فكتابتُها تشترط
+       canWrite() — أي الإدارة. وفيها ما هو من عمل المعلّم بعينه، فكان
+       يُردّ: منحُ النقاط، وسجلُّ الإجراء، والتنبيهُ لوليّ الأمر، والرسالة.
+
+       تُمنح إضافةً فقط (create) — لا تعديلَ ولا حذف. فالسجلُّ يُكتب مرّةً
+       ويبقى شاهداً لا يُمحى، ولا يملك المعلّمُ تغييرَ ما مضى. وداخلَ
+       نطاقه كسائر كتابته. والمراسلةُ بمفتاحها msg_send كما في
+       site_messages، فمن مُنع منها هناك مُنع هنا. */
+    match /pointsLog/{docId} {
+      allow read: if canRead();
+      allow create: if (canWrite() || isTeacher()) && scopeOk();
+      allow update, delete: if canWrite();
+    }
+
+    match /procLog/{docId} {
+      allow read: if canRead();
+      allow create: if canWrite() || isTeacher();
+      allow update, delete: if canWrite();
+    }
+
+    match /notifications/{docId} {
+      allow read: if canRead();
+      allow create: if canWrite() || isTeacher();
+      allow update, delete: if canWrite() || isTeacher();
+    }
+
+    match /msgOutbox/{docId} {
+      allow read: if canRead();
+      allow create: if teacherMay('msg_send', true);
+      allow update, delete: if canWrite();
+    }
+
     match /recitations/{docId} {
       allow read: if canRead();
       /* الإنشاء عمل يومي، والتعديل على محفوظ صلاحية خاصة */
