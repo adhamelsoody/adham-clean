@@ -26426,8 +26426,6 @@ function tcrcStudents(c) {
 function tcrcDayBar(studs, d) {
   const dName = typeof dayNameOf === "function" ? dayNameOf(d) : "";
   const isToday = String(d) === String(todayISO());
-  const offDay = (studs || []).length && (studs || []).every(x =>
-    typeof isDutyDay === "function" && !isDutyDay(x, d));
   return `<div class="tcd-bar">
     <button type="button" class="tcd-nav" data-action="att-shift" data-days="-1"
       title="اليوم السابق">${ic("arrowRight", 16)}</button>
@@ -26439,9 +26437,7 @@ function tcrcDayBar(studs, d) {
       title="اليوم التالي" ${isToday ? "disabled" : ""}>${ic("arrowLeft", 16)}</button>
     ${isToday ? "" : `<button type="button" class="btn btn-soft btn-sm tcd-now"
       onclick="STATE.attDate=todayISO();mount()">اليوم</button>`}
-  </div>
-  ${offDay ? noteCard("هذا اليومُ ليس من أيّام دوام الحلقة، فلا واجباتِ فيه ولا علاماتِ إنجاز. " +
-     "انتقل إلى يوم دوامٍ من السهمين أعلاه.") : ""}`;
+  </div>`;
 }
 
 function teacherCircle() {
@@ -46615,7 +46611,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-2350";
+  var APP_BUILD = "20261010-0005";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
