@@ -36448,8 +36448,46 @@ function mount() {
     return;
   }
 
-  const fn = PAGES[`${STATE.iface}/${STATE.page}`];
-  const html = fn ? fn() : `<div class="page">${emptyState("الصفحة غير متاحة", "تأكد من الرابط أو ارجع للوحة التحكم.")}</div>`;
+  /* =======================================================================
+     الشاشةُ البيضاء تقول سببَها
+     -----------------------------------------------------------------------
+     «فُتحت الواجهةُ والمحتوى فارغ»: كانت نتيجةُ الشاشة تُكتب كما هي، فإن
+     سقطت الدالّةُ بخطأٍ أو ردّت فراغاً بقي الموضعُ أبيضَ بلا كلمة — ولا
+     كونسولَ في يد صاحب الهاتف. وثلاثةُ أسبابٍ تُنتج البياضَ نفسَه:
+     مفتاحُ شاشةٍ لا وجودَ له · خطأٌ أثناء الرسم · ردٌّ فارغ.
+     تُسمّى كلُّها الآن في بطاقةٍ واحدةٍ مع ما يلزم لتشخيصها.
+     ======================================================================= */
+  const fnKey = `${STATE.iface}/${STATE.page}`;
+  const fn = PAGES[fnKey];
+  function mountCard(ttl, why) {
+    const u = (STATE && STATE.user) || {};
+    return `<div class="page">${pageHead(ttl, "")}
+      <div class="card">${emptyState(ttl, why)}
+        <div class="muted" style="font-size:12px;line-height:2;margin-top:10px;direction:ltr;text-align:left">
+          iface=${esc(String(STATE.iface || "—"))} · page=${esc(String(STATE.page || "—"))}<br>
+          role=${esc(String(u.role || "—"))} · mosqueId=${esc(String(u.mosqueId || "—"))}
+          · complexId=${esc(String(u.complexId || "—"))}<br>
+          scopeIds=${esc(String((u.scopeIds || []).length))} · screen=${fn ? "found" : "MISSING"}
+        </div>
+      </div></div>`;
+  }
+
+  let html = "";
+  if (!fn) {
+    html = mountCard("الصفحة غير متاحة", "لا توجد شاشةٌ بهذا المفتاح. ارجع للوحة التحكم.");
+  } else {
+    try {
+      html = fn() || "";
+    } catch (e) {
+      console.error("mount:" + fnKey, e);
+      html = mountCard("تعذّر رسم الصفحة",
+        "وقع خطأٌ أثناء بناء هذه الشاشة: " + esc(String((e && e.message) || e)));
+    }
+    if (!String(html).trim()) {
+      html = mountCard("الصفحة فارغة",
+        "بُنيت الشاشةُ ولم تُنتج محتوى. غالباً لا بياناتٍ في نطاق حسابك لهذا اليوم.");
+    }
+  }
   const root = $("#pageContent");
   /* عنوان التبويب من عنوان الصفحة المعروضة */
   setTimeout(function () {
@@ -46549,7 +46587,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-2155";
+  var APP_BUILD = "20261009-2215";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
