@@ -12478,3 +12478,10 @@ button.tq-mark:focus-visible { outline: 2px solid var(--brand-main); outline-off
 .tq-sum-all  { color: #12855c; }
 .tq-sum-some { color: #b8761b; }
 .tq-sum-none { color: var(--text-muted); }
+
+/* صفُّ الواجب عند المعلّم: الغلافُ يحمل الصفَّ بشكله عند الطالب وزرَّ
+   الاعتماد تحته، فتُزال حدودُ الغلاف عن الصفّ ولا تُضاعَف. */
+.tdt-wrap > .sls-row { border: none; border-radius: 0; background: transparent;
+  border-inline-start: none; }
+.tdt-wrap > .sls-row:hover { background: var(--border-soft); }
+.tdt-wrap { gap: 0; }

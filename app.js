@@ -27215,24 +27215,41 @@ function tstuDutyCards(st) {
     return `<div class="ntf-empty">لا واجباتِ هذا اليوم</div>
       ${tstuDutyAddBtn(st) ? `<div class="tdt-addwrap">${tstuDutyAddBtn(st)}</div>` : ""}`;
   }
-  return `<div class="tdt-list">${list.map(a => {
+  /* =======================================================================
+     صفُّ الواجب عند المعلّم بشكله عند الطالب
+     -----------------------------------------------------------------------
+     «أريد في صفحة المعلّم أن تكون بنفس كلّ التفاصيل التي في الصورة»:
+     كان صفُّ المعلّم نقطةً ملوّنةً واسماً ومدى في سطرٍ تحته وشريطَ حالة،
+     وصفُّ الطالب صحّاً مدوّراً وسطراً واحداً «حفظ: من الناس (١) إلى الفلق
+     (١)» وسهماً. شكلان لشيءٍ واحد. وُحِّدا على شكل الطالب — وهو المطلوب.
+
+     ويبقى زرُّ «تسجيل الإنجاز» تحت الصفّ كما في المواصفات المكتوبة: الصفُّ
+     يفتح تفاصيلَ الواجب، والزرُّ يعتمد تسميعَه مباشرةً.
+     ======================================================================= */
+  return `<div class="sls-list">${list.map(a => {
     const t = typeof hwType === "function" ? hwType(String(a.kind || "").replace("_makeup", "")) : {};
     const parts = typeof asgParts === "function" ? asgParts(a) : [];
+    const done = a.status === "done";
+    const rng = typeof stuRangeText === "function" ? stuRangeText(a) : "";
+    const stx = (typeof ASG_TEXT !== "undefined" && ASG_TEXT[a.status]) || a.status || "";
     return `<div class="tdt-wrap" style="--tdt-k:${esc(t.color || "#4bdee4")}">
-    <button type="button" class="tdt-card" onclick="window.tstuDuty('${jsAttr(a.id)}')">
-      <span class="tdt-dot" style="background:${esc(t.color || "#4bdee4")}"></span>
-      <span class="tdt-body">
-        <strong>${esc(a.kindName || t.h || "واجب")}</strong>
-        ${a.qty ? `<span class="tdt-qty">${toArabicDigits(a.qty)} ${esc(a.unit || "وجه")}</span>` : ""}
-        ${tstuRange(a) ? `<small>${esc(tstuRange(a))}</small>` : ""}
-        ${parts.length ? `<small class="tdt-parts">${toArabicDigits(asgDoneQty(a))} من ${
-          toArabicDigits(a.qty || 0)} · ${toArabicDigits(parts.length)} جلسة</small>` : ""}
+    <button type="button" class="sls-row${done ? " on" : ""}"
+      style="--sls-k:${esc(t.color || "#4bdee4")}"
+      onclick="window.tstuDuty('${jsAttr(a.id)}')">
+      <span class="sls-tick${done ? " on" : ""}"
+        role="img" aria-label="${done ? "منجَز" : "لم يُنجَز بعد"}">${ic("check", 14)}</span>
+      <span class="sls-mid">
+        <span class="sls-line"><strong>${esc(a.kindName || t.h || "واجب")}:</strong>${
+          rng ? ` <span class="sls-rng">${esc(rng)}</span>` : ""}</span>
+        <small class="sls-st${done ? " on" : ""}">${esc(stx)}${
+          a.score != null ? " · " + toArabicDigits(a.score) + "٪" : ""}${
+          a.qty ? " · " + toArabicDigits(a.qty) + " " + esc(a.unit || "وجه") : ""}${
+          parts.length ? " · " + toArabicDigits(asgDoneQty(a)) + " من " +
+            toArabicDigits(a.qty || 0) + " · " + toArabicDigits(parts.length) + " جلسة" : ""}</small>
       </span>
-      <span class="chip ${(typeof ASG_TINT !== "undefined" && ASG_TINT[a.status]) || ""}">${
-        esc((typeof ASG_TEXT !== "undefined" && ASG_TEXT[a.status]) || a.status || "")}${
-        a.score != null ? " · " + toArabicDigits(a.score) + "٪" : ""}</span>
+      <span class="sls-go" aria-hidden="true">${ic("arrowLeft", 16)}</span>
     </button>
-    ${a.status !== "done" && teacherCan("recite") ? `<button type="button"
+    ${!done && teacherCan("recite") ? `<button type="button"
       class="btn btn-primary btn-sm tdt-done"
       onclick="window.recvOpen('${jsAttr(String(a.id))}')"
       >${ic("check", 15)} تسجيل الإنجاز</button>` : ""}
@@ -46526,7 +46543,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-1945";
+  var APP_BUILD = "20261009-2110";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
