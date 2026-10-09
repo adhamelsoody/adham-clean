@@ -821,6 +821,28 @@ window.SHELL_MODE = true;
        صاحبها. ولا يُفتح بها بابٌ زائد: الدورُ هنا يختار الواجهةَ لا أكثر،
        وكلُّ قراءةٍ وكتابةٍ تبقى تحت حكم قواعد الخادم.
        ===================================================================== */
+    /* =====================================================================
+       القراءةُ التي لا تردّ هي البياضُ نفسُه
+       ---------------------------------------------------------------------
+       «تُفتح الواجهةُ والمحتوى فارغ»: البوّابةُ تنتظر users/<uid> بـ await،
+       وعميلُ Firestore قد لا يردّ ألبتة — لا بنجاحٍ ولا برفض — إن تعذّر
+       عليه مخزنُه المحلّيّ (enablePersistence) أو انقطعت الشبكةُ في منتصف
+       الطلب. فيدوم الانتظارُ ولا يُستدعى boot()، فلا قائمةَ جانبيّةً ولا
+       محتوى. والشريطُ العلويُّ وحدَه يظهر لأنه مكتوبٌ في الصفحة لا يرسمه
+       كود — فتبدو الواجهةُ مفتوحةً وجوفُها أبيض.
+       وكان الرفضُ مُعالَجاً والتعليقُ غيرَ مُعالَج؛ فلكلّ قراءةٍ مهلةٌ
+       الآن: تنقضي فتصير القراءةُ فاشلةً برمزٍ معروف، فتسلك مراتبَ السقوط
+       القائمة (مخزنُ Firestore المحلّيّ ثمّ آخرُ نسخةٍ محفوظة).
+       ===================================================================== */
+    function profTimeout(p, ms, tag) {
+      return Promise.race([p, new Promise(function (_, rej) {
+        setTimeout(function () {
+          var e = new Error("لم يردّ الخادمُ على قراءة ملفّ حسابك");
+          e.code = "timeout"; e.tag = tag || ""; rej(e);
+        }, ms || 8000);
+      })]);
+    }
+
     async function readProfile(user) {
       const db = window.__db;
       if (!db) return null;
@@ -828,11 +850,20 @@ window.SHELL_MODE = true;
       for (var i = 0; i < 3; i++) {
         try {
           if (i > 0) { try { await user.getIdToken(true); } catch (e2) {} }
-          var snap = await db.collection("users").doc(user.uid).get();
+          var snap = await profTimeout(
+            db.collection("users").doc(user.uid).get(), 7000, "profile");
           if (snap && snap.exists) profSave(user.uid, snap.data() || {});
           return snap;
         } catch (e) {
           denied = e;
+          /* التعليقُ لا يُعاد: طلبٌ لا يردّ لا يردّ في الثانية أيضاً،
+             وإعادتُه تُضاعف الانتظارَ حتى يسبقَ حارسُ الإقلاع السقوطَ.
+             فيُكسر الطوافُ هنا ويُنزل فوراً إلى المخزن ثمّ المحفوظ.
+             والمحاولاتُ الثلاثُ تبقى للرفض العارض وهو موضعُها. */
+          if (e && e.code === "timeout") {
+            console.warn("لم تردّ قراءةُ الملف — نزولٌ إلى المحفوظ");
+            break;
+          }
           if (!e || e.code !== "permission-denied") throw e;
           console.warn("رُفضت قراءةُ الملف — محاولة " + (i + 1) + "/3");
           await new Promise(function (r) { setTimeout(r, 400 * (i + 1)); });
@@ -840,7 +871,8 @@ window.SHELL_MODE = true;
       }
 
       try {
-        var cs = await db.collection("users").doc(user.uid).get({ source: "cache" });
+        var cs = await profTimeout(
+          db.collection("users").doc(user.uid).get({ source: "cache" }), 3000, "cache");
         if (cs && cs.exists) {
           console.warn("الملفُّ من مخزن Firestore المحلّيّ — الخادمُ ردَّ القراءة.");
           return cs;
@@ -858,6 +890,39 @@ window.SHELL_MODE = true;
 
       throw denied;
     }
+
+    /* =====================================================================
+       حارسُ الإقلاع — آخرُ ما يمنع البياضَ الصامت
+       ---------------------------------------------------------------------
+       مهلةُ القراءة أعلاه تكفي للسبب المعروف، وهذا يكفي لما لم يُعرف:
+       أيُّ تعليقٍ في البوّابة — قبل boot() — يُنتج الشاشةَ البيضاءَ نفسَها،
+       ولا كونسولَ في يد صاحب الهاتف. فإن مضت خمسةَ عشرَ ثانيةً ولم يُقلِع
+       النظامُ ولم يُرسم شيءٌ، قيل السببُ وأُعطي مخرجان.
+       ===================================================================== */
+    setTimeout(function () {
+      if (BOOTED) return;
+      var c = document.getElementById("pageContent");
+      if (!c || c.innerHTML.trim()) return;     /* رُسم شيءٌ: لا نتدخّل */
+      showFatal("تعذّر فتح الواجهة",
+        "لم يردّ الخادمُ على قراءة ملفّ حسابك في الوقت المتاح، فلم تُفتح " +
+        "الواجهة. أعد المحاولة، وإن تكرّر الأمرُ فجرّب شبكةً أخرى أو ادخل " +
+        "من جديد.");
+      var box = c.querySelector("div");
+      if (!box) return;
+      var w = document.createElement("div");
+      w.style.cssText =
+        "display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap";
+      w.innerHTML =
+        '<button type="button" id="bwRetry" style="padding:11px 18px;border:0;' +
+        'border-radius:11px;background:#0b7f83;color:#fff;font-weight:700;' +
+        'font-size:14px;font-family:inherit;cursor:pointer">إعادة المحاولة</button>' +
+        '<a href="/login.html" style="padding:11px 18px;border-radius:11px;' +
+        'border:1px solid #cfd8dc;color:#37474f;text-decoration:none;' +
+        'font-weight:700;font-size:14px">الدخول من جديد</a>';
+      box.appendChild(w);
+      var rb = w.querySelector("#bwRetry");
+      if (rb) rb.addEventListener("click", function () { location.reload(); });
+    }, 15000);
 
     auth.onAuthStateChanged(async function (user) {
       if (!user) { safeGo("/login.html", "لم يُسجَّل الدخول"); return; }
