@@ -296,6 +296,26 @@ service cloud.firestore {
       allow delete: if canWrite();
     }
 
+    /* ---------------- الواجبات اليومية ----------------
+       «أضفتُ واجباً ولا يظهر — والعلامةُ لا تخضرّ».
+       assignments مُدرجةٌ في operational() ولا كتلةَ خاصّةَ لها، فتقع تحت
+       القاعدة العامّة التي تشترط canWrite() — أي مديراً أو مديرَ منشأة.
+       والمعلّمُ ليس واحداً منهما، فكان لا يملك كتابةَ واجبٍ ألبتّة:
+       يُضيف فيُردّ، ويُسمّع فلا تُغلق الحالةُ فلا تخضرّ العلامة.
+       وهذا عملُ المعلّم اليوميُّ بعينه — و plans و recitations لهما
+       كتلتاهما تمنحانه إيّاه، وسقطت assignments وحدَها من الاستثناء.
+
+       تُمنح كما تُمنح الخطة حرفاً بحرف: بصلاحية plan_edit، وداخل نطاقه،
+       وحقولُ الارتباط ممنوعةٌ عليه في التعديل — فلا يَنقل واجباً إلى
+       طالبٍ آخرَ ولا إلى مسجدٍ آخر. والحذفُ للإدارة وحدها. */
+    match /assignments/{docId} {
+      allow read: if canRead();
+      allow create: if teacherMay('plan_edit', true) && scopeOk();
+      allow update: if teacherMay('plan_edit', true) && scopeOk()
+                    && (canWrite() || !changed().hasAny(linkFields()));
+      allow delete: if canWrite();
+    }
+
     match /recitations/{docId} {
       allow read: if canRead();
       /* الإنشاء عمل يومي، والتعديل على محفوظ صلاحية خاصة */
