@@ -26353,11 +26353,28 @@ function tcrcMarks(sid) {
     /* kindAr و k لا وجودَ لهما في سجلّ الواجب، فكان التلميحُ يقول «واجب»
        دائماً. الاسمُ في kindName وإلا kind — كما في بقيّة الشاشات. */
     const nm = a.kindName || a.kind || "واجب";
-    return `<span class="tq-mark${done ? " on" : ""}"
+    /* العلامةُ زرٌّ يفتح بطاقةَ واجبها: كلُّ علامةٍ مرتبطةٌ بواجبٍ بعينه
+       لا عدّادٌ شكليّ. و stopPropagation يمنع فتحَ صفحة الطالب معها. */
+    return `<button type="button" class="tq-mark${done ? " on" : ""}"
+      onclick="event.stopPropagation();window.tcrcOpenDuty('${jsAttr(String(a.studentId))}','${
+        jsAttr(String(a.id))}')"
       title="${esc(nm + " — " + (done ? "منجز" : "لم يُنجز"))}"
-      >${ic("check", 13)}</span>`;
+      aria-label="${esc(nm + " — " + (done ? "منجز" : "لم يُنجز"))}"
+      >${ic("check", 13)}</button>`;
   }).join("");
 }
+
+/* الضغطُ على علامةٍ يفتح صفحةَ الطالب على بطاقة واجبها */
+window.tcrcOpenDuty = function (sid, asgId) {
+  TSTU.id = String(sid || "");
+  TSTU.tab = "plan";
+  TSTU.day = typeof attDate === "function" ? attDate() : todayISO();
+  STATE.page = "student";
+  mount();
+  setTimeout(function () {
+    try { window.tstuDuty(asgId); } catch (e) { console.warn("tcrcOpenDuty:", e); }
+  }, 60);
+};
 
 /* طلابُ الحلقة مرتَّبين أبجدياً — نصَّت الوثيقةُ على هذا الترتيب */
 function tcrcStudents(c) {
@@ -27109,16 +27126,40 @@ function tstuRange(a) {
     (a.toS ? " — " + surahName(a.toS) + " " + toArabicDigits(a.toA || 1) : "");
 }
 
+/* زرُّ «إضافة واجب» لهذا الطالب — يُعيد استعمال نافذة الواجب اليدويّ
+   نفسِها، محدَّداً فيها هذا الطالبُ وحدَه. فلا نافذةَ ثانيةٌ ولا حقولٌ
+   مكرَّرة: النوعُ والمدى والمقدارُ والتاريخُ كلُّها قائمةٌ فيها. */
+window.tstuAddDuty = function (sid) {
+  if (!teacherCan("editPlan")) {
+    showToast("لا تملك صلاحية تعديل الخطة", "warn"); return;
+  }
+  try {
+    const sel = typeof dutySel === "function" ? dutySel() : null;
+    if (sel) { Object.keys(sel).forEach(k => { delete sel[k]; }); sel[String(sid)] = true; }
+  } catch (e) {}
+  STATE.dutyDay = tstuDay() === tstuToday() ? "today" : STATE.dutyDay;
+  modalBulkDuty();
+};
+
+function tstuDutyAddBtn(st) {
+  if (!teacherCan("editPlan")) return "";
+  return `<button type="button" class="btn btn-soft btn-sm tdt-add"
+    onclick="window.tstuAddDuty('${jsAttr(String(st.id))}')"
+    >${ic("plus", 15)} إضافة واجب</button>`;
+}
+
 function tstuDutyCards(st) {
   const d = tstuDay();
   const list = tstuAsgOf(st, d);
   if (!list.length) {
-    return `<div class="ntf-empty">لا واجباتِ هذا اليوم</div>`;
+    return `<div class="ntf-empty">لا واجباتِ هذا اليوم</div>
+      ${tstuDutyAddBtn(st) ? `<div class="tdt-addwrap">${tstuDutyAddBtn(st)}</div>` : ""}`;
   }
   return `<div class="tdt-list">${list.map(a => {
     const t = typeof hwType === "function" ? hwType(String(a.kind || "").replace("_makeup", "")) : {};
     const parts = typeof asgParts === "function" ? asgParts(a) : [];
-    return `<button type="button" class="tdt-card" onclick="window.tstuDuty('${jsAttr(a.id)}')">
+    return `<div class="tdt-wrap" style="--tdt-k:${esc(t.color || "#4bdee4")}">
+    <button type="button" class="tdt-card" onclick="window.tstuDuty('${jsAttr(a.id)}')">
       <span class="tdt-dot" style="background:${esc(t.color || "#4bdee4")}"></span>
       <span class="tdt-body">
         <strong>${esc(a.kindName || t.h || "واجب")}</strong>
@@ -27130,8 +27171,14 @@ function tstuDutyCards(st) {
       <span class="chip ${(typeof ASG_TINT !== "undefined" && ASG_TINT[a.status]) || ""}">${
         esc((typeof ASG_TEXT !== "undefined" && ASG_TEXT[a.status]) || a.status || "")}${
         a.score != null ? " · " + toArabicDigits(a.score) + "٪" : ""}</span>
-    </button>`;
-  }).join("")}</div>`;
+    </button>
+    ${a.status !== "done" && teacherCan("recite") ? `<button type="button"
+      class="btn btn-primary btn-sm tdt-done"
+      onclick="window.recvOpen('${jsAttr(String(a.id))}')"
+      >${ic("check", 15)} تسجيل الإنجاز</button>` : ""}
+    </div>`;
+  }).join("")}</div>
+  ${tstuDutyAddBtn(st) ? `<div class="tdt-addwrap">${tstuDutyAddBtn(st)}</div>` : ""}`;
 }
 
 /* نتائجُ اليوم: التسميعُ وتقييمُه والأخطاءُ المسجَّلة — لليوم المختار */
@@ -27177,7 +27224,28 @@ const TSPL = { id: "", rows: 1 };
 function tstuAsgById(id) {
   return (cur("assignments") || []).find(a => String(a.id) === String(id)) ||
          (Array.isArray(DB.assignments)
-           ? DB.assignments.find(a => String(a.id) === String(id)) : null) || null;
+           ? DB.assignments.find(a => String(a.id) === String(id)) : null) ||
+         /* المولَّدُ من الخطة لم يُكتب بعد، فلا يجده البحثُ في المحفوظ */
+         (dutiesOfDay(TSTU.id, tstuDay()) || [])
+           .find(a => String(a.id) === String(id)) || null;
+}
+
+/* =========================================================================
+   الواجبُ قبل العمل عليه: يُكتب إن كان مولَّداً
+   -------------------------------------------------------------------------
+   واجباتُ اليوم تُولَّد من الخطة عند العرض ولا تُكتب. فإن اعتُمد تسميعُها
+   وهي مولَّدةٌ فقط، كُتبت حالتُها في سجلٍّ لا وجودَ له — ويعود الواجبُ
+   «بانتظار التسميع» عند أوّل إعادةِ رسم. فأوّلُ عملٍ عليه يُثبته سجلّاً.
+   ويُكتب كما هو من المحرّك: لا يُغيَّر فيه حقلٌ ولا ارتباط.
+   ========================================================================= */
+function asgEnsure(a) {
+  if (!a || a.id == null) return a;
+  if (!Array.isArray(DB.assignments)) DB.assignments = [];
+  const has = DB.assignments.some(x => x && String(x.id) === String(a.id));
+  if (has) return DB.assignments.find(x => String(x.id) === String(a.id));
+  DB.assignments.push(a);
+  try { persistSet("assignments", a); } catch (e) { console.warn("asgEnsure:", e); }
+  return a;
 }
 
 function tsplRow(i, a) {
@@ -27723,7 +27791,7 @@ window.reptCfgSave = function () {
    ثمّ «اعتماد التسميع» فتُحفظ النتيجةُ والأخطاءُ والتقييم، وتخضرُّ علامةُ
    الواجب، وينقص المتبقّي في إحصاء الحلقة، وينتقل إلى الواجب التالي.
    ========================================================================= */
-const RECV = { asgId: "", grade: "ممتاز" };
+const RECV = { asgId: "", grade: "ممتاز", saving: false };
 
 /* أخطاءُ المصحف في مدى الواجب — تُقرأ ولا تُكتب يدوياً */
 function recvMarks(a) {
@@ -27750,11 +27818,14 @@ function recvNext(a) {
 }
 
 window.recvOpen = function (asgId) {
-  const a = tstuAsgById(asgId || RECV.asgId || MUSD.asgId);
+  let a = tstuAsgById(asgId || RECV.asgId || MUSD.asgId);
   if (!a) { showToast("لا واجبَ مفتوح", "warn"); return; }
   if (!teacherCan("recite")) {
     showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
   }
+  if (a.status === "done") { showToast("هذا الواجبُ معتمَدٌ أصلاً", "warn"); return; }
+  /* المولَّدُ يُثبت سجلّاً قبل أن يُبنى عليه تسميعٌ واعتماد */
+  a = asgEnsure(a);
   RECV.asgId = String(a.id);
   RECV.grade = "ممتاز";
   const st = (cur("students") || []).find(x => String(x.id) === String(a.studentId)) || {};
@@ -27799,6 +27870,11 @@ window.recvSave = function () {
   if (!teacherCan("recite")) {
     showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
   }
+  /* ضغطتان متتاليتان كانتا تكتبان تسميعين للواجب نفسِه */
+  if (a.status === "done") { showToast("هذا الواجبُ معتمَدٌ أصلاً", "warn"); return; }
+  if (RECV.saving) return;
+  RECV.saving = true;
+  setTimeout(function () { RECV.saving = false; }, 4000);
   const st = (cur("students") || []).find(x => String(x.id) === String(a.studentId));
   if (!st) { showToast("الطالب غير موجود", "warn"); return; }
   /* الشرطُ نفسُه: لا تسميعَ قبل التحضير */
@@ -46390,7 +46466,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-0945";
+  var APP_BUILD = "20261009-1850";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

@@ -12416,3 +12416,35 @@ html[data-theme="dark"] .dutypick-b.on {
   border-color: rgba(255, 255, 255, .28);
   color: #fff;
 }
+
+/* =========================================================================
+   بطاقةُ الواجب مستقلّةٌ بزرّ إنجازها، وزرُّ إضافةِ واجب
+   -------------------------------------------------------------------------
+   «أريد أن يظهر كلُّ واجبٍ في بطاقةٍ منفصلةٍ ومستقلّة… وزرٌّ واضحٌ لتسجيل
+   إنجاز الواجب»: كانت البطاقةُ زرّاً واحداً يفتح التفاصيل، ولا سبيلَ إلى
+   الاعتماد إلا بعد فتحها. فصارت البطاقةُ غلافاً: جسمُها يفتح التفاصيل،
+   وتحتها زرُّ الاعتماد مباشرةً، وعلى حافّتها لونُ نوعها فيُميَّز بنظرة.
+   ========================================================================= */
+.tdt-wrap {
+  display: flex; flex-direction: column; gap: 0;
+  border: 1px solid var(--border); border-radius: 15px;
+  border-inline-start: 4px solid var(--tdt-k, var(--brand-main));
+  background: var(--surface); overflow: hidden;
+}
+.tdt-wrap .tdt-card { border: none; border-radius: 0; background: transparent; }
+.tdt-wrap .tdt-card:hover { background: var(--border-soft); }
+
+.tdt-done {
+  margin: 0 12px 11px; align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.tdt-addwrap { margin-top: 11px; text-align: center; }
+.tdt-add { display: inline-flex; align-items: center; gap: 6px; }
+
+/* العلامةُ صارت زرّاً: تُمحى سماتُ الزرّ الموروثة ويبقى شكلُها */
+button.tq-mark {
+  padding: 0; font: inherit; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+button.tq-mark:hover { border-color: var(--brand-light); }
+button.tq-mark:focus-visible { outline: 2px solid var(--brand-main); outline-offset: 2px; }
