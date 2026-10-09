@@ -12471,3 +12471,10 @@ button.tq-mark:focus-visible { outline: 2px solid var(--brand-main); outline-off
 .tcd-nav:hover:not([disabled]) { border-color: var(--brand-light); color: var(--brand-main); }
 .tcd-nav[disabled] { opacity: .4; cursor: default; }
 .tcd-now { flex: 0 0 auto; }
+
+/* سطرُ حال الواجبات تحت الاسم: أخضرُ إن تمَّ كلُّه، وكهرمانيٌّ إن بقي
+   منه شيء، ورماديٌّ إن لم يبدأ — ليُقرأ حالُ الطالب بلونٍ قبل قراءته. */
+.tq-sum { font-weight: 600; }
+.tq-sum-all  { color: #12855c; }
+.tq-sum-some { color: #b8761b; }
+.tq-sum-none { color: var(--text-muted); }

@@ -26366,6 +26366,35 @@ function tcrcMarks(sid) {
   }).join("");
 }
 
+/* =========================================================================
+   سطرُ حال الواجبات تحت اسم الطالب في قائمة الطلاب
+   -------------------------------------------------------------------------
+   «أريد بطاقةَ الطالب من الخارج بنفس الشكل»: كان السطرُ الثاني يحمل
+   المستوى أو اسمَ الحلقة — واسمُ الحلقة مكرَّرٌ في ترويسة الشاشة نفسِها،
+   والمستوى لا يقول شيئاً عن يومه. فصار يقول حالَ واجباته بالكلمات إلى
+   جانب العلامات: «الحفظ: منجَز، المراجعة: متبقٍ». ويعود إلى المستوى
+   والحلقة حين لا واجباتِ لليوم، فلا يسقط شيء.
+
+   والصيغةُ «الاسم: الحال» عمداً — فأسماءُ الأنواع تختلف تذكيراً وتأنيثاً
+   («الحفظ منجَز» و«المراجعة منجَزة»)، والنقطتان تُغنيان عن المطابقة فلا
+   يقع لحنٌ مع نوعٍ تُسمّيه الإدارةُ باسمٍ جديد.
+   ========================================================================= */
+function tcrcSummary(sid) {
+  const list = tcrcDuties(sid);
+  if (!list.length) return null;
+  const txt = list.map(a => (a.kindName || a.kind || "واجب") + ": " +
+    (a.status === "done" ? "منجَز" : "متبقٍ")).join("، ");
+  const done = list.filter(a => a.status === "done").length;
+  return { txt: txt, tone: done === list.length ? "all" : (done ? "some" : "none") };
+}
+
+/* السطرُ الثاني: حالُ الواجبات إن كانت، وإلا المستوى والحلقة كما كان */
+function tcrcSubLine(s) {
+  const sm = typeof tcrcSummary === "function" ? tcrcSummary(s.id) : null;
+  return sm ? `<small class="tq-sum tq-sum-${sm.tone}">${esc(sm.txt)}</small>`
+            : `<small>${esc(s.level || s.circle || "—")}</small>`;
+}
+
 /* الضغطُ على علامةٍ يفتح صفحةَ الطالب على بطاقة واجبها */
 window.tcrcOpenDuty = function (sid, asgId) {
   TSTU.id = String(sid || "");
@@ -26439,7 +26468,7 @@ function teacherCircle() {
     return `<div class="tq-row tq-click" onclick="window.tcrcOpenStudent('${jsAttr(s.id)}')">
       <div class="mini-avatar">${initials(s.name)}</div>
       <div class="tq-name"><strong>${esc(s.name || "—")}</strong>
-        <small>${esc(s.level || s.circle || "—")}</small></div>
+        ${tcrcSubLine(s)}</div>
       <div class="tq-marks">${tcrcMarks(s.id)}</div>
       <span class="chip ${r ? (ATT_TINT[r.status] || "") : ""}">${
         r ? esc(attLabel(r.status, r.kind)) : "لم يُسجَّل"}</span>
@@ -42371,7 +42400,7 @@ function tcrcView() {
       onclick="window.tcrcOpenStudent && window.tcrcOpenStudent('${jsAttr(s.id)}')">
       <div class="mini-avatar">${initials(s.name)}</div>
       <div class="tq-name"><strong>${esc(s.name || "—")}</strong>
-        <small>${esc(s.level || s.circle || "—")}</small></div>
+        ${tcrcSubLine(s)}</div>
       <div class="tq-marks">${(typeof tcrcMarks === "function") ? tcrcMarks(s.id) : ""}</div>
       <span class="chip ${tint}">${esc(lbl)}</span>
       ${/* زرُّ تعديل الحالة: يفتح حالةَ هذا الطالب وحدَها — لمن حُضّر بالغلط */""}
@@ -46497,7 +46526,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-1930";
+  var APP_BUILD = "20261009-1945";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
