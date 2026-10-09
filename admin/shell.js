@@ -859,11 +859,38 @@ window.SHELL_MODE = true;
     const auth = window.__auth;
     if (!auth) { safeGo("/login.html", "خدمة المصادقة غير مهيّأة"); return; }
 
+    /* =====================================================================
+       رفضُ الصلاحية العارضُ عند الإقلاع لا يقتل الجلسة
+       ---------------------------------------------------------------------
+       «تعذّر التحقق من الحساب — Missing or insufficient permissions»: القراءةُ
+       نفسُها تنجح بعد ثانيةٍ من الكونسول بالحساب نفسِه. فالرفضُ عارضٌ — يخرج
+       الطلبُ قبل أن يبلغ رمزُ المصادقة عميلَ Firestore، وقواعدُ الخادم تشترط
+       request.auth. وكانت محاولةً واحدةً لا غير، فمن وقع عليه هذا الرفضُ
+       أُغلق النظامُ في وجهه بورقةٍ مسدودةٍ لا مخرجَ منها.
+       الآن: تُجدَّد بطاقةُ الدخول قسراً ويُعاد الطلبُ مرّتين قبل الاستسلام،
+       والرفضُ غيرُ العارض يُرفع كما هو فلا يُخفى عطلٌ حقيقيّ. */
+    async function readProfile(user) {
+      const db = window.__db;
+      if (!db) return null;
+      let last = null;
+      for (var i = 0; i < 3; i++) {
+        try {
+          if (i > 0) { try { await user.getIdToken(true); } catch (e2) {} }
+          return await db.collection("users").doc(user.uid).get();
+        } catch (e) {
+          last = e;
+          if (!e || e.code !== "permission-denied") throw e;
+          console.warn("رُفضت قراءةُ الملف — محاولة " + (i + 1) + "/3");
+          await new Promise(function (r) { setTimeout(r, 400 * (i + 1)); });
+        }
+      }
+      throw last;
+    }
+
     auth.onAuthStateChanged(async function (user) {
       if (!user) { safeGo("/login.html", "لم يُسجَّل الدخول"); return; }
       try {
-        const db = window.__db;
-        const snap = db ? await db.collection("users").doc(user.uid).get() : null;
+        const snap = await readProfile(user);
         /* لا ملف مستخدم = لا صلاحية.
            كان هنا منطق يمنح دور admin تلقائياً لأي حساب بلا ملف — أي أن فتح
            رابط لوحة الإدارة مباشرةً كان يكفي ليصير صاحبه مدير نظام. أُزيل.
@@ -893,7 +920,9 @@ window.SHELL_MODE = true;
         });
       } catch (e) {
         console.error(e);
-        showFatal("تعذّر التحقق من الحساب", (e && e.message) || "خطأ غير معروف.");
+        /* رمزُ العطل يُعرض: كانت الرسالةُ وحدَها لا تدلّ على موضعه */
+        showFatal("تعذّر التحقق من الحساب",
+          ((e && e.message) || "خطأ غير معروف.") + (e && e.code ? " [" + e.code + "]" : ""));
       }
     });
   });

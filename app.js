@@ -34627,17 +34627,35 @@ function stuLessonRows(st) {
 
   return `<div class="sls-list">${list.map(a => {
     const done = a.status === "done";
-    const rng = typeof tstuRange === "function" ? tstuRange(a) : "";
-    return `<div class="sls-row${done ? " on" : ""}">
-      <span class="sls-ico">${ic("book", 17)}</span>
+    const t = typeof hwType === "function"
+      ? hwType(String(a.kind || "").replace("_makeup", "")) : {};
+    const rng = stuRangeText(a);
+    /* الحالةُ على حقيقتها: «دون الحدّ» و«فات» و«بعذر» كانت تُعرض كلُّها
+       «في انتظار التسميع»، فيقرأ الطالبُ أنه لم يُسمِّع بعدُ وقد سمَّع. */
+    const stx = done ? "سُمِّع"
+      : (a.status && a.status !== "pending" && typeof ASG_TEXT !== "undefined"
+         && ASG_TEXT[a.status]) || "في انتظار التسميع";
+    return `<div class="sls-row${done ? " on" : ""}"
+        style="--sls-k:${esc(t.color || "#0b7f83")}">
+      <span class="sls-tick${done ? " on" : ""}"
+        role="img" aria-label="${done ? "سُمِّع" : "لم يُسمَّع بعد"}">${ic("check", 14)}</span>
       <span class="sls-mid">
-        <strong>${esc(a.kindName || a.kind || "واجب")}</strong>
-        ${rng ? `<small>${esc(rng)}</small>` : ""}
+        <span class="sls-line"><strong>${esc(a.kindName || t.h || a.kind || "واجب")}:</strong>${
+          rng ? ` <span class="sls-rng">${esc(rng)}</span>` : ""}</span>
+        <small class="sls-st${done ? " on" : ""}">${esc(stx)}</small>
       </span>
-      <span class="sls-st ${done ? "on" : ""}">${done ? "سُمِّع" : "في انتظار التسميع"}</span>
-      <span class="sls-tick${done ? " on" : ""}">${done ? ic("check", 13) : ""}</span>
     </div>`;
   }).join("")}</div>`;
+}
+
+/* نطاقُ الواجب بصيغة «من سورة (آية) إلى سورة (آية)» — كما طُلب في بطاقة
+   الطالب. وتبقى tstuRange على صيغتها لشاشات المعلّم التي تستعملها. */
+function stuRangeText(a) {
+  if (!a || !a.fromS) return "";
+  const nm = s => (typeof surahName === "function" && surahName(s)) || ("سورة " + s);
+  const one = (s, y) => nm(s) + " (" + toArabicDigits(y || 1) + ")";
+  const from = "من " + one(a.fromS, a.fromA);
+  return a.toS ? from + " إلى " + one(a.toS, a.toA) : from;
 }
 
 function stuTasksCard(st) {
@@ -46213,7 +46231,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-0245";
+  var APP_BUILD = "20261009-0620";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
