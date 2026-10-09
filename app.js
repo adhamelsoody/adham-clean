@@ -26316,9 +26316,37 @@ function tcrcDuties(sid) {
   return dutiesOfDay(sid, typeof attDate === "function" ? attDate() : todayISO());
 }
 
+/* =========================================================================
+   لماذا لا علاماتِ صحٍّ لهذا الطالب اليوم
+   -------------------------------------------------------------------------
+   كان الصفُّ يقول «لا واجبات» ولا يقول لماذا، فيُظنُّ عطلاً في العلامات
+   وهي سليمة: الجدولُ الافتراضيُّ لا درسَ فيه يومَ الجمعة ألبتّة (الحفظُ
+   والتثبيتُ السبت–الأربعاء، والمراجعةُ الخميس). والسببُ الآن مكتوبٌ في
+   موضعه: يومٌ ليس يومَ دوامه · يومٌ بلا دروسٍ في الجدول · طالبٌ بلا خطة.
+   ========================================================================= */
+function tcrcNoneWhy(sid) {
+  const d = typeof attDate === "function" ? attDate() : todayISO();
+  const st = (cur("students") || []).find(x => String(x.id) === String(sid));
+  if (!st) return "لا واجبات";
+  if (st.attOnly) return "تحضيرٌ فقط";
+  if (typeof isDutyDay === "function" && !isDutyDay(st, d)) return "ليس يومَ دوامه";
+
+  const day = typeof dayNameOf === "function" ? dayNameOf(d) : "";
+  if (day && typeof hwType === "function" && typeof HW_DEFAULTS !== "undefined") {
+    const any = HW_DEFAULTS.some(function (t) {
+      const h = hwType(t.k);
+      return h && h.on !== false && (h.days || []).indexOf(day) > -1;
+    });
+    if (!any) return "لا دروسَ يومَ " + day;
+  }
+
+  if (typeof planOfStudent === "function" && !planOfStudent(st)) return "لا خطةَ له";
+  return "لا واجبات";
+}
+
 function tcrcMarks(sid) {
   const list = tcrcDuties(sid);
-  if (!list.length) return `<span class="tq-none">لا واجبات</span>`;
+  if (!list.length) return `<span class="tq-none">${esc(tcrcNoneWhy(sid))}</span>`;
   /* عددُ العلامات = عددُ دروس اليوم، والمنجَزُ منها يخضرّ وحدَه */
   return list.map(a => {
     const done = a.status === "done";
@@ -46362,7 +46390,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-0920";
+  var APP_BUILD = "20261009-0945";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
