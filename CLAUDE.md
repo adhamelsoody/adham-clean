@@ -105,8 +105,46 @@
 
 - **لا خطوة بناء.** التعديل في الملف يكفي.
 - `version.json` يحمل رقم البناء `YYYYMMDD-HHMM` — **يُرفع مع كلّ نشر**.
-- النشر: `firebase deploy --only hosting` (المشروع `mirath-72e2f`).
+- النشر: `firebase deploy --only hosting,firestore:rules` (المشروع `mirath-72e2f`).
 - **تحقّق من النشر بنفسك** بجلب `https://mirath-72e2f.web.app/version.json` ومطابقة الرقم. الدفع إلى git ليس نشراً — سقط النشر بعد دفعٍ ناجح أكثر من مرّة.
+
+### القواعد تُنشر مع كلّ نشر — ولا يُستنتج حالُ الخادم من الملفّ
+
+ظلّ `firestore.rules` في المستودع سنةً دون أن يُنشر، لأنّ كلّ نشرٍ كان
+`--only hosting` وحدها. فافترق ما على الخادم عمّا في الملفّ، حتى مُنع
+الطالبُ والمعلّمُ من قراءة ملفَّي حسابيهما ورسالتُه
+`Missing or insufficient permissions` — والسطرُ الذي يُصلحه كان في الملفّ
+من أوّل يوم. ثلاثةُ حرّاس:
+
+1. **`firestore:rules` في كلّ أمرِ نشر**، لا عند تعديل الملفّ وحدَه —
+   فالفجوةُ تنشأ من النشر المتكرّر بلا قواعد لا من تعديلها.
+2. **لا يُستدلّ على صلاحيةٍ من `firestore.rules`.** الملفُّ نيّةٌ، والخادمُ
+   حكم. كلُّ تشخيصٍ لرفضِ صلاحيةٍ يبدأ من قياسِ الخادم: Rules Playground
+   في الـ Console، أو فحصُ الأدوار أدناه. وقولُ «القاعدةُ تسمح بهذا» بناءً
+   على الملفّ خطأٌ منهجيّ أضاع ساعةً وجولتَي رقعاتٍ من قبل.
+3. **فحصُ الأدوار بعد كلّ نشرٍ يمسّ القواعد.** يُلصق في Console المتصفّح
+   على كلّ دورٍ (مدير · معلّم · طالب · وليّ أمر) ويجب أن ينجح كلُّ سطر:
+
+```js
+(async () => {
+  const u = window.__auth && window.__auth.currentUser;
+  if (!u) return console.log("لا مستخدم — الصفحة ردّته للدخول");
+  const o = { source: "server" };
+  try { const s = await window.__db.collection("users").doc(u.uid).get(o);
+    const d = s.data() || {};
+    console.log("users/<self>: نجحت | role=" + d.role + " active=" + d.active);
+  } catch (e) { console.log("users/<self>: رُفضت | " + e.code); }
+  for (const c of ["students", "assignments", "plans", "recitations",
+                   "circles", "attendance", "settings", "site_messages"]) {
+    try { await window.__db.collection(c).limit(1).get(o); console.log(c + ": نجحت"); }
+    catch (e) { console.log(c + ": رُفضت | " + e.code); }
+  }
+})()
+```
+
+   `users/<self>` أوّلُ ما يُفحص: بوّابةُ الدخول في `auth.js` و
+   `admin/shell.js` لا تقرأ غيرَه، فرفضُه يُقفل النظامَ على صاحبه كلِّه.
+   والتراجعُ عن أيّ نشرِ قواعد بنقرة: Console ← Firestore ← Rules ← History.
 - في PowerShell: `$ErrorActionPreference = "Continue"` — `git push` يكتب في stderr عند نجاحه، و`Stop` يُجهض السكربت قبل النشر. ولا تستعمل `cmd /c` للالتزام.
 - الاختبار: Playwright على نسخةٍ محليّة. مجموعات `t1..t11` تغطّي بطاقة الطالب والخطط والدخول.
 
