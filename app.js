@@ -26267,8 +26267,14 @@ function tcrcCircle() {
 function attRecordedFor(sid) {
   const st = (cur("students") || []).find(x => String(x.id) === String(sid));
   const cid = st ? String(st.circleId || "") : "";
-  const m = attMap(typeof attDate === "function" ? attDate() : todayISO(), cid);
-  return !!m[String(sid)];
+  const d = typeof attDate === "function" ? attDate() : todayISO();
+  if (attMap(d, cid)[String(sid)]) return true;
+  /* حلقةُ الجلسة المفتوحة: التحضيرُ يُكتب بحلقةِ الجلسة التي يُحضَّر فيها،
+     وقد تختلف عن حلقة الطالب المحفوظة إن نُقل بينهما أو تأخّر تحديثُ سجلّه.
+     والسجلُّ صحيحٌ على كلّ حال، فلا يُحرم منه. */
+  const open = (typeof TCRC !== "undefined" && TCRC) ? String(TCRC.id || "") : "";
+  if (open && open !== cid && attMap(d, open)[String(sid)]) return true;
+  return false;
 }
 
 /* =========================================================================
@@ -26669,33 +26675,56 @@ window.tcrcAttPick = function (btn, sid, st) {
   btn.classList.add("on");
 };
 
-window.tcrcAttSave = function () {
+window.tcrcAttSave = async function () {
   const c = tcrcCircle();
   if (!c) return;
   const d = typeof attDate === "function" ? attDate() : todayISO();
   const map = attMap(d, String(c.id));
-  let n = 0;
+  let ok = 0, fail = 0;
   if (!Array.isArray(DB.attendance)) DB.attendance = [];
 
-  Object.keys(TATT.sel).forEach(sid => {
+  for (const sid of Object.keys(TATT.sel)) {
     const st = (cur("students") || []).find(x => String(x.id) === String(sid));
-    if (!st) return;
+    if (!st) continue;
     const old = map[String(sid)];
     const rec = old || { id: "at" + Date.now() + "-" + sid, studentId: String(sid),
                          date: d, circleId: String(c.id) };
     rec.student = st.name || "";
     rec.circle = c.name || "";
     rec.circleId = String(c.id);
+    /* =====================================================================
+       نوعُ الحقل يُسوّى عند كلّ حفظ
+       ---------------------------------------------------------------------
+       «أحضّر الطالبَ فيقول تمّ، ثمّ لا يقرأ أنه حاضر»: قاعدةُ الخادم تشترط
+       studentId is string و date is string. والسجلُّ القديم يُعاد كما هو
+       (rec = old) فيحمل معرّفاً رقميّاً من بياناتٍ أقدم — فتُردّ الكتابة.
+       فتُسوّى الأنواعُ هنا عند كلّ حفظ، فيمرّ القديمُ كما يمرّ الجديد.
+       ولا يتغيّر المعنى: القيمةُ هي هي، نصّاً بدل رقم.
+       ===================================================================== */
+    rec.studentId = String(sid);
+    rec.date = String(d);
     rec.status = TATT.sel[sid];
     rec.by = ((STATE && STATE.user) || {}).email || "";
     rec.ts = Date.now();
     if (!old) DB.attendance.push(rec);
-    persistSet("attendance", rec);
-    n++;
-  });
+    /* =====================================================================
+       النتيجةُ تُنتظر ويُقال صدقُها
+       ---------------------------------------------------------------------
+       كانت الكتابةُ تُطلق ولا تُنتظر، والرسالةُ تقول «اعتُمد» دائماً ولو
+       ردَّها الخادم. فيطمئنُّ المعلّمُ وقد ضاع تحضيرُه — ولا يعلم إلا حين
+       يعود فلا يجده. الآن يُنتظر الجوابُ ويُقال ما كان.
+       ===================================================================== */
+    const r = await Promise.resolve(persistSet("attendance", rec));
+    if (r) ok++; else fail++;
+  }
 
   closeModal();
-  showToast("اعتُمد تحضيرُ " + toArabicDigits(n) + " طالباً", "success");
+  if (fail) {
+    showToast("لم يصل تحضيرُ " + toArabicDigits(fail) + " من " +
+              toArabicDigits(ok + fail) + " — الخادمُ ردَّ الكتابة", "warn");
+  } else {
+    showToast("اعتُمد تحضيرُ " + toArabicDigits(ok) + " طالباً", "success");
+  }
   mount();
 };
 
@@ -46778,7 +46807,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0325";
+  var APP_BUILD = "20261010-0345";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
