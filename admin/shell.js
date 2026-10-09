@@ -869,22 +869,72 @@ window.SHELL_MODE = true;
        أُغلق النظامُ في وجهه بورقةٍ مسدودةٍ لا مخرجَ منها.
        الآن: تُجدَّد بطاقةُ الدخول قسراً ويُعاد الطلبُ مرّتين قبل الاستسلام،
        والرفضُ غيرُ العارض يُرفع كما هو فلا يُخفى عطلٌ حقيقيّ. */
+    /* نسخةُ الملفّ الأخيرةُ الناجحة — في متصفّح صاحبها وحدَه.
+       تُكتب بعد كلّ قراءةٍ ناجحة، وتُقرأ حين يردُّ الخادمُ القراءةَ. */
+    var PROF_KEY = "zat.prof.";
+    var PROF_TTL = 30 * 24 * 60 * 60 * 1000;
+    function profSave(uid, d) {
+      try { localStorage.setItem(PROF_KEY + uid,
+        JSON.stringify({ t: Date.now(), d: d })); } catch (e) {}
+    }
+    function profLoad(uid) {
+      try {
+        var r = JSON.parse(localStorage.getItem(PROF_KEY + uid) || "null");
+        if (!r || !r.d || !r.t) return null;
+        if (Date.now() - Number(r.t) > PROF_TTL) return null;
+        return r.d;
+      } catch (e) { return null; }
+    }
+
+    /* =====================================================================
+       رفضُ قراءةِ الملفّ لا يُقفل النظام
+       ---------------------------------------------------------------------
+       البوّابةُ كانت تقرأ users/<uid> قراءةً واحدة، فإن ردَّها الخادمُ
+       سقط النظامُ كلُّه بورقةٍ مسدودة — ولو كانت بقيّةُ المجموعات تُقرأ
+       بلا مانع. وقد وقع هذا مراراً: قاعدةٌ واحدةٌ على الخادم تُقفل
+       الطالبَ والمعلّمَ خارج تطبيقهما.
+
+       الآن ثلاثُ مراتب: الخادمُ أوّلاً بثلاث محاولاتٍ وتجديدِ بطاقة، ثمّ
+       مخزنُ Firestore المحلّيّ، ثمّ آخرُ نسخةٍ ناجحةٍ محفوظةٌ في متصفّح
+       صاحبها. ولا يُفتح بها بابٌ زائد: الدورُ هنا يختار الواجهةَ لا أكثر،
+       وكلُّ قراءةٍ وكتابةٍ تبقى تحت حكم قواعد الخادم.
+       ===================================================================== */
     async function readProfile(user) {
       const db = window.__db;
       if (!db) return null;
-      let last = null;
+      let denied = null;
       for (var i = 0; i < 3; i++) {
         try {
           if (i > 0) { try { await user.getIdToken(true); } catch (e2) {} }
-          return await db.collection("users").doc(user.uid).get();
+          var snap = await db.collection("users").doc(user.uid).get();
+          if (snap && snap.exists) profSave(user.uid, snap.data() || {});
+          return snap;
         } catch (e) {
-          last = e;
+          denied = e;
           if (!e || e.code !== "permission-denied") throw e;
           console.warn("رُفضت قراءةُ الملف — محاولة " + (i + 1) + "/3");
           await new Promise(function (r) { setTimeout(r, 400 * (i + 1)); });
         }
       }
-      throw last;
+
+      try {
+        var cs = await db.collection("users").doc(user.uid).get({ source: "cache" });
+        if (cs && cs.exists) {
+          console.warn("الملفُّ من مخزن Firestore المحلّيّ — الخادمُ ردَّ القراءة.");
+          return cs;
+        }
+      } catch (e3) {}
+
+      var d = profLoad(user.uid);
+      if (d) {
+        console.warn("الملفُّ من آخر نسخةٍ محفوظة — الخادمُ ردَّ القراءة.");
+        try { if (typeof showToast === "function") {
+          showToast("تعذّرت قراءةُ ملفّك من الخادم — فُتح النظامُ بآخر نسخةٍ محفوظة", "warn");
+        } } catch (e4) {}
+        return { exists: true, id: user.uid, data: function () { return d; } };
+      }
+
+      throw denied;
     }
 
     auth.onAuthStateChanged(async function (user) {
