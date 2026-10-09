@@ -32837,6 +32837,61 @@ async function saveBulkDuty() {
     p.updatedAt = Date.now();
     const r = await Promise.resolve(persistSet("plans", p));
     if (r) ok++; else fail++;
+
+    /* =====================================================================
+       «عايز أيَّ واجبٍ يُضاف يظهر في هذه الخانة»
+       ---------------------------------------------------------------------
+       كان الزرُّ يحفظ في الخطة وحدَها، ثمّ يُترك الأمرُ لمحرّك التوليد:
+       فإن لم يكن اليومُ يومَ دوامِ الحلقة، أو لم يكن للنوع درسٌ في جدول
+       ذلك اليوم، لم يُولَّد شيءٌ وبقيت الخانةُ خاليةً — والمعلّمُ قد أضاف.
+
+       والواجبُ المُضاف يدوياً قرارُ معلّمٍ لا نتيجةُ جدولة، فيُكتب سجلّاً
+       لذلك اليوم كما تفعل شاشةُ «الواجب اليدويّ» — فيظهر في خانته فوراً
+       ولا ينتظر شرطاً. والخطةُ تُحدَّث كما كانت، فمسارُ الطالب لا يتغيّر.
+
+       ولا يُكرَّر: نوعٌ واحدٌ في يومٍ واحدٍ يُحدَّث ولا يُضاعف.
+       ===================================================================== */
+    try {
+      const base = (typeof TSTU !== "undefined" && TSTU && String(TSTU.id) === String(st.id)
+                    && typeof tstuDay === "function")
+        ? tstuDay()
+        : (typeof attDate === "function" ? attDate() : todayISO());
+      const dAsg = draft.day === "tomorrow"
+        ? (typeof tstuDayShift === "function" ? tstuDayShift(base, 1) : base)
+        : base;
+
+      const tp = (typeof hwTypes === "function" ? hwTypes(true) : [])
+        .find(x => x && (x.h === draft.kind || x.k === draft.kind));
+      const kKey  = tp ? tp.k : String(draft.kind || "hifz");
+      const kName = tp ? tp.h : String(draft.kind || "واجب");
+
+      if (!Array.isArray(DB.assignments)) DB.assignments = [];
+      let a = DB.assignments.find(x => x &&
+        String(x.studentId) === String(st.id) && String(x.date) === String(dAsg) &&
+        String(x.kind) === String(kKey) && x.manual);
+      const isNew = !a;
+      if (!a) {
+        a = { id: "as_" + dAsg + "_" + st.id + "_" + kKey + "_m" + Date.now(),
+              date: dAsg, studentId: String(st.id), manual: true,
+              status: "pending", score: null };
+        DB.assignments.push(a);
+      }
+      a.student   = st.name || "";
+      a.circleId  = st.circleId || "";
+      a.mosqueId  = st.mosqueId || "";
+      a.complexId = st.complexId || "";
+      a.planId    = p.id || "";
+      a.kind = kKey; a.kindName = kName;
+      a.unit = draft.unit || "وجه";
+      a.qty  = Number(draft.amount) || Number(draft.hFaces) || 0;
+      a.fromS = draft.hFromS || 0; a.fromA = draft.hFromA || 0;
+      a.toS   = draft.hToS   || 0; a.toA   = draft.hToA   || 0;
+      a.note  = draft.note || "";
+      a.by    = u.email || "";
+      a.termId = typeof activeTermId === "function" ? (activeTermId() || "") : "";
+      if (isNew) a.ts = Date.now();
+      persistSet("assignments", a);
+    } catch (e) { console.warn("saveBulkDuty:asg", e); }
   }
 
   STATE.dutySel = {};
@@ -46684,7 +46739,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0240";
+  var APP_BUILD = "20261010-0300";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
