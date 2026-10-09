@@ -12496,8 +12496,19 @@ button.tq-mark:focus-visible { outline: 2px solid var(--brand-main); outline-off
    ========================================================================= */
 .tq-mark { border-radius: 50%; width: 26px; height: 26px; }
 .tq-mark svg { width: 14px; height: 14px; }
-.tq-mark:not(.on) { background: transparent; border-color: var(--border); opacity: .55; }
+/* «علامةُ صحٍّ باللون الرماديّ، وعندما يُنجَز تكون خضراء»: كانت الشفافيةُ
+   ٠٫٥٥ وخلفيةٌ شفّافةٌ تُذيب العلامةَ فلا تكاد تُرى — لا رماديّةً ولا
+   بيضاء. صارت دائرةً رماديّةً صريحةً بحافّتها وصحِّها، والمنجَزُ أخضرُ
+   ممتلئٌ كما هو. وأساسُ .tq-mark أعلاه رماديٌّ أصلاً، فهذا السطرُ كان
+   ينقضه. */
+.tq-mark:not(.on) { background: #eceff0; border-color: #d7dedf;
+  color: #93a1a3; opacity: 1; }
 .tq-mark.on { opacity: 1; }
+
+/* والوضعُ الداكن: قواعدُه أعلى الملفّ، وهذا الموضعُ يأتي بعدها فيغلبها */
+:root:not([data-theme="light"]) .tq-mark:not(.on),
+:root[data-theme="dark"] .tq-mark:not(.on) { background: #142726;
+  border-color: #1f4746; color: #6f8584; opacity: 1; }
 
 .tq-go { flex: 0 0 auto; display: grid; place-items: center; color: var(--text-faint); }
 .tq-go svg { width: 16px; height: 16px; }
