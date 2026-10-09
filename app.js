@@ -26701,10 +26701,15 @@ function teacherStudent() {
      مفتوح» لأنّ الخطةَ بلا موضعٍ لا تولّد واجباً.
      ======================================================================= */
   const canEditPlan = teacherCan("editPlan");
+  /* زرَّان لا زرٌّ واحد: «تحديد الحفظ» و«تحديد المراجعة»، كلٌّ يفتح
+     بابَه وحدَه. والنافذةُ الجامعةُ باقيةٌ لمن يفتحها من شاشةٍ أخرى. */
   const planBtn = canEditPlan
     ? `<button type="button" class="btn btn-primary btn-sm"
-        data-action="modal-student-duty" data-id="${jsAttr(String(st.id))}"
-        >${ic("pen", 15)} تحديد خطة التسميع</button>`
+        data-action="modal-student-duty" data-id="${jsAttr(String(st.id))}" data-focus="hifz"
+        >${ic("book", 15)} تحديد الحفظ</button>
+       <button type="button" class="btn btn-soft btn-sm"
+        data-action="modal-student-duty" data-id="${jsAttr(String(st.id))}" data-focus="rev"
+        >${ic("list", 15)} تحديد المراجعة</button>`
     : "";
 
   const plan = !canPlan
@@ -31905,8 +31910,17 @@ function rangeValue(pre) {
   };
 }
 
-function modalDuty(studentId) {
+/* =========================================================================
+   نافذةُ الواجب: بابٌ للحفظ وبابٌ للمراجعة
+   -------------------------------------------------------------------------
+   «أريد أن يكون تحديدُ الحفظ من زرّ وتحديدُ المراجعة من زرّ»: كانت
+   النافذةُ تجمع البابين في شاشةٍ طويلة. و focus يحصرها في بابٍ واحد:
+   "hifz" أو "rev". وتركُه فارغاً يُبقيها جامعةً كما كانت — فالشاشاتُ
+   الأخرى التي تفتحها (الزرُّ العائم · واجبُ الغد · جدولُ الخطط) لم تتغيّر.
+   ========================================================================= */
+function modalDuty(studentId, focus) {
   reciteLoadSurahs();
+  focus = (focus === "hifz" || focus === "rev") ? focus : "";
   const st = DB.students.find(x => String(x.id) === String(studentId));
   if (!st) { showToast("الطالب غير موجود", "warn"); return; }
   if (!teacherCan("editPlan")) { showToast("لا تملك صلاحية تعديل الخطة", "warn"); return; }
@@ -31926,9 +31940,17 @@ function modalDuty(studentId) {
   const pathLocks = ["planStart", "planQty", "planEnd"].filter(k => !teacherCan(k))
     .map(k => ({ planStart: "موضع البداية", planQty: "المقدار", planEnd: "موضع النهاية" })[k]);
 
-  openModal("واجب " + (st.name || ""), "حدّد نوع الواجب وموضعه من المصحف",
+  const headT = focus === "hifz" ? "حفظ " + (st.name || "")
+              : focus === "rev"  ? "مراجعة " + (st.name || "")
+              : "واجب " + (st.name || "");
+  const headS = focus === "hifz" ? "حدّد موضعَ الحفظ الجديد ومقدارَه"
+              : focus === "rev"  ? "حدّد موضعَ المراجعة ومقدارَها"
+              : "حدّد نوع الواجب وموضعه من المصحف";
+
+  openModal(headT, headS,
     `<input type="hidden" id="dt_sid" value="${esc(String(st.id))}">
      <input type="hidden" id="dt_day" value="${forDay}">
+     <input type="hidden" id="dt_focus" value="${esc(focus)}">
 
      ${pathLocks.length ? noteCard("لا تملك تغيير: <strong>" + esc(pathLocks.join(" · ")) +
        "</strong> — تبقى كما برمجتها الإدارة.") : ""}
@@ -31960,6 +31982,7 @@ function modalDuty(studentId) {
         <input type="hidden" id="dt_kind" value="${esc(curKind)}">
       </div>
 
+      ${focus === "rev" ? "" : `
       <div class="dtsec dtsec-h">
         <div class="dtsec-t">${ic("book", 16)} <span>الحفظ الجديد</span>
           <span class="dtsec-n">ما يحفظه الطالب جديداً</span></div>
@@ -31973,8 +31996,9 @@ function modalDuty(studentId) {
             <select id="dt_unit">${UNITS.map(u2 =>
               `<option ${u2 === (p.unit || "وجه") ? "selected" : ""}>${u2}</option>`).join("")}</select></div>
         </div>
-      </div>
+      </div>`}
 
+      ${focus === "hifz" ? "" : `
       <div class="dtsec dtsec-r">
         <div class="dtsec-t">${ic("list", 16)} <span>المراجعة والسرد</span>
           <span class="dtsec-n">اختياريّ — ما يراجعه ممّا حفظ</span></div>
@@ -31988,7 +32012,7 @@ function modalDuty(studentId) {
             <select id="dt_runit">${UNITS.map(u2 =>
               `<option ${u2 === (p.rUnit || "وجه") ? "selected" : ""}>${u2}</option>`).join("")}</select></div>
         </div>
-      </div>
+      </div>`}
 
       <div class="field"><label>البرنامج</label>
         <select id="dt_program">${(prgPickList(p.program).length ? prgPickList(p.program).map(x => x.name) : ["—"]).map(x =>
@@ -32006,7 +32030,10 @@ function modalDuty(studentId) {
     `<button class="btn btn-primary" data-action="save-student-duty">${ic("check", 16)} حفظ الواجب</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 
-  setTimeout(function () { window.rpMeasure("dth"); window.rpMeasure("dtr"); }, 80);
+  setTimeout(function () {
+    if (document.getElementById("dth_fS")) window.rpMeasure("dth");
+    if (document.getElementById("dtr_fS")) window.rpMeasure("dtr");
+  }, 80);
 }
 
 window.dutyKind = function (btn) {
@@ -32043,21 +32070,17 @@ function saveDuty() {
     DB.plans.unshift(p);
   }
 
-  const rh = rangeValue("dth"), rr = rangeValue("dtr");
+  /* البابُ المفتوح: الغائبُ عن الشاشة لا تُقرأ حقولُه ولا تُمحى.
+     لولا هذا لأعادت نافذةُ «تحديد الحفظ» أصفارَ المراجعةِ فوق ما ضُبط. */
+  const onH = !!document.getElementById("dth_fS");
+  const onR = !!document.getElementById("dtr_fS");
+  const rh = onH ? rangeValue("dth") : null;
+  const rr = onR ? rangeValue("dtr") : null;
   const amt = val("#dt_amount", "");
   const ramt = val("#dt_ramount", "");
 
   /* الحقول المقترحة — تُطبَّق مباشرةً أو تُحفظ بانتظار الاعتماد */
   const draft = {
-    current: rh.text,
-    hFromS: rh.fromS, hFromA: rh.fromA, hToS: rh.toS, hToA: rh.toA, hFaces: rh.faces,
-    start: rr.text,
-    rFromS: rr.fromS, rFromA: rr.fromA, rToS: rr.toS, rToA: rr.toA, rFaces: rr.faces,
-    amount: amt || (rh.faces ? String(rh.faces) : ""),
-    unit: amt ? val("#dt_unit", "وجه") : (rh.faces ? "وجه" : val("#dt_unit", "وجه")),
-    /* مقدارُ المراجعة مستقلٌّ عن مقدار الحفظ: المعلّم يحدّد كلًّا منهما */
-    rAmount: ramt || (rr.faces ? String(rr.faces) : ""),
-    rUnit: ramt ? val("#dt_runit", "وجه") : (rr.faces ? "وجه" : val("#dt_runit", "وجه")),
     kind: val("#dt_kind", "حفظ جديد"),
     day: val("#dt_day", "today"),
     program: val("#dt_program", ""),
@@ -32065,6 +32088,22 @@ function saveDuty() {
     progress: Math.max(0, Math.min(100, Number(val("#dt_progress", 0)) || 0)),
     note: val("#dt_note", "")
   };
+
+  if (onH) {
+    draft.current = rh.text;
+    draft.hFromS = rh.fromS; draft.hFromA = rh.fromA;
+    draft.hToS = rh.toS; draft.hToA = rh.toA; draft.hFaces = rh.faces;
+    draft.amount = amt || (rh.faces ? String(rh.faces) : "");
+    draft.unit = amt ? val("#dt_unit", "وجه") : (rh.faces ? "وجه" : val("#dt_unit", "وجه"));
+  }
+  if (onR) {
+    draft.start = rr.text;
+    draft.rFromS = rr.fromS; draft.rFromA = rr.fromA;
+    draft.rToS = rr.toS; draft.rToA = rr.toA; draft.rFaces = rr.faces;
+    /* مقدارُ المراجعة مستقلٌّ عن مقدار الحفظ: المعلّم يحدّد كلًّا منهما */
+    draft.rAmount = ramt || (rr.faces ? String(rr.faces) : "");
+    draft.rUnit = ramt ? val("#dt_runit", "وجه") : (rr.faces ? "وجه" : val("#dt_runit", "وجه"));
+  }
 
   /* الترتيبُ التراتبيّ يُطبَّق هنا لا في الواجهة وحدها: إسنادُ واجبٍ لم
      يُستوفَ شرطُه يُردّ بسببه، فلا يُتجاوَز الترتيبُ المنطقيّ بضغطة زرّ.
@@ -32092,9 +32131,9 @@ function saveDuty() {
   if (!isNew && u.role === "teacher") {
     const same = (a, b) => String(a == null ? "" : a) === String(b == null ? "" : b);
     const blocked = [];
-    if (!teacherCan("planStart") && !(same(draft.hFromS, p.hFromS) && same(draft.hFromA, p.hFromA))) blocked.push("موضع البداية");
-    if (!teacherCan("planQty") && !(same(draft.amount, p.amount) && same(draft.unit, p.unit || "وجه"))) blocked.push("المقدار");
-    if (!teacherCan("planEnd") && !(same(draft.hToS, p.hToS) && same(draft.hToA, p.hToA))) blocked.push("موضع النهاية");
+    if (onH && !teacherCan("planStart") && !(same(draft.hFromS, p.hFromS) && same(draft.hFromA, p.hFromA))) blocked.push("موضع البداية");
+    if (onH && !teacherCan("planQty") && !(same(draft.amount, p.amount) && same(draft.unit, p.unit || "وجه"))) blocked.push("المقدار");
+    if (onH && !teacherCan("planEnd") && !(same(draft.hToS, p.hToS) && same(draft.hToA, p.hToA))) blocked.push("موضع النهاية");
     if (blocked.length) {
       showToast("لا تملك صلاحية تغيير: " + blocked.join(" · ") + " — الخطة كما برمجتها الإدارة", "warn");
       return;
@@ -34639,8 +34678,12 @@ function stuLessonRows(st) {
     const stx = done ? "سُمِّع"
       : (a.status && a.status !== "pending" && typeof ASG_TEXT !== "undefined"
          && ASG_TEXT[a.status]) || "في انتظار التسميع";
-    return `<div class="sls-row${done ? " on" : ""}"
-        style="--sls-k:${esc(t.color || "#0b7f83")}">
+    /* الصفُّ زرٌّ يفتح المصحفَ على أوّل آيةٍ من الواجب — إن كان له موضع */
+    const can = !!a.fromS;
+    return `<${can ? "button type=\"button\"" : "div"} class="sls-row${done ? " on" : ""}"
+        style="--sls-k:${esc(t.color || "#0b7f83")}"${can
+        ? ` onclick="window.stuOpenDuty('${jsAttr(String(a.id))}')"
+            title="افتح المصحفَ على موضع هذا الواجب"` : ""}>
       <span class="sls-tick${done ? " on" : ""}"
         role="img" aria-label="${done ? "سُمِّع" : "لم يُسمَّع بعد"}">${ic("check", 14)}</span>
       <span class="sls-mid">
@@ -34648,9 +34691,37 @@ function stuLessonRows(st) {
           rng ? ` <span class="sls-rng">${esc(rng)}</span>` : ""}</span>
         <small class="sls-st${done ? " on" : ""}">${esc(stx)}</small>
       </span>
-    </div>`;
+      ${can ? `<span class="sls-go" aria-hidden="true">${ic("arrowLeft", 16)}</span>` : ""}
+    </${can ? "button" : "div"}>`;
   }).join("")}</div>`;
 }
+
+/* =========================================================================
+   ضغطُ الطالب على واجبه يفتح المصحفَ على موضعه
+   -------------------------------------------------------------------------
+   «يفتح له الواجبَ على المصحف من أماكن الآيات المحدَّدة بالضبط في الواجب
+   من حيث كان، وحفظٌ أو مراجعة»: يُحسب وجهُ أوّل آيةٍ من الواجب ويُفتح
+   عليه مباشرةً، وتُظلَّل الآية. ولا يُكتب شيء: الصفُّ بابٌ إلى المصحف لا
+   إقرارٌ بالتسميع — والتسميعُ وتقديرُه يبقيان بيد المعلّم.
+   ========================================================================= */
+window.stuOpenDuty = function (id) {
+  const list = (cur("assignments") || []);
+  const a = list.find(x => x && String(x.id) === String(id));
+  if (!a) { showToast("الواجب غير موجود", "warn"); return; }
+  if (!a.fromS) { showToast("لا موضعَ محدَّدٌ لهذا الواجب", "warn"); return; }
+  if (typeof window.Quran === "undefined" || !window.Quran.locate) {
+    showToast("محرّك المصحف غير متاح", "warn"); return;
+  }
+  window.Quran.locate(Number(a.fromS), Number(a.fromA) || 1).then(loc => {
+    if (!loc) { showToast("تعذّر تحديد صفحة الآية", "warn"); return; }
+    const m = mushaf();
+    m.page = loc.page;
+    m.marks = {};
+    m.hl = Number(a.fromS) + ":" + (Number(a.fromA) || 1);
+    STATE.page = "mushaf";
+    mount();
+  }).catch(() => showToast("تعذّر تحميل موضع الآية", "warn"));
+};
 
 /* نطاقُ الواجب بصيغة «من سورة (آية) إلى سورة (آية)» — كما طُلب في بطاقة
    الطالب. وتبقى tstuRange على صيغتها لشاشات المعلّم التي تستعملها. */
@@ -42288,7 +42359,7 @@ document.addEventListener("click", (e) => {
     case "att-excuse-save": attExcuseSave(t.dataset.ids); break;
     case "att-bulk": attBulk(t.dataset.status); break;
     case "att-save": attSaveAll(); break;
-    case "modal-student-duty": modalDuty(t.dataset.id); break;
+    case "modal-student-duty": modalDuty(t.dataset.id, t.dataset.focus || ""); break;
     case "fab-duty":   fabDuty(); break;
     case "fab-pick":   closeModal(); modalDuty(t.dataset.id); break;
     case "save-student-duty": saveDuty(); break;
@@ -46235,7 +46306,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-0745";
+  var APP_BUILD = "20261009-0820";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

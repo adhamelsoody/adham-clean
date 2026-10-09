@@ -11044,7 +11044,13 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
 .sls-row { display: flex; align-items: center; gap: 11px; padding: 12px 13px;
   border-radius: 15px; background: var(--border-soft);
   border: 1px solid var(--border);
-  border-inline-start: 4px solid var(--sls-k, var(--brand-main)); }
+  border-inline-start: 4px solid var(--sls-k, var(--brand-main));
+  /* الصفُّ زرٌّ يفتح المصحفَ على موضع الواجب */
+  width: 100%; text-align: start; font: inherit; color: inherit; cursor: pointer; }
+button.sls-row:hover { border-color: var(--brand-light); }
+button.sls-row:active { transform: translateY(1px); }
+.sls-go { flex: 0 0 auto; display: grid; place-items: center; color: var(--text-faint); }
+.sls-go svg { width: 16px; height: 16px; }
 .sls-row.on { background: #f3faf6; border-color: #cfe9dc; }
 
 .sls-mid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
