@@ -12505,3 +12505,19 @@ button.tq-mark:focus-visible { outline: 2px solid var(--brand-main); outline-off
 .tq-click:hover .tq-go { color: var(--brand-main); }
 
 @media (max-width: 560px) { .tq-go { display: none; } }
+
+
+/* =========================================================================
+   رقمُ البناء في ذيل القائمة الجانبية
+   -------------------------------------------------------------------------
+   يقول أيُّ نسخةٍ تعمل على هذا الجهاز بعينه. ويتلوّن حين يكون على الخادم
+   أحدثُ منها، وبضغطِه يُمحى المخزونُ وتُجلب الجديدة.
+   ========================================================================= */
+.bld-chip { display: block; width: 100%; margin-top: 8px; padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  background: rgba(255, 255, 255, .06);
+  color: rgba(255, 255, 255, .72);
+  border-radius: 9px; cursor: pointer; font: inherit; font-size: 11.5px;
+  font-weight: 700; letter-spacing: .2px; text-align: center; }
+.bld-chip:hover { background: rgba(255, 255, 255, .12); }
+.bld-chip.old { background: #8a5a12; border-color: #a86d16; color: #fff; }

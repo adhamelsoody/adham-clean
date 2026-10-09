@@ -46615,7 +46615,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-2355";
+  var APP_BUILD = "20261009-2315";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
@@ -46663,6 +46663,49 @@ if (typeof window !== "undefined") {
   }
   window.mirathHardUpdate = hardUpdate;
 
+  /* =======================================================================
+     رقمُ البناء العاملُ ظاهرٌ للعين
+     -----------------------------------------------------------------------
+     «ما السرُّ في عدم ظهور تعديلاتي؟»: ثلاثةُ احتمالاتٍ تُنتج الشكوى
+     نفسَها ولا يُفرَّق بينها إلا بالرقم:
+       • لم يصل النشرُ إلى الخادم.
+       • وصل الخادمَ ولم يصل الجهاز — عاملُ الخدمة يردّ من مخزونه حين
+         تتعثّر الشبكة، والتطبيقُ المثبَّت لا يُغلق فلا تُعاد الصفحة.
+       • وصل الجهازَ والتعديلُ في موضعٍ آخرَ غيرِ الذي يُنظر فيه.
+     وكان الرقمُ لا يُعرف إلا من كونسولٍ لا يُفتح على هاتف. فصار في ذيل
+     القائمة الجانبية: نظرةٌ تقول أيُّ بناءٍ يعمل الآن.
+
+     وإن كان على الخادم أحدثُ منه، قال ذلك وتلوّن — وبضغطِه يُمحى المخزونُ
+     ويُبدَّل عاملُ الخدمة وتُعاد الصفحة، وهو عينُ ما يفعله «تحديث الآن».
+     ======================================================================= */
+  function arD(x) {
+    return typeof toArabicDigits === "function" ? toArabicDigits(String(x)) : String(x);
+  }
+
+  var SRV = "";                      /* آخرُ بناءٍ أعلنه الخادم */
+
+  function buildChip(srv) {
+    var foot = document.querySelector(".sidebar-foot");
+    if (!foot) return;
+    var el = document.getElementById("bldChip");
+    if (!el) {
+      el = document.createElement("button");
+      el.id = "bldChip";
+      el.type = "button";
+      el.className = "bld-chip";
+      el.title = "رقمُ النسخة العاملة على هذا الجهاز — اضغط لجلب آخر نسخة";
+      el.addEventListener("click", function () { hardUpdate(); });
+      foot.appendChild(el);
+    }
+    var mine = String(APP_BUILD).split("-")[1] || String(APP_BUILD);
+    var they = srv ? (String(srv).split("-")[1] || "") : "";
+    var stale = !!(they && they !== mine);
+    el.classList.toggle("old", stale);
+    el.textContent = stale
+      ? "نسخة " + arD(mine) + " ← " + arD(they) + " جاهزة"
+      : "نسخة " + arD(mine);
+  }
+
   function check() {
     /* عاملُ الخدمة لا يُفتَّش عليه من تلقائه في تطبيقٍ مثبَّتٍ لا يُغلق:
        يُطلب فحصُه مع كلّ فحصِ نسخة، فيصل تعديلُ sw.js نفسه. */
@@ -46674,10 +46717,15 @@ if (typeof window !== "undefined") {
       }
     } catch (e) {}
 
+    /* يُرسم ولو تعذّر الاتصال: الرقمُ العاملُ معروفٌ بلا خادم */
+    buildChip(SRV);
+
     fetch(verUrl(), { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d || !d.build) return;
+        SRV = d.build;
+        buildChip(SRV);
         if (d.build !== CURRENT) { CURRENT = d.build; banner(); }
       })
       .catch(function () { /* بلا اتصال — نتجاهل بهدوء */ });
@@ -46685,6 +46733,11 @@ if (typeof window !== "undefined") {
 
   check();
   setInterval(check, 60000);
+  /* القائمةُ الجانبيةُ يبنيها auth.js بعد وصول الحساب، فلا موضعَ للرقم
+     لحظةَ أوّل فحص. يُعاد رسمُه في أوّل ثوانٍ حتى يجد ذيلَها. */
+  [600, 1500, 3000, 6000].forEach(function (ms) {
+    setTimeout(function () { try { buildChip(SRV); } catch (e) {} }, ms);
+  });
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden) check();
   });
