@@ -16188,7 +16188,21 @@ function generateAssignments(studentId, dateISO) {
   /* «تحضير فقط»: يُحضَّر ولا يُسمَّع — ولو بقيت في سجلّه خطةٌ من قبل */
   if (st.attOnly) return [];
 
-  const plan = (cur("plans") || []).find(p => String(p.studentId) === String(studentId));
+  /* =======================================================================
+     الخطةُ تُقرأ كما تقرؤها شاشاتُ العرض — لا عبر cur()
+     -----------------------------------------------------------------------
+     «لا واجبات» عند المعلّم والطالب وخطةُ الطالب مضبوطة: cur("plans")
+     يمرُّ بحصر المنشأة، وسجلُّ الخطة يُنشأ ببصمة المجمّع وحدَها بلا مسجد.
+     ومعلّمُ المسجد نطاقُه مسجدُه، فلا يوسّعه المجمّع — فتسقط الخطةُ من
+     قائمته ويُنتج المحرّكُ صفراً من الواجبات، بينما تعرضها بطاقةُ الطالب
+     لأنها تقرأ planOfStudent من DB.plans مباشرةً.
+
+     فاختلف المحرّكُ عن العرض في المصدر. وهنا يُوحَّدان: الطالبُ نفسُه
+     مرَّ بـ cur("students") أعلاه، فمن رآه فله أن يرى خطتَه — ولا تُفتح
+     بهذا رؤيةٌ زائدة. ولا كتابةَ هنا ألبتّة. */
+  const plan = typeof planOfStudent === "function"
+    ? planOfStudent(st)
+    : (cur("plans") || []).find(p => String(p.studentId) === String(studentId));
   if (!plan) return [];
   if (planIsFrozen(plan)) return [];          /* خطة مجمَّدة: لا توليد */
 
@@ -26276,10 +26290,30 @@ window.tchEnterCircle = function () {
 };
 
 /* واجباتُ الطالب اليوم — علامةٌ لكلّ واجب، وحالتُها تتغيّر بإتمامه */
+/* =========================================================================
+   واجباتُ يومٍ لطالب: المحفوظةُ إن وُجدت، وإلا المولَّدةُ من خطته
+   -------------------------------------------------------------------------
+   «ولا علاماتُ الصحّ موجودة»: قائمةُ الحلقة وبطاقةُ الطالب كانتا تقرآن
+   DB.assignments وحدَها — أي ما كُتب في قاعدة البيانات. والواجبُ لا يُكتب
+   إلا عند أوّل عرضٍ من شاشةٍ تحفظه (todayAssignments بـ persist)، فمن لم
+   تُفتح له تلك الشاشةُ بعدُ يظهر «لا واجبات» وخطتُه مضبوطة.
+
+   وبقيّةُ الشاشات (تقدّم الطالب · الصوتيات) تقرأ من المحرّك مباشرةً —
+   فاختلف ما يراه المعلّمُ عمّا يراه الطالب في اليوم نفسِه.
+
+   هنا المصدرُ واحد: المحفوظُ أوّلاً فهو سجلُّ ما جرى، فإن لم يكن فالمولَّدُ
+   من الخطة. ولا كتابةَ ألبتّة — العرضُ لا يكتب.
+   ========================================================================= */
+function dutiesOfDay(sid, d) {
+  const day = d || (typeof attDate === "function" ? attDate() : todayISO());
+  const saved = (cur("assignments") || []).filter(a => a &&
+    String(a.studentId) === String(sid) && String(a.date) === String(day));
+  if (saved.length) return saved;
+  try { return generateAssignments(sid, day) || []; } catch (e) { return []; }
+}
+
 function tcrcDuties(sid) {
-  const d = typeof attDate === "function" ? attDate() : todayISO();
-  return (cur("assignments") || []).filter(a => a &&
-    String(a.studentId) === String(sid) && String(a.date) === String(d));
+  return dutiesOfDay(sid, typeof attDate === "function" ? attDate() : todayISO());
 }
 
 function tcrcMarks(sid) {
@@ -28967,12 +29001,20 @@ const GRADE_TINT = { "ممتاز": "t-green", "جيد جداً": "t-blue", "جي
 let QSURAHS = null;          /* فهرس السور — يُحمَّل مرة واحدة */
 let QSURAHS_LOADING = false;
 
+/* من ينتظر فهرسَ السور ليُعيد رسمَ نفسه — النوافذُ المفتوحةُ خاصّةً:
+   mount() يُعيد رسمَ الصفحة لا النافذةَ فوقها، فكانت «جارٍ تحميل فهرس
+   السور…» تبقى في نافذة الواجب إلى الأبد ولو وصل الفهرسُ بعد لحظة. */
+const QSURAHS_WAIT = [];
+
 function reciteLoadSurahs() {
   if (QSURAHS || QSURAHS_LOADING) return;
   if (typeof window.Quran === "undefined") return;
   QSURAHS_LOADING = true;
   window.Quran.surahs()
-    .then(list => { QSURAHS = list; QSURAHS_LOADING = false; mount(); })
+    .then(list => {
+      QSURAHS = list; QSURAHS_LOADING = false; mount();
+      QSURAHS_WAIT.splice(0).forEach(f => { try { f(); } catch (e) {} });
+    })
     .catch(e => { QSURAHS_LOADING = false; console.warn("تعذّر تحميل فهرس السور:", e); });
 }
 
@@ -31921,6 +31963,15 @@ function rangeValue(pre) {
 function modalDuty(studentId, focus) {
   reciteLoadSurahs();
   focus = (focus === "hifz" || focus === "rev") ? focus : "";
+
+  /* الفهرسُ لم يصل بعد: تُفتح النافذةُ بما فيها، وتُعاد وحدَها حين يصل
+     — إن كانت ما تزال مفتوحةً على الطالب نفسِه. */
+  if (!QSURAHS) {
+    QSURAHS_WAIT.push(function () {
+      const h = document.getElementById("dt_sid");
+      if (h && String(h.value) === String(studentId)) modalDuty(studentId, focus);
+    });
+  }
   const st = DB.students.find(x => String(x.id) === String(studentId));
   if (!st) { showToast("الطالب غير موجود", "warn"); return; }
   if (!teacherCan("editPlan")) { showToast("لا تملك صلاحية تعديل الخطة", "warn"); return; }
@@ -32064,8 +32115,13 @@ function saveDuty() {
   let p = planOfStudent(st);
   const isNew = !p;
   if (!p) {
+    /* بصمةُ المنشأة كاملةً عند الإنشاء: كان المجمّعُ وحدَه يُكتب، فيسقط
+       السجلُّ من نطاق معلّم المسجد — ومن نطاق الطالب — فلا يراه مَن
+       أنشأه. والبصمُ هنا عند الإنشاء وحدَه ومن سجلّ الطالب نفسِه، فلا
+       يُحدَّث ارتباطٌ قائمٌ ولا يُنقل أحدٌ من منشأةٍ إلى أخرى. */
     p = { id: Date.now(), studentId: String(st.id), student: st.name || "",
-          complexId: st.complexId || "", circle: st.circle || "",
+          complexId: st.complexId || "", mosqueId: st.mosqueId || "",
+          circleId: st.circleId || "", circle: st.circle || "",
           delays: 0, status: "نشطة" };
     DB.plans.unshift(p);
   }
@@ -34659,8 +34715,7 @@ function stuLessonDate() {
 
 function stuLessonRows(st) {
   const d = stuLessonDate();
-  const list = (cur("assignments") || []).filter(a => a &&
-    String(a.studentId) === String(st.id) && String(a.date) === String(d));
+  const list = dutiesOfDay(st.id, d);
 
   if (!list.length) {
     return `<div class="ntf-empty">${SLSN.tab === "next"
@@ -34705,7 +34760,8 @@ function stuLessonRows(st) {
    إقرارٌ بالتسميع — والتسميعُ وتقديرُه يبقيان بيد المعلّم.
    ========================================================================= */
 window.stuOpenDuty = function (id) {
-  const list = (cur("assignments") || []);
+  const sid = ((STATE && STATE.user) || {}).studentId || "";
+  const list = (cur("assignments") || []).concat(dutiesOfDay(sid, stuLessonDate()));
   const a = list.find(x => x && String(x.id) === String(id));
   if (!a) { showToast("الواجب غير موجود", "warn"); return; }
   if (!a.fromS) { showToast("لا موضعَ محدَّدٌ لهذا الواجب", "warn"); return; }
@@ -46306,7 +46362,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-0840";
+  var APP_BUILD = "20261009-0920";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
