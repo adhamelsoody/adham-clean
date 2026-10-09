@@ -26713,7 +26713,8 @@ function teacherStudent() {
             ${p.amount ? `<div class="duty-sum">المقدار: ${esc(p.amount)} ${esc(p.unit || "")}</div>` : ""}`
           : `<span class="muted">لم يُحدَّد بعد.</span>`)}
         ${dutyCard("rev", "t-blue", "list", "المراجعة",
-          planPosText(p, "rev") ? `<strong class="duty-range">${esc(planPosText(p, "rev"))}</strong>`
+          planPosText(p, "rev") ? `<strong class="duty-range">${esc(planPosText(p, "rev"))}</strong>
+            ${p.rAmount ? `<div class="duty-sum">المقدار: ${esc(p.rAmount)} ${esc(p.rUnit || "")}</div>` : ""}`
                   : `<span class="muted">لم تُحدَّد بعد.</span>`)}
         ${dutyCard("fix", "t-amber", "target", "المستوى",
           `<strong class="duty-range">${esc(p.level || "—")}</strong>
@@ -31738,7 +31739,7 @@ function teacherCan(k) {
 
 /* حقول الواجب التي كانت تُحفظ في خانة الانتظار */
 const DUTY_FIELDS = ["current","hFromS","hFromA","hToS","hToA","hFaces","start",
-  "rFromS","rFromA","rToS","rToA","rFaces","amount","unit","program","level","progress","note"];
+  "rFromS","rFromA","rToS","rToA","rFaces","amount","unit","rAmount","rUnit","program","level","progress","note"];
 
 /* دمج أي بيانات عالقة في خانة الانتظار — طابور الاعتماد أُلغي، فما بقي
    منه في السجلات القديمة يُطبَّق عند أول قراءة ولو تعذّرت الكتابة. */
@@ -31955,18 +31956,35 @@ function modalDuty(studentId) {
         <input type="hidden" id="dt_kind" value="${esc(curKind)}">
       </div>
 
-      ${rangePicker("dth", "من الآية — إلى الآية", {
-        fromS: p.hFromS, fromA: p.hFromA, toS: p.hToS, toA: p.hToA })}
+      <div class="dtsec dtsec-h">
+        <div class="dtsec-t">${ic("book", 16)} <span>الحفظ الجديد</span>
+          <span class="dtsec-n">ما يحفظه الطالب جديداً</span></div>
+        ${rangePicker("dth", "من الآية — إلى الآية", {
+          fromS: p.hFromS, fromA: p.hFromA, toS: p.hToS, toA: p.hToA })}
+        <div class="dtsec-g">
+          <div class="field"><label>مقدار الحفظ</label>
+            <input id="dt_amount" type="number" min="0" step="0.5" dir="ltr" value="${esc(String(p.amount || ""))}"
+              placeholder="يُحسب تلقائياً"></div>
+          <div class="field"><label>وحدة قياس الحفظ</label>
+            <select id="dt_unit">${UNITS.map(u2 =>
+              `<option ${u2 === (p.unit || "وجه") ? "selected" : ""}>${u2}</option>`).join("")}</select></div>
+        </div>
+      </div>
 
-      <div class="field"><label>المقدار</label>
-        <input id="dt_amount" type="number" min="0" step="0.5" dir="ltr" value="${esc(String(p.amount || ""))}"
-          placeholder="يُحسب تلقائياً"></div>
-      <div class="field"><label>وحدة القياس</label>
-        <select id="dt_unit">${["وجه", "سطر", "آية", "ثمن", "جزء"].map(u2 =>
-          `<option ${u2 === (p.unit || "وجه") ? "selected" : ""}>${u2}</option>`).join("")}</select></div>
-
-      ${rangePicker("dtr", "المراجعة والسرد — من / إلى (اختياري)", {
-        fromS: p.rFromS, fromA: p.rFromA, toS: p.rToS, toA: p.rToA })}
+      <div class="dtsec dtsec-r">
+        <div class="dtsec-t">${ic("list", 16)} <span>المراجعة والسرد</span>
+          <span class="dtsec-n">اختياريّ — ما يراجعه ممّا حفظ</span></div>
+        ${rangePicker("dtr", "من الآية — إلى الآية", {
+          fromS: p.rFromS, fromA: p.rFromA, toS: p.rToS, toA: p.rToA })}
+        <div class="dtsec-g">
+          <div class="field"><label>مقدار المراجعة</label>
+            <input id="dt_ramount" type="number" min="0" step="0.5" dir="ltr" value="${esc(String(p.rAmount || ""))}"
+              placeholder="يُحسب تلقائياً"></div>
+          <div class="field"><label>وحدة قياس المراجعة</label>
+            <select id="dt_runit">${UNITS.map(u2 =>
+              `<option ${u2 === (p.rUnit || "وجه") ? "selected" : ""}>${u2}</option>`).join("")}</select></div>
+        </div>
+      </div>
 
       <div class="field"><label>البرنامج</label>
         <select id="dt_program">${(prgPickList(p.program).length ? prgPickList(p.program).map(x => x.name) : ["—"]).map(x =>
@@ -32023,6 +32041,7 @@ function saveDuty() {
 
   const rh = rangeValue("dth"), rr = rangeValue("dtr");
   const amt = val("#dt_amount", "");
+  const ramt = val("#dt_ramount", "");
 
   /* الحقول المقترحة — تُطبَّق مباشرةً أو تُحفظ بانتظار الاعتماد */
   const draft = {
@@ -32032,6 +32051,9 @@ function saveDuty() {
     rFromS: rr.fromS, rFromA: rr.fromA, rToS: rr.toS, rToA: rr.toA, rFaces: rr.faces,
     amount: amt || (rh.faces ? String(rh.faces) : ""),
     unit: amt ? val("#dt_unit", "وجه") : (rh.faces ? "وجه" : val("#dt_unit", "وجه")),
+    /* مقدارُ المراجعة مستقلٌّ عن مقدار الحفظ: المعلّم يحدّد كلًّا منهما */
+    rAmount: ramt || (rr.faces ? String(rr.faces) : ""),
+    rUnit: ramt ? val("#dt_runit", "وجه") : (rr.faces ? "وجه" : val("#dt_runit", "وجه")),
     kind: val("#dt_kind", "حفظ جديد"),
     day: val("#dt_day", "today"),
     program: val("#dt_program", ""),
@@ -32141,7 +32163,7 @@ function decideDuty(planId, ok) {
   if (ok) {
     const d = p.pending;
     ["current","hFromS","hFromA","hToS","hToA","hFaces","start","rFromS","rFromA",
-     "rToS","rToA","rFaces","amount","unit","program","level","progress","note"]
+     "rToS","rToA","rFaces","amount","unit","rAmount","rUnit","program","level","progress","note"]
       .forEach(k => { p[k] = d[k]; });
     p.status = "نشطة";
     p.approvedBy = u.email || "";
@@ -32198,7 +32220,8 @@ function adminDutyApprovals() {
 
       ${cmp("الحفظ الجديد", p.current, d.current)}
       ${cmp("المراجعة والسرد", p.start, d.start)}
-      ${cmp("المقدار", (p.amount || "") + " " + (p.unit || ""), (d.amount || "") + " " + (d.unit || ""))}
+      ${cmp("مقدار الحفظ", (p.amount || "") + " " + (p.unit || ""), (d.amount || "") + " " + (d.unit || ""))}
+      ${cmp("مقدار المراجعة", (p.rAmount || "") + " " + (p.rUnit || ""), (d.rAmount || "") + " " + (d.rUnit || ""))}
       ${cmp("المستوى", p.level, d.level)}
       ${cmp("نسبة الإنجاز", (p.progress || 0) + "%", (d.progress || 0) + "%")}
       ${d.note ? `<div class="apv-diff"><span class="apv-k">ملاحظة</span>
@@ -32774,7 +32797,9 @@ function teacherPlans() {
           ${p.amount ? `<div class="duty-sum">المقدار: ${esc(p.amount)} ${esc(p.unit || "")}</div>` : ""}`
         : `<span class="muted">لم يُحدَّد بعد.</span>`)}
       ${dutyCard("rev", "t-blue", "list", "المراجعة",
-        planPosText(p, "rev") ? `<strong class="duty-range">${esc(planPosText(p, "rev"))}</strong>` : `<span class="muted">لم تُحدَّد بعد.</span>`)}
+        planPosText(p, "rev") ? `<strong class="duty-range">${esc(planPosText(p, "rev"))}</strong>
+          ${p.rAmount ? `<div class="duty-sum">المقدار: ${esc(p.rAmount)} ${esc(p.rUnit || "")}</div>` : ""}`
+          : `<span class="muted">لم تُحدَّد بعد.</span>`)}
       ${dutyCard("fix", "t-amber", "target", "المستوى",
         `<strong class="duty-range">${esc(p.level || "—")}</strong>
          <div class="duty-sum">${esc(p.program || "—")}</div>`)}
@@ -34810,7 +34835,8 @@ function studentProgress() {
     ["بداية الخطة", planPosText(p, "rev") || "—"],
     ["الموضع الحالي", planPosText(p, "hifz") || "—"],
     ["نهاية الخطة", p.end || "—"],
-    ["المقدار اليومي", (p.amount || "—") + " " + (p.unit || "")]
+    ["مقدار الحفظ اليومي", (p.amount || "—") + " " + (p.unit || "")],
+    ["مقدار المراجعة اليومي", (p.rAmount || "—") + " " + (p.rUnit || "")]
   ].map(r => `<div class="kv"><span>${esc(r[0])}</span><strong>${esc(String(r[1]))}</strong></div>`).join("");
 
   return `<div class="page">
@@ -43377,7 +43403,7 @@ async function loadDataFast(onData) {
     stuck.forEach(x => {
       const d = x.pending;
       ["current","hFromS","hFromA","hToS","hToA","hFaces","start","rFromS","rFromA",
-       "rToS","rToA","rFaces","amount","unit","program","level","progress","note"]
+       "rToS","rToA","rFaces","amount","unit","rAmount","rUnit","program","level","progress","note"]
         .forEach(k => { if (d[k] !== undefined) x[k] = d[k]; });
       x.pending = null;
       x.status = "نشطة";
@@ -46187,7 +46213,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-0110";
+  var APP_BUILD = "20261009-0245";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
