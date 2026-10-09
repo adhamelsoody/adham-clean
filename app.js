@@ -42486,11 +42486,10 @@ function tcrcView() {
         ${tcrcSubLine(s)}</div>
       <div class="tq-marks">${(typeof tcrcMarks === "function") ? tcrcMarks(s.id) : ""}</div>
       <span class="chip ${tint}">${esc(lbl)}</span>
-      <span class="tq-go" aria-hidden="true">${ic("arrowLeft", 16)}</span>
-      ${/* زرُّ تعديل الحالة: يفتح حالةَ هذا الطالب وحدَها — لمن حُضّر بالغلط */""}
-      <button type="button" class="tq-edit" title="تعديل حالة الحضور"
-        onclick="event.stopPropagation(); window.tcrcAttOne && window.tcrcAttOne('${jsAttr(s.id)}')"
-        >${ic("user", 15)}</button>
+      ${/* أيقونتا يسار الصفّ (السهم وزرُّ تعديل الحالة) رُفعتا بطلب صاحب
+            المشروع. الصفُّ كلُّه يبقى مضغوطاً يفتح صفحةَ الطالب، وتعديلُ
+            حالةِ طالبٍ بعينه يبقى من «اعتماد التحضير» أسفل الشاشة —
+            ودالّتُه tcrcAttOne باقيةٌ في مكانها لم تُحذف. */""}
     </div>`;
   }).join("");
 
@@ -46611,7 +46610,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0005";
+  var APP_BUILD = "20261010-0020";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
