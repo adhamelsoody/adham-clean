@@ -26348,7 +26348,10 @@ function tcrcNoneWhy(sid) {
 
 function tcrcMarks(sid) {
   const list = tcrcDuties(sid);
-  if (!list.length) return `<span class="tq-none">${esc(tcrcNoneWhy(sid))}</span>`;
+  /* «شيل كلَّ حاجة على يسار الطالب»: كان يُكتب سببُ غياب العلامات
+     («ليس يومَ دوامه» ونحوه) مكانَها. رُفع النصُّ ويبقى الموضعُ خالياً.
+     ودالّةُ السبب tcrcNoneWhy باقيةٌ في مكانها لم تُحذف. */
+  if (!list.length) return "";
   /* عددُ العلامات = عددُ دروس اليوم، والمنجَزُ منها يخضرّ وحدَه */
   return list.map(a => {
     const done = a.status === "done";
@@ -42475,17 +42478,15 @@ function tcrcView() {
   </div>`;
 
   const rows = studs.map(s => {
-    const r = map[String(s.id)];
-    const lbl = r ? ((typeof attLabel === "function") ? attLabel(r.status, r.kind)
-                                                     : String(r.status || "")) : "لم يُسجَّل";
-    const tint = r ? ((typeof ATT_TINT === "object" && ATT_TINT[r.status]) || "") : "";
     return `<div class="tq-row tq-click"
       onclick="window.tcrcOpenStudent && window.tcrcOpenStudent('${jsAttr(s.id)}')">
       <div class="mini-avatar">${initials(s.name)}</div>
       <div class="tq-name"><strong>${esc(s.name || "—")}</strong>
         ${tcrcSubLine(s)}</div>
       <div class="tq-marks">${(typeof tcrcMarks === "function") ? tcrcMarks(s.id) : ""}</div>
-      <span class="chip ${tint}">${esc(lbl)}</span>
+      ${/* شارةُ حالة الحضور («لم يُسجَّل» / «حاضر» …) رُفعت بطلب صاحب
+            المشروع. حالُ التحضير يبقى في بطاقات الإحصاء أعلى الشاشة
+            («حُضِّروا كذا من كذا») وفي «اعتماد التحضير» أسفلها. */""}
       ${/* أيقونتا يسار الصفّ (السهم وزرُّ تعديل الحالة) رُفعتا بطلب صاحب
             المشروع. الصفُّ كلُّه يبقى مضغوطاً يفتح صفحةَ الطالب، وتعديلُ
             حالةِ طالبٍ بعينه يبقى من «اعتماد التحضير» أسفل الشاشة —
@@ -46610,7 +46611,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0020";
+  var APP_BUILD = "20261010-0035";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
