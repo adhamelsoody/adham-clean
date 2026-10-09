@@ -26415,6 +26415,35 @@ function tcrcStudents(c) {
     String(a.name || "").localeCompare(String(b.name || ""), "ar"));
 }
 
+/* =========================================================================
+   شريطُ يوم الحلقة — دالّةٌ مشتركة
+   -------------------------------------------------------------------------
+   كان الشريطُ مكتوباً داخل teacherCircle وحدَها. و PAGES["teacher/circle"]
+   تُستبدَل عند الإقلاع بـ tcrcView — وهي الشاشةُ التي يراها المعلّم فعلاً.
+   فظلّ الشريطُ في دالّةٍ لا تُرسم، وقلتُ «أُضيف» ولم يظهر شيء. هو الآن
+   دالّةٌ واحدةٌ تُنادى من الشاشتين، فلا تفترق إحداهما عن الأخرى.
+   ========================================================================= */
+function tcrcDayBar(studs, d) {
+  const dName = typeof dayNameOf === "function" ? dayNameOf(d) : "";
+  const isToday = String(d) === String(todayISO());
+  const offDay = (studs || []).length && (studs || []).every(x =>
+    typeof isDutyDay === "function" && !isDutyDay(x, d));
+  return `<div class="tcd-bar">
+    <button type="button" class="tcd-nav" data-action="att-shift" data-days="-1"
+      title="اليوم السابق">${ic("arrowRight", 16)}</button>
+    <div class="tcd-mid">
+      <strong>${esc(dName || "")}${isToday ? " · اليوم" : ""}</strong>
+      <small>${toArabicDigits(d)}</small>
+    </div>
+    <button type="button" class="tcd-nav" data-action="att-shift" data-days="1"
+      title="اليوم التالي" ${isToday ? "disabled" : ""}>${ic("arrowLeft", 16)}</button>
+    ${isToday ? "" : `<button type="button" class="btn btn-soft btn-sm tcd-now"
+      onclick="STATE.attDate=todayISO();mount()">اليوم</button>`}
+  </div>
+  ${offDay ? noteCard("هذا اليومُ ليس من أيّام دوام الحلقة، فلا واجباتِ فيه ولا علاماتِ إنجاز. " +
+     "انتقل إلى يوم دوامٍ من السهمين أعلاه.") : ""}`;
+}
+
 function teacherCircle() {
   const c = tcrcCircle();
   if (!c) {
@@ -26476,33 +26505,7 @@ function teacherCircle() {
     </div>`;
   }).join("");
 
-  /* =======================================================================
-     شريطُ اليوم: الشاشةُ كانت لا تقول أيَّ يومٍ تعرض
-     -----------------------------------------------------------------------
-     العلاماتُ وقوائمُ الحضور كلُّها عن يومٍ بعينه (attDate)، ولا شيءَ في
-     الشاشة يذكره ولا يبدّله. فمن فتحها في يومٍ ليس يومَ دوامِ حلقته رأى
-     صفوفاً بلا علاماتٍ ولا يدري لماذا ولا كيف ينتقل إلى يوم دوامها.
-     الشريطُ يذكر اليومَ باسمه وتاريخه، ويُقلّبه يوماً يوماً، ويعود إلى
-     اليوم بضغطة — ولا تسجيلَ في المستقبل كما في بقيّة الشاشات.
-     ======================================================================= */
-  const dName = typeof dayNameOf === "function" ? dayNameOf(d) : "";
-  const isToday = String(d) === String(todayISO());
-  const offDay = studs.length && studs.every(x =>
-    typeof isDutyDay === "function" && !isDutyDay(x, d));
-  const dayBar = `<div class="tcd-bar">
-    <button type="button" class="tcd-nav" data-action="att-shift" data-days="-1"
-      title="اليوم السابق">${ic("arrowRight", 16)}</button>
-    <div class="tcd-mid">
-      <strong>${esc(dName || "")}${isToday ? " · اليوم" : ""}</strong>
-      <small>${toArabicDigits(d)}</small>
-    </div>
-    <button type="button" class="tcd-nav" data-action="att-shift" data-days="1"
-      title="اليوم التالي" ${isToday ? "disabled" : ""}>${ic("arrowLeft", 16)}</button>
-    ${isToday ? "" : `<button type="button" class="btn btn-soft btn-sm tcd-now"
-      onclick="STATE.attDate=todayISO();mount()">اليوم</button>`}
-  </div>
-  ${offDay ? noteCard("هذا اليومُ ليس من أيّام دوام الحلقة، فلا واجباتِ فيه ولا علاماتِ إنجاز. " +
-     "انتقل إلى يوم دوامٍ من السهمين أعلاه.") : ""}`;
+  const dayBar = tcrcDayBar(studs, d);
 
   return `<div class="page">
     ${pageHead(c.name || "الحلقة", c.mosque || complexName(c.complexId) || "", backArrow())}
@@ -42430,6 +42433,7 @@ function tcrcView() {
   }).join("");
 
   return `<div class="page tcl-page">
+    ${(typeof tcrcDayBar === "function") ? tcrcDayBar(studs, d) : ""}
     <div class="tcl-hero">
       <button type="button" class="tcl-back" data-action="nav" data-page="dashboard"
         title="رجوع">${ic("arrowLeft", 20)}</button>
@@ -46545,7 +46549,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-2140";
+  var APP_BUILD = "20261009-2200";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
