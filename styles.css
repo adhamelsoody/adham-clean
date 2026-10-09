@@ -12485,3 +12485,23 @@ button.tq-mark:focus-visible { outline: 2px solid var(--brand-main); outline-off
   border-inline-start: none; }
 .tdt-wrap > .sls-row:hover { background: var(--border-soft); }
 .tdt-wrap { gap: 0; }
+
+/* =========================================================================
+   صفُّ الطالب في القائمة بلغة صفِّ الواجب
+   -------------------------------------------------------------------------
+   «غيّر الشكل من هذا إلى هذا»: صفُّ الواجب صحٌّ مدوَّرٌ وسطرٌ واضحٌ وسهمٌ
+   يقول إنّ وراءه صفحة. وصفُّ الطالب كان مربَّعَ العلامات بلا سهمٍ ولا
+   حافّةٍ تدلّ على أنّه يُفتح. وُحِّدت اللغتان: العلامةُ مدوَّرةٌ بالخضرة
+   نفسِها، وسهمٌ في آخر الصفّ، وحافّةٌ تُضيء عند المرور.
+   ========================================================================= */
+.tq-mark { border-radius: 50%; width: 26px; height: 26px; }
+.tq-mark svg { width: 14px; height: 14px; }
+.tq-mark:not(.on) { background: transparent; border-color: var(--border); opacity: .55; }
+.tq-mark.on { opacity: 1; }
+
+.tq-go { flex: 0 0 auto; display: grid; place-items: center; color: var(--text-faint); }
+.tq-go svg { width: 16px; height: 16px; }
+.tq-row { transition: border-color .15s ease, background .15s ease; }
+.tq-click:hover .tq-go { color: var(--brand-main); }
+
+@media (max-width: 560px) { .tq-go { display: none; } }

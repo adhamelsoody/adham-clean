@@ -26472,6 +26472,7 @@ function teacherCircle() {
       <div class="tq-marks">${tcrcMarks(s.id)}</div>
       <span class="chip ${r ? (ATT_TINT[r.status] || "") : ""}">${
         r ? esc(attLabel(r.status, r.kind)) : "لم يُسجَّل"}</span>
+      <span class="tq-go" aria-hidden="true">${ic("arrowLeft", 16)}</span>
     </div>`;
   }).join("");
 
@@ -42420,6 +42421,7 @@ function tcrcView() {
         ${tcrcSubLine(s)}</div>
       <div class="tq-marks">${(typeof tcrcMarks === "function") ? tcrcMarks(s.id) : ""}</div>
       <span class="chip ${tint}">${esc(lbl)}</span>
+      <span class="tq-go" aria-hidden="true">${ic("arrowLeft", 16)}</span>
       ${/* زرُّ تعديل الحالة: يفتح حالةَ هذا الطالب وحدَها — لمن حُضّر بالغلط */""}
       <button type="button" class="tq-edit" title="تعديل حالة الحضور"
         onclick="event.stopPropagation(); window.tcrcAttOne && window.tcrcAttOne('${jsAttr(s.id)}')"
@@ -46543,7 +46545,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-2110";
+  var APP_BUILD = "20261009-2140";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
