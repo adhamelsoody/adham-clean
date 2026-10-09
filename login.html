@@ -148,7 +148,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
-  <script src="firebase-config.js?v=202610092200"></script>
+  <script src="firebase-config.js?v=202610092155"></script>
   <script>
   (function () {
     "use strict";
@@ -190,10 +190,30 @@
     }
 
     // التوجيه حسب الدور المخزّن في users/{uid}
+    /* =====================================================================
+       الدخول لا يعلّق إلى الأبد
+       ---------------------------------------------------------------------
+       «يبقى على هذا الشكل ولا يدخل»: قراءةُ ملفّ الحساب من Firestore قد لا
+       تُحسَم ألبتّة — لا تنجح ولا تُرفض — إذا تعذّر على العميل بلوغُ الخادم
+       (شبكةُ الهاتف · مانعٌ في الطريق · تعليقٌ في المخزن). والشيفرةُ تنتظر
+       وعداً لا يأتي، فيبقى الزرُّ «جارٍ الدخول…» ولا رسالةَ ولا مخرج.
+
+       مهلةُ اثنتي عشرة ثانية تكسر الانتظار وتقول ما جرى برمزه، فيُعرف
+       العطلُ من الشاشة نفسِها بدل شاشةٍ صامتة.
+       ===================================================================== */
+    function withTimeout(p, ms, tag) {
+      return Promise.race([p, new Promise(function (_, rej) {
+        setTimeout(function () {
+          const e = new Error("timeout"); e.code = "timeout"; e.tag = tag || ""; rej(e);
+        }, ms || 12000);
+      })]);
+    }
+
     async function route(user) {
       if (routing) return; routing = true;
       try {
-        const snap = db ? await db.collection("users").doc(user.uid).get() : null;
+        const snap = db ? await withTimeout(
+          db.collection("users").doc(user.uid).get(), 12000, "profile") : null;
         let d;
         if (!snap || !snap.exists) {
           /* لا يوجد ملف بمعرّف Firebase — نبحث عن المستخدم الذي أنشأته الإدارة
@@ -252,7 +272,19 @@
           btn.disabled = false; btn.textContent = "دخول";
         }
       } catch (e) {
-        console.error(e); showErr("تعذّر تحميل بيانات الحساب."); routing = false;
+        console.error(e);
+        /* الرسالةُ تحمل سببَها: «تعذّر تحميل بيانات الحساب» وحدَها لا تدلّ
+           على شيءٍ يُعمل به، ولا يملك صاحبُ الهاتف كونسولاً يقرأ منه. */
+        const cd = (e && e.code) || "";
+        showErr(
+          cd === "timeout"
+            ? "لم يستجب الخادمُ خلال ١٢ ثانية. تحقّق من الاتصال ثمّ أعد المحاولة. [timeout]"
+          : cd === "permission-denied"
+            ? "الخادمُ رفض قراءةَ ملفّ حسابك. راجع الإدارة. [permission-denied]"
+          : cd === "unavailable"
+            ? "تعذّر الوصول إلى الخادم. تحقّق من الاتصال. [unavailable]"
+            : "تعذّر تحميل بيانات الحساب." + (cd ? " [" + cd + "]" : ""));
+        routing = false;
         btn.disabled = false; btn.textContent = "دخول";
       }
     }
@@ -334,8 +366,16 @@
             try { localStorage.setItem("mirath_keepin", keep ? "1" : "0"); } catch (e) {}
           } catch (e) { /* متصفّحٌ يمنع التخزين: يُكمَل بالسلوك الافتراضي */ }
 
-          await auth.signInWithEmailAndPassword(email, pass);
+          await withTimeout(auth.signInWithEmailAndPassword(email, pass), 20000, "signin");
           // النجاح يتكفّل به onAuthStateChanged → route
+          /* حارسٌ أخير: إن لم ينتقل بعد خمسَ عشرةَ ثانيةً من نجاح الدخول
+             فالتوجيهُ عالق — يُعاد الزرُّ ليُحاول صاحبُه ثانيةً. */
+          setTimeout(function () {
+            if (document.body.contains(btn) && btn.disabled) {
+              btn.disabled = false; btn.textContent = "دخول";
+              showErr("تمّ الدخولُ ولم تُفتح الواجهة. أعد المحاولة أو راجع الإدارة.");
+            }
+          }, 15000);
         } catch (err) {
           showErr(msgFor(err));
           btn.disabled = false; btn.textContent = "دخول";
