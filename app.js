@@ -27233,9 +27233,14 @@ function tstuDutyCards(st) {
   return `<div class="sls-list">${list.map(a => {
     const t = typeof hwType === "function" ? hwType(String(a.kind || "").replace("_makeup", "")) : {};
     const parts = typeof asgParts === "function" ? asgParts(a) : [];
-    const done = a.status === "done";
+    const done = asgDone(a);
     const rng = typeof stuRangeText === "function" ? stuRangeText(a) : "";
-    const stx = (typeof ASG_TEXT !== "undefined" && ASG_TEXT[a.status]) || a.status || "";
+    /* الواجبُ المولَّدُ لا status له، فكان السطرُ يخرج فارغاً تحت اسمِه —
+       فلا يعرف المعلّمُ أمسمَّعٌ هو أم منتظِر. لكلّ حالٍ كلمتُها الآن. */
+    const stx = done
+      ? ((typeof ASG_TEXT !== "undefined" && ASG_TEXT.done) || "أُنجز")
+      : ((typeof ASG_TEXT !== "undefined" && ASG_TEXT[a.status]) || a.status
+         || "بانتظار التسميع");
     return `<div class="tdt-wrap" style="--tdt-k:${esc(t.color || "#4bdee4")}">
     <button type="button" class="sls-row${done ? " on" : ""}"
       style="--sls-k:${esc(t.color || "#4bdee4")}"
@@ -27327,6 +27332,28 @@ function asgEnsure(a) {
   DB.assignments.push(a);
   try { persistSet("assignments", a); } catch (e) { console.warn("asgEnsure:", e); }
   return a;
+}
+
+/* =========================================================================
+   الإنجازُ يُقرأ من الواقع لا من حقلٍ وحدَه
+   -------------------------------------------------------------------------
+   «ولما يتمّ الحفظُ أو المراجعةُ من قِبل الطالب يكونوا باللون الأخضر»:
+   كان الأخضرُ معلَّقاً على a.status === "done" وحدَه. والواجبُ المولَّد
+   قد يُسمَّع ويُكتب تسميعُه في recitations ثمّ لا تُغلق حالتُه — فـ
+   asgClose يبحث عنه في cur("assignments") ويردّ صامتاً إن حجبه الحصرُ أو
+   لم يُثبَّت سجلّاً بعد. فيبقى الصحُّ باهتاً وقد سمّع الطالبُ فعلاً.
+
+   فالإنجازُ الآن أحدُ أمرين: حالةٌ محفوظةٌ «done»، أو تسميعٌ مسجَّلٌ
+   يحمل asgId هذا الواجب. والتسميعُ هو الواقعُ الذي تُبنى عليه التقارير.
+
+   قراءةٌ محضة: لا تُكتب حالةٌ ولا يُمسّ سجلّ ولا يتغيّر ارتباط.
+   ========================================================================= */
+function asgDone(a) {
+  if (!a) return false;
+  if (a.status === "done") return true;
+  if (a.id == null) return false;
+  const recs = cur("recitations") || [];
+  return recs.some(r => r && String(r.asgId) === String(a.id));
 }
 
 function tsplRow(i, a) {
@@ -34909,7 +34936,8 @@ function stuLessonRows(st) {
   }
 
   return `<div class="sls-list">${list.map(a => {
-    const done = a.status === "done";
+    /* المقياسُ نفسُه عند المعلّم: شاشتان لا تختلفان على واجبٍ واحد */
+    const done = asgDone(a);
     const t = typeof hwType === "function"
       ? hwType(String(a.kind || "").replace("_makeup", "")) : {};
     const rng = stuRangeText(a);
@@ -46587,7 +46615,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-2340";
+  var APP_BUILD = "20261009-2355";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
