@@ -36426,6 +36426,26 @@ function setDocTitle(t) {
 let SCAN_AT = 0;
 const SCAN_EVERY = 120000;          /* دقيقتان */
 
+/* =========================================================================
+   صيانةُ النظام لا تجري من جلسة معلّم
+   -------------------------------------------------------------------------
+   «تعذّر الحفظ — دورُك «teacher» لا يملك حفظَ هذا السجلّ» أربعَ مرّاتٍ مع
+   كلّ فتحةٍ وكلّ تحديث: فحوصُ الإقلاع تجري لكلّ دورٍ سواء، وفيها كتاباتٌ
+   إداريّةٌ عامّة — ترحيلُ واجبات أمس (planRules) ورصدُ إجازات الحلقات
+   (workflow). فالخادمُ يردُّها لأنّ المعلّمَ لا يملكها، ويُرفع لصاحبها
+   تنبيهٌ عن كتابةٍ لم يطلبها أصلاً.
+
+   وهي صيانةٌ تخصُّ النظامَ كلَّه لا طالباً ولا حلقة، فتجري من جلسة من
+   يملكها: المالك والمدير ومديرو المنشآت. والدوالُّ باقيةٌ كما هي لم
+   تُمسّ، وتُنفَّذ كما كانت متى فتح مخوَّلٌ النظام.
+   ========================================================================= */
+function maySysWrite() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (!r) return true;                       /* لا جلسة: وضعُ التطوير */
+  return r === "admin" || r === "owner" ||
+         (typeof isMgrRole === "function" && isMgrRole(r));
+}
+
 function runPeriodicScans(force) {
   const now = Date.now();
   if (!force && now - SCAN_AT < SCAN_EVERY) return;
@@ -36437,13 +36457,13 @@ function runPeriodicScans(force) {
     if (typeof fetchPrayerTimes === "function" && prayerCfg().on && !prayerTimes()) {
       fetchPrayerTimes().then(t => { if (t) mount(); });
     }
-    if (typeof autoHolidayScan === "function" && FB_LOADED) autoHolidayScan();
+    if (typeof autoHolidayScan === "function" && FB_LOADED && maySysWrite()) autoHolidayScan();
   } catch (e) {}
 
   /* مزامنةُ النطاق تلقائيةٌ تجري كلّ دقيقتين: تُحاط بـ linkAuto فلا تمسّ
      ارتباطاً — وإنما تكتب circleIds التي تقوم عليها قواعدُ الخادم. */
   try { if (typeof syncMyScope === "function" && FB_LOADED) linkAuto(syncMyScope); } catch (e) {}
-  try { if (typeof runDailyRoll === "function") runDailyRoll(); } catch (e) {}
+  try { if (typeof runDailyRoll === "function" && maySysWrite()) runDailyRoll(); } catch (e) {}
 
   try {
     if (typeof scanNotifications === "function") scanNotifications();
@@ -46651,7 +46671,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0205";
+  var APP_BUILD = "20261010-0225";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
