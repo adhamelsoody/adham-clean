@@ -46,6 +46,8 @@ const ICONS = {
   arrowDown: 'M12 5v14M19 12l-7 7-7-7',
   arrowUp: 'M12 19V5M5 12l7-7 7 7',
   arrowLeft: 'M19 12H5M12 19l-7-7 7-7',
+  /* نظيرُه للاتجاه الآخر — كان ic يردّ أيقونةَ info لغيابه */
+  arrowRight: 'M5 12h14M12 5l7 7-7 7',
   info: 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 16v-4M12 8h.01',
   /* سلّةُ الحذف: لم تكن في القائمة، فكان ic("trash") يسقط على info —
      فيظهر زرُّ الحذف دائرةً لا سلّة. */
@@ -26444,8 +26446,37 @@ function teacherCircle() {
     </div>`;
   }).join("");
 
+  /* =======================================================================
+     شريطُ اليوم: الشاشةُ كانت لا تقول أيَّ يومٍ تعرض
+     -----------------------------------------------------------------------
+     العلاماتُ وقوائمُ الحضور كلُّها عن يومٍ بعينه (attDate)، ولا شيءَ في
+     الشاشة يذكره ولا يبدّله. فمن فتحها في يومٍ ليس يومَ دوامِ حلقته رأى
+     صفوفاً بلا علاماتٍ ولا يدري لماذا ولا كيف ينتقل إلى يوم دوامها.
+     الشريطُ يذكر اليومَ باسمه وتاريخه، ويُقلّبه يوماً يوماً، ويعود إلى
+     اليوم بضغطة — ولا تسجيلَ في المستقبل كما في بقيّة الشاشات.
+     ======================================================================= */
+  const dName = typeof dayNameOf === "function" ? dayNameOf(d) : "";
+  const isToday = String(d) === String(todayISO());
+  const offDay = studs.length && studs.every(x =>
+    typeof isDutyDay === "function" && !isDutyDay(x, d));
+  const dayBar = `<div class="tcd-bar">
+    <button type="button" class="tcd-nav" data-action="att-shift" data-days="-1"
+      title="اليوم السابق">${ic("arrowRight", 16)}</button>
+    <div class="tcd-mid">
+      <strong>${esc(dName || "")}${isToday ? " · اليوم" : ""}</strong>
+      <small>${toArabicDigits(d)}</small>
+    </div>
+    <button type="button" class="tcd-nav" data-action="att-shift" data-days="1"
+      title="اليوم التالي" ${isToday ? "disabled" : ""}>${ic("arrowLeft", 16)}</button>
+    ${isToday ? "" : `<button type="button" class="btn btn-soft btn-sm tcd-now"
+      onclick="STATE.attDate=todayISO();mount()">اليوم</button>`}
+  </div>
+  ${offDay ? noteCard("هذا اليومُ ليس من أيّام دوام الحلقة، فلا واجباتِ فيه ولا علاماتِ إنجاز. " +
+     "انتقل إلى يوم دوامٍ من السهمين أعلاه.") : ""}`;
+
   return `<div class="page">
     ${pageHead(c.name || "الحلقة", c.mosque || complexName(c.complexId) || "", backArrow())}
+    ${dayBar}
     <div class="grid g-4 stagger" style="margin-bottom:14px">${stats}</div>
     <div class="tq-bar">
       <button type="button" class="btn btn-primary" onclick="window.tcrcAttOpen()">
@@ -46466,7 +46497,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-1850";
+  var APP_BUILD = "20261009-1930";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
