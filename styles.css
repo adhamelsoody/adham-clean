@@ -10071,7 +10071,10 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
   display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px;
   background: #f0f3f4; color: #aab6b8; border: 1px solid var(--line, #e3e8ea);
 }
-.tq-mark.on { background: #0f6f72; border-color: #0f6f72; color: #fff; }
+/* المنجَزُ أخضرُ لا تركوازيّ: كان بلون الواجهة نفسِه (#0f6f72) فلا يُقرأ
+   أنه إنجاز، والمعلّمُ ينظر إلى الصفّ ليعرف من أنجز بنظرةٍ واحدة.
+   وهو الأخضرُ نفسُه في بطاقة الطالب، فتتّحد دلالةُ اللون في الشاشتين. */
+.tq-mark.on { background: #12855c; border-color: #12855c; color: #fff; }
 .tq-none { font-size: 12px; color: #9aa6a8; }
 
 /* نافذةُ اعتماد التحضير */
@@ -10098,6 +10101,8 @@ body.nav-off .main { margin-inline-start: 0; width: 100%; }
   :root:not([data-theme="light"]) .tatt-row { background: #142726; }
 }
 :root[data-theme="dark"] .tq-mark  { background: #142726; border-color: #1f4746; color: #6f8584; }
+:root:not([data-theme="light"]) .tq-mark.on,
+:root[data-theme="dark"] .tq-mark.on { background: #12855c; border-color: #12855c; color: #fff; }
 :root[data-theme="dark"] .tatt-row { background: #142726; }
 
 /* =========================================================================

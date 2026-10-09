@@ -26285,10 +26285,14 @@ function tcrcDuties(sid) {
 function tcrcMarks(sid) {
   const list = tcrcDuties(sid);
   if (!list.length) return `<span class="tq-none">لا واجبات</span>`;
+  /* عددُ العلامات = عددُ دروس اليوم، والمنجَزُ منها يخضرّ وحدَه */
   return list.map(a => {
     const done = a.status === "done";
+    /* kindAr و k لا وجودَ لهما في سجلّ الواجب، فكان التلميحُ يقول «واجب»
+       دائماً. الاسمُ في kindName وإلا kind — كما في بقيّة الشاشات. */
+    const nm = a.kindName || a.kind || "واجب";
     return `<span class="tq-mark${done ? " on" : ""}"
-      title="${esc((a.kindAr || a.k || "واجب") + " — " + (done ? "منجز" : "لم يُنجز"))}"
+      title="${esc(nm + " — " + (done ? "منجز" : "لم يُنجز"))}"
       >${ic("check", 13)}</span>`;
   }).join("");
 }
@@ -46231,7 +46235,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261009-0710";
+  var APP_BUILD = "20261009-0745";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
