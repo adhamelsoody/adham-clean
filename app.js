@@ -27139,36 +27139,165 @@ function teacherStudent() {
   </div>`;
 }
 
-/* محتوى خطة التسميع — نصُّه كما كان، وموضعُه صار نافذةً */
+/* =========================================================================
+   خطةُ التسميع عند المعلّم بشكل بطاقة الإدارة نفسِه
+   -------------------------------------------------------------------------
+   «أريد خطةَ التسميع أن تكون بنفس هذا الشكل» — وهو شكلُ خطةِ التسميع في
+   بطاقة الطالب عند الإدارة: ثلاثُ بطاقاتٍ بمفاتيحِ تشغيل، تحت كلٍّ نوعُ
+   الكمية والكميةُ والاتجاهُ والابتداءُ بالسورة والآية، وزرُّ «تحديث».
+
+   ولا نموذجَ جديد: الحقولُ هي حقولُ st.plan نفسُها التي تقرؤها bplOf
+   وتكتبها بطاقةُ الإدارة (hifzOn · hifzType · hifzQty · hifzDir ·
+   hifzSura · hifzAyah · tatOn · tatCount · revOn · …)، والضوابطُ هي
+   ضوابطُها بمعرّفاتها نفسِها (spTog · spQtyType · spDir · spAyah ·
+   spFillSurahs)، فلا تفترق شاشةُ المعلّم عن شاشة الإدارة في حرف.
+
+   والحفظُ يمرُّ بـ spSyncEnginePlan كما يمرُّ حفظُ الإدارة: هي التي تترجم
+   ما في ملفّ الطالب إلى سجلّ المحرّك. ولا يُمَسُّ ارتباطٌ: لا مسجدَ ولا
+   مجمّعَ ولا حلقةَ ولا برنامجَ ولا مستوى.
+
+   وبُناةُ الضوابط الثلاثة (قائمةُ الكمية · أزرارُ الاتجاه · صفُّ الابتداء)
+   مكتوبةٌ هنا بنصّها لأنّ نظيراتِها متغيّراتٌ محليّةٌ داخل panelStudent،
+   ونقلُها إلى الخارج يمسّ شاشةً عاملةً لم يُطلب مسُّها.
+   ========================================================================= */
 function tstuPlanBox(st) {
   if (!teacherCan("viewPlan")) {
     return noteCard("صلاحيةُ الاطلاع على الخطة غيرُ مفعَّلةٍ لحسابك.");
   }
-  const p = planOfStudent(st);
-  if (!p) {
-    return emptyState("لا توجد خطة لهذا الطالب", teacherCan("editPlan")
-      ? "ضعْ له خطتَه من «تحديد الحفظ» أدناه."
-      : "لم تُسنَد له خطةٌ بعد — راجع الإدارة.");
-  }
-  return `<div class="duty-grid">
-      ${dutyCard("hifz", "t-green", "book", "الحفظ الجديد",
-        planPosText(p, "hifz") ? `<strong class="duty-range">${esc(planPosText(p, "hifz"))}</strong>
-          ${p.amount ? `<div class="duty-sum">المقدار: ${esc(p.amount)} ${esc(p.unit || "")}</div>` : ""}`
-        : `<span class="muted">لم يُحدَّد بعد.</span>`)}
-      ${dutyCard("rev", "t-blue", "list", "المراجعة",
-        planPosText(p, "rev") ? `<strong class="duty-range">${esc(planPosText(p, "rev"))}</strong>
-          ${p.rAmount ? `<div class="duty-sum">المقدار: ${esc(p.rAmount)} ${esc(p.rUnit || "")}</div>` : ""}`
-                : `<span class="muted">لم تُحدَّد بعد.</span>`)}
-      ${dutyCard("fix", "t-amber", "target", "المستوى",
-        `<strong class="duty-range">${esc(p.level || "—")}</strong>
-         <div class="duty-sum">${esc(p.program || "—")}</div>`)}
-    </div>
-    <div style="height:14px"></div>
-    <div><span class="muted" style="font-size:12px">نسبة الإنجاز</span>
-      ${progressRow(Number(p.progress) || 0)}</div>
-    ${p.note ? `<div style="height:12px"></div>${
-      noteCard("<strong>ملاحظة للطالب:</strong> " + esc(p.note))}` : ""}`;
+  const pl = bplOf(st);
+  const sp = st.plan || {};
+
+  /* الموضعُ الحيُّ من سجلّ المحرّك — كما تقرؤه بطاقةُ الإدارة */
+  const livePos = (which) => {
+    try {
+      const rec = typeof planOfStudent === "function" ? planOfStudent(st) : null;
+      if (!rec) return null;
+      const n = Number(which === "rev" ? rec.revFromS : rec.hifzFromS) || 0;
+      if (!n) return null;
+      const nm = typeof surahName === "function" ? surahName(n) : "";
+      if (!nm) { try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {} return null; }
+      return { sura: nm,
+               ayah: Math.max(1, Number(which === "rev" ? rec.revFromA : rec.hifzFromA) || 1) };
+    } catch (e) { return null; }
+  };
+  const posH = livePos("hifz");
+  const posR = livePos("rev");
+
+  const qtySel = (id, v, opts, onch) => `<select id="${id}" class="sp-sel"${
+      onch ? ` onchange="${onch}"` : ""}>
+      ${opts.map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+
+  const dirBtns = (name, v, opts) => `<div class="sp-seg">
+      ${opts.map(o => `<button type="button" class="sp-segb${o === v ? " on" : ""}"
+        onclick="window.spDir(this,'${name}','${esc(o)}')">${esc(o)}</button>`).join("")}
+      <input type="hidden" id="${name}" value="${esc(v)}">
+    </div>`;
+
+  const startRow = (pfx, sura, ayah, dirId, dirVal) => `
+    <div class="sp-start">
+      <label>${ic("target", 13)} الابتداء — السورة والآية</label>
+      <div class="sp-startrow">
+        <select id="${pfx}Sura" class="sp-sel sp-sura" data-dir="${esc(dirId)}"
+          data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}">
+          <option>${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}</option>
+        </select>
+        <div class="sp-step">
+          <button type="button" onclick="window.spAyah('${pfx}', 1)">+</button>
+          <input id="${pfx}Ayah" type="number" min="1" value="${Number(ayah) || 1}">
+          <button type="button" onclick="window.spAyah('${pfx}', -1)">−</button>
+        </div>
+      </div>
+    </div>`;
+
+  return `<div class="sp-page tstu-plan">
+    <section class="sp-card sp-hifz${pl.hifzOn ? "" : " sp-off"}">
+      <div class="sp-plrow">
+        <span class="sp-pldot"></span>
+        <span class="sp-plname"><b>حفظ</b>
+          <span class="sp-plsum">${esc(pl.hifzType)} · ${esc(pl.hifzQty)}</span></span>
+        <button type="button" class="bpl-tog${pl.hifzOn ? " on" : ""}" id="spHifzTog"
+          onclick="window.spTog(this,'spHifzOn')"><span class="bpl-knob"></span></button>
+        <input type="hidden" id="spHifzOn" value="${pl.hifzOn ? 1 : 0}">
+      </div>
+      <div class="sp-grid">
+        <div class="sp-field"><label>نوع الكمية</label>${qtySel("spHifzType", pl.hifzType,
+          PLAN_QTY_TYPE, "window.spQtyType(this,'spHifzQty')")}</div>
+        <div class="sp-field" id="spHifzQtyBox">${spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div>
+        <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
+      </div>
+      ${startRow("spHifz", (posH && posH.sura) || sp.hifzSura,
+                 (posH && posH.ayah) || sp.hifzAyah, "spHifzDir", pl.hifzDir)}
+    </section>
+
+    <section class="sp-card sp-fix${pl.tatOn ? "" : " sp-off"}">
+      <div class="sp-plrow">
+        <span class="sp-pldot"></span>
+        <span class="sp-plname"><b>تثبيت</b>
+          <span class="sp-plsum">${toArabicDigits(pl.tatCount)} دروس</span></span>
+        <button type="button" class="bpl-tog${pl.tatOn ? " on" : ""}"
+          onclick="window.spTog(this,'spTatOn')"><span class="bpl-knob"></span></button>
+        <input type="hidden" id="spTatOn" value="${pl.tatOn ? 1 : 0}">
+      </div>
+      <div class="sp-grid">
+        <div class="sp-field"><label>عدد الدروس</label>
+          <div class="sp-step">
+            <button type="button" onclick="window.spNum('spTatCount', 1)">+</button>
+            <input id="spTatCount" type="number" min="0" value="${pl.tatCount}">
+            <button type="button" onclick="window.spNum('spTatCount', -1)">−</button>
+          </div></div>
+      </div>
+    </section>
+
+    <section class="sp-card sp-rev${pl.revOn ? "" : " sp-off"}">
+      <div class="sp-plrow">
+        <span class="sp-pldot"></span>
+        <span class="sp-plname"><b>مراجعة</b>
+          <span class="sp-plsum">${esc(pl.revType)} · ${esc(pl.revQty)}</span></span>
+        <button type="button" class="bpl-tog${pl.revOn ? " on" : ""}"
+          onclick="window.spTog(this,'spRevOn')"><span class="bpl-knob"></span></button>
+        <input type="hidden" id="spRevOn" value="${pl.revOn ? 1 : 0}">
+      </div>
+      <div class="sp-grid">
+        <div class="sp-field"><label>نوع الكمية</label>${qtySel("spRevType", pl.revType,
+          PLAN_QTY_TYPE, "window.spQtyType(this,'spRevQty')")}</div>
+        <div class="sp-field" id="spRevQtyBox">${spQtyCtl("spRevQty", pl.revQty, pl.revType)}</div>
+        <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("spRevDir", pl.revDir, PLAN_DIR_REV)}</div>
+      </div>
+      ${startRow("spRev", (posR && posR.sura) || sp.revSura,
+                 (posR && posR.ayah) || sp.revAyah, "spRevDir", pl.revDir)}
+    </section>
+  </div>`;
 }
+
+/* «تحديث»: يكتب ما في النافذة إلى ملفّ الطالب ثمّ يترجمه إلى سجلّ المحرّك
+   بـ spSyncEnginePlan — المسارُ نفسُه الذي يمرُّ به حفظُ الإدارة. */
+window.tstuPlanSave = function () {
+  const st = tstuStudent();
+  if (!st) { showToast("لا طالبَ مفتوح", "warn"); return; }
+  if (!teacherCan("editPlan")) {
+    showToast("صلاحيةُ تعديل خطة التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  const g = id => { const e = document.getElementById(id); return e ? String(e.value) : ""; };
+  if (!document.getElementById("spHifzQty")) { showToast("النافذة غير مفتوحة", "warn"); return; }
+
+  st.plan = Object.assign({}, st.plan, {
+    hifzOn:   g("spHifzOn") === "1",
+    hifzType: g("spHifzType"), hifzQty: g("spHifzQty"), hifzDir: g("spHifzDir"),
+    hifzSura: g("spHifzSura"), hifzAyah: Number(g("spHifzAyah")) || 1,
+    revOn:    g("spRevOn") === "1",
+    revType:  g("spRevType"), revQty: g("spRevQty"), revDir: g("spRevDir"),
+    revSura:  g("spRevSura"), revAyah: Number(g("spRevAyah")) || 1,
+    tatOn:    g("spTatOn") === "1",
+    tatCount: Number(g("spTatCount")) || 0
+  });
+  persistSet("students", st);
+  try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(st); } catch (e) {
+    console.warn("tstuPlanSave sync:", e);
+  }
+  closeModal();
+  showToast("حُدِّثت خطةُ التسميع", "success");
+  mount();
+};
 
 /* الزرُّ الأعلى يفتحها — ولا يُرسم إلّا لمن يملك تعديلَها */
 window.tstuPlanOpen = function () {
@@ -27177,15 +27306,17 @@ window.tstuPlanOpen = function () {
   if (!teacherCan("editPlan")) {
     showToast("صلاحيةُ تعديل خطة التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
   }
+  if (typeof reciteLoadSurahs === "function") reciteLoadSurahs();
   TSTU.tab = "plan";
   openModal("خطة التسميع", esc(st.name || ""), tstuPlanBox(st),
-    `<button type="button" class="btn btn-primary"
-       data-action="modal-student-duty" data-id="${jsAttr(String(st.id))}" data-focus="hifz"
-       >${ic("book", 15)} تحديد الحفظ</button>
-     <button type="button" class="btn btn-soft"
-       data-action="modal-student-duty" data-id="${jsAttr(String(st.id))}" data-focus="rev"
-       >${ic("list", 15)} تحديد المراجعة</button>
+    `<button type="button" class="btn btn-primary" onclick="window.tstuPlanSave()"
+       >${ic("check", 16)} تحديث</button>
      <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+  /* قوائمُ السور تُملأ بعد الرسم — كما في بطاقة الإدارة */
+  setTimeout(function () {
+    try { if (typeof spFillSurahs === "function") spFillSurahs(document.getElementById("modalRoot")); }
+    catch (e) {}
+  }, 40);
 };
 
 window.tstuTab = function (k) { TSTU.tab = String(k || "plan"); mount(); };
@@ -47575,7 +47706,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-2200";
+  var APP_BUILD = "20261010-2250";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

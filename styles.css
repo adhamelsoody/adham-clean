@@ -12779,3 +12779,26 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
 }
 .tdt-acts .tdt-done { margin: 0; }
 .tdt-info { display: inline-flex; align-items: center; gap: 6px; }
+
+/* =========================================================================
+   خطةُ التسميع في نافذة المعلّم — ضيقُ النافذة لا ضيقُ البطاقة
+   -------------------------------------------------------------------------
+   «أريد خطةَ التسميع أن تكون بنفس هذا الشكل» — وهو شكلُ بطاقة الإدارة.
+   وتنسيقُها مبنيٌّ على عرض لوحةٍ جانبيّةٍ واسعة، فإذا وُضع في نافذةٍ على
+   الجوّال انكسر صفُّ العنوان وخرج عدّادُ الآية عن حدّها. هذه ثلاثةُ أسطرٍ
+   تُلائمه عرضَ النافذة، ولا تمسّ بطاقةَ الإدارة في شيء.
+   ========================================================================= */
+/* الاسمُ وملخّصُه سطرانِ متراكبان كما في الصورة، والمفتاحُ وحدَه يساراً */
+.tstu-plan .sp-plrow { flex-wrap: nowrap; gap: 10px; align-items: flex-start; }
+.tstu-plan .sp-plname { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
+.tstu-plan .sp-plsum {
+  padding: 0; background: none; font-size: 12px; font-weight: 600; color: #8b9a9b;
+  white-space: normal;
+}
+.tstu-plan .sp-rev .sp-plsum, .tstu-plan .sp-card.sp-rev .sp-plsum { background: none; color: #a9896a; }
+.tstu-plan .sp-plrow .sp-pldot { margin-top: 7px; }
+.tstu-plan .sp-grid { grid-template-columns: 1fr; gap: 12px; }
+.tstu-plan .sp-startrow { grid-template-columns: 1fr; gap: 10px; }
+.tstu-plan .sp-startrow .sp-step { justify-content: flex-start; }
+.tstu-plan .sp-card { padding: 14px; }
+.tstu-plan .sp-card + .sp-card { margin-top: 12px; }
