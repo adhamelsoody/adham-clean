@@ -27489,6 +27489,20 @@ window.tstuAddDuty = function (sid) {
   modalBulkDuty();
 };
 
+/* =========================================================================
+   زرُّ «إضافة واجب» رُفع عن شاشة المعلّم
+   -------------------------------------------------------------------------
+   «ألغِ زرَّ إضافة واجب، لأنّ المعلّم يقسّم الواجب وليس يضيفه».
+
+   والواجباتُ تُولَّد من خطة الطالب لا من يد المعلّم، وما يملكه المعلّمُ
+   في يومه تقسيمُ واجبه على جلسات — وهو قائمٌ في نافذة الواجب نفسِها
+   (زرّ «تقسيم» بصلاحية splitDuty) لم يُمسّ.
+
+   ولم تُحذف الدالّتان: tstuDutyAddBtn و tstuAddDuty باقيتان كما هما،
+   ونافذةُ الواجب اليدويّ modalBulkDuty تعمل كما كانت من شاشة الإدارة
+   (data-action="bulk-duty"). فمن أراد إعادةَ الزرّ ردَّ نداءَيه إلى
+   tstuDutyCards — وهما الموضعان اللذان رُفعا.
+   ========================================================================= */
 function tstuDutyAddBtn(st) {
   if (!teacherCan("editPlan")) return "";
   return `<button type="button" class="btn btn-soft btn-sm tdt-add"
@@ -27516,8 +27530,7 @@ function tstuDutyCards(st) {
     const why = (typeof tcrcNoneWhy === "function") ? tcrcNoneWhy(st.id, d) : "";
     return `<div class="ntf-empty">لا واجباتِ هذا اليوم${
         why ? " — " + esc(why) : ""}</div>
-      ${goneBox}
-      ${tstuDutyAddBtn(st) ? `<div class="tdt-addwrap">${tstuDutyAddBtn(st)}</div>` : ""}`;
+      ${goneBox}`;
   }
   /* =======================================================================
      صفُّ الواجب عند المعلّم بشكله عند الطالب
@@ -27574,8 +27587,7 @@ function tstuDutyCards(st) {
     </div>
     </div>`;
   }).join("")}</div>
-  ${goneBox}
-  ${tstuDutyAddBtn(st) ? `<div class="tdt-addwrap">${tstuDutyAddBtn(st)}</div>` : ""}`;
+  ${goneBox}`;
 }
 
 /* نتائجُ اليوم: التسميعُ وتقييمُه والأخطاءُ المسجَّلة — لليوم المختار */
@@ -47557,7 +47569,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-2010";
+  var APP_BUILD = "20261010-2045";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
