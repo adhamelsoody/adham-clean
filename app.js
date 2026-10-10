@@ -28465,35 +28465,99 @@ window.recvOpen = function (asgId) {
   const mk = recvMarks(a);
   const items = evalItemsOn();
 
+  /* =======================================================================
+     تقييمُ الأداء — صحيفةٌ لا نموذجاً مكدَّساً
+     -----------------------------------------------------------------------
+     «أعد تصميم النافذة دي، عايزها زيّ تفاصيل الواجب».
+
+     كانت حقولُها شبكةَ نماذجٍ عامّة (form-grid): كلُّ عنصرِ تقييمٍ تسميةٌ
+     في سطرٍ وحقلٌ بعرض النافذة تحتها. أربعةُ عناصرَ تأكل أربعةَ أضعافِ
+     ما تحتاج، فيطول جسمُ النافذة حتى يُزاح ذيلُها — وزرُّ «اعتماد التسميع»
+     يُقطع أسفلَ شاشة الجوّال، وهو المقصودُ من النافذة كلِّها.
+
+     صارت صحيفةَ صفوفٍ كصحيفة «تفاصيل الواجب» حرفاً بحرف: التسميةُ يميناً
+     بوزنٍ هادئ، وقيمتُها يساراً في حقلٍ بقَدْرِها. والتقديرُ أزرارٌ
+     متعاقبةٌ لا تجتمع كأزرار النتيجة. والمدى والمقدار في رأسها سطرين
+     يُقرآن لا يُحرَّران — فالتحريرُ موضعُه نافذةُ الواجب.
+
+     ولم يُحذف حقلٌ ولا بندُ تقييم: العناصرُ تُقرأ من evalItemsOn كما كانت،
+     ومعرّفاتُها rcv_<k> و rcv_note و rcvGrades بحالها، فـ recvSave لم
+     تتبدّل فيها كلمة.
+     ======================================================================= */
+  const gOpts = (typeof RECITE_GRADES !== "undefined" && RECITE_GRADES)
+    ? RECITE_GRADES : ["ممتاز", "جيد جداً", "جيد", "إعادة"];
+  const mkRow = (h, n) => `<span class="rcv-mk${Number(n) > 0 ? " hot" : ""}">${
+    esc(h)} ${toArabicDigits(Number(n) || 0)}</span>`;
+
   openModal("تقييم الأداء", esc((st.name || "") + " — " + (a.kindName || "")),
-    `<div class="rcv-head">
-      <span>${esc(a.kindName || "واجب")}</span>
-      ${a.fromS ? `<span>${esc(tstuRange(a))}</span>` : ""}
-      <span>المقدار: ${toArabicDigits(a.qty || 0)} ${esc(a.unit || "وجه")}</span>
-    </div>
-    ${noteCard("أخطاءُ المصحف في هذا المدى: نسيان " + toArabicDigits(mk["نسيان"]) +
-      " · تجويد " + toArabicDigits(mk["تجويد"]) + " · تشكيل " + toArabicDigits(mk["تشكيل"]))}
-    <div class="form-grid">
-      ${items.map(x => `<div class="field"><label>${esc(x.h)}</label>
-        <input id="rcv_${esc(x.k)}" type="number" min="0" dir="ltr" value="0"></div>`).join("")}
-    </div>
-    <div class="field full"><label>التقدير</label>
-      <div class="chip-list" id="rcvGrades">${(typeof RECITE_GRADES !== "undefined"
-        ? RECITE_GRADES : ["ممتاز", "جيد جداً", "جيد", "إعادة"]).map(g =>
-        `<button type="button" class="tatt-opt${g === RECV.grade ? " on" : ""}"
-          onclick="window.recvGrade('${jsAttr(g)}')">${esc(g)}</button>`).join("")}</div></div>
-    <div class="form-grid">
-      <div class="field full"><label>ملاحظة</label>
-        <textarea id="rcv_note" rows="2" placeholder="اختياري"></textarea></div>
+    `<div class="tsd-sheet rcv-sheet">
+      <div class="tsd-row">
+        <span class="tsd-k">الواجب</span>
+        <span class="tsd-v"><b>${esc(a.kindName || "واجب")}</b></span>
+      </div>
+
+      ${a.fromS ? `<div class="tsd-row">
+        <span class="tsd-k">المدى</span>
+        <span class="tsd-v">${esc(tstuRange(a))}</span>
+      </div>` : ""}
+
+      <div class="tsd-row">
+        <span class="tsd-k">المقدار</span>
+        <span class="tsd-v">${toArabicDigits(a.qty || 0)} ${esc(a.unit || "وجه")}</span>
+      </div>
+
+      <div class="tsd-row">
+        <span class="tsd-k">أخطاء المصحف</span>
+        <span class="tsd-v"><span class="rcv-mks">${
+          mkRow("نسيان", mk["نسيان"])}${mkRow("تجويد", mk["تجويد"])}${
+          mkRow("تشكيل", mk["تشكيل"])}</span></span>
+      </div>
+
+      ${items.map(x => `<div class="tsd-row">
+        <span class="tsd-k">${esc(x.h)}</span>
+        <span class="tsd-v"><span class="rcv-step">
+          <button type="button" class="rcv-pm" aria-label="زيادة ${esc(x.h)}"
+            onclick="window.rcvStep('${jsAttr(x.k)}', 1)">+</button>
+          <input id="rcv_${esc(x.k)}" class="tsd-in tsd-qty rcv-num"
+            type="number" min="0" dir="ltr" value="0" aria-label="${esc(x.h)}">
+          <button type="button" class="rcv-pm" aria-label="إنقاص ${esc(x.h)}"
+            onclick="window.rcvStep('${jsAttr(x.k)}', -1)">&minus;</button>
+        </span></span>
+      </div>`).join("")}
+
+      <div class="tsd-row tsd-res-row">
+        <span class="tsd-k">التقدير</span>
+        <span class="tsd-v"><span class="tsd-res rcv-grades" id="rcvGrades">${
+          gOpts.map(g => `<button type="button" class="tsd-opt rcv-opt${
+            g === RECV.grade ? " on" : ""}"
+            onclick="window.recvGrade('${jsAttr(g)}')">${esc(g)}</button>`).join("")
+        }</span></span>
+      </div>
+
+      <div class="tsd-row tsd-res-row">
+        <span class="tsd-k">ملاحظة</span>
+        <span class="tsd-v"><textarea id="rcv_note" class="tsd-in rcv-note" rows="2"
+          placeholder="اختياري"></textarea></span>
+      </div>
     </div>`,
     `<button class="btn btn-primary" onclick="window.recvSave()">${
       ic("check", 16)} اعتماد التسميع</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 };
 
+/* زرّا الزيادة والنقصان بجانب كلّ رقم: «خلّي بجانب الأرقام + و −».
+   لوحةُ المفاتيح الرقميّة تُغطّي نصفَ الشاشة لرقمٍ من خانةٍ واحدة، وسهما
+   المتصفّح أدقُّ من أن تُصيبهما الإصبع. ولا ينزل الرقمُ دون الصفر. */
+window.rcvStep = function (k, d) {
+  const el = document.getElementById("rcv_" + String(k));
+  if (!el) return;
+  el.value = String(Math.max(0, (Number(el.value) || 0) + (Number(d) || 0)));
+};
+
 window.recvGrade = function (g) {
   RECV.grade = String(g || "ممتاز");
-  document.querySelectorAll("#rcvGrades .tatt-opt").forEach(b =>
+  /* الصنفُ هو ما تكتبه recvOpen أعلاه — واختلافُهما يُطفئ الإضاءةَ صامتاً */
+  document.querySelectorAll("#rcvGrades .rcv-opt").forEach(b =>
     b.classList.toggle("on", b.textContent.trim() === RECV.grade));
 };
 
@@ -47386,7 +47450,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-1430";
+  var APP_BUILD = "20261010-1545";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
