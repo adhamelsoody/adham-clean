@@ -15652,11 +15652,53 @@ window.fillAsgRanges = function (list) {
 };
 
 /* الموضع التالي للحفظ بعد إغلاق واجب — يُكتب في الخطة فيُبنى عليه الغد */
+/* =========================================================================
+   بلوغُ سورةٍ جديدةٍ يُبلَّغ إلى الإدارة
+   -------------------------------------------------------------------------
+   «الطالب براء السيد سمّع سورة الناس واعتمد المعلّمُ تسميعَه، فتصير خطةُ
+   غدٍ الفلق — ويُبلَّغ الإدارةَ أنّ براء السيد في سورة الفلق».
+
+   تقدُّمُ الموضع كان يجري في صمت: يُكتب في سجلّ الخطة فيبنى عليه واجبُ
+   الغد، ولا يعلم به أحدٌ في الإدارة حتى يفتح بطاقةَ الطالب بنفسه. فلا
+   سبيلَ إلى متابعة الطلاب إلّا بتفقّدهم واحداً واحداً.
+
+   فيُكتب الآن تنبيهٌ عند **تبدُّل السورة** وحدَه — لا عند كلّ آيةٍ تُطوى،
+   وإلّا امتلأ الجرسُ بما لا يُقرأ. ومفتاحُه من الطالب والسورة، فلا يتكرّر
+   ولو أُعيد الحساب مرّات.
+
+   ويحمل منشأةَ الطالب وحلقتَه ليصل إلى مدير مسجده ومجمّعه كما يصل إلى
+   المدير العامّ — والتنبيهُ سجلٌّ جديدٌ لا تعديلَ لارتباطِ أحد.
+   ========================================================================= */
+function advNotify(plan, fromS, toS) {
+  try {
+    if (!toS || Number(fromS) === Number(toS)) return;
+    if (typeof pushNotif !== "function") return;
+    const nm = typeof surahName === "function" ? surahName(toS) : "";
+    if (!nm) return;                       /* فهرسُ السور لم يصل: لا تنبيهَ ناقص */
+    const st = (cur("students") || []).find(x =>
+      String(x.id) === String(plan.studentId)) || {};
+    const who = st.name || plan.student || "طالب";
+    pushNotif({
+      key: "adv|" + String(plan.studentId || "") + "|" + String(toS),
+      toRole: "admin", auto: false, byUser: true,
+      studentId: String(plan.studentId || ""),
+      mosqueId: st.mosqueId || plan.mosqueId || "",
+      complexId: st.complexId || plan.complexId || "",
+      circleId: st.circleId || plan.circleId || "",
+      title: "تقدُّمٌ في الحفظ",
+      text: who + " بلغ سورة " + nm,
+      type: "success", label: "الحفظ"
+    });
+  } catch (e) { console.warn("advNotify:", e); }
+}
+
 window.advancePlanAfter = function (asg) {
   if (!asg || !asg.toS) return Promise.resolve(false);
   const plan = (cur("plans") || []).find(p => String(p.id) === String(asg.planId) ||
                                               String(p.studentId) === String(asg.studentId));
   if (!plan) return Promise.resolve(false);
+  /* الموضعُ قبل التقدّم — عليه يُعرف تبدُّلُ السورة */
+  const wasS = Number(plan.hifzFromS) || 0;
 
   return nextAfter(asg.toS, asg.toA, plan.direction).then(nx => {
     if (!nx) return false;
@@ -15665,6 +15707,7 @@ window.advancePlanAfter = function (asg) {
     plan.current = (typeof surahName === "function" ? surahName(nx.surah) : "") +
                    " " + toArabicDigits(nx.ayah);
     persistSet("plans", plan);
+    advNotify(plan, wasS, nx.surah);
     return true;
   }).catch(() => false);
 };
@@ -46312,7 +46355,11 @@ function pushNotif(rec) {
      كتابتُه إلّا ممّن يملكها. ورقعةُ ٢٠٩ حصرت ترحيلَ الأمس ورصدَ الإجازات
      وأغفلت هذا الموضعَ، وهو مصدرُ التكرار الذي بقي.
      ======================================================================= */
-  if (typeof maySysWrite === "function" && !maySysWrite()) return true;
+  /* وتنبيهُ إجراءٍ صريحٍ من المستخدم (byUser) يُكتب ولو كانت الجلسةُ جلسةَ
+     معلّم: هو من عمله اليوميّ لا من فحوص النظام — كبلوغ الطالبِ سورةً
+     جديدةً بعد اعتماد تسميعه — والقواعدُ تُجيز للمعلّم كتابتَه. ولولا هذا
+     لبقي التنبيهُ في جهازه ولم يصل الإدارةَ أبداً. */
+  if (!full.byUser && typeof maySysWrite === "function" && !maySysWrite()) return true;
   persistSet("notifications", full);
   return true;
 }
@@ -47001,7 +47048,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0900";
+  var APP_BUILD = "20261010-0940";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
