@@ -27189,7 +27189,7 @@ function tstuPlanBox(st) {
 
   const dirBtns = (name, v, opts) => `<div class="sp-seg">
       ${opts.map(o => `<button type="button" class="sp-segb${o === v ? " on" : ""}"
-        onclick="window.spDir(this,'${name}','${esc(o)}')">${esc(o)}</button>`).join("")}
+        onclick="window.tstuDirSet(this,'${name}','${esc(o)}')">${esc(o)}</button>`).join("")}
       <input type="hidden" id="${name}" value="${esc(v)}">
     </div>`;
 
@@ -27221,7 +27221,7 @@ function tstuPlanBox(st) {
       </div>
       <div class="sp-grid">
         <div class="sp-field"><label>نوع الكمية</label>${qtySel("spHifzType", pl.hifzType,
-          PLAN_QTY_TYPE, "window.spQtyType(this,'spHifzQty')")}</div>
+          PLAN_QTY_TYPE, "window.tstuQtyType(this,'spHifzQty')")}</div>
         <div class="sp-field" id="spHifzQtyBox">${spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div>
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
@@ -27259,7 +27259,7 @@ function tstuPlanBox(st) {
       </div>
       <div class="sp-grid">
         <div class="sp-field"><label>نوع الكمية</label>${qtySel("spRevType", pl.revType,
-          PLAN_QTY_TYPE, "window.spQtyType(this,'spRevQty')")}</div>
+          PLAN_QTY_TYPE, "window.tstuQtyType(this,'spRevQty')")}</div>
         <div class="sp-field" id="spRevQtyBox">${spQtyCtl("spRevQty", pl.revQty, pl.revType)}</div>
         <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("spRevDir", pl.revDir, PLAN_DIR_REV)}</div>
       </div>
@@ -27268,6 +27268,142 @@ function tstuPlanBox(st) {
     </section>
   </div>`;
 }
+
+/* =========================================================================
+   قائمةُ اختيارٍ أنيقة — بديلُ قائمة النظام في نافذة الخطة
+   -------------------------------------------------------------------------
+   «خلّي الأزرار دي بروفيشنال»: القوائمُ كانت select خالصاً، فيفتح المتصفّحُ
+   لوحةَ النظام — رماديّةٌ بلا هويّة، والمختارُ فيها شريطٌ رصاصيٌّ غليظ.
+
+   والأصلُ باقٍ كما هو: الـ select نفسُه في مكانه بمعرّفه وقيمته، يُقرأ
+   ويُكتب كما كان، وتُملأ خياراتُه كما كانت (spFillSurahs · spQtyType).
+   وهذا غلافٌ فوقه: زرٌّ يعرض المختار، ولوحةٌ بتنسيق المشروع تُفتح عند
+   الضغط. فإن تبدّلت خياراتُ الأصل أُعيد الرسمُ من الأصل نفسِه.
+
+   واللوحةُ موضعُها fixed لا absolute: جسمُ النافذة يمرّر، والمطلقةُ تُقصّ
+   عند حافّته. وتُغلق بالضغط خارجها أو بالمفتاح Esc أو عند التمرير.
+   ========================================================================= */
+const SELPRO_CH = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" ' +
+  'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+  'stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+
+window.selProClose = function () {
+  document.querySelectorAll(".selpro.on").forEach(w => w.classList.remove("on"));
+};
+
+/* تُغلق بالضغط خارجها، أو بالمفتاح Esc، أو عند تمرير جسم النافذة */
+(function () {
+  if (window.__selProBound) return;
+  window.__selProBound = true;
+  document.addEventListener("click", function (e) {
+    if (!e.target || !e.target.closest || !e.target.closest(".selpro")) window.selProClose();
+  }, true);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") window.selProClose();
+  });
+  document.addEventListener("scroll", function () { window.selProClose(); }, true);
+  window.addEventListener("resize", function () { window.selProClose(); });
+})();
+
+window.selPro = function (root) {
+  const box = root || document;
+  Array.prototype.forEach.call(
+    box.querySelectorAll("select.sp-sel:not([data-pro])"), function (sel) {
+      sel.setAttribute("data-pro", "1");
+      const wrap = document.createElement("div");
+      wrap.className = "selpro";
+      sel.parentNode.insertBefore(wrap, sel);
+      wrap.appendChild(sel);
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "selpro-btn";
+      wrap.appendChild(btn);
+
+      /* اللوحةُ ابنةُ الغلاف لا ابنةُ body: تُرفع معه حين تُغلق النافذة
+         فلا تبقى معلّقةً. وموضعُها fixed فلا يقصّها جسمُ النافذة. */
+      const menu = document.createElement("div");
+      menu.className = "selpro-menu";
+      wrap.appendChild(menu);
+      wrap._menu = menu;
+
+      const label = document.createElement("span");
+      label.className = "selpro-t";
+      btn.appendChild(label);
+      const chev = document.createElement("span");
+      chev.className = "selpro-c";
+      chev.innerHTML = SELPRO_CH;
+      btn.appendChild(chev);
+
+      const paint = function () {
+        const o = sel.options[sel.selectedIndex];
+        label.textContent = o ? o.text : "—";
+        menu.textContent = "";
+        Array.prototype.forEach.call(sel.options, function (op, i) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "selpro-opt" + (i === sel.selectedIndex ? " on" : "");
+          b.textContent = op.text;
+          b.onclick = function (e) {
+            e.stopPropagation();
+            sel.selectedIndex = i;
+            window.selProClose();
+            paint();
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+          };
+          menu.appendChild(b);
+        });
+      };
+      wrap._paint = paint;
+      paint();
+
+      btn.onclick = function (e) {
+        e.stopPropagation();
+        const open = wrap.classList.contains("on");
+        window.selProClose();
+        if (open) return;
+        paint();
+        const r = btn.getBoundingClientRect();
+        const below = window.innerHeight - r.bottom;
+        menu.style.width = r.width + "px";
+        menu.style.insetInlineStart = "auto";
+        menu.style.left = r.left + "px";
+        if (below < 220 && r.top > below) {
+          menu.style.top = "auto";
+          menu.style.bottom = (window.innerHeight - r.top + 6) + "px";
+        } else {
+          menu.style.bottom = "auto";
+          menu.style.top = (r.bottom + 6) + "px";
+        }
+        wrap.classList.add("on");
+        const on = menu.querySelector(".selpro-opt.on");
+        if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest" });
+      };
+    });
+};
+
+/* خياراتُ الأصل تتبدّل (نوعُ الكمية يبدّل قائمةَ الكمية، والاتجاهُ يبدّل
+   ترتيبَ السور): يُعاد رسمُ الغلاف من أصله، ويُغلَّف ما استُحدث. */
+window.selProSync = function (root) {
+  const box = root || document;
+  Array.prototype.forEach.call(box.querySelectorAll(".selpro"), function (w) {
+    if (typeof w._paint === "function") w._paint();
+  });
+  window.selPro(box);
+};
+
+/* نوعُ الكمية والاتجاه في نافذة الخطة: الدالّتان القائمتان ثمّ إعادةُ
+   الرسم — فلا تُمَسّ spQtyType ولا spDir وهما تخدمان بطاقةَ الإدارة. */
+window.tstuQtyType = function (selEl, qtyId) {
+  try { if (typeof window.spQtyType === "function") window.spQtyType(selEl, qtyId); }
+  catch (e) { console.warn("tstuQtyType:", e); }
+  window.selProSync(document.getElementById("modalRoot"));
+};
+window.tstuDirSet = function (btn, name, value) {
+  try { if (typeof window.spDir === "function") window.spDir(btn, name, value); }
+  catch (e) { console.warn("tstuDirSet:", e); }
+  window.selProSync(document.getElementById("modalRoot"));
+};
 
 /* «تحديث»: يكتب ما في النافذة إلى ملفّ الطالب ثمّ يترجمه إلى سجلّ المحرّك
    بـ spSyncEnginePlan — المسارُ نفسُه الذي يمرُّ به حفظُ الإدارة. */
@@ -27316,7 +27452,12 @@ window.tstuPlanOpen = function () {
   setTimeout(function () {
     try { if (typeof spFillSurahs === "function") spFillSurahs(document.getElementById("modalRoot")); }
     catch (e) {}
+    try { window.selPro(document.getElementById("modalRoot")); } catch (e) {}
   }, 40);
+  /* وإن تأخّر فهرسُ السور، يُعاد الغلافُ حين يصل */
+  setTimeout(function () {
+    try { window.selProSync(document.getElementById("modalRoot")); } catch (e) {}
+  }, 900);
 };
 
 window.tstuTab = function (k) { TSTU.tab = String(k || "plan"); mount(); };
@@ -47706,7 +47847,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-2250";
+  var APP_BUILD = "20261010-2320";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
