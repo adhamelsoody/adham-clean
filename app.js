@@ -39950,6 +39950,38 @@ function panelStudent(id, keepDraft) {
       <input type="hidden" id="${name}" value="${esc(val)}">
     </div>`;
 
+  /* =======================================================================
+     موضعُ الابتداء يتبع ما بلغه الطالبُ فعلاً
+     -----------------------------------------------------------------------
+     «الطالبُ حفظ سورة الناس وسجّلها المعلّمُ تمّ التسميع، فتصير خطةُ غدٍ
+     الفلق — فليظهر ذلك في موقع الإدارة لتتابعَ الطلاب».
+
+     والمسارُ كان ذا اتجاهٍ واحد: هذه البطاقةُ تقرأ وتكتب st.plan.hifzSura
+     (اسمَ السورة في ملفّ الطالب)، و spSyncEnginePlan تترجمه إلى حقل
+     المحرّك plans.hifzFromS. وعند إغلاق واجبِ حفظٍ تُقدّم advancePlanAfter
+     حقلَ المحرّك إلى الموضع التالي — ولا يعود شيءٌ إلى st.plan. فيبقى في
+     البطاقة أوّلُ ما كُتب فيها («الفاتحة») مهما تقدّم الطالب.
+
+     فيُقرأ الموضعُ هنا من سجلّ الخطة نفسِه — وهو الذي يعمل عليه المحرّك —
+     ويُرجَع إلى ملفّ الطالب إن لم يكن في السجلّ موضع. قراءةٌ محضةٌ عند
+     الرسم: لا تكتب شيئاً، ولا تمسّ ارتباطاً، ولا تغيّر حكمَ المحرّك.
+     ======================================================================= */
+  const spLivePos = (which) => {
+    try {
+      const rec = typeof planOfStudent === "function" ? planOfStudent(s) : null;
+      if (!rec) return null;
+      const n = Number(which === "rev" ? rec.revFromS : rec.hifzFromS) || 0;
+      if (!n) return null;
+      const nm = typeof surahName === "function" ? surahName(n) : "";
+      /* فهرسُ السور لم يصل بعد: يُطلب، ويُعرض المحفوظُ ريثما يصل */
+      if (!nm) { try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {} return null; }
+      return { sura: nm,
+               ayah: Math.max(1, Number(which === "rev" ? rec.revFromA : rec.hifzFromA) || 1) };
+    } catch (e) { return null; }
+  };
+  const spHifzPos = spLivePos("hifz");
+  const spRevPos  = spLivePos("rev");
+
   /* سورةُ الابتداء: افتراضُها أوّلُ سورةٍ في الاتجاه المختار —
      «من الفاتحة» تبدأ بالفاتحة، و«من الناس» تبدأ بالناس. */
   const startRow = (pfx, sura, ayah, dirId, dirVal) => `
@@ -40088,7 +40120,7 @@ function panelStudent(id, keepDraft) {
         <div class="sp-field" id="spHifzQtyBox">${spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div>
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
-      ${startRow("spHifz", (s.plan || {}).hifzSura, (s.plan || {}).hifzAyah, "spHifzDir", pl.hifzDir)}
+      ${startRow("spHifz", (spHifzPos && spHifzPos.sura) || (s.plan || {}).hifzSura, (spHifzPos && spHifzPos.ayah) || (s.plan || {}).hifzAyah, "spHifzDir", pl.hifzDir)}
       <div class="sp-klabel">${ic("layers", 14)} أركان متفرّعة من الحفظ</div>
       <div class="sp-kidrow">
         <button type="button" class="bpl-tog${pl.tatOn ? " on" : ""}"
@@ -40119,7 +40151,7 @@ function panelStudent(id, keepDraft) {
         <div class="sp-field" id="spRevQtyBox">${spQtyCtl("spRevQty", pl.revQty, pl.revType)}</div>
         <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("spRevDir", pl.revDir, PLAN_DIR_REV)}</div>
       </div>
-      ${startRow("spRev", (s.plan || {}).revSura, (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
+      ${startRow("spRev", (spRevPos && spRevPos.sura) || (s.plan || {}).revSura, (spRevPos && spRevPos.ayah) || (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
     </section>
 
 `;
@@ -46969,7 +47001,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0820";
+  var APP_BUILD = "20261010-0900";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
