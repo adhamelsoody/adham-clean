@@ -14233,8 +14233,14 @@ const HW_DEFAULTS = [
        عدد الدروس يحدّده المعلّم لكل طالب. */
     fromLessons: true, lessonsDefault: 5 },
 
+  /* «إذا وضعتُ لطالبٍ حفظاً ومراجعةً وتثبيتاً تظهر ثلاثةُ واجباتٍ لا واجبٌ
+     واحد»: كانت المراجعةُ مجدولةً على الخميس وحدَه افتراضاً، فمن السبت إلى
+     الأربعاء لا تُولَّد ويظهر الحفظُ وحدَه. صارت على أيّام الدوام كلِّها — الخميسُ منها كما كان.
+     وهذا افتراضٌ لا قيد: ما حُفظ في إعدادات أنواع الواجبات، أو في جدولة
+     الطالب نفسِه (plan.hwDays)، يغلبه كما كان. */
   { k: "rev", h: "مراجعة", unit: "وجه", qty: 2,
-    days: ["الخميس"], order: 3, color: "#1bbac0",
+    days: ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس"],
+    order: 3, color: "#1bbac0",
     /* المواصفات تضرب المثل بها: «تقسيم الطالب لمراجعته في أكثر من جلسة» */
     split: true },
 
@@ -16431,6 +16437,56 @@ function generateAssignments(studentId, dateISO) {
 
   return out;
 }
+
+/* =========================================================================
+   ما لم يُولَّد اليومَ ولماذا — بالحرّاس أنفسِهم لا بتخمين
+   -------------------------------------------------------------------------
+   «إذا وضعتُ لطالبٍ حفظاً ومراجعةً وتثبيتاً تظهر ثلاثةُ واجباتٍ لا واجبٌ
+   واحد». وحين يغيب نوعٌ كان يغيب صامتاً، فلا يعرف المعلّمُ ولا الإدارةُ
+   أسقط أم لم يحن يومُه أم ينقصه شرطُه. فيُكتب السببُ في موضعه.
+
+   وهي تمرّ على الحرّاس نفسِها التي في generateAssignments بترتيبها، فلا
+   تقول إلّا ما وقع فعلاً. ولا تكتب شيئاً ولا تولّد واجباً.
+   ========================================================================= */
+function asgSkipWhy(studentId, dateISO) {
+  const out = [];
+  try {
+    const st = (cur("students") || []).find(x => String(x.id) === String(studentId));
+    if (!st) return out;
+    if (typeof isDutyDay === "function" && !isDutyDay(st, dateISO)) return out;
+    if (st.attOnly) return out;
+    const plan = typeof planOfStudent === "function" ? planOfStudent(st) : null;
+    if (!plan || planIsFrozen(plan)) return out;
+
+    const day = typeof dayNameOf === "function" ? dayNameOf(dateISO) : "";
+    const lock = hifzLocked(studentId, dateISO);
+
+    hwTypes().forEach(t => {
+      if (asgFind(dateISO, studentId, t.k)) return;      /* مولَّدٌ فعلاً */
+      const myDays = hwDaysFor(t.k, plan);
+      const offDay = myDays && myDays.length && day && myDays.indexOf(day) === -1;
+      if (offDay && !(lock && t.critical)) {
+        out.push({ h: t.h, why: "ليس يومَه في جدولة هذا الطالب" }); return;
+      }
+      if (lock && t.k === "hifz" && !t.critical) {
+        out.push({ h: t.h, why: "موقوفٌ حتى تُغلق متأخّراتُ أمس" }); return;
+      }
+      if (plan.awaitingPromotion && t.k === "hifz" && !t.critical) {
+        out.push({ h: t.h, why: "بانتظار اعتماد ترقية المستوى" }); return;
+      }
+      if (t.fromLessons) {
+        if (!planRuleOn(plan.id, "fixation")) {
+          out.push({ h: t.h, why: "قاعدةُ «التثبيت يلحق الحفظ» مُطفأةٌ في خطته" }); return;
+        }
+        if (!fixRangeFor(studentId)) {
+          out.push({ h: t.h, why: "لا دروسَ حفظٍ منجَزةٍ بعدُ يُشتقُّ منها مداه" }); return;
+        }
+      }
+    });
+  } catch (e) { console.warn("asgSkipWhy:", e); }
+  return out;
+}
+window.asgSkipWhy = asgSkipWhy;
 
 /* واجبات اليوم مولَّدةً ومحفوظةً — تُحفظ عند أول عرض فتصير سجلاً يُتابَع */
 function todayAssignments(studentId, dateISO, persist) {
@@ -27440,6 +27496,10 @@ function tstuDutyAddBtn(st) {
 function tstuDutyCards(st) {
   const d = tstuDay();
   const list = tstuAsgOf(st, d);
+  /* ما غاب من الأنواع وسببُه — يُكتب تحت القائمة ولو كان فيها واجب */
+  const gone = (typeof asgSkipWhy === "function") ? asgSkipWhy(st.id, d) : [];
+  const goneBox = gone.length ? `<div class="tdt-why">${gone.map(x =>
+    `<span><b>${esc(x.h)}</b> — ${esc(x.why)}</span>`).join("")}</div>` : "";
   if (!list.length) {
     /* =====================================================================
        «أضفتُ واجباً ولا يظهر هنا ولا على بطاقة الطالب»
@@ -27453,6 +27513,7 @@ function tstuDutyCards(st) {
     const why = (typeof tcrcNoneWhy === "function") ? tcrcNoneWhy(st.id, d) : "";
     return `<div class="ntf-empty">لا واجباتِ هذا اليوم${
         why ? " — " + esc(why) : ""}</div>
+      ${goneBox}
       ${tstuDutyAddBtn(st) ? `<div class="tdt-addwrap">${tstuDutyAddBtn(st)}</div>` : ""}`;
   }
   /* =======================================================================
@@ -27500,6 +27561,7 @@ function tstuDutyCards(st) {
       >${ic("check", 15)} تسجيل الإنجاز</button>` : ""}
     </div>`;
   }).join("")}</div>
+  ${goneBox}
   ${tstuDutyAddBtn(st) ? `<div class="tdt-addwrap">${tstuDutyAddBtn(st)}</div>` : ""}`;
 }
 
@@ -47482,7 +47544,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-1710";
+  var APP_BUILD = "20261010-1810";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
