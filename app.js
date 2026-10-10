@@ -26263,17 +26263,41 @@ function tcrcCircle() {
   return list.find(c => String(c.id) === String(TCRC.id)) || list[0] || null;
 }
 
+/* =========================================================================
+   سؤالُ الحارس يُسأل عبر الفترات كلِّها
+   -------------------------------------------------------------------------
+   «في كلّ مرّةٍ أحضّر طالباً يقول: تمّ التحضير، ثمّ لا يقرأ أنه حاضر».
+   والسببُ مقيسٌ لا مُخمَّن: السجلُّ يُكتب ويُقبل، ثمّ يُحجب عن القراءة في
+   اللحظة نفسها — كُتب في الذاكرة ١، ويراه curAll ١، ويراه cur صفراً.
+
+   و termViewFilter ينسب السجلَّ غيرَ الموسوم بفترةٍ إلى الفترة التي يقع
+   تاريخُه في مداها. وفترةُ العمل تُختار بوسم active لا بمدى تاريخها، فقد
+   لا تغطّي اليوم ويغطّيه مدى فترةٍ أخرى — فيُنسب تحضيرُ اليوم إلى فترةٍ
+   غيرِ المعروضة، ويسقط من cur("attendance") وهو مكتوبٌ على الخادم.
+
+   وسؤالُ الحارس ليس سؤالَ عرض: هو «هل حُضِّر اليومَ؟» لا «هل تعرضه هذه
+   الفترةُ؟». فيُسأل عبر الفترات كلِّها، ويبقى التاريخُ والحلقةُ يحصرانه
+   كما كانا — فلا يمرّ سجلُّ يومٍ آخرَ ولا حلقةٍ أخرى، ولا يتغيّر ما
+   تعرضه الشاشاتُ في فتراتها.
+   ========================================================================= */
+function attAcrossTerms(fn) {
+  const prev = TERM_VIEW_OFF;
+  TERM_VIEW_OFF = true;
+  try { return fn(); } finally { TERM_VIEW_OFF = prev; }
+}
+
 /* هل سُجِّلت حالةُ الطالب في تحضير اليوم؟ شرطُ التسميع */
 function attRecordedFor(sid) {
   const st = (cur("students") || []).find(x => String(x.id) === String(sid));
   const cid = st ? String(st.circleId || "") : "";
   const d = typeof attDate === "function" ? attDate() : todayISO();
-  if (attMap(d, cid)[String(sid)]) return true;
+  if (attAcrossTerms(() => attMap(d, cid))[String(sid)]) return true;
   /* حلقةُ الجلسة المفتوحة: التحضيرُ يُكتب بحلقةِ الجلسة التي يُحضَّر فيها،
      وقد تختلف عن حلقة الطالب المحفوظة إن نُقل بينهما أو تأخّر تحديثُ سجلّه.
      والسجلُّ صحيحٌ على كلّ حال، فلا يُحرم منه. */
   const open = (typeof TCRC !== "undefined" && TCRC) ? String(TCRC.id || "") : "";
-  if (open && open !== cid && attMap(d, open)[String(sid)]) return true;
+  if (open && open !== cid &&
+      attAcrossTerms(() => attMap(d, open))[String(sid)]) return true;
   return false;
 }
 
@@ -26294,11 +26318,20 @@ function attWhyMissing(sid) {
     const st = (cur("students") || []).find(x => String(x.id) === String(sid));
     if (!st) return "";
     const cid = String(st.circleId || "");
-    const mine = (cur("attendance") || []).filter(r => r &&
+    /* يُفتَّش عبر الفترات كلِّها كما يفتّش الحارس، وإلّا قال «لا سجلَّ له
+       أصلاً» عن سجلٍّ مكتوبٍ تحجبه الفترةُ المعروضة — وهو أسوأُ الأجوبة */
+    const mine = attAcrossTerms(() => cur("attendance") || []).filter(r => r &&
       String(r.studentId) === String(sid) && !r.staffId);
     if (!mine.length) return "لا سجلَّ تحضيرٍ له أصلاً";
 
     const sameDay = mine.filter(r => String(r.date) === String(d));
+    /* موجودٌ لليوم، وتحجبه الفترةُ المعروضة وحدَها: يُسمّى السببُ بعينه
+       لأنّ الدواءَ تبديلُ الفترة لا إعادةُ التحضير */
+    if (sameDay.length && !(cur("attendance") || []).some(r => r &&
+        String(r.studentId) === String(sid) && !r.staffId &&
+        String(r.date) === String(d))) {
+      return "تحضيرُه مسجَّلٌ لليوم، والفترةُ المعروضة تحجبه — بدّل الفترةَ من الشريط العلوي";
+    }
     if (!sameDay.length) {
       const last = mine.map(r => String(r.date)).sort().pop();
       return "تحضيرُه مسجَّلٌ ليوم " + toArabicDigits(last) +
@@ -26680,12 +26713,14 @@ window.tcrcAttSave = async function () {
   if (!c) return;
   const d = typeof attDate === "function" ? attDate() : todayISO();
   const map = attMap(d, String(c.id));
-  let ok = 0, fail = 0;
+  let ok = 0, fail = 0, skip = 0;
   if (!Array.isArray(DB.attendance)) DB.attendance = [];
 
   for (const sid of Object.keys(TATT.sel)) {
     const st = (cur("students") || []).find(x => String(x.id) === String(sid));
-    if (!st) continue;
+    /* من لا تجده القراءةُ المصفّاة يُعدّ ولا يُسكت عنه: كان يُتجاوَز بصمتٍ
+       فتقول الرسالةُ «اعتُمد تحضيرُ ٠ طالباً» — نجاحٌ بلا شيءٍ محفوظ */
+    if (!st) { skip++; continue; }
     const old = map[String(sid)];
     const rec = old || { id: "at" + Date.now() + "-" + sid, studentId: String(sid),
                          date: d, circleId: String(c.id) };
@@ -26722,6 +26757,15 @@ window.tcrcAttSave = async function () {
   if (fail) {
     showToast("لم يصل تحضيرُ " + toArabicDigits(fail) + " من " +
               toArabicDigits(ok + fail) + " — الخادمُ ردَّ الكتابة", "warn");
+  } else if (!ok) {
+    /* الصفرُ لا يُقال نجاحاً */
+    showToast(skip
+      ? "لم يُسجَّل أحد — " + toArabicDigits(skip) +
+        " من المحدَّدين ليسوا في بيانات نطاقك"
+      : "لم يُسجَّل أحد — لم تُحدَّد حالةُ أيّ طالب", "warn");
+  } else if (skip) {
+    showToast("اعتُمد تحضيرُ " + toArabicDigits(ok) + " طالباً، و" +
+              toArabicDigits(skip) + " لم أجدهم في بيانات نطاقك", "warn");
   } else {
     showToast("اعتُمد تحضيرُ " + toArabicDigits(ok) + " طالباً", "success");
   }
@@ -46807,7 +46851,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0345";
+  var APP_BUILD = "20261010-0520";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
