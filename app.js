@@ -27737,6 +27737,16 @@ window.tstuDuty = function (id) {
   const canQty   = teacherCan("planQty");
   const canSplit = teacherCan("splitDuty") &&
     (typeof asgSplittable === "function" ? asgSplittable(a) : false);
+  /* =======================================================================
+     الواجبُ القديمُ لا يُعرض مبتدَؤه بالبسملة
+     -----------------------------------------------------------------------
+     skipBasmala تحرس توليدَ الواجب، والواجباتُ المنشأةُ قبلها محفوظةٌ من
+     «الفاتحة ١». فيُتجاوَز هنا عند العرض: الحقلُ والمعاينةُ ونصُّ الآية
+     كلُّها من ﴿ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِینَ﴾. ولا يُكتب شيءٌ إلّا إن
+     حفظ المستخدمُ التعديل بنفسه — فيستقرّ الموضعُ في سجلّه حينئذ.
+     ======================================================================= */
+  const fA0 = (typeof skipBasmala === "function")
+    ? skipBasmala(a.fromS, a.fromA) : (Number(a.fromA) || 1);
 
   /* =======================================================================
      تعديلُ الواجب من نافذته
@@ -27782,10 +27792,10 @@ window.tstuDuty = function (id) {
           ? `<span class="tsd-pair">
                <select id="tsd_fS" class="tsd-in tsd-sura">${sOpts(a.fromS || 1)}</select>
                <input id="tsd_fA" class="tsd-in tsd-ayah-n" type="number" min="1" dir="ltr"
-                 value="${Number(a.fromA) || 1}" aria-label="من آية">
+                 value="${fA0}" aria-label="من آية">
              </span>`
           : `${a.fromS ? esc(surahName(a.fromS)) : "—"}${
-              a.fromA ? " · الآية " + toArabicDigits(a.fromA) : ""}`}</span>
+              a.fromA ? " · الآية " + toArabicDigits(fA0) : ""}`}</span>
       </div>
 
       <div class="tsd-row">
@@ -27819,7 +27829,7 @@ window.tstuDuty = function (id) {
 
     ${a.fromS ? `<button type="button" class="tsd-ayah"
       onclick="window.tstuMushaf('${jsAttr(a.id)}')">
-      <span class="tsd-ayah-h">${esc(surahName(a.fromS))} – الآية ${toArabicDigits(a.fromA || 1)}</span>
+      <span class="tsd-ayah-h">${esc(surahName(a.fromS))} – الآية ${toArabicDigits(fA0)}</span>
       <span class="tsd-ayah-t" id="tsdAyah">…</span>
       <span class="tsd-ayah-go">${ic("book", 15)} افتح في المصحف</span>
     </button>` : ""}
@@ -27837,8 +27847,8 @@ window.tstuDuty = function (id) {
 
   /* نصُّ الآية الأولى: يُجلب من محرّك المصحف ثمّ يُوضع في موضعه */
   if (a.fromS && typeof window.Quran !== "undefined" && window.Quran.range) {
-    window.Quran.range(Number(a.fromS), Number(a.fromA || 1),
-                       Number(a.fromS), Number(a.fromA || 1))
+    window.Quran.range(Number(a.fromS), Number(fA0),
+                       Number(a.fromS), Number(fA0))
       .then(rows => {
         const el = document.getElementById("tsdAyah");
         if (el && rows && rows[0] && rows[0].w) el.textContent = rows[0].w.join(" ");
@@ -47191,7 +47201,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-1050";
+  var APP_BUILD = "20261010-1150";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
