@@ -761,7 +761,9 @@ window.SHELL_MODE = true;
         sessionStorage.setItem("__nav", arr.join(","));
         if (arr.length > 4) { navStop(why); return; }
       } catch (e) {}
-      location.href = url;
+      /* استبدالٌ لا إضافة: الصفحةُ المُحوَّلُ عنها لا تبقى هدفاً لزرّ
+         الرجوع، فلا يُردّ المستخدمُ إلى شاشةٍ غادرها النظامُ عنها */
+      try { location.replace(url); } catch (e) { location.href = url; }
     }
 
     function navStop(msg) {

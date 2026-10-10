@@ -157,6 +157,13 @@
     const btn = document.getElementById("submitBtn");
     let routing = false;
 
+    /* الرجوعُ إلى الخلف كان يعيد هذه الصفحةَ من مخزون المتصفّح (bfcache)
+       بنموذجها كما هو، ولا يُطلق onAuthStateChanged ثانيةً — فيرى الداخلُ
+       قائمةَ الدخول وهو داخلٌ أصلاً. تُعاد تحميلاً فتُحوِّله كما تفعل عند
+       التحميل الحقيقيّ. ولا دورة: الحدثُ بعدها persisted = false. */
+    window.addEventListener("pageshow", function (e) {
+      if (e && e.persisted) { try { location.reload(); } catch (x) {} }
+    });
 
     /* حارس التحويل — يكسر دورة إعادة التوجيه بين صفحات الحراسة */
     function safeGo(url, why) {
@@ -173,7 +180,9 @@
           return;
         }
       } catch (e) {}
-      location.href = url;
+      /* استبدالٌ لا إضافة: صفحةُ الدخول لا تبقى هدفاً لزرّ الرجوع، فلا
+         يُردّ الداخلُ إليها بعد دخوله */
+      try { location.replace(url); } catch (e) { location.href = url; }
     }
 
     function showErr(msg) { errEl.textContent = msg; errEl.classList.add("show"); }
