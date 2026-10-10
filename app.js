@@ -27891,6 +27891,34 @@ window.tstuDutyResult = function (id, res) {
   mount();
 };
 
+/* =========================================================================
+   زرّا الزيادة والنقصان لأيّ حقلٍ رقميّ — «المقدار يكون إلكتروني»
+   -------------------------------------------------------------------------
+   الحدُّ الأدنى يُقرأ من الحقل نفسِه (min)، فلا يُكرَّر في موضعين: الآيةُ
+   لا تنزل دون واحدة، والمقدارُ لا ينزل دون صفر، كما كُتب في مرسَمهما.
+   وهي الدالّةُ التي تقوم عليها أزرارُ «تقييم الأداء» أيضاً.
+   ========================================================================= */
+window.numStep = function (id, d) {
+  const el = document.getElementById(String(id));
+  if (!el) return;
+  const lo = Number(el.getAttribute("min"));
+  const n = (Number(el.value) || 0) + (Number(d) || 0);
+  el.value = String(Math.max(isFinite(lo) ? lo : 0, n));
+};
+
+/* زرّان حول حقلٍ رقميّ: − يساراً و + يميناً كخطّ الأعداد */
+function numStepBox(id, cls, value, label, min) {
+  return `<span class="rcv-step">
+    <button type="button" class="rcv-pm" aria-label="زيادة ${esc(label)}"
+      onclick="window.numStep('${jsAttr(id)}', 1)">+</button>
+    <input id="${esc(id)}" class="tsd-in ${esc(cls)} rcv-num" type="number"
+      min="${esc(String(min))}" dir="ltr" value="${esc(String(value))}"
+      aria-label="${esc(label)}">
+    <button type="button" class="rcv-pm" aria-label="إنقاص ${esc(label)}"
+      onclick="window.numStep('${jsAttr(id)}', -1)">&minus;</button>
+  </span>`;
+}
+
 window.tstuDuty = function (id) {
   const a = tstuAsgById(id);
   if (!a) { showToast("الواجب غير موجود", "warn"); return; }
@@ -27968,36 +27996,34 @@ window.tstuDuty = function (id) {
         <span class="tsd-v"><b>${esc(a.kindName || t.h || "—")}</b></span>
       </div>
 
-      <div class="tsd-row">
+      <div class="tsd-row${canFrom && !locked ? " tsd-res-row" : ""}">
         <span class="tsd-k">من</span>
         <span class="tsd-v">${canFrom && !locked
-          ? `<span class="tsd-pair">
+          ? `<span class="tsd-pair tsd-pair-w">
                <select id="tsd_fS" class="tsd-in tsd-sura">${sOpts(a.fromS || 1)}</select>
-               <input id="tsd_fA" class="tsd-in tsd-ayah-n" type="number" min="1" dir="ltr"
-                 value="${ayahShow(a.fromS, fA0)}" aria-label="من آية">
+               ${numStepBox("tsd_fA", "tsd-ayah-n", ayahShow(a.fromS, fA0), "من آية", 1)}
              </span>`
           : `${a.fromS ? esc(surahName(a.fromS)) : "—"}${
               a.fromA ? " · الآية " + toArabicDigits(ayahShow(a.fromS, fA0)) : ""}`}</span>
       </div>
 
-      <div class="tsd-row">
+      <div class="tsd-row${canEnd && !locked ? " tsd-res-row" : ""}">
         <span class="tsd-k">إلى</span>
         <span class="tsd-v">${canEnd && !locked
-          ? `<span class="tsd-pair">
+          ? `<span class="tsd-pair tsd-pair-w">
                <select id="tsd_tS" class="tsd-in tsd-sura">${sOpts(a.toS || a.fromS || 1)}</select>
-               <input id="tsd_tA" class="tsd-in tsd-ayah-n" type="number" min="1" dir="ltr"
-                 value="${ayahShow(a.toS || a.fromS, a.toA || 1)}" aria-label="إلى آية">
+               ${numStepBox("tsd_tA", "tsd-ayah-n",
+                   ayahShow(a.toS || a.fromS, a.toA || 1), "إلى آية", 1)}
              </span>`
           : `${a.toS ? esc(surahName(a.toS)) : (a.fromS ? esc(surahName(a.fromS)) : "—")}${
               a.toA ? " · الآية " + toArabicDigits(ayahShow(a.toS || a.fromS, a.toA)) : ""}`}</span>
       </div>
 
-      <div class="tsd-row">
+      <div class="tsd-row${canQty && !locked ? " tsd-res-row" : ""}">
         <span class="tsd-k">المقدار</span>
         <span class="tsd-v">${canQty && !locked
-          ? `<span class="tsd-pair">
-               <input id="tsd_qty" class="tsd-in tsd-qty" type="number" min="0" step="0.5" dir="ltr"
-                 value="${Number(a.qty) || 0}" aria-label="المقدار">
+          ? `<span class="tsd-pair tsd-pair-w">
+               ${numStepBox("tsd_qty", "tsd-qty", Number(a.qty) || 0, "المقدار", 0)}
                <select id="tsd_unit" class="tsd-in">${unitOpts(a.unit)}</select>
              </span>`
           : `${toArabicDigits(a.qty || 0)} ${esc(a.unit || "وجه")}${
@@ -28549,9 +28575,8 @@ window.recvOpen = function (asgId) {
    لوحةُ المفاتيح الرقميّة تُغطّي نصفَ الشاشة لرقمٍ من خانةٍ واحدة، وسهما
    المتصفّح أدقُّ من أن تُصيبهما الإصبع. ولا ينزل الرقمُ دون الصفر. */
 window.rcvStep = function (k, d) {
-  const el = document.getElementById("rcv_" + String(k));
-  if (!el) return;
-  el.value = String(Math.max(0, (Number(el.value) || 0) + (Number(d) || 0)));
+  /* الحدُّ الأدنى في مرسَم الحقل نفسِه (min="0") فلا يُكرَّر هنا */
+  if (typeof window.numStep === "function") window.numStep("rcv_" + String(k), d);
 };
 
 window.recvGrade = function (g) {
@@ -47457,7 +47482,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-1620";
+  var APP_BUILD = "20261010-1710";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
