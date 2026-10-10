@@ -36662,6 +36662,71 @@ function runPeriodicScans(force) {
   } catch (e) {}
 }
 
+/* =========================================================================
+   زرُّ الرجوع يرجع داخل النظام لا خارجَه
+   -------------------------------------------------------------------------
+   «أكون داخل الطالب وأرجع للخلف إلى الصفحة الرئيسية، فتظهر صورةُ تسجيل
+   الدخول ثوانيَ ثمّ يرجع».
+
+   والسببُ أنّ النظامَ كلَّه صفحةٌ واحدة: الانتقالُ بين شاشاته يُبدّل
+   STATE.page ويُعيد الرسمَ، ولا يُسجَّل في تاريخ المتصفّح. فزرُّ الرجوع
+   لا يجد شاشةً سابقةً يعود إليها داخل الصفحة، فيُغادر الوثيقةَ كلَّها إلى
+   ما قبلها — وهي صفحةُ الدخول — فتُحمَّل وتُعرض بنموذجها حتى تتحقّق
+   الهويّةُ فتُعيده. تلك الثواني هي «صورةُ تسجيل الدخول».
+
+   فكلُّ شاشةٍ تُرسم تُسجَّل قيداً في التاريخ، والرجوعُ يستعيدها في مكانها
+   بلا مغادرةٍ ولا تحميل. والعنوانُ لا يتغيّر (pushState بلا رابط)، فلا
+   مسارَ جديدٌ يُطلب من الخادم ولا يُربك عاملَ الخدمة.
+
+   والمسجَّلُ ثلاثةٌ لا غير: الشاشةُ، والطالبُ المفتوح، والحلقةُ المفتوحة.
+   فتبديلُ تبويبٍ داخل البطاقة أو إعادةُ رسمٍ لتحديث شارةٍ لا يُسجَّل،
+   وإلّا احتاج الرجوعُ ضغطاتٍ بعدد ما لمس المستخدم.
+   ========================================================================= */
+let NAV_LAST = null;      /* آخرُ ما سُجّل — فلا يتكرّر القيدُ نفسُه */
+let NAV_BACK = false;     /* داخلَ استعادةِ رجوعٍ: لا يُسجَّل شيء */
+
+function navSnap() {
+  return {
+    zat: 1,
+    page: String(((typeof STATE !== "undefined" && STATE) || {}).page || ""),
+    tstu: String(((typeof TSTU !== "undefined" && TSTU) || {}).id || ""),
+    tcrc: String(((typeof TCRC !== "undefined" && TCRC) || {}).id || "")
+  };
+}
+
+function navSame(a, b) {
+  return !!a && !!b && a.page === b.page && a.tstu === b.tstu && a.tcrc === b.tcrc;
+}
+
+function navPush() {
+  if (NAV_BACK) return;
+  if (typeof history === "undefined" || !history.pushState) return;
+  const s = navSnap();
+  if (navSame(s, NAV_LAST)) return;
+  /* أوّلُ شاشةٍ تحلّ محلَّ القيد القائم، وما بعدها يُضاف — فلا يُزاد قيدٌ
+     بلا سببٍ عند أوّل رسم */
+  if (NAV_LAST === null) history.replaceState(s, ""); else history.pushState(s, "");
+  NAV_LAST = s;
+}
+
+if (typeof window !== "undefined" && window.addEventListener) {
+  window.addEventListener("popstate", function (e) {
+    const s = e && e.state;
+    /* قيدٌ ليس من شاشاتنا (ما قبل دخولِ النظام): يمضي كما كان */
+    if (!s || !s.zat) return;
+    NAV_BACK = true;
+    try {
+      if (typeof STATE !== "undefined" && STATE) STATE.page = s.page;
+      if (typeof TSTU !== "undefined" && TSTU) TSTU.id = s.tstu;
+      if (typeof TCRC !== "undefined" && TCRC) TCRC.id = s.tcrc;
+      NAV_LAST = s;
+      try { renderNav(); } catch (x) {}
+      mount();
+    } catch (x) { console.warn("popstate:", x); }
+    finally { NAV_BACK = false; }
+  });
+}
+
 function mount() {
   /* شعارُ المنشأة في القائمة الجانبية — يتبع ما نحن داخله */
   try { brandLogoSync(); } catch (e) {}
@@ -36713,6 +36778,9 @@ function mount() {
     try { renderNav(); } catch (e) {}
   }
 
+  /* الشاشةُ المعروضة تُسجَّل في تاريخ المتصفّح — بعد تصحيح الواجهة، فلا
+     يُسجَّل ما سيُبدَّل. وشرحُ ذلك عند navPush أعلاه. */
+  try { navPush(); } catch (e) {}
 
   if (scopeDenied()) {
     const root0 = $("#pageContent");
@@ -46901,7 +46969,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0730";
+  var APP_BUILD = "20261010-0820";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
