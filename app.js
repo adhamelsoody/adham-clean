@@ -27770,16 +27770,80 @@ window.tstuDutySave = function (id) {
      إعادة التسميع   → status = "failed"  — وهو ما يكتبه asgClose دون الحدّ،
                         معناه في النظام: «يُعاد الواجب ويتوقّف التقدّم»
 
-   والمعتمَدُ لا يُنقض من هنا: سجلُّ تسميعه مكتوبٌ وخطتُه تقدّمت، ونقضُه
-   إجراءٌ صريحٌ ليس هذا موضعَه.
+   والمعتمَدُ يُنقض باستئذان: «الأزرار موجودة بس مش شغالة، شغّلها». كانت
+   تُرسم مُقفَلةً (disabled) على الواجب المعتمَد، فيضغط المعلّمُ فلا يُجيبه
+   شيءٌ ولا ينطق النظامُ بعلّة. فلا زرَّ أصمَّ بعد اليوم: كلُّ ضغطةٍ إمّا
+   أن تفعل أو أن تقول لم لم تفعل.
    ========================================================================= */
+
+/* نقضُ اعتمادٍ سابق: ما يُرَدّ وما يبقى
+   -------------------------------------------------------------------------
+   الاعتمادُ كتب ثلاثةَ آثار: حالةَ الواجب، وسجلَّ تسميعٍ في recitations،
+   وتقدُّمَ موضعِ الخطة. والنقضُ يردُّ اثنين ويُبقي واحداً:
+
+     الحالة       تُردّ إلى «يُعاد» أو «لم يتم» كما اختار.
+     موضعُ الخطة  يُرَدّ إلى مبتدأ هذا الواجب نفسِه — وهو حيث كان قبل
+                  الاعتماد بعينه، إذ advancePlanAfter نقلته من بعد منتهاه.
+     سجلُّ التسميع يبقى كما هو: جلسةٌ جرت وقُيّمت، وحذفُها تزويرٌ للسجلّ.
+                  والنظامُ يعرف هذه الحالَ أصلاً: الواجبُ دون الحدّ يُغلق
+                  «failed» وله سجلُّ تسميعٍ كامل.
+
+   ولا يُمَسُّ في النقض ارتباطٌ: لا مسجدَ ولا مجمّعَ ولا حلقةَ ولا برنامجَ
+   ولا خطةً ولا مستوى. الموضعُ وحدَه داخل الخطة القائمة. */
+window.tstuDutyUndo = function (id, res) {
+  const a = tstuAsgById(id);
+  if (!a) { showToast("الواجب غير موجود", "warn"); return; }
+  if (!teacherCan("recite")) {
+    showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  if (typeof recLocked === "function" && recLocked(a)) {
+    showToast("فترةٌ مؤرشفة — سجلُّها للقراءة لا للتعديل", "warn"); return;
+  }
+
+  const repeat = String(res) === "repeat";
+  a.status = repeat ? "failed" : "missed";
+  a.settled = false;
+  delete a.belowPass;
+  delete a.holdPlan;
+  a.undoneAt = Date.now();
+  persistSet("assignments", a);
+
+  /* ردُّ موضع الخطة إلى مبتدأ هذا الواجب — بمحرّك advancePlanAfter نفسِه */
+  try {
+    if (String(a.kind).indexOf("hifz") === 0 && Number(a.fromS) > 0) {
+      const pl = (cur("plans") || []).find(p =>
+        String(p.id) === String(a.planId) || String(p.studentId) === String(a.studentId));
+      if (pl) {
+        pl.hifzFromS = Number(a.fromS);
+        pl.hifzFromA = (typeof skipBasmala === "function")
+          ? skipBasmala(a.fromS, a.fromA) : (Number(a.fromA) || 1);
+        pl.current = (typeof surahName === "function" ? surahName(pl.hifzFromS) : "") +
+                     " " + toArabicDigits(pl.hifzFromA);
+        persistSet("plans", pl);
+      }
+    }
+  } catch (e) { console.warn("tstuDutyUndo plan:", e); }
+
+  closeModal();
+  showToast("نُقض الاعتماد — " + (repeat ? "يُعاد التسميع" : "لم يتم التسميع") +
+            "، ورُدَّ موضعُ الخطة إلى مبتدأ هذا الواجب", "warn");
+  mount();
+};
+
 window.tstuDutyResult = function (id, res) {
   const a = tstuAsgById(id);
   if (!a) { showToast("الواجب غير موجود", "warn"); return; }
   if (!teacherCan("recite")) {
     showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
   }
-  if (a.status === "done") { showToast("هذا الواجبُ معتمَدٌ أصلاً", "warn"); return; }
+
+  /* الضغطُ على الحال القائمة: يُقال ولا يُكتب */
+  const now = a.status === "done" ? "done"
+    : a.status === "failed" ? "repeat"
+    : a.status === "missed" ? "none" : "";
+  if (now && now === String(res)) {
+    showToast("الواجبُ على هذه الحال أصلاً", "info"); return;
+  }
 
   /* الاعتمادُ يمرّ بالتقييم كما كان — الزرُّ بابُه لا بديلُه */
   if (String(res) === "done") {
@@ -27793,6 +27857,29 @@ window.tstuDutyResult = function (id, res) {
   }
 
   const repeat = String(res) === "repeat";
+
+  /* نقضُ المعتمَد لا يجري بضغطةٍ عابرة: يُعرض أثرُه ثمّ يُستأذن */
+  if (a.status === "done") {
+    /* ويُسمّى الموضعُ بعدّ صاحب النظام كسائر ما في هذه النافذة */
+    const backA = (typeof skipBasmala === "function")
+      ? skipBasmala(a.fromS, a.fromA) : (Number(a.fromA) || 1);
+    const back = (Number(a.fromS) > 0 && typeof surahName === "function")
+      ? surahName(a.fromS) + " " + toArabicDigits(
+          typeof ayahShow === "function" ? ayahShow(a.fromS, backA) : backA)
+      : "";
+    openModal("نقضُ اعتماد التسميع", esc(a.kindName || ""),
+      noteCard("هذا الواجبُ معتمَدٌ. والنقضُ يجعله <strong>" +
+        (repeat ? "يُعاد التسميع" : "لم يتم التسميع") + "</strong>" +
+        (back ? "، ويردُّ موضعَ الخطة إلى <strong>" + esc(back) + "</strong>" : "") +
+        ". ويبقى سجلُّ تسميعِه في السجلّ كما هو — جلسةٌ جرت وقُيّمت.") +
+      noteCard("وبعد النقض تعود تفاصيلُ الواجب قابلةً للتعديل."),
+      `<button class="btn btn-danger" onclick="window.tstuDutyUndo('${
+         jsAttr(a.id)}','${repeat ? "repeat" : "none"}')">نقضُ الاعتماد</button>
+       <button class="btn btn-ghost" onclick="window.tstuDuty('${
+         jsAttr(a.id)}')">رجوع</button>`);
+    return;
+  }
+
   a.status = repeat ? "failed" : "missed";
   /* يُحتسب دَيناً حتى يُعوَّض: asgDebts تقرأ الحالةَ مع settled */
   a.settled = false;
@@ -27867,14 +27954,14 @@ window.tstuDuty = function (id) {
           { k: "none",   h: "لم يتم التسميع" },
           { k: "repeat", h: "إعادة التسميع" }
         ].map(r => `<button type="button" class="tsd-opt tsd-${r.k}${
-            resNow === r.k ? " on" : ""}"${locked ? " disabled" : ""}
+            resNow === r.k ? " on" : ""}"
             onclick="window.tstuDutyResult('${jsAttr(a.id)}','${r.k}')">${
             esc(r.h)}</button>`).join("")}</span></span>
       </div>`
     : "";
 
   openModal("تفاصيل الواجب", esc(a.kindName || t.h || ""),
-    `${locked ? `<div class="tsd-lock">${ic("check", 14)} واجبٌ معتمَدٌ — تفاصيلُه للعرض لا للتعديل</div>` : ""}
+    `${locked ? `<div class="tsd-lock">${ic("check", 14)} واجبٌ معتمَدٌ — لتعديل تفاصيله انقض اعتمادَه من «نتيجة التسميع» أدناه</div>` : ""}
     <div class="tsd-sheet">
       <div class="tsd-row">
         <span class="tsd-k">نوع الواجب</span>
@@ -47299,7 +47386,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-1330";
+  var APP_BUILD = "20261010-1430";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
