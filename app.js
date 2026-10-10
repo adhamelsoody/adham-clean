@@ -28057,27 +28057,21 @@ window.tstuDuty = function (id) {
     .map(u => `<option value="${esc(u.k)}"${String(sel || "وجه") === u.k ? " selected" : ""}>${
       esc(u.h)}</option>`).join("");
 
-  /* صفُّ النتيجة: ثلاثةُ أزرارٍ لا تجتمع — المضيءُ واحدٌ يدلُّ على حال
-     الواجب الآن. ولا يُرسم لمن لا يملك صلاحيةَ التسميع، كسائر الحقول. */
-  const resNow = a.status === "done" ? "done"
-    : a.status === "failed" ? "repeat"
-    : a.status === "missed" ? "none" : "";
-  const resRow = teacherCan("recite")
-    ? `<div class="tsd-row tsd-res-row">
-        <span class="tsd-k">نتيجة التسميع</span>
-        <span class="tsd-v"><span class="tsd-res">${[
-          { k: "done",   h: "تم التسميع" },
-          { k: "none",   h: "لم يتم التسميع" },
-          { k: "repeat", h: "إعادة التسميع" }
-        ].map(r => `<button type="button" class="tsd-opt tsd-${r.k}${
-            resNow === r.k ? " on" : ""}"
-            onclick="window.tstuDutyResult('${jsAttr(a.id)}','${r.k}')">${
-            esc(r.h)}</button>`).join("")}</span></span>
-      </div>`
-    : "";
+  /* =======================================================================
+     «شيل الثلاثةَ أزرار (تم التسميع · لم يسمّع · إعادة التسميع)، وحطّ زرَّ
+     تم التسميع بجانب زرّ حفظ التعديلات».
+
+     رُفع صفُّ «نتيجة التسميع» من جسم الصحيفة، وصار الاعتمادُ زرّاً واحداً
+     في ذيل النافذة بجانب «حفظ التعديلات» — وهو يفتح تقييمَ الأداء كما كان.
+
+     ولم تُحذف دالّة: tstuDutyResult و tstuDutyUndo باقيتان كما هما، وبهما
+     كان يُسجَّل «لم يتم» و«يُعاد» ويُنقض المعتمَد. فمن أراد إعادةَ الصفّ
+     ردَّ نداءَه إلى جسم الصحيفة.
+     ======================================================================= */
+  const canRecite = !locked && teacherCan("recite");
 
   openModal("تفاصيل الواجب", esc(a.kindName || t.h || ""),
-    `${locked ? `<div class="tsd-lock">${ic("check", 14)} واجبٌ معتمَدٌ — لتعديل تفاصيله انقض اعتمادَه من «نتيجة التسميع» أدناه</div>` : ""}
+    `${locked ? `<div class="tsd-lock">${ic("check", 14)} واجبٌ معتمَدٌ — تفاصيلُه للعرض لا للتعديل</div>` : ""}
     <div class="tsd-sheet">
       <div class="tsd-row">
         <span class="tsd-k">نوع الواجب</span>
@@ -28118,8 +28112,6 @@ window.tstuDuty = function (id) {
               canQty ? "" : `<small class="tsd-note">معتمَدٌ من الإدارة</small>`}`}</span>
       </div>
 
-      ${resRow}
-
       ${a.note ? `<div class="tsd-row">
         <span class="tsd-k">ملاحظة</span>
         <span class="tsd-v">${esc(a.note)}</span></div>` : ""}
@@ -28136,10 +28128,11 @@ window.tstuDuty = function (id) {
     ${canSplit ? tsplBox(a)
       : (typeof asgSplittable === "function" && asgSplittable(a)
         ? noteCard("صلاحيةُ تقسيم الواجب غيرُ مفعَّلةٍ لحسابك.") : "")}`,
-    /* زرُّ «تقييم واعتماد التسميع» لم يُحذف: انتقل إلى صفّ «نتيجة التسميع»
-       في أعلى الصحيفة باسم «تم التسميع»، ويفتح recvOpen نفسَها. وبقاؤه
-       هنا مع الأزرار الثلاثة تكرارٌ لزرّين بفعلٍ واحد. */
-    `${canEdit ? `<button class="btn btn-soft" onclick="window.tstuDutySave('${jsAttr(a.id)}')">${
+    /* زرُّ الاعتماد في الذيل بجانب «حفظ التعديلات» باسم «تم التسميع» —
+       وهو يفتح تقييمَ الأداء (recvOpen) عبر tstuDutyResult كما كان. */
+    `${canRecite ? `<button class="btn btn-primary" onclick="window.tstuDutyResult('${
+          jsAttr(a.id)}','done')">${ic("check", 16)} تم التسميع</button>` : ""}
+     ${canEdit ? `<button class="btn btn-soft" onclick="window.tstuDutySave('${jsAttr(a.id)}')">${
           ic("check", 15)} حفظ التعديلات</button>` : ""}
      ${canSplit ? `<button class="btn btn-soft" onclick="window.tsplSave()">حفظ الجلسات</button>` : ""}
      <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
@@ -47570,7 +47563,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-2110";
+  var APP_BUILD = "20261010-2135";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
