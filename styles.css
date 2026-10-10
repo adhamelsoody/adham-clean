@@ -12627,3 +12627,37 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
    وتنزل سطراً عند الضيق — وهذا الذيلُ وحدَه لا كلُّ النوافذ. */
 .modal-foot:has(> [onclick*="tstuDutySave"]) { flex-wrap: wrap; }
 .modal-foot:has(> [onclick*="tstuDutySave"]) .btn { white-space: nowrap; flex: 0 1 auto; }
+
+/* =========================================================================
+   نتيجةُ التسميع في «تفاصيل الواجب» — ثلاثةُ أزرارٍ لا تجتمع
+   -------------------------------------------------------------------------
+   «ضيف الثلاثة أزرار اللي في تفاصيل الواجب».
+   المضيءُ واحدٌ يدلُّ على حال الواجب الآن: معتمَدٌ أو لم يُسمَّع أو يُعاد —
+   كأزرار التحضير سواءً بسواء، فلا يلتبس حالان. وكلٌّ بلونِ معناه: الاعتمادُ
+   أخضر، والمنعُ أحمرُ هادئ، والإعادةُ كهرمانيّة. والمعتمَدُ يُعرض مطفأً لا
+   يُضغط: سجلُّ تسميعه مكتوبٌ وخطتُه تقدّمت.
+
+   وصفُّها وحدَه يُخالف سائرَ الصفوف: العنوانُ فوق والأزرارُ تحته أثلاثاً
+   متساوية. جُرّب في صفٍّ واحدٍ فانكسر الثالثُ إلى سطرٍ وحدَه في عرض
+   الجوّال، وهو أعرضُ ما تُفتح فيه النافذة.
+   ========================================================================= */
+.tsd-res-row { flex-direction: column; align-items: stretch; gap: 8px; }
+.tsd-res-row .tsd-k { flex: none; }
+.tsd-res-row .tsd-v { justify-content: stretch; }
+.tsd-res { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tsd-opt {
+  font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap;
+  padding: 10px 4px; border-radius: 10px; cursor: pointer; text-align: center;
+  background: #fff; color: #6b7b7c; border: 1px solid #d7dedf;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.tsd-opt:hover:not([disabled]) { border-color: #b9c6c7; color: #46595a; }
+.tsd-opt[disabled] { cursor: default; opacity: .75; }
+.tsd-opt.on.tsd-done   { background: #0f6f72; border-color: #0f6f72; color: #fff; }
+.tsd-opt.on.tsd-none   { background: #b4453f; border-color: #b4453f; color: #fff; }
+.tsd-opt.on.tsd-repeat { background: #b4772a; border-color: #b4772a; color: #fff; }
+
+:root:not([data-theme="light"]) .tsd-opt,
+:root[data-theme="dark"] .tsd-opt { background: #0f2423; border-color: #1f4746; color: #8fa3a4; }
+:root:not([data-theme="light"]) .tsd-opt:hover:not([disabled]),
+:root[data-theme="dark"] .tsd-opt:hover:not([disabled]) { border-color: #2d6362; color: #cfe3e2; }
