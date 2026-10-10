@@ -15703,9 +15703,11 @@ window.advancePlanAfter = function (asg) {
   return nextAfter(asg.toS, asg.toA, plan.direction).then(nx => {
     if (!nx) return false;
     plan.hifzFromS = nx.surah;
-    plan.hifzFromA = nx.ayah;
+    /* والبسملةُ لا تكون موضعَ الغد: تُتجاوَز إلى ﴿الحمد لله ربّ العالمين﴾ */
+    plan.hifzFromA = skipBasmala(nx.surah, nx.ayah);
+    /* والنصُّ يتبع الموضعَ المكتوب لا الخام، وإلّا قال «الفاتحة ١» والموضعُ ٢ */
     plan.current = (typeof surahName === "function" ? surahName(nx.surah) : "") +
-                   " " + toArabicDigits(nx.ayah);
+                   " " + toArabicDigits(plan.hifzFromA);
     persistSet("plans", plan);
     advNotify(plan, wasS, nx.surah);
     return true;
@@ -16130,6 +16132,27 @@ function repeatState(plan) {
   };
 }
 
+/* =========================================================================
+   البسملةُ ليست آيةً تُحفظ ولا تُسمَّع
+   -------------------------------------------------------------------------
+   «الفاتحة أوّلها ﴿ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِینَ﴾ — لا تَحسب البسملةَ آية».
+
+   وبياناتُ المصحف عندنا على العدّ الكوفيّ الذي طُبع به المصحفُ المدنيُّ
+   برواية حفص: البسملةُ هي الآيةُ الأولى من الفاتحة. وأرقامُ الآيات التي
+   يراها الطالبُ على الصفحة مرسومةٌ في خطّ المصحف (qcf4) لا في بياناتنا،
+   فلا تُغيَّر بتغيير ملفّ — ولو رقّمنا من جديد لخالف ما يقرؤه بعينه.
+
+   فالذي يُنفَّذ هنا هو مرادُ الطلب بلا تناقض: البسملةُ لا تكون أوّلَ
+   موضعٍ يُطلب من الطالب حفظُه ولا تسميعُه. فمتى وقع مبتدأُ الحفظ على
+   «الفاتحة ١» نُقل إلى «الفاتحة ٢» — وهي ﴿ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِینَ﴾.
+   ولا يُمسّ نصٌّ ولا ترتيبٌ ولا سجلٌّ محفوظ.
+   ========================================================================= */
+function skipBasmala(s, a) {
+  const n = Number(a) || 1;
+  return (Number(s) === 1 && n <= 1) ? 2 : n;
+}
+window.skipBasmala = skipBasmala;
+
 function nextHifzFrom(plan) {
   /* من الفترة النشطة: بعد الترحيل يبدأ الطالب من نقطة انطلاقٍ محدَّدة
      في خطته لا من حيث انتهى في دورةٍ مؤرشفة. */
@@ -16141,7 +16164,7 @@ function nextHifzFrom(plan) {
   if (done && done.toS) {
     /* بلغ آخر السورة ولم يتمّ تكرارها: يعود إلى أوّلها لا إلى ما بعدها */
     const rep = repeatNext(plan, done);
-    if (rep) return { s: rep.s, a: rep.a, after: true,
+    if (rep) return { s: rep.s, a: skipBasmala(rep.s, rep.a), after: true,
                       repeat: true, round: rep.round, of: rep.of, note: rep.note };
 
     /* الآية التالية لآخر ما أُنجز بحسب الاتجاه.
@@ -16150,13 +16173,15 @@ function nextHifzFrom(plan) {
        و advancePlanAfter تصلحه لاحقاً، لكنّ الطالب يرى الموضع الباطل
        بينهما، ويبقى كما هو إن تعذّر جلب جدول المصحف. */
     const nx = stepFrom(done.toS, done.toA, plan.direction);
-    return { s: nx.s, a: nx.a, after: true };
+    return { s: nx.s, a: skipBasmala(nx.s, nx.a), after: true };
   }
   /* بلا سجلٍّ سابق: بدايةُ خطته، وإلا سورةُ بداية ركن الحفظ من الخطة
      الافتراضية، وإلا موضعُه الحالي. */
   const ps = typeof pillarStartOf === "function" ? pillarStartOf("hifz") : 0;
-  return { s: Number(plan.hifzFromS) || ps || Number(plan.currentS) || 0,
-           a: Number(plan.hifzFromA) || Number(plan.currentA) || 1, after: false };
+  const _s0 = Number(plan.hifzFromS) || ps || Number(plan.currentS) || 0;
+  return { s: _s0,
+           a: skipBasmala(_s0, Number(plan.hifzFromA) || Number(plan.currentA) || 1),
+           after: false };
 }
 
 /* =========================================================================
@@ -27645,6 +27670,64 @@ window.tstuQtySave = function (id) {
   mount();
 };
 
+/* =========================================================================
+   حفظُ تعديل الواجب — المدى والمقدار معاً
+   -------------------------------------------------------------------------
+   كلُّ حقلٍ يُقرأ بصلاحيته: ما لا يملكه المستخدمُ لا يُرسَم أصلاً فلا
+   يُقرأ، وما يملكه يُفحص قبل الكتابة. والمعتمَدُ لا يُعدَّل.
+   وحقولُ الارتباط (الطالب والحلقة والمسجد والخطة) لا تُمسّ هنا ألبتّة.
+   ========================================================================= */
+window.tstuDutySave = function (id) {
+  const a = tstuAsgById(id);
+  if (!a) { showToast("الواجب غير موجود", "warn"); return; }
+  if (a.status === "done") { showToast("واجبٌ معتمَدٌ — لا يُعدَّل", "warn"); return; }
+
+  const cQty = teacherCan("planQty"),
+        cFrom = teacherCan("planStart"),
+        cEnd = teacherCan("planEnd");
+  if (!cQty && !cFrom && !cEnd) {
+    showToast("صلاحيةُ تعديل الواجب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+
+  const next = {};
+  if (cFrom && document.getElementById("tsd_fS")) {
+    next.fromS = Number(val("#tsd_fS") || 0);
+    next.fromA = Number(val("#tsd_fA") || 0);
+    if (!(next.fromS > 0 && next.fromA > 0)) {
+      showToast("موضعُ الابتداء غير صحيح", "warn"); return; }
+  }
+  if (cEnd && document.getElementById("tsd_tS")) {
+    next.toS = Number(val("#tsd_tS") || 0);
+    next.toA = Number(val("#tsd_tA") || 0);
+    if (!(next.toS > 0 && next.toA > 0)) {
+      showToast("موضعُ الانتهاء غير صحيح", "warn"); return; }
+  }
+  if (cQty && document.getElementById("tsd_qty")) {
+    const q = Number(val("#tsd_qty") || 0);
+    if (!(q > 0)) { showToast("المقدار غير صحيح", "warn"); return; }
+    next.qty = q;
+    next.unit = String(val("#tsd_unit") || a.unit || "وجه");
+  }
+
+  /* النهايةُ لا تسبق البداية — بالمحرّك نفسِه الذي يفحص التسميع */
+  const fS = next.fromS != null ? next.fromS : Number(a.fromS) || 0;
+  const fA = next.fromA != null ? next.fromA : Number(a.fromA) || 0;
+  const tS = next.toS   != null ? next.toS   : (Number(a.toS) || fS);
+  const tA = next.toA   != null ? next.toA   : (Number(a.toA) || fA);
+  if (fS && tS && typeof window.Quran !== "undefined" &&
+      typeof window.Quran.before === "function" &&
+      !window.Quran.before(fS, fA, tS, tA)) {
+    showToast("نهاية المدى قبل بدايته", "warn"); return;
+  }
+
+  Object.keys(next).forEach(k => { a[k] = next[k]; });
+  a.shortQty = typeof asgRemain === "function" ? asgRemain(a) : a.shortQty;
+  persistSet("assignments", a);
+  closeModal();
+  showToast("حُفظ تعديلُ الواجب", "success");
+  mount();
+};
+
 window.tstuDuty = function (id) {
   const a = tstuAsgById(id);
   if (!a) { showToast("الواجب غير موجود", "warn"); return; }
@@ -27655,25 +27738,83 @@ window.tstuDuty = function (id) {
   const canSplit = teacherCan("splitDuty") &&
     (typeof asgSplittable === "function" ? asgSplittable(a) : false);
 
+  /* =======================================================================
+     تعديلُ الواجب من نافذته
+     -----------------------------------------------------------------------
+     «في تفاصيل الواجب عايز أعرف أعدّل على الواجب».
+     كانت النافذةُ عرضاً محضاً إلا المقدار: نوعُ الواجب ومداه يُقرآن ولا
+     يُمسّان، فمن أخطأ في مدى واجبٍ لم يملك إلّا حذفَه وإعادةَ إنشائه.
+
+     صارت الحقولُ قابلةً للتحرير، كلُّ حقلٍ بصلاحيته القائمة لا بصلاحيةٍ
+     جديدة: الابتداءُ بـ planStart، والانتهاءُ بـ planEnd، والمقدارُ
+     والوحدةُ بـ planQty. ومن لا يملك صلاحيةً يرى حقلَها كما كان: نصّاً
+     لا يُحرَّر.
+
+     والواجبُ المعتمَدُ لا يُحرَّر ألبتّة — تعديلُ ما سُمّع يُفسد السجلّ
+     الذي بُني عليه تقدّمُ الخطة.
+
+     وزرُّ «حفظ المقدار» لم يُحذف: صار «حفظ التعديلات» يحفظ المدى والمقدار
+     معاً، ودالّتُه tstuQtySave باقيةٌ كما هي لمن ينادها.
+     ======================================================================= */
+  const canEnd  = teacherCan("planEnd");
+  const canFrom = teacherCan("planStart");
+  const locked  = a.status === "done";
+  const canEdit = !locked && (canFrom || canEnd || canQty);
+  const sOpts = (sel) => (typeof QSURAHS !== "undefined" && QSURAHS)
+    ? QSURAHS.map(x => `<option value="${x.i}"${Number(sel) === x.i ? " selected" : ""}>${
+        x.i}. ${esc(x.n)}</option>`).join("")
+    : `<option value="${Number(sel) || 1}" selected>${esc(surahName(sel) || "—")}</option>`;
+  const unitOpts = (sel) => (typeof HW_UNITS !== "undefined" ? HW_UNITS : [{ k: "وجه", h: "وجه" }])
+    .map(u => `<option value="${esc(u.k)}"${String(sel || "وجه") === u.k ? " selected" : ""}>${
+      esc(u.h)}</option>`).join("");
+
   openModal("تفاصيل الواجب", esc(a.kindName || t.h || ""),
-    `<div class="form-grid">
-      <div class="field"><label>نوع الواجب</label>
-        <div class="tsd-val">${esc(a.kindName || t.h || "—")}</div></div>
-      <div class="field"><label>اسم السورة</label>
-        <div class="tsd-val">${a.fromS ? esc(surahName(a.fromS)) : "—"}</div></div>
-      <div class="field"><label>من آية</label>
-        <div class="tsd-val">${a.fromA ? toArabicDigits(a.fromA) : "—"}</div></div>
-      <div class="field"><label>إلى آية</label>
-        <div class="tsd-val">${a.toA ? (a.toS && a.toS !== a.fromS
-          ? esc(surahName(a.toS)) + " " : "") + toArabicDigits(a.toA) : "—"}</div></div>
-      ${canQty ? `<div class="field"><label>المقدار</label>
-        <input id="tsd_qty" type="number" min="0" step="0.5" dir="ltr"
-          value="${Number(a.qty) || 0}"></div>
-        <div class="field"><label>&nbsp;</label>
-          <button type="button" class="btn btn-soft"
-            onclick="window.tstuQtySave('${jsAttr(a.id)}')">${ic("check", 15)} حفظ المقدار</button></div>`
-      : `<div class="field"><label>المقدار المعتمد من الإدارة</label>
-          <div class="tsd-val">${toArabicDigits(a.qty || 0)} ${esc(a.unit || "وجه")}</div></div>`}
+    `${locked ? `<div class="tsd-lock">${ic("check", 14)} واجبٌ معتمَدٌ — تفاصيلُه للعرض لا للتعديل</div>` : ""}
+    <div class="tsd-sheet">
+      <div class="tsd-row">
+        <span class="tsd-k">نوع الواجب</span>
+        <span class="tsd-v"><b>${esc(a.kindName || t.h || "—")}</b></span>
+      </div>
+
+      <div class="tsd-row">
+        <span class="tsd-k">من</span>
+        <span class="tsd-v">${canFrom && !locked
+          ? `<span class="tsd-pair">
+               <select id="tsd_fS" class="tsd-in tsd-sura">${sOpts(a.fromS || 1)}</select>
+               <input id="tsd_fA" class="tsd-in tsd-ayah-n" type="number" min="1" dir="ltr"
+                 value="${Number(a.fromA) || 1}" aria-label="من آية">
+             </span>`
+          : `${a.fromS ? esc(surahName(a.fromS)) : "—"}${
+              a.fromA ? " · الآية " + toArabicDigits(a.fromA) : ""}`}</span>
+      </div>
+
+      <div class="tsd-row">
+        <span class="tsd-k">إلى</span>
+        <span class="tsd-v">${canEnd && !locked
+          ? `<span class="tsd-pair">
+               <select id="tsd_tS" class="tsd-in tsd-sura">${sOpts(a.toS || a.fromS || 1)}</select>
+               <input id="tsd_tA" class="tsd-in tsd-ayah-n" type="number" min="1" dir="ltr"
+                 value="${Number(a.toA) || 1}" aria-label="إلى آية">
+             </span>`
+          : `${a.toS ? esc(surahName(a.toS)) : (a.fromS ? esc(surahName(a.fromS)) : "—")}${
+              a.toA ? " · الآية " + toArabicDigits(a.toA) : ""}`}</span>
+      </div>
+
+      <div class="tsd-row">
+        <span class="tsd-k">المقدار</span>
+        <span class="tsd-v">${canQty && !locked
+          ? `<span class="tsd-pair">
+               <input id="tsd_qty" class="tsd-in tsd-qty" type="number" min="0" step="0.5" dir="ltr"
+                 value="${Number(a.qty) || 0}" aria-label="المقدار">
+               <select id="tsd_unit" class="tsd-in">${unitOpts(a.unit)}</select>
+             </span>`
+          : `${toArabicDigits(a.qty || 0)} ${esc(a.unit || "وجه")}${
+              canQty ? "" : `<small class="tsd-note">معتمَدٌ من الإدارة</small>`}`}</span>
+      </div>
+
+      ${a.note ? `<div class="tsd-row">
+        <span class="tsd-k">ملاحظة</span>
+        <span class="tsd-v">${esc(a.note)}</span></div>` : ""}
     </div>
 
     ${a.fromS ? `<button type="button" class="tsd-ayah"
@@ -27689,6 +27830,8 @@ window.tstuDuty = function (id) {
     `${a.status === "pending" && teacherCan("recite")
       ? `<button class="btn btn-primary" onclick="window.recvOpen('${jsAttr(a.id)}')">${
           ic("check", 16)} تقييم واعتماد التسميع</button>` : ""}
+     ${canEdit ? `<button class="btn btn-soft" onclick="window.tstuDutySave('${jsAttr(a.id)}')">${
+          ic("check", 15)} حفظ التعديلات</button>` : ""}
      ${canSplit ? `<button class="btn btn-soft" onclick="window.tsplSave()">حفظ الجلسات</button>` : ""}
      <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
 
@@ -47048,7 +47191,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-0940";
+  var APP_BUILD = "20261010-1050";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
