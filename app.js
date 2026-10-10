@@ -26584,12 +26584,15 @@ function tcrcMarks(sid) {
     const nm = a.kindName || a.kind || "واجب";
     /* العلامةُ زرٌّ يفتح بطاقةَ واجبها: كلُّ علامةٍ مرتبطةٌ بواجبٍ بعينه
        لا عدّادٌ شكليّ. و stopPropagation يمنع فتحَ صفحة الطالب معها. */
-    return `<button type="button" class="tq-mark${done ? " on" : ""}"
+    /* واسمُ الواجب في العلامة نفسِها: «يظهر بجانب الاسم على كلّ واجبٍ
+       علامةُ صحّ». ثلاثُ علاماتٍ متشابهةٍ لا تُقرأ — أيُّها الحفظُ وأيُّها
+       المراجعة؟ فصارت كلُّ علامةٍ تحمل اسمَ واجبها، وهي زرُّ تفاصيله. */
+    return `<button type="button" class="tq-mark tq-mark-lbl${done ? " on" : ""}"
       onclick="event.stopPropagation();window.tcrcOpenDuty('${jsAttr(String(a.studentId))}','${
         jsAttr(String(a.id))}')"
-      title="${esc(nm + " — " + (done ? "منجز" : "لم يُنجز"))}"
-      aria-label="${esc(nm + " — " + (done ? "منجز" : "لم يُنجز"))}"
-      >${ic("check", 13)}</button>`;
+      title="${esc("تفاصيل " + nm + " — " + (done ? "منجز" : "لم يُنجز"))}"
+      aria-label="${esc("تفاصيل " + nm + " — " + (done ? "منجز" : "لم يُنجز"))}"
+      >${ic("check", 13)}<span class="tq-mk-t">${esc(nm)}</span></button>`;
   }).join("");
 }
 
@@ -27527,6 +27530,11 @@ function tstuDutyCards(st) {
      ويبقى زرُّ «تسجيل الإنجاز» تحت الصفّ كما في المواصفات المكتوبة: الصفُّ
      يفتح تفاصيلَ الواجب، والزرُّ يعتمد تسميعَه مباشرةً.
      ======================================================================= */
+  /* «ولكلّ واجبٍ زرُّ تفاصيل مثل تفاصيل الحفظ الذي في السورة»: كانت
+     التفاصيلُ تُفتح بالضغط على الصفّ كلِّه بلا زرٍّ يدلُّ عليها. صار لكلّ
+     واجبٍ زرٌّ ظاهرٌ في ذيل بطاقته. وزرُّ الإنجاز لم يُحذف: صار بجانبه في
+     الذيل نفسِه، ويختفي عن المنجَز وعمّن لا صلاحيةَ تسميعٍ له كما كان.
+     والتعليقُ هنا لا في القالب: تعليقُ HTML داخل القالب يُشحن إلى الصفحة. */
   return `<div class="sls-list">${list.map(a => {
     const t = typeof hwType === "function" ? hwType(String(a.kind || "").replace("_makeup", "")) : {};
     const parts = typeof asgParts === "function" ? asgParts(a) : [];
@@ -27555,10 +27563,15 @@ function tstuDutyCards(st) {
       </span>
       <span class="sls-go" aria-hidden="true">${ic("arrowLeft", 16)}</span>
     </button>
-    ${!done && teacherCan("recite") ? `<button type="button"
-      class="btn btn-primary btn-sm tdt-done"
-      onclick="window.recvOpen('${jsAttr(String(a.id))}')"
-      >${ic("check", 15)} تسجيل الإنجاز</button>` : ""}
+    <div class="tdt-acts">
+      <button type="button" class="btn btn-soft btn-sm tdt-info"
+        onclick="window.tstuDuty('${jsAttr(String(a.id))}')"
+        >${ic("book", 15)} تفاصيل الواجب</button>
+      ${!done && teacherCan("recite") ? `<button type="button"
+        class="btn btn-primary btn-sm tdt-done"
+        onclick="window.recvOpen('${jsAttr(String(a.id))}')"
+        >${ic("check", 15)} تسجيل الإنجاز</button>` : ""}
+    </div>
     </div>`;
   }).join("")}</div>
   ${goneBox}
@@ -47544,7 +47557,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-1810";
+  var APP_BUILD = "20261010-1940";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
