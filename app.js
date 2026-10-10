@@ -27080,14 +27080,13 @@ function teacherStudent() {
       <div class="card">${emptyState("لا طالبَ مفتوح", "اختر طالباً من قائمة الحلقة.")}</div></div>`;
   }
   const c = (cur("circles") || []).find(x => String(x.id) === String(st.circleId || ""));
-  const canPlan = teacherCan("viewPlan");
   const canMsg  = teacherCan("msgStudents");
   const canExam = teacherCan("examRequest");
-  const p = canPlan ? planOfStudent(st) : null;
+  /* canPlan و p انتقلا إلى tstuPlanBox مع الخطة — لا يُقرآن هنا بعد اليوم */
 
   const tools = `<div class="tst-tools">
-    <button type="button" class="tst-tool${TSTU.tab === "plan" ? " on" : ""}"
-      onclick="window.tstuTab('plan')">${ic("book", 16)} خطة التسميع</button>
+    ${teacherCan("editPlan") ? `<button type="button" class="tst-tool"
+      onclick="window.tstuPlanOpen()">${ic("book", 16)} خطة التسميع</button>` : ""}
     ${canExam ? `<button type="button" class="tst-tool"
       onclick="window.tstuExamOpen()">${ic("exam", 16)} طلب اختبار</button>` : ""}
     ${canMsg ? `<button type="button" class="tst-tool"
@@ -27103,57 +27102,22 @@ function teacherStudent() {
   </div>`;
 
   /* =======================================================================
-     المعلّمُ يضع خطةَ التسميع من هنا
+     خطةُ التسميع صارت في نافذةٍ تُفتح من زرّها الأعلى
      -----------------------------------------------------------------------
-     «المعلّم لا يمكنه أن يضع خطة تسميع لطالب… الموجودُ الآن شكلٌ فقط»:
-     كانت هذه البطاقةُ عرضاً محضاً بلا زرّ، ونافذةُ «تحديد الواجب»
-     (modalDuty) لا تُفتح إلا من شاشاتٍ أخرى. فأُضيف زرُّها هنا — والنافذةُ
-     والصلاحيةُ قائمتان لم يُستحدث لهما شيء.
-     وبه تنتظم السلسلة: خطةٌ ← واجبٌ يُولَّد ← «تقييم واعتماد التسميع»
-     (recvOpen) الذي فيه حصرُ الأخطاء والتقدير — وهو كان يقول «لا واجبَ
-     مفتوح» لأنّ الخطةَ بلا موضعٍ لا تولّد واجباً.
+     «ألغِ خطةَ التسميع من الصفحة الرئيسة، خلّيها في الزرّ اللي في الأعلى
+     لمّا أدوس عليه فقط، ولمّا تكون الإدارةُ مديةً صلاحيةً للمعلّم لتعديل».
+
+     كانت البطاقةُ مرسومةً في أسفل صفحة الطالب دائماً، فتزاحم واجباتِ يومه
+     وهي مسارُه لا عملَ اليوم. صارت تُفتح من زرّ «خطة التسميع» الأعلى، ولا
+     يُرسم الزرُّ إلّا لمن أعطته الإدارةُ صلاحيةَ تعديل الخطة (editPlan).
+
+     والمحتوى كما كان حرفاً بحرف: الحفظُ الجديد والمراجعةُ والمستوى ونسبةُ
+     الإنجاز وملاحظةُ الطالب، وزرّا «تحديد الحفظ» و«تحديد المراجعة» في ذيل
+     النافذة. وحارسُ «الاطلاع على الخطة» (viewPlan) باقٍ داخلها.
+
+     والسلسلةُ كما كانت: خطةٌ ← واجبٌ يُولَّد ← تقييمٌ واعتماد. وزرّا تحديد
+     الحفظ والمراجعة يفتحان نافذةَ «تحديد الواجب» (modalDuty) نفسَها.
      ======================================================================= */
-  const canEditPlan = teacherCan("editPlan");
-  /* زرَّان لا زرٌّ واحد: «تحديد الحفظ» و«تحديد المراجعة»، كلٌّ يفتح
-     بابَه وحدَه. والنافذةُ الجامعةُ باقيةٌ لمن يفتحها من شاشةٍ أخرى. */
-  const planBtn = canEditPlan
-    ? `<button type="button" class="btn btn-primary btn-sm"
-        data-action="modal-student-duty" data-id="${jsAttr(String(st.id))}" data-focus="hifz"
-        >${ic("book", 15)} تحديد الحفظ</button>
-       <button type="button" class="btn btn-soft btn-sm"
-        data-action="modal-student-duty" data-id="${jsAttr(String(st.id))}" data-focus="rev"
-        >${ic("list", 15)} تحديد المراجعة</button>`
-    : "";
-
-  const plan = !canPlan
-    ? noteCard("صلاحيةُ الاطلاع على الخطة غيرُ مفعَّلةٍ لحسابك.")
-    : (p ? `
-      <div class="section-head"><h3>خطة التسميع</h3>${planBtn}</div>
-      <div class="duty-grid">
-        ${dutyCard("hifz", "t-green", "book", "الحفظ الجديد",
-          planPosText(p, "hifz") ? `<strong class="duty-range">${esc(planPosText(p, "hifz"))}</strong>
-            ${p.amount ? `<div class="duty-sum">المقدار: ${esc(p.amount)} ${esc(p.unit || "")}</div>` : ""}`
-          : `<span class="muted">لم يُحدَّد بعد.</span>`)}
-        ${dutyCard("rev", "t-blue", "list", "المراجعة",
-          planPosText(p, "rev") ? `<strong class="duty-range">${esc(planPosText(p, "rev"))}</strong>
-            ${p.rAmount ? `<div class="duty-sum">المقدار: ${esc(p.rAmount)} ${esc(p.rUnit || "")}</div>` : ""}`
-                  : `<span class="muted">لم تُحدَّد بعد.</span>`)}
-        ${dutyCard("fix", "t-amber", "target", "المستوى",
-          `<strong class="duty-range">${esc(p.level || "—")}</strong>
-           <div class="duty-sum">${esc(p.program || "—")}</div>`)}
-      </div>
-      <div style="height:14px"></div>
-      <div><span class="muted" style="font-size:12px">نسبة الإنجاز</span>
-        ${progressRow(Number(p.progress) || 0)}</div>
-      ${p.note ? `<div style="height:12px"></div>${
-        noteCard("<strong>ملاحظة للطالب:</strong> " + esc(p.note))}` : ""}
-
-      `
-    : `${emptyState("لا توجد خطة لهذا الطالب", canEditPlan
-          ? "ضعْ له خطتَه من الزرّ أدناه."
-          : "لم تُسنَد له خطةٌ بعد — راجع الإدارة.")}
-       ${planBtn ? `<div style="text-align:center;margin-top:-6px">${planBtn}</div>` : ""}`);
-
   /* الواجباتُ في بطاقتها: تقويمٌ بأيّامه ثمّ شرائطُ واجبات اليوم المختار
      ونتائجُه — وهي خارج حجب «الاطلاع على الخطة» لأنّها عملُ يومه لا مساره. */
   /* الترتيبُ كما في الصورة: «التقويم» بعنوانه، ثمّ «درس اليوم» بصفوفه.
@@ -27172,9 +27136,57 @@ function teacherStudent() {
     <div style="height:14px"></div>
     ${tstuStatCards(st)}
     <div class="card">${duties}</div>
-    <div class="card" style="margin-top:12px">${plan}</div>
   </div>`;
 }
+
+/* محتوى خطة التسميع — نصُّه كما كان، وموضعُه صار نافذةً */
+function tstuPlanBox(st) {
+  if (!teacherCan("viewPlan")) {
+    return noteCard("صلاحيةُ الاطلاع على الخطة غيرُ مفعَّلةٍ لحسابك.");
+  }
+  const p = planOfStudent(st);
+  if (!p) {
+    return emptyState("لا توجد خطة لهذا الطالب", teacherCan("editPlan")
+      ? "ضعْ له خطتَه من «تحديد الحفظ» أدناه."
+      : "لم تُسنَد له خطةٌ بعد — راجع الإدارة.");
+  }
+  return `<div class="duty-grid">
+      ${dutyCard("hifz", "t-green", "book", "الحفظ الجديد",
+        planPosText(p, "hifz") ? `<strong class="duty-range">${esc(planPosText(p, "hifz"))}</strong>
+          ${p.amount ? `<div class="duty-sum">المقدار: ${esc(p.amount)} ${esc(p.unit || "")}</div>` : ""}`
+        : `<span class="muted">لم يُحدَّد بعد.</span>`)}
+      ${dutyCard("rev", "t-blue", "list", "المراجعة",
+        planPosText(p, "rev") ? `<strong class="duty-range">${esc(planPosText(p, "rev"))}</strong>
+          ${p.rAmount ? `<div class="duty-sum">المقدار: ${esc(p.rAmount)} ${esc(p.rUnit || "")}</div>` : ""}`
+                : `<span class="muted">لم تُحدَّد بعد.</span>`)}
+      ${dutyCard("fix", "t-amber", "target", "المستوى",
+        `<strong class="duty-range">${esc(p.level || "—")}</strong>
+         <div class="duty-sum">${esc(p.program || "—")}</div>`)}
+    </div>
+    <div style="height:14px"></div>
+    <div><span class="muted" style="font-size:12px">نسبة الإنجاز</span>
+      ${progressRow(Number(p.progress) || 0)}</div>
+    ${p.note ? `<div style="height:12px"></div>${
+      noteCard("<strong>ملاحظة للطالب:</strong> " + esc(p.note))}` : ""}`;
+}
+
+/* الزرُّ الأعلى يفتحها — ولا يُرسم إلّا لمن يملك تعديلَها */
+window.tstuPlanOpen = function () {
+  const st = tstuStudent();
+  if (!st) { showToast("لا طالبَ مفتوح", "warn"); return; }
+  if (!teacherCan("editPlan")) {
+    showToast("صلاحيةُ تعديل خطة التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+  }
+  TSTU.tab = "plan";
+  openModal("خطة التسميع", esc(st.name || ""), tstuPlanBox(st),
+    `<button type="button" class="btn btn-primary"
+       data-action="modal-student-duty" data-id="${jsAttr(String(st.id))}" data-focus="hifz"
+       >${ic("book", 15)} تحديد الحفظ</button>
+     <button type="button" class="btn btn-soft"
+       data-action="modal-student-duty" data-id="${jsAttr(String(st.id))}" data-focus="rev"
+       >${ic("list", 15)} تحديد المراجعة</button>
+     <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+};
 
 window.tstuTab = function (k) { TSTU.tab = String(k || "plan"); mount(); };
 
@@ -47563,7 +47575,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-2135";
+  var APP_BUILD = "20261010-2200";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
