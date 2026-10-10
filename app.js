@@ -16153,6 +16153,30 @@ function skipBasmala(s, a) {
 }
 window.skipBasmala = skipBasmala;
 
+/* =========================================================================
+   ترقيمُ الفاتحة في العرض — ﴿ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِینَ﴾ هي الآيةُ ١
+   -------------------------------------------------------------------------
+   «خليت الحمد لله الآية رقم ٢، أنا عايزها رقم ١».
+
+   بياناتُ المصحف على العدّ الكوفيّ: البسملةُ آيةُ الفاتحة الأولى. وعلى
+   العدّ الذي اختاره صاحبُ النظام — وهو عدُّ البصريّين والمكّيّين، وعليه
+   أكثرُ المالكيّة والحنفيّة — البسملةُ ليست منها، فأوّلُها الحمد لله.
+
+   فالتخزينُ يبقى كما المصحفُ حرفاً بحرف (لا يُكسر مدًى محفوظٌ ولا سجلُّ
+   تسميع)، والإزاحةُ في العرض وحدَه: ما يُقرأ يُنقص واحداً، وما يُكتب
+   يُزاد واحداً. والفاتحةُ وحدَها — سائرُ السور لا تُمسّ.
+   ========================================================================= */
+function ayahShow(s, a) {
+  const n = Number(a) || 0;
+  return (Number(s) === 1 && n > 1) ? n - 1 : n;
+}
+function ayahStore(s, shown) {
+  const n = Number(shown) || 0;
+  return (Number(s) === 1 && n >= 1) ? n + 1 : n;
+}
+window.ayahShow = ayahShow;
+window.ayahStore = ayahStore;
+
 function nextHifzFrom(plan) {
   /* من الفترة النشطة: بعد الترحيل يبدأ الطالب من نقطة انطلاقٍ محدَّدة
      في خطته لا من حيث انتهى في دورةٍ مؤرشفة. */
@@ -27692,13 +27716,14 @@ window.tstuDutySave = function (id) {
   const next = {};
   if (cFrom && document.getElementById("tsd_fS")) {
     next.fromS = Number(val("#tsd_fS") || 0);
-    next.fromA = Number(val("#tsd_fA") || 0);
+    /* المعروضُ بعدّ صاحب النظام، والمخزونُ بعدّ المصحف */
+    next.fromA = ayahStore(next.fromS, Number(val("#tsd_fA") || 0));
     if (!(next.fromS > 0 && next.fromA > 0)) {
       showToast("موضعُ الابتداء غير صحيح", "warn"); return; }
   }
   if (cEnd && document.getElementById("tsd_tS")) {
     next.toS = Number(val("#tsd_tS") || 0);
-    next.toA = Number(val("#tsd_tA") || 0);
+    next.toA = ayahStore(next.toS, Number(val("#tsd_tA") || 0));
     if (!(next.toS > 0 && next.toA > 0)) {
       showToast("موضعُ الانتهاء غير صحيح", "warn"); return; }
   }
@@ -27792,10 +27817,10 @@ window.tstuDuty = function (id) {
           ? `<span class="tsd-pair">
                <select id="tsd_fS" class="tsd-in tsd-sura">${sOpts(a.fromS || 1)}</select>
                <input id="tsd_fA" class="tsd-in tsd-ayah-n" type="number" min="1" dir="ltr"
-                 value="${fA0}" aria-label="من آية">
+                 value="${ayahShow(a.fromS, fA0)}" aria-label="من آية">
              </span>`
           : `${a.fromS ? esc(surahName(a.fromS)) : "—"}${
-              a.fromA ? " · الآية " + toArabicDigits(fA0) : ""}`}</span>
+              a.fromA ? " · الآية " + toArabicDigits(ayahShow(a.fromS, fA0)) : ""}`}</span>
       </div>
 
       <div class="tsd-row">
@@ -27804,10 +27829,10 @@ window.tstuDuty = function (id) {
           ? `<span class="tsd-pair">
                <select id="tsd_tS" class="tsd-in tsd-sura">${sOpts(a.toS || a.fromS || 1)}</select>
                <input id="tsd_tA" class="tsd-in tsd-ayah-n" type="number" min="1" dir="ltr"
-                 value="${Number(a.toA) || 1}" aria-label="إلى آية">
+                 value="${ayahShow(a.toS || a.fromS, a.toA || 1)}" aria-label="إلى آية">
              </span>`
           : `${a.toS ? esc(surahName(a.toS)) : (a.fromS ? esc(surahName(a.fromS)) : "—")}${
-              a.toA ? " · الآية " + toArabicDigits(a.toA) : ""}`}</span>
+              a.toA ? " · الآية " + toArabicDigits(ayahShow(a.toS || a.fromS, a.toA)) : ""}`}</span>
       </div>
 
       <div class="tsd-row">
@@ -27829,7 +27854,8 @@ window.tstuDuty = function (id) {
 
     ${a.fromS ? `<button type="button" class="tsd-ayah"
       onclick="window.tstuMushaf('${jsAttr(a.id)}')">
-      <span class="tsd-ayah-h">${esc(surahName(a.fromS))} – الآية ${toArabicDigits(fA0)}</span>
+      <span class="tsd-ayah-h">${esc(surahName(a.fromS))} – الآية ${
+        toArabicDigits(ayahShow(a.fromS, fA0))}</span>
       <span class="tsd-ayah-t" id="tsdAyah">…</span>
       <span class="tsd-ayah-go">${ic("book", 15)} افتح في المصحف</span>
     </button>` : ""}
@@ -47201,7 +47227,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-1150";
+  var APP_BUILD = "20261010-1230";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
