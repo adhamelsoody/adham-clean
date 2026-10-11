@@ -28426,6 +28426,9 @@ window.numStep = function (id, d) {
     if (el.dataset && el.dataset.sync && typeof window.ayahCap === "function") {
       window.ayahCap(el.dataset.sync);
     }
+    if (String(el.id) === "tsd_fA" && typeof window.tsdQtyRange === "function") {
+      window.tsdQtyRange();
+    }
     return;
   }
   el.value = String(Math.max(isFinite(lo) ? lo : 0, n));
@@ -28587,13 +28590,22 @@ window.tstuDuty = function (id) {
         <span class="tsd-k">المقدار</span>
         <span class="tsd-v"><span class="tsd-pair tsd-pair-w">
           <select id="tsd_qty" class="tsd-in" onchange="window.tsdQtyRange()">
-            ${(typeof QTY_FLEX !== "undefined" ? QTY_FLEX : ["نصف وجه", "وجه"])
-              .map(q => { const n = (typeof PLAN_QTY_NUM !== "undefined"
-                                     ? Number(PLAN_QTY_NUM[q]) : 0) || 0;
-                   if (!(n > 0)) return "";
-                   const on = Math.abs(n - (Number(a.qty) || 0)) < 1e-9;
-                   return `<option value="${n}"${on ? " selected" : ""}>${esc(q)}</option>`;
-                 }).join("")}
+            ${(function () {
+              /* «خلّي في المقدار وجه ونص وجه وربع فقط» — ثلاثةٌ لا غير.
+                 ومقدارُ الواجب المحفوظُ إن كان غيرَها يبقى خياراً فيها
+                 حتى لا يُبدَّل بصمتٍ عند أوّل حفظ. */
+              const q0 = Number(a.qty) || 0;
+              const base = [["وجه", 1], ["نصف وجه", 0.5], ["ربع وجه", 0.25]];
+              const list = base.slice();
+              if (q0 > 0 && !base.some(x => Math.abs(x[1] - q0) < 1e-9)) {
+                const nm = (typeof PLAN_QTY_NUM !== "undefined")
+                  ? Object.keys(PLAN_QTY_NUM).find(k => Math.abs(Number(PLAN_QTY_NUM[k]) - q0) < 1e-9)
+                  : "";
+                list.push([nm || (toArabicDigits(q0) + " " + (a.unit || "وجه")), q0]);
+              }
+              return list.map(x => `<option value="${x[1]}"${
+                Math.abs(x[1] - q0) < 1e-9 ? " selected" : ""}>${esc(x[0])}</option>`).join("");
+            })()}
           </select>
           <input type="hidden" id="tsd_unit" value="${esc(a.unit || "وجه")}">
         </span><small class="tsd-note">المدى يُحسب من المقدار وموضعِ الابتداء</small></span>
@@ -48398,7 +48410,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-1745";
+  var APP_BUILD = "20261011-1810";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
