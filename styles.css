@@ -12853,3 +12853,31 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
   padding-inline: 6px; appearance: none; -webkit-appearance: none;
   background-image: none; cursor: pointer;
 }
+
+/* =========================================================================
+   تفاصيلُ الواجب في إطار
+   -------------------------------------------------------------------------
+   «أريد تفاصيل الواجب تكون بإطار»: كانت الصفوفُ سائبةً في جسم النافذة،
+   يفصلها تخطيطُ الصفوف الزوجيّة وحدَه، فلا يُدرك الناظرُ أين تبدأ
+   التفاصيلُ وأين تنتهي — وبعدها زرُّ الآية وصناديقُ الجلسات بلا فاصل.
+
+   فصارت بطاقةً محدودةَ الحدّ: حدٌّ رقيقٌ وزوايا مستديرةٌ وحشوةٌ تُبعد
+   الصفوفَ عن الحدّ. ولم يتبدّل صفٌّ ولا حقلٌ ولا موضعُ شيءٍ داخلها —
+   الإطارُ حولها لا فيها.
+   ========================================================================= */
+.tsd-sheet {
+  border: 1px solid #e1e8e9; border-radius: 16px;
+  padding: 6px; background: #fff;
+}
+.tsd-sheet .tsd-row { border-radius: 11px; }
+
+/* والصفوفُ الزوجيّةُ تُخطَّط داخل الإطار، فتُقاس من أوّل صفٍّ فيه لا من
+   أوّل عقدةٍ في النافذة — وإلّا انقلب التخطيطُ بزيادة صفٍّ أو نقصه. */
+.tsd-sheet .tsd-row:nth-child(odd) { background: rgba(15, 111, 114, .05); }
+
+:root:not([data-theme="light"]) .tsd-sheet,
+:root[data-theme="dark"] .tsd-sheet { border-color: #1f4746; background: #0c1f1e; }
+:root:not([data-theme="light"]) .tsd-sheet .tsd-row:nth-child(odd),
+:root[data-theme="dark"] .tsd-sheet .tsd-row:nth-child(odd) { background: rgba(31, 71, 70, .38); }
+
+@media (max-width: 420px) { .tsd-sheet { padding: 5px; border-radius: 14px; } }

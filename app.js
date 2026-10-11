@@ -41602,7 +41602,7 @@ window.calculateHomeworkEnd = function (startSurah, startAyah, amountInPages, mu
   if (!(n > 0)) {
     return Promise.resolve({ error: "المقدار غير صحيح: " + amountInPages });
   }
-  if (typeof Quran === "undefined" || !Quran.advance || !Quran.locate) {
+  if (typeof Quran === "undefined" || !Quran.locate || !Quran.page) {
     return Promise.resolve({ error: "بياناتُ المصحف لم تُحمَّل بعد" });
   }
   /* طبعةٌ واحدةٌ في المشروع: ما في quran/. وأيُّ اسمٍ آخرَ يُعلَن ولا يُخمَّن */
@@ -41618,16 +41618,86 @@ window.calculateHomeworkEnd = function (startSurah, startAyah, amountInPages, mu
     return Promise.resolve(Quran.locate(s, a)).then(function (from) {
       if (!from || !from.page) return { error: "تعذّر تحديدُ صفحة الآية" };
 
-      return Promise.resolve(rangeEnd(s, a, n, "وجه", "forward")).then(function (end) {
-        if (!end || !end.surah) return { error: "تعذّر حسابُ نهاية الواجب" };
-        let eS = Number(end.surah), eA = Number(end.ayah) || 1;
-        /* لا يتجاوز آخرَ المصحف */
-        if (eS > 114) { eS = 114; eA = 6; }
-        return Promise.resolve(end.page ? end.page : Quran.locate(eS, eA))
-          .then(function (pg) {
-            const pNum = typeof pg === "number" ? pg : ((pg && pg.page) || 0);
-            return { surah: eS, ayah: eA, page: pNum, fromPage: Number(from.page) };
+      const P = Number(from.page);
+
+      /* ---------------------------------------------------------------
+         طولُ الوجه يُقاس بآيات صفحته الحقيقيّة
+         ---------------------------------------------------------------
+         Quran.page(n) يردُّ آياتِ الصفحة صفّاً صفّاً، فعددُها هو عددُ
+         آياتِ ذلك الوجه — لا متوسّطٌ ولا تقدير. وأوجهٌ متعدّدةٌ يُجمع
+         طولُها من صفحاتها واحدةً واحدة، والكسرُ يُقسَم من طول صفحته.
+         --------------------------------------------------------------- */
+      /* وآيةٌ لا تُسنَد لا تُحسب في طول الوجه: البسملةُ في الفاتحة ليست
+         آيةً على عدّ صاحب النظام (skipBasmala)، فصفحتُها ستُّ آياتٍ لا
+         سبعٌ. ولولا هذا لخرج وجهُ الفاتحة إلى البقرة بآيةٍ واحدة. */
+      const rowsOf = function (p) {
+        if (p < 1 || p > 604) return Promise.resolve([]);
+        return Promise.resolve(Quran.page(p)).then(function (rows) {
+          return (rows || []).filter(function (r) {
+            return typeof skipBasmala !== "function" ||
+                   skipBasmala(Number(r.s), Number(r.a)) === Number(r.a);
           });
+        }).catch(function () { return []; });
+      };
+      const lenOf = function (p) {
+        return rowsOf(p).then(function (rows) { return rows.length; });
+      };
+
+      const full = Math.floor(n), frac = n - full;
+      let span = 0, i = 0;
+      const addFull = function () {
+        if (i >= full) {
+          if (frac <= 0) return Promise.resolve();
+          return lenOf(P + full).then(function (L) {
+            if (L > 0) span += Math.max(1, Math.round(frac * L));
+          });
+        }
+        return lenOf(P + i).then(function (L) { span += L; i++; return addFull(); });
+      };
+
+      return addFull().then(function () {
+        span = Math.max(1, span);
+
+        /* ---------------------------------------------------------------
+           ثمّ يُمشى بطول الوجه من موضع الابتداء نفسِه
+           ---------------------------------------------------------------
+           «عايز لما أضغط على علامة + يزوّد ويظبّطها على قدّ الوجه بالظبط».
+           فالمدى طولُه وجهٌ كاملٌ من حيث وقف المعلّم، لا ما بقي من صفحته:
+           من مريم ١ ينتهي عند ١١ (أوّلُ الصفحة فآخرُها)، ومن مريم ٣ ينتهي
+           عند ١٣ — وجهٌ بطوله لا تسعُ آياتٍ.
+
+           والمشيُ على آياتِ الصفحات نفسِها، فيعبر السورةَ إن عبرتها
+           ويقف عند آخر المصحف إن بلغه.
+           --------------------------------------------------------------- */
+        const acc = [];
+        let i0 = -1, p = P;
+        const walk = function () {
+          if (p > 604) return Promise.resolve();
+          return rowsOf(p).then(function (rows) {
+            const pg = p;
+            rows.forEach(function (r) {
+              acc.push({ s: Number(r.s), a: Number(r.a), p: pg });
+            });
+            if (i0 < 0) {
+              for (let k = 0; k < acc.length; k++) {
+                if (acc[k].s === s && acc[k].a === a) { i0 = k; break; }
+              }
+            }
+            p++;
+            if (i0 >= 0 && acc.length >= i0 + span) return;
+            return walk();
+          });
+        };
+
+        return walk().then(function () {
+          if (i0 < 0) return { error: "تعذّر تحديدُ موضع الآية في صفحتها" };
+          /* إن بلغ المشيُ آخرَ المصحف وقف عند آخر آيةٍ فيه */
+          const t = acc[Math.min(i0 + span - 1, acc.length - 1)];
+          if (!t) return { error: "تعذّر حسابُ نهاية الواجب" };
+          let eS = t.s, eA = t.a;
+          if (eS > 114) { eS = 114; eA = 6; }
+          return { surah: eS, ayah: eA, page: t.p, fromPage: P, span: span };
+        });
       });
     });
   }).catch(function (e) {
@@ -48504,7 +48574,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-1940";
+  var APP_BUILD = "20261011-2010";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
