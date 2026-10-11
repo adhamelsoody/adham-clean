@@ -15632,6 +15632,71 @@ function nextAfter(toS, toA, dir) {
 }
 
 /* =========================================================================
+   المدى لا يتعدّى السورةَ التي ابتدأ منها
+   -------------------------------------------------------------------------
+   «هنا أنا حدّدتُ سورة النحل من أوّلها إلى آخرها، ولمّا عملتُ اعتماداً
+   رجعتُ لقيتُ حاجةً غير اللي أنا عملتها»: الخطةُ لا تحفظ «إلى» أصلاً —
+   تحفظ بدايةً ومقداراً، والنهايةُ تُحسب بالمشي في جدول المصحف بمقدار
+   الواجب. فمقدارٌ خمسةٌ وخمسون وجهاً يمشي من النحل ١ فيقف عند طه ١٣٥،
+   ويبتلع سوراً لم يخترها أحد.
+
+   فصار المدى يقف عند آخر آيةٍ في سورة ابتدائه مهما كان المقدار. وما بقي
+   من المقدار يُؤجَّل إلى الغد: الموضعُ يتقدّم بعد الاعتماد إلى أوّل
+   السورة التالية (advancePlanAfter للحفظ، و stepFrom للمراجعة)، فيأخذ
+   واجبُ الغد مقدارَه من هناك.
+
+   والمقدارُ يُصحَّح على المدى المقصور، وإلّا بقي الواجبُ ناقصاً أبداً:
+   asgRemain يطرح المُسمَّع من المقدار، فخمسةٌ وخمسون وجهاً على مدىً طولُه
+   خمسةَ عشرَ لا تُغلَق جلساتُه قطّ. والمقدارُ المخطَّط لا يُحذف — يُنقل
+   إلى qtyPlan ليُعرف أنّ هناك بقيّةً، ويُكتب في الملاحظة سببُ الوقوف.
+
+   ومقدارٌ وحدتُه «سورة» مستثنىً: من قال «ثلاث سور» أراد تعدّيَها.
+   والتنازليُّ يقف عند الآية الأولى من سورته.
+   ========================================================================= */
+function hwUnitLines(u) {
+  const r = (typeof HW_UNITS !== "undefined" ? HW_UNITS : [])
+    .find(x => x && x.k === String(u || "وجه"));
+  return r ? Number(r.lines) || 0 : 15;
+}
+
+function asgCapToSurah(a, end) {
+  if (!end || !a) return Promise.resolve(end);
+  const fs = Number(a.fromS) || 0;
+  if (!fs || Number(end.surah) === fs) return Promise.resolve(end);
+  if (unitQ(a.unit) === "surah") return Promise.resolve(end);
+  if (typeof Quran === "undefined") return Promise.resolve(end);
+
+  const back = dirOf(a.direction) === "backward";
+  const stop = back
+    ? Promise.resolve({ surah: fs, ayah: 1 })
+    : (Quran.ayahCount
+        ? Quran.ayahCount(fs).then(c => (c ? { surah: fs, ayah: Number(c) } : null))
+        : Promise.resolve(null));
+
+  return stop.then(p => {
+    if (!p || !p.ayah) return end;
+    /* المقدارُ على المدى المقصور — يُقاس بمحرّك المصحف لا بالتقدير */
+    const fA = Number(a.fromA) || 1;
+    const m1 = back ? [fs, p.ayah, fs, fA] : [fs, fA, fs, p.ayah];
+    if (!Quran.measure) { a.capped = true; return p; }
+    return Quran.measure(m1[0], m1[1], m1[2], m1[3]).then(m => {
+      if (m) {
+        const u = String(a.unit || "وجه");
+        const ln = hwUnitLines(u);
+        const q = (u === "آية") ? (Number(m.ayahs) || 0)
+                : (ln > 0 ? (Number(m.faces) || 0) * 15 / ln : 0);
+        if (q > 0) {
+          a.qtyPlan = Number(a.qty) || 0;          /* المخطَّطُ لا يُحذف */
+          a.qty = Math.round(q * 100) / 100;
+        }
+      }
+      a.capped = true;
+      return p;
+    }).catch(() => { a.capped = true; return p; });
+  }).catch(() => end);
+}
+
+/* =========================================================================
    إتمام مدى الواجبات
    -------------------------------------------------------------------------
    التوليد متزامن ولا ينتظر جدول المصحف، فتُولَّد الواجبات ببدايتها ثم
@@ -15644,9 +15709,13 @@ window.fillAsgRanges = function (list) {
   if (!need.length) return Promise.resolve(0);
 
   return Promise.all(need.map(a =>
-    rangeEnd(a.fromS, a.fromA, a.qty, a.unit, a.direction).then(end => {
+    rangeEnd(a.fromS, a.fromA, a.qty, a.unit, a.direction)
+      .then(end => asgCapToSurah(a, end))
+      .then(end => {
       if (!end) return 0;
       a.toS = end.surah; a.toA = end.ayah;
+      /* سببُ القِصَر يُكتب، ولا يُطمس ما كُتب قبله */
+      if (a.capped && !a.note) a.note = "وقف عند آخر السورة — بقيّةُ المقدار لغدٍ";
       persistSet("assignments", a);
       return 1;
     }).catch(() => 0)
@@ -47920,7 +47989,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-0725";
+  var APP_BUILD = "20261011-0800";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
