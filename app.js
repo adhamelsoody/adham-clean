@@ -27198,12 +27198,15 @@ function tstuPlanBox(st) {
       <label>${ic("target", 13)} الابتداء — السورة والآية</label>
       <div class="sp-startrow">
         <select id="${pfx}Sura" class="sp-sel sp-sura" data-dir="${esc(dirId)}"
-          data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}">
+          data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}"
+          onchange="window.ayahCap('${pfx}Ayah','${pfx}Sura')">
           <option>${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}</option>
         </select>
         <div class="sp-step">
           <button type="button" onclick="window.spAyah('${pfx}', 1)">+</button>
-          <input id="${pfx}Ayah" type="number" min="1" value="${Number(ayah) || 1}">
+          <input id="${pfx}Ayah" type="number" min="1" value="${Number(ayah) || 1}"
+            data-sura="${pfx}Sura" oninput="window.ayahCap('${pfx}Ayah')"
+            onchange="window.ayahCap('${pfx}Ayah')">
           <button type="button" onclick="window.spAyah('${pfx}', -1)">−</button>
         </div>
       </div>
@@ -28271,16 +28274,26 @@ window.numStep = function (id, d) {
   const lo = Number(el.getAttribute("min"));
   const n = (Number(el.value) || 0) + (Number(d) || 0);
   el.value = String(Math.max(isFinite(lo) ? lo : 0, n));
+  /* خانةُ الآية لا تتجاوز آياتَ سورتها — «+» يتوقّف عند آخرها */
+  if (el.dataset && el.dataset.sura && typeof window.ayahCap === "function") {
+    window.ayahCap(String(id));
+  }
 };
 
 /* زرّان حول حقلٍ رقميّ: − يساراً و + يميناً كخطّ الأعداد */
-function numStepBox(id, cls, value, label, min) {
+function numStepBox(id, cls, value, label, min, suraId, shown) {
+  /* suraId اختياريٌّ: إن مُرِّر صارت الخانةُ مقيَّدةً بعدد آيات تلك السورة.
+     و shown يقول إنّ الخانةَ تعرض بعدّ صاحب النظام لا بعدّ المصحف. */
+  const sa = suraId ? ` data-sura="${jsAttr(String(suraId))}"` +
+    (shown ? ' data-shown="1"' : "") +
+    ` oninput="window.ayahCap('${jsAttr(String(id))}')"` +
+    ` onchange="window.ayahCap('${jsAttr(String(id))}')"` : "";
   return `<span class="rcv-step">
     <button type="button" class="rcv-pm" aria-label="زيادة ${esc(label)}"
       onclick="window.numStep('${jsAttr(id)}', 1)">+</button>
     <input id="${esc(id)}" class="tsd-in ${esc(cls)} rcv-num" type="number"
       min="${esc(String(min))}" dir="ltr" value="${esc(String(value))}"
-      aria-label="${esc(label)}">
+      aria-label="${esc(label)}"${sa}>
     <button type="button" class="rcv-pm" aria-label="إنقاص ${esc(label)}"
       onclick="window.numStep('${jsAttr(id)}', -1)">&minus;</button>
   </span>`;
@@ -28366,8 +28379,9 @@ window.tstuDuty = function (id) {
         <span class="tsd-k">من</span>
         <span class="tsd-v">${canFrom && !locked
           ? `<span class="tsd-pair tsd-pair-w">
-               <select id="tsd_fS" class="tsd-in tsd-sura">${sOpts(a.fromS || 1)}</select>
-               ${numStepBox("tsd_fA", "tsd-ayah-n", ayahShow(a.fromS, fA0), "من آية", 1)}
+               <select id="tsd_fS" class="tsd-in tsd-sura"
+                 onchange="window.ayahCap('tsd_fA','tsd_fS')">${sOpts(a.fromS || 1)}</select>
+               ${numStepBox("tsd_fA", "tsd-ayah-n", ayahShow(a.fromS, fA0), "من آية", 1, "tsd_fS", true)}
              </span>`
           : `${a.fromS ? esc(surahName(a.fromS)) : "—"}${
               a.fromA ? " · الآية " + toArabicDigits(ayahShow(a.fromS, fA0)) : ""}`}</span>
@@ -28377,9 +28391,10 @@ window.tstuDuty = function (id) {
         <span class="tsd-k">إلى</span>
         <span class="tsd-v">${canEnd && !locked
           ? `<span class="tsd-pair tsd-pair-w">
-               <select id="tsd_tS" class="tsd-in tsd-sura">${sOpts(a.toS || a.fromS || 1)}</select>
+               <select id="tsd_tS" class="tsd-in tsd-sura"
+                 onchange="window.ayahCap('tsd_tA','tsd_tS')">${sOpts(a.toS || a.fromS || 1)}</select>
                ${numStepBox("tsd_tA", "tsd-ayah-n",
-                   ayahShow(a.toS || a.fromS, a.toA || 1), "إلى آية", 1)}
+                   ayahShow(a.toS || a.fromS, a.toA || 1), "إلى آية", 1, "tsd_tS", true)}
              </span>`
           : `${a.toS ? esc(surahName(a.toS)) : (a.fromS ? esc(surahName(a.fromS)) : "—")}${
               a.toA ? " · الآية " + toArabicDigits(ayahShow(a.toS || a.fromS, a.toA)) : ""}`}</span>
@@ -28409,6 +28424,13 @@ window.tstuDuty = function (id) {
           ic("check", 15)} حفظ التعديلات</button>` : ""}
      ${canSplit ? `<button class="btn btn-soft" onclick="window.tsplSave()">حفظ الجلسات</button>` : ""}
      <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+
+  /* خانتا الآية تأخذان حدَّ سورتَيهما عند الفتح — وإن تأخّر الفهرسُ أُعيدتا */
+  [0, 300, 900].forEach(function (ms) {
+    setTimeout(function () {
+      try { window.ayahCapAll(document.getElementById("modalRoot")); } catch (e) {}
+    }, ms);
+  });
 
   /* نصُّ الآية الأولى: يُجلب من محرّك المصحف ثمّ يُوضع في موضعه */
   if (a.fromS && typeof window.Quran !== "undefined" && window.Quran.range) {
@@ -40820,12 +40842,15 @@ function panelStudent(id, keepDraft) {
       <label>${ic("target", 13)} الابتداء — السورة والآية</label>
       <div class="sp-startrow">
         <select id="${pfx}Sura" class="sp-sel sp-sura" data-dir="${esc(dirId)}"
-          data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}">
+          data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}"
+          onchange="window.ayahCap('${pfx}Ayah','${pfx}Sura')">
           <option>${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}</option>
         </select>
         <div class="sp-step">
           <button type="button" onclick="window.spAyah('${pfx}', 1)">+</button>
-          <input id="${pfx}Ayah" type="number" min="1" value="${Number(ayah) || 1}">
+          <input id="${pfx}Ayah" type="number" min="1" value="${Number(ayah) || 1}"
+            data-sura="${pfx}Sura" oninput="window.ayahCap('${pfx}Ayah')"
+            onchange="window.ayahCap('${pfx}Ayah')">
           <button type="button" onclick="window.spAyah('${pfx}', -1)">−</button>
         </div>
       </div>
@@ -41053,7 +41078,64 @@ window.spNum = function (id, delta) {
   el.value = Math.max(0, (Number(el.value) || 0) + delta);
 };
 
-window.spAyah = function (pfx, delta) { window.spNum(pfx + "Ayah", delta); };
+/* =========================================================================
+   خانةُ الآية لا تخرج عن عدد آيات سورتها
+   -------------------------------------------------------------------------
+   «لو في سورة عدد آياتها ١٠ يخلّيني أحدّد بين العشرة دول، مَينفعش أكتب ١١».
+
+   العددُ من فهرس المصحف نفسِه: quran/surahs.json يحمل لكلّ سورةٍ {i,n,a,p}
+   و a عددُ آياتها. فلا جدولَ ثانٍ يُكتب هنا ولا رقمَ محفور، ويصحُّ على
+   السور كلِّها لا على مثال. وإن تأخّر الفهرسُ فلا تُقيَّد الخانةُ بالظنّ:
+   تبقى كما هي حتى يصل.
+
+   والخانةُ تبقى خانةً بزرّيها كما أَلِفتَها — إنّما لها حدٌّ أعلى الآن:
+   الكتابةُ فوق العدد تُرَدُّ إلى آخر آيةٍ في السورة، و«+» لا يتجاوزها،
+   و«−» لا ينزل دون الأولى. وتبديلُ السورة يُعيد الحدَّ ويَقصُر ما زاد.
+   ========================================================================= */
+function ayahCountOf(v) {
+  const s = String(v == null ? "" : v).trim();
+  if (!s) return 0;
+  const from = (typeof SP_SURAHS !== "undefined" && SP_SURAHS) ? SP_SURAHS
+             : (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : null;
+  if (!from || !from.length) return 0;
+  const n = Number(s);
+  const rec = (isFinite(n) && n > 0)
+    ? from.find(x => x && Number(x.i) === n)      /* قائمةٌ بأرقام السور */
+    : from.find(x => x && String(x.n) === s);     /* قائمةٌ بأسماء السور */
+  return rec ? (Number(rec.a) || 0) : 0;
+}
+window.ayahCountOf = ayahCountOf;
+
+window.ayahCap = function (ayahId, suraId) {
+  const el = document.getElementById(ayahId);
+  if (!el) return;
+  const sid = suraId || el.dataset.sura || "";
+  const src = sid ? document.getElementById(sid) : null;
+  let cnt = ayahCountOf(src ? src.value : "");
+  if (!cnt) return;                /* الفهرسُ لم يصل: لا تُقيَّد بالظنّ */
+  /* خانةٌ تعرض بعدّ صاحب النظام (ayahShow) حدُّها بذلك العدّ لا بعدّ
+     المصحف: الفاتحةُ سبعٌ في المصحف وستٌّ في العرض، فلا يُسمح بسابعةٍ
+     تُخزَّن ثامنةً لا وجودَ لها. */
+  if (el.dataset && el.dataset.shown === "1" && typeof ayahShow === "function") {
+    cnt = ayahShow(Number(src ? src.value : 0) || 0, cnt) || cnt;
+  }
+  el.max = String(cnt);
+  const n = Number(el.value) || 0;
+  if (n > cnt) el.value = String(cnt);
+  else if (n < 1) el.value = "1";
+};
+
+/* بعد ملء قائمة السور: كلُّ خانةِ آيةٍ تأخذ حدَّ سورتها */
+window.ayahCapAll = function (root) {
+  const box = root || document;
+  Array.prototype.forEach.call(box.querySelectorAll("input[data-sura]"),
+    function (e) { if (e.id) window.ayahCap(e.id); });
+};
+
+window.spAyah = function (pfx, delta) {
+  window.spNum(pfx + "Ayah", delta);
+  window.ayahCap(pfx + "Ayah", pfx + "Sura");
+};
 
 /* قائمةُ السور تُملأ من ملفّ المصحف بعد الرسم: مئةٌ وأربعَ عشرةَ سورةً
    لا تُكتب في الكود، والملفُّ موجودٌ في /quran ويُحمَّل مرّةً ويُخزَّن. */
@@ -41075,6 +41157,8 @@ function spFillSurahs(root) {
       sel.innerHTML = list2.map(n =>
         '<option' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>').join("");
     });
+    /* الفهرسُ وصل: كلُّ خانةِ آيةٍ تأخذ حدَّ سورتها الآن */
+    try { window.ayahCapAll(root || document); } catch (e) {}
   }).catch(function () {});
 }
 
@@ -47836,7 +47920,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-0650";
+  var APP_BUILD = "20261011-0725";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
