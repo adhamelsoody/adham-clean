@@ -15205,8 +15205,7 @@ function quotaState(studentId, dateISO) {
   if (!cfg) return null;
 
   const r = quotaRange(cfg.period, dateISO);
-  const mine = asgTermList().filter(a =>
-    String(a.studentId) === String(studentId) &&
+  const mine = asgTermOf(studentId).filter(a =>
     String(a.date) >= r.from && String(a.date) <= r.to);
 
   const byKind = {};
@@ -15818,8 +15817,7 @@ function criticalDebt(studentId, dateISO) {
   const y = typeof prevDay === "function" ? prevDay(dateISO) : "";
   if (!y) return [];
 
-  return asgTermList().filter(a =>
-    String(a.studentId) === String(studentId) &&
+  return asgTermOf(studentId).filter(a =>
     String(a.date) <= String(y) &&
     (crit.indexOf(String(a.kind).replace("_makeup", "")) > -1 || a.holdPlan === true) &&
     (a.status === "missed" || a.status === "failed" || a.status === "pending") &&
@@ -15905,15 +15903,13 @@ function linkedNext(kind, studentId, dir) {
   const t = hwType(kind);
   if (!t.loopOf) return null;
 
-  const mine = asgTermList()
-    .filter(a => String(a.studentId) === String(studentId) &&
-                 String(a.kind).replace("_makeup", "") === kind &&
+  const mine = asgTermOf(studentId)
+    .filter(a => String(a.kind).replace("_makeup", "") === kind &&
                  a.status === "done" && a.toS)
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
 
-  const other = asgTermList()
-    .filter(a => String(a.studentId) === String(studentId) &&
-                 String(a.kind).replace("_makeup", "") === String(t.loopOf) &&
+  const other = asgTermOf(studentId)
+    .filter(a => String(a.kind).replace("_makeup", "") === String(t.loopOf) &&
                  a.status === "done" && a.toS)
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
 
@@ -15933,9 +15929,8 @@ function linkedNext(kind, studentId, dir) {
   const caught = back ? (rMine <= rOther) : (rMine >= rOther);
 
   if (caught) {
-    const first = asgTermList()
-      .filter(a => String(a.studentId) === String(studentId) &&
-                   String(a.kind).replace("_makeup", "") === kind && a.fromS)
+    const first = asgTermOf(studentId)
+      .filter(a => String(a.kind).replace("_makeup", "") === kind && a.fromS)
       .sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
     return first
       ? { surah: first.fromS, ayah: first.fromA, looped: true }
@@ -15957,6 +15952,38 @@ function asgId(dateISO, studentId, kind) {
 /* واجبات الفترة النشطة وحدها.
    بدون هذا الفرز تظهر واجبات الفترة السابقة مع الجديدة بعد الترحيل،
    وتُحتسب متأخّراتُ دورةٍ انتهت على دورةٍ لم تبدأ. */
+/* =========================================================================
+   واجباتُ طالبٍ بعينه — من السجلّ لا من المصفّاة
+   -------------------------------------------------------------------------
+   «مينفعش في الإدارة تكون بيانات وفي المعلّم بيانات، والطالب هيحصل
+   مشكلة»: المحرّكُ يبني واجبَ اليوم على تاريخ الطالب — آخرِ ما سُمّع،
+   ودروسِه الناجحة، وختماتِه، ومتأخّراتِه. وكانت هذه كلُّها تُقرأ عبر
+   cur("assignments") وهي مصفّاةٌ بنطاق المنشأة. فسجلٌّ بلا بصمةِ مسجدٍ أو
+   مجمّع — أو ببصمةٍ لا تطابق نطاقَ الناظر — يُرى من جهةٍ ويُحجب عن أخرى،
+   فيختلف المولَّدُ بين الإدارة والمعلّم، ويرى الطالبُ ثالثاً.
+
+   والطالبُ نفسُه مرَّ بالتصفية قبل أن نسأل عن واجباته، فمن رآه فله أن يرى
+   تاريخَه. ولا تُفتح بهذا قائمةٌ يتصفّحها أحد: هاتان لا تُجيبان إلا عن
+   طالبٍ بعينه، والتصفيةُ على القوائم العامّة باقيةٌ كما هي.
+   ========================================================================= */
+function asgOf(studentId) {
+  const sid = String(studentId || "");
+  if (!sid) return [];
+  return (Array.isArray(DB.assignments) ? DB.assignments : [])
+    .filter(a => a && String(a.studentId) === sid);
+}
+
+/* واجباتُ طالبٍ في الفترة النشطة — بالفرز نفسِه الذي في asgTermList */
+function asgTermOf(studentId) {
+  const t = typeof activeTermId === "function" ? activeTermId() : "";
+  const list = asgOf(studentId);
+  if (!t) return list;
+  return list.filter(a => {
+    if (a.termId) return String(a.termId) === String(t);
+    return typeof termOfDate === "function" ? termOfDate(a.date) === String(t) : true;
+  });
+}
+
 function asgTermList() {
   const t = typeof activeTermId === "function" ? activeTermId() : "";
   const list = cur("assignments") || [];
@@ -15969,8 +15996,11 @@ function asgTermList() {
 }
 
 function asgFind(dateISO, studentId, kind) {
-  return (cur("assignments") || []).find(a =>
-    String(a.id) === asgId(dateISO, studentId, kind));
+  /* المفتاحُ يحمل الطالبَ واليومَ والنوعَ — فلا توسيعَ في البحث، وإنّما
+     رفعُ حجبٍ كان يجعل الواجبَ الواحدَ يُرى من جهةٍ ويُولَّد من أخرى. */
+  const key = asgId(dateISO, studentId, kind);
+  return (Array.isArray(DB.assignments) ? DB.assignments : [])
+    .find(a => a && String(a.id) === key);
 }
 
 /* آخر دروس الحفظ المنجزة — «الدرس» جلسة يومٍ واحد سُمّعت بنجاح */
@@ -15981,9 +16011,8 @@ function lastLessons(studentId, n) {
   /* من كلّ سجلّه لا من فترته النشطة وحدها: «آخر خمسة دروس ناجحة» وصفٌ
      لتاريخ الطالب لا لدورةٍ بعينها. وكان يعود من الترحيل بلا دروسٍ فلا
      يُولَّد له تثبيتٌ أسبوعاً حتى تتراكم خمسةٌ جديدة. */
-  const done = (cur("assignments") || [])
-    .filter(a => String(a.studentId) === String(studentId) &&
-                 String(a.kind).indexOf("hifz") === 0 && a.status === "done" &&
+  const done = asgOf(studentId)
+    .filter(a => String(a.kind).indexOf("hifz") === 0 && a.status === "done" &&
                  Number(a.score) >= cfg.redo)
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
@@ -16098,8 +16127,7 @@ function surahRounds(studentId, surah) {
   if (!surah) return 0;
   /* من كلّ سجلّه لا من فترته النشطة: الترحيل يطوي واجبات الفترة السابقة،
      فيعود عدُّ الختمات إلى الصفر ويُعاد على الطالب ما أتمّ تكرارَه. */
-  return (cur("assignments") || []).filter(a =>
-    String(a.studentId) === String(studentId) &&
+  return asgOf(studentId).filter(a =>
     String(a.kind).indexOf("hifz") === 0 &&
     a.status === "done" &&
     Number(a.toS) === Number(surah) &&
@@ -16191,9 +16219,8 @@ function repeatState(plan) {
   const cfg = repeatCfg(plan);
   if (!cfg.mode) return null;
 
-  const last = asgTermList()
-    .filter(a => String(a.studentId) === String(plan.studentId) &&
-                 String(a.kind).indexOf("hifz") === 0 && a.status === "done" && a.toS)
+  const last = asgTermOf(plan.studentId)
+    .filter(a => String(a.kind).indexOf("hifz") === 0 && a.status === "done" && a.toS)
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
 
   /* الختماتُ تشمل الأولى، والمعروضُ عددُ الإعادات بعدها — كما في repeatNext */
@@ -16255,9 +16282,8 @@ window.ayahStore = ayahStore;
 function nextHifzFrom(plan) {
   /* من الفترة النشطة: بعد الترحيل يبدأ الطالب من نقطة انطلاقٍ محدَّدة
      في خطته لا من حيث انتهى في دورةٍ مؤرشفة. */
-  const done = asgTermList()
-    .filter(a => String(a.studentId) === String(plan.studentId) &&
-                 a.kind === "hifz" && a.status === "done")
+  const done = asgTermOf(plan.studentId)
+    .filter(a => a.kind === "hifz" && a.status === "done")
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
 
   if (done && done.toS) {
@@ -16462,9 +16488,8 @@ function generateAssignments(studentId, dateISO) {
       /* النطاق أوّلاً: مراجعةٌ تدور في مدى تعود إلى أوّله إذا بلغت آخره */
       const planDir = dirOf(plan.direction);
       const scNext = scopeNext(t.k, null, null, planDir) ? (function () {
-        const lastSc = asgTermList()
-          .filter(a => String(a.studentId) === String(studentId) &&
-                       String(a.kind).replace("_makeup", "") === t.k &&
+        const lastSc = asgTermOf(studentId)
+          .filter(a => String(a.kind).replace("_makeup", "") === t.k &&
                        a.status === "done" && a.toS)
           .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
         return scopeNext(t.k, lastSc ? lastSc.toS : null,
@@ -16489,9 +16514,8 @@ function generateAssignments(studentId, dateISO) {
         : (plan.dirSet ? dirOf(plan.direction) : (pillarDirOf(t.k) || dirOf(plan.direction)));
 
       /* المراجعة والتلاوة تبدآن من حيث انتهى آخرُ ما سُمّع من نوعها */
-      const last = asgTermList()
-        .filter(a => String(a.studentId) === String(studentId) &&
-                     a.kind === t.k && a.status === "done" && a.toS)
+      const last = asgTermOf(studentId)
+        .filter(a => a.kind === t.k && a.status === "done" && a.toS)
         .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
 
       if (last) {
@@ -16624,8 +16648,7 @@ function asgBlocked(a) {
 /* متأخّرات الطالب: ما لم يُسمَّع ولم يُعوَّض */
 function asgDebts(studentId) {
   /* من الفترة النشطة وحدها: متأخّرات دورةٍ انتهت لا تُطالَب في دورةٍ جديدة */
-  return asgTermList().filter(a =>
-    String(a.studentId) === String(studentId) &&
+  return asgTermOf(studentId).filter(a =>
     (a.status === "failed" || a.status === "missed") &&
     !a.settled);
 }
@@ -17149,8 +17172,7 @@ function levelProgress(plan) {
      وكان يجمع كلّ حفظ الطالب بلا فرزٍ بالمستوى، فمن رُقّي وجد عشرين وجهاً
      محسوبةً له في الجديد بلا عمل — وقد يُرقّى مرّةً أخرى في يومه.
      والتعويض hifz_makeup كان يسقط لأن المقارنة بالتساوي لا بالبدء. */
-  const done = asgTermList().filter(a =>
-    String(a.studentId) === String(plan.studentId) &&
+  const done = asgTermOf(plan.studentId).filter(a =>
     String(a.kind).indexOf("hifz") === 0 && a.status === "done" &&
     /* بلا وسمٍ: واجبٌ قديمٌ سبق الوسم — يُنسب إلى المستوى الحالي كما كان */
     (!a.levelId || String(a.levelId) === String(plan.levelId)));
@@ -24525,8 +24547,7 @@ function planTally(plan) {
                 fixTotal: 0, fixDone: 0 };
   if (!plan || !plan.studentId) return out;
 
-  const mine = asgTermList().filter(a =>
-    a && String(a.studentId) === String(plan.studentId));
+  const mine = asgTermOf(plan.studentId);
 
   mine.forEach(a => {
     const k = String(a.kind).replace("_makeup", "");
@@ -26706,7 +26727,7 @@ function tcrcSummary(sid) {
 function tcrcSubLine(s) {
   const sm = typeof tcrcSummary === "function" ? tcrcSummary(s.id) : null;
   return sm ? `<small class="tq-sum tq-sum-${sm.tone}">${esc(sm.txt)}</small>`
-            : `<small>${esc(s.level || s.circle || "—")}</small>`;
+            : `<small>${esc(stuLevelName(s) || s.circle || "—")}</small>`;
 }
 
 /* الضغطُ على علامةٍ يفتح صفحةَ الطالب على بطاقة واجبها */
@@ -27699,7 +27720,9 @@ function tstuStatCards(st) {
      ولم يسقط رقمٌ كان ظاهراً: التأخّراتُ وواجباتُ اليوم والغيابُ صارت
      شاراتٍ تحت البطاقات، وعددُ التسميعات في بطاقته.
      ===================================================================== */
-  const lvl = (plan && (plan.level || (lp && lp.level && lp.level.name))) || "—";
+  /* المصدرُ نفسُه الذي تقرؤه الإدارة — فلا يختلف القولان في الطالب الواحد */
+  const lvl = stuLevelName(st) || (plan && (plan.level ||
+              (lp && lp.level && lp.level.name))) || "—";
 
   /* جودةُ الأداء: متوسّطُ درجات تسميعاته المرصودة — وشرطتان إن لم تُرصد */
   const scored = recs.filter(r => r && r.score != null && !isNaN(Number(r.score)));
@@ -29952,10 +29975,17 @@ function dayNameOf(dateISO) {
 }
 
 /* أيام الحلقة التي ينتمي إليها الطالب */
+/* أيامُ حلقة الطالب — تُقرأ من السجلّ لا من المصفّاة
+   «في الإدارة جايبلي إنّ اليوم يوم دوامه، وفي المعلّم إنّه ليس يوم دوامه»:
+   كانت تُقرأ عبر cur("circles")، وهي مصفّاةٌ بنطاق المنشأة. فحلقةٌ بلا
+   بصمةِ مسجدٍ أو مجمّع تسقط عن حسابٍ وتبقى لآخر، فتعود الأيامُ فارغةً عند
+   الأوّل — و isDutyDay لا تمنع على فراغٍ فتقول «يوم دوامه» — ويراها
+   الثاني فيقول «ليس يومَه». والطالبُ مرَّ بالتصفية قبل السؤال عن أيامه. */
 function studentCircleDays(st) {
-  const c = (cur("circles") || []).find(x =>
-    String(x.id) === String(st.circleId) ||
-    (!st.circleId && String(x.name) === String(st.circle)));
+  const all = Array.isArray(DB.circles) ? DB.circles : [];
+  const c = all.find(x => x &&
+    (String(x.id) === String(st.circleId) ||
+     (!st.circleId && String(x.name) === String(st.circle))));
   return c ? daysToArray(c.days) : [];
 }
 
@@ -39523,9 +39553,55 @@ window.stuProgChanged = function (progSel, lvlSel) {
 };
 
 /* الاسم من المعرّف — يُحفظ الاثنان: المعرّف للربط والاسم ليبقى مقروءاً */
+/* =========================================================================
+   اسمُ المستوى والبرنامج: جوابٌ واحدٌ لكلّ سائل
+   -------------------------------------------------------------------------
+   «في المعلّم جايبلي إنّه في المستوى الأول، والإدارة ما ذاكرة مستوى»:
+   كانت بطاقةُ الإدارة تقرأ st.level (نصّاً محفوظاً في سجلّ الطالب)، وبطاقةُ
+   المعلّم تقرأ plan.level (نصّاً في سجلّ الخطة). فإن كُتب أحدُهما ولم
+   يُكتب الآخرُ اختلف القولان في الطالب الواحد.
+
+   و lvNameById كانت تقرأ عبر cur("levels") — وهي مصفّاةٌ بنطاق المنشأة.
+   فمستوىً بلا بصمةِ مسجدٍ أو مجمّع يسقط عن بعض الحسابات فتُعرض «—» وهو
+   موجود. والطالبُ نفسُه مرَّ بالتصفية قبلَ أن نسأل عن مستواه، فمن رآه فله
+   أن يرى اسمَ مستواه — ولا تُفتح بهذا رؤيةٌ زائدة ولا كتابةَ هنا ألبتّة.
+   ========================================================================= */
 function lvNameById(id) {
-  const l = (cur("levels") || []).find(x => String(x.id) === String(id));
+  const all = Array.isArray(DB.levels) ? DB.levels : [];
+  const l = all.find(x => x && String(x.id) === String(id));
   return l ? (l.name || "") : "";
+}
+
+function prgNameById(id) {
+  if (!id) return "";
+  const all = (Array.isArray(DB.programs) ? DB.programs : [])
+    .concat(typeof sysPrograms === "function" ? (sysPrograms() || []) : []);
+  const p = all.find(x => x && String(x.id) === String(id));
+  return p ? (p.name || "") : "";
+}
+
+/* مستوى الطالب كما يقوله النظامُ كلُّه: نصُّه المحفوظ، فإن لم يكن
+   فاسمُ مستواه بمعرّفه، فإن لم يكن فما في سجلّ خطته. */
+function stuLevelName(st) {
+  if (!st) return "";
+  const pl = (Array.isArray(DB.plans) ? DB.plans : [])
+    .find(p => p && String(p.studentId) === String(st.id)) || {};
+  return String(st.level || "").trim()
+      || lvNameById(st.levelId)
+      || String(pl.level || "").trim()
+      || lvNameById(pl.levelId)
+      || "";
+}
+
+function stuProgramName(st) {
+  if (!st) return "";
+  const pl = (Array.isArray(DB.plans) ? DB.plans : [])
+    .find(p => p && String(p.studentId) === String(st.id)) || {};
+  return String(st.program || "").trim()
+      || prgNameById(st.programId)
+      || String(pl.program || "").trim()
+      || prgNameById(pl.programId)
+      || "";
 }
 
 /* العمر من تاريخ الميلاد: القيمة المحفوظة تشيخ مع صاحبها */
@@ -39539,7 +39615,9 @@ function ageFromBirth(birth) {
 
 /* أيام الحلقة — الطالب يرثها بدل كتابتها نصاً حراً */
 function circleDaysOf(circleName) {
-  const c = (cur("circles") || []).find(x => String(x.name) === String(circleName));
+  /* من السجلّ لا من المصفّاة — للعلّة نفسِها التي في studentCircleDays */
+  const c = (Array.isArray(DB.circles) ? DB.circles : [])
+    .find(x => x && String(x.name) === String(circleName));
   if (!c) return "";
   const d = c.days || c.circleDays;
   return Array.isArray(d) ? d.join(" · ") : String(d || "");
@@ -40999,8 +41077,8 @@ function panelStudent(id, keepDraft) {
         <div><h3>البرنامج والمستوى</h3>
           <p>تغيير البرنامج أو المستوى يُعيد توليد الخطة لهذه الحلقة</p></div>
         <div class="sp-headside">
-          <div class="sp-box"><small>البرنامج</small><strong>${esc(s.program || "—")}</strong></div>
-          <div class="sp-box"><small>المستوى</small><strong>${esc(s.level || "—")}</strong></div>
+          <div class="sp-box"><small>البرنامج</small><strong>${esc(stuProgramName(s) || "—")}</strong></div>
+          <div class="sp-box"><small>المستوى</small><strong>${esc(stuLevelName(s) || "—")}</strong></div>
           <button class="btn btn-ghost btn-sm"
             onclick="window.spProgLevel('${jsAttr(s.id)}')">${ic("edit", 14)} تغيير</button>
         </div>
@@ -41015,8 +41093,8 @@ function panelStudent(id, keepDraft) {
       ${statCard("تقرير الحضور", attPct + "%",
         `<span class="sp-dot g">${nPresent} حضور</span> <span class="sp-dot a">${nLate} تأخر</span>
          <span class="sp-dot b">${nExc} استئذان</span> <span class="sp-dot r">${nAbs} غياب</span>`, "calendar")}
-      ${statCard("المستوى", esc(s.level || "—"),
-        startDate ? "تاريخ البداية: " + esc(startDate) : esc(s.program || ""), "flag")}
+      ${statCard("المستوى", esc(stuLevelName(s) || "—"),
+        startDate ? "تاريخ البداية: " + esc(startDate) : esc(stuProgramName(s)), "flag")}
     </div>
 
     <!-- تقييمُ الأداء: درجةٌ من عشرة لكلّ ركن، تُسجَّل هنا وتُحفظ مع الخطة -->
@@ -48041,7 +48119,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-0845";
+  var APP_BUILD = "20261011-1015";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
