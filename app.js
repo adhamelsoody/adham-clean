@@ -41567,18 +41567,29 @@ window.tsdQtyRange = function () {
   if (typeof rangeEnd !== "function") return;
 
   const unit = (document.getElementById("tsd_unit") || {}).value || "وجه";
-  const sheet = fSel.closest(".tsd-sheet");
-  const dir = (sheet && sheet.dataset && sheet.dataset.dir) || "forward";
   const fA = typeof ayahStore === "function" ? ayahStore(fS, shown) : shown;
 
-  rangeEnd(fS, fA, q, unit, dir).then(function (end) {
+  /* =======================================================================
+     الحسابُ يمضي إلى الأمام دائماً من «من» إلى «إلى»
+     -----------------------------------------------------------------------
+     كان يتبع اتجاهَ الواجب، فطالبٌ خطتُه «من الناس» (تنازليّ) يُحسب له
+     الوجهُ إلى الوراء: من مريم ١ يرجع إلى الكهف، فيُقصَر على سورته فيقع
+     على مريم ١، ثمّ يرفعه حدُّ «إلى بعد من» إلى ٢ — فيرى المعلّمُ «٢»
+     ويظنُّ الحسابَ معطَّلاً. وهذا ما ظهر في مخرَج العميل: dir=backward
+     والنتيجةُ ٢، والمحرّكُ نفسُه يقول ١١ حين يُسأل تصاعداً.
+
+     وصحيفةُ الواجب تقرأ المدى تصاعداً أصلاً: «إلى» لا تكون قبل «من»
+     (رقعة ٢٤٨). فالوجهُ يُقاس من موضع الابتداء إلى ما بعده، واتجاهُ الخطة
+     شأنُه موضعُ الغد لا قياسُ صفحةِ اليوم.
+     ======================================================================= */
+  rangeEnd(fS, fA, q, unit, "forward").then(function (end) {
     if (!end || !end.surah) return;
     let tS = Number(end.surah), tA = Number(end.ayah) || 1;
     /* لا يتعدّى سورتَه — القاعدةُ نفسُها التي في asgCapToSurah */
     if (tS !== fS) {
       tS = fS;
       const cnt = typeof ayahCountOf === "function" ? ayahCountOf(fS) : 0;
-      tA = dirOf(dir) === "backward" ? 1 : (cnt || tA);
+      tA = cnt || tA;
     }
     tSel.value = String(tS);
     tSel.dispatchEvent(new Event("change", { bubbles: true }));
@@ -48416,7 +48427,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-1835";
+  var APP_BUILD = "20261011-1900";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
