@@ -28380,6 +28380,15 @@ window.numStep = function (id, d) {
   if (!el) return;
   const lo = Number(el.getAttribute("min"));
   const n = (Number(el.value) || 0) + (Number(d) || 0);
+  /* القائمةُ تُخطى بخيارها لا بقيمةٍ حرّة: ما ليس فيها لا يُختار */
+  if (el.tagName === "SELECT") {
+    const i = el.selectedIndex + (Number(d) || 0);
+    if (i >= 0 && i < el.options.length) el.selectedIndex = i;
+    if (el.dataset && el.dataset.sync && typeof window.ayahCap === "function") {
+      window.ayahCap(el.dataset.sync);
+    }
+    return;
+  }
   el.value = String(Math.max(isFinite(lo) ? lo : 0, n));
   /* خانةُ الآية لا تتجاوز آياتَ سورتها — «+» يتوقّف عند آخرها */
   if (el.dataset && el.dataset.sura && typeof window.ayahCap === "function") {
@@ -28403,6 +28412,21 @@ function numStepBox(id, cls, value, label, min, suraId, shown, syncId, afterId, 
     (afterSuraId ? ` data-after-sura="${jsAttr(String(afterSuraId))}"` : "") +
     ` oninput="window.ayahCap('${jsAttr(String(id))}')${foll}"` +
     ` onchange="window.ayahCap('${jsAttr(String(id))}')${foll}"` : "";
+
+  /* قائمةُ آياتٍ بدل الحقل المفتوح حين تكون السورةُ معلومة */
+  if (suraId) {
+    return `<span class="rcv-step">
+      <button type="button" class="rcv-pm" aria-label="زيادة ${esc(label)}"
+        onclick="window.numStep('${jsAttr(id)}', 1)">+</button>
+      <select id="${esc(id)}" class="tsd-in ${esc(cls)} rcv-num rcv-pick"
+        aria-label="${esc(label)}"${sa}>
+        <option value="${esc(String(value))}" selected>${
+          toArabicDigits(Number(value) || 1)}</option>
+      </select>
+      <button type="button" class="rcv-pm" aria-label="إنقاص ${esc(label)}"
+        onclick="window.numStep('${jsAttr(id)}', -1)">&minus;</button>
+    </span>`;
+  }
   return `<span class="rcv-step">
     <button type="button" class="rcv-pm" aria-label="زيادة ${esc(label)}"
       onclick="window.numStep('${jsAttr(id)}', 1)">+</button>
@@ -41398,6 +41422,38 @@ window.ayahCap = function (ayahId, suraId) {
   el.max = String(cnt);
   el.min = String(lo);
   const n = Number(el.value) || 0;
+  const pick = n > cnt ? cnt : (n < lo ? lo : n);
+
+  /* =======================================================================
+     قائمةُ آياتٍ لا حقلٌ مفتوح
+     -----------------------------------------------------------------------
+     «إذا كانت السورة ٥٠ آية فالاختياراتُ لا تتعدّى ٥٠ — ميكونش فيها ٥١.
+     وطبّق ده على كلّ السور».
+
+     والحدُّ وحدَه لا يكفي: حقلُ الأرقام يقبل ما يُكتب فيه ثمّ يُرَدُّ،
+     فيرى الكاتبُ ٥١ لحظةً. والقائمةُ لا تملك إلا ما فيها — فلا سبيلَ إلى
+     رقمٍ لا وجودَ له أصلاً.
+
+     والخياراتُ بين الحدّين: من آية الابتداء زائداً واحدة (في «إلى») إلى
+     آخر آيةٍ في السورة. وتُعاد بناءً كلّما تبدّلت السورةُ أو البداية.
+     وأرقامُها عربيةٌ كعُرف المشروع، وقيمتُها لاتينيةٌ كما يقرؤها الحفظ.
+     ======================================================================= */
+  if (el.tagName === "SELECT") {
+    const want = String(pick);
+    if (el.dataset.lo !== String(lo) || el.dataset.hi !== String(cnt) ||
+        el.options.length !== (cnt - lo + 1)) {
+      let html = "";
+      for (let i = lo; i <= cnt; i++) {
+        html += '<option value="' + i + '"' + (i === pick ? ' selected' : '') +
+                '>' + toArabicDigits(i) + '</option>';
+      }
+      el.innerHTML = html;
+      el.dataset.lo = String(lo); el.dataset.hi = String(cnt);
+    }
+    el.value = want;
+    return;
+  }
+
   if (n > cnt) el.value = String(cnt);
   else if (n < lo) el.value = String(lo);
 };
@@ -41405,7 +41461,8 @@ window.ayahCap = function (ayahId, suraId) {
 /* بعد ملء قائمة السور: كلُّ خانةِ آيةٍ تأخذ حدَّ سورتها */
 window.ayahCapAll = function (root) {
   const box = root || document;
-  Array.prototype.forEach.call(box.querySelectorAll("input[data-sura]"),
+  /* القائمةُ والحقلُ سواءٌ: كلُّ ما وُسم بسورته */
+  Array.prototype.forEach.call(box.querySelectorAll("[data-sura]"),
     function (e) { if (e.id) window.ayahCap(e.id); });
 };
 
@@ -48228,7 +48285,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-1600";
+  var APP_BUILD = "20261011-1650";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

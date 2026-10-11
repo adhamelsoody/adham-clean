@@ -12845,3 +12845,11 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
 :root[data-theme="dark"] .selpro-menu { background: #0f2423; border-color: #1f4746; }
 :root:not([data-theme="light"]) .selpro-opt:hover,
 :root[data-theme="dark"] .selpro-opt:hover { background: rgba(127, 212, 210, .12); }
+/* قائمةُ الآيات داخل زرَّي الزيادة والنقصان: هيئةُ الحقل نفسُها — طُلب أن
+   تكون الاختياراتُ محدودةً بعدد آيات السورة، فصار الحقلُ قائمةً وبقي
+   شكلُه كما أَلِفه المعلّم. */
+.rcv-step .rcv-pick {
+  width: 72px; text-align: center; text-align-last: center;
+  padding-inline: 6px; appearance: none; -webkit-appearance: none;
+  background-image: none; cursor: pointer;
+}
