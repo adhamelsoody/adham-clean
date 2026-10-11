@@ -15550,6 +15550,45 @@ function rangeEnd(fromS, fromA, qty, unit, dir) {
     return Quran.advance(fromS, fromA, faces, "face", d).catch(() => null);
   }
 
+  /* =======================================================================
+     الكسرُ من الوجه: نصفُه وثلثُه وربعُه
+     -----------------------------------------------------------------------
+     «ولو نصفَ وجهٍ وحدّدتُ من آية كذا تكون الآيةُ التي في نصف الوجه».
+
+     ومحرّكُ المصحف يعدّ بالصفحات الصحيحة: advance(face, 0.5) كان يطلب
+     صفحةً كسريّةً فلا يجدها في الجدول ويعطب — فتعود النهايةُ فارغةً. وهذا
+     لم يكن في هذه الشاشة وحدَها: كلُّ خطةٍ مقدارُها «نصف وجه» كان واجبُها
+     يُولَّد بلا «إلى» للسبب نفسِه.
+
+     ولا علامةَ في المصحف لنصف الوجه، فالقسمةُ بآياته: يُؤخذ مدى الوجه
+     الكامل من موضع الابتداء، ثمّ يُمشى فيه بنسبة الكسر من آياته. فنصفُ
+     وجهٍ نصفُ آياته من حيث ابتدأ — وهو أقربُ ما يُقال بالبيانات نفسِها
+     بلا جدولٍ يُختلق.
+     ======================================================================= */
+  if (u === "face" && n % 1 !== 0 && n > 0) {
+    const whole = Math.floor(n);
+    const frac = n - whole;
+    return Promise.resolve()
+      .then(function () {
+        return whole > 0
+          ? Quran.advance(fromS, fromA, whole, "face", d)
+          : { surah: Number(fromS), ayah: Number(fromA) };
+      })
+      .then(function (lo) {
+        return Quran.advance(fromS, fromA, Math.ceil(n), "face", d).then(function (hi) {
+          if (!lo || !hi) return hi || lo || null;
+          const A = d === 1 ? lo : hi, B = d === 1 ? hi : lo;
+          if (!Quran.measure) return hi;
+          return Quran.measure(A.surah, A.ayah, B.surah, B.ayah).then(function (m) {
+            const span = Math.max(1, (Number(m && m.ayahs) || 1) - 1);
+            const steps = Math.max(1, Math.round(span * frac));
+            return Quran.advance(lo.surah, lo.ayah, steps + 1, "ayah", d);
+          }).catch(function () { return hi; });
+        });
+      })
+      .catch(function () { return null; });
+  }
+
   /* السورة: يُقفز إلى آخر السورة المستهدفة */
   if (u === "surah") {
     return Quran.ayahCount(Number(fromS) + (d * (n - 1)))
@@ -28399,12 +28438,14 @@ window.numStep = function (id, d) {
 };
 
 /* زرّان حول حقلٍ رقميّ: − يساراً و + يميناً كخطّ الأعداد */
-function numStepBox(id, cls, value, label, min, suraId, shown, syncId, afterId, afterSuraId) {
+function numStepBox(id, cls, value, label, min, suraId, shown, syncId, afterId, afterSuraId, qtyCall) {
   /* suraId اختياريٌّ: إن مُرِّر صارت الخانةُ مقيَّدةً بعدد آيات تلك السورة.
      و shown يقول إنّ الخانةَ تعرض بعدّ صاحب النظام لا بعدّ المصحف.
      و syncId خانةٌ تتبع هذه فتُعاد موازنتُها كلّما تغيّرت (خانةُ «إلى»
      تتبع «من»). و afterId/afterSuraId: هذه الخانةُ تبدأ بعد تلك. */
-  const foll = syncId ? `;window.ayahCap('${jsAttr(String(syncId))}')` : "";
+  /* qtyCall: خانةُ الابتداء تُعيد حسابَ المدى من المقدار كلّما تحرّكت */
+  const foll = (syncId ? `;window.ayahCap('${jsAttr(String(syncId))}')` : "") +
+               (qtyCall ? ";window.tsdQtyRange()" : "");
   const sa = suraId ? ` data-sura="${jsAttr(String(suraId))}"` +
     (shown ? ' data-shown="1"' : "") +
     (syncId ? ` data-sync="${jsAttr(String(syncId))}"` : "") +
@@ -28508,7 +28549,7 @@ window.tstuDuty = function (id) {
 
   openModal("تفاصيل الواجب", esc(a.kindName || t.h || ""),
     `${locked ? `<div class="tsd-lock">${ic("check", 14)} واجبٌ معتمَدٌ — تفاصيلُه للعرض لا للتعديل</div>` : ""}
-    <div class="tsd-sheet">
+    <div class="tsd-sheet" data-dir="${esc(dirOf(a.direction))}">
       <div class="tsd-row">
         <span class="tsd-k">نوع الواجب</span>
         <span class="tsd-v"><b>${esc(a.kindName || t.h || "—")}</b></span>
@@ -28519,10 +28560,10 @@ window.tstuDuty = function (id) {
         <span class="tsd-v">${canFrom && !locked
           ? `<span class="tsd-pair tsd-pair-w">
                <select id="tsd_fS" class="tsd-in tsd-sura"
-                 onchange="window.ayahCap('tsd_fA','tsd_fS');window.ayahCap('tsd_tA')"
+                 onchange="window.ayahCap('tsd_fA','tsd_fS');window.ayahCap('tsd_tA');window.tsdQtyRange()"
                  >${sOpts(a.fromS || 1)}</select>
                ${numStepBox("tsd_fA", "tsd-ayah-n", ayahShow(a.fromS, fA0), "من آية", 1,
-                   "tsd_fS", true, "tsd_tA")}
+                   "tsd_fS", true, "tsd_tA", "", "", true)}
              </span>`
           : `${a.fromS ? esc(surahName(a.fromS)) : "—"}${
               a.fromA ? " · الآية " + toArabicDigits(ayahShow(a.fromS, fA0)) : ""}`}</span>
@@ -28541,6 +28582,22 @@ window.tstuDuty = function (id) {
           : `${a.toS ? esc(surahName(a.toS)) : (a.fromS ? esc(surahName(a.fromS)) : "—")}${
               a.toA ? " · الآية " + toArabicDigits(ayahShow(a.toS || a.fromS, a.toA)) : ""}`}</span>
       </div>
+
+      ${canQty && !locked ? `<div class="tsd-row tsd-res-row">
+        <span class="tsd-k">المقدار</span>
+        <span class="tsd-v"><span class="tsd-pair tsd-pair-w">
+          <select id="tsd_qty" class="tsd-in" onchange="window.tsdQtyRange()">
+            ${(typeof QTY_FLEX !== "undefined" ? QTY_FLEX : ["نصف وجه", "وجه"])
+              .map(q => { const n = (typeof PLAN_QTY_NUM !== "undefined"
+                                     ? Number(PLAN_QTY_NUM[q]) : 0) || 0;
+                   if (!(n > 0)) return "";
+                   const on = Math.abs(n - (Number(a.qty) || 0)) < 1e-9;
+                   return `<option value="${n}"${on ? " selected" : ""}>${esc(q)}</option>`;
+                 }).join("")}
+          </select>
+          <input type="hidden" id="tsd_unit" value="${esc(a.unit || "وجه")}">
+        </span><small class="tsd-note">المدى يُحسب من المقدار وموضعِ الابتداء</small></span>
+      </div>` : ""}
 
       ${a.note ? `<div class="tsd-row">
         <span class="tsd-k">ملاحظة</span>
@@ -41458,6 +41515,62 @@ window.ayahCap = function (ayahId, suraId) {
   else if (n < lo) el.value = String(lo);
 };
 
+/* =========================================================================
+   المدى يُحسب من المقدار وموضعِ الابتداء
+   -------------------------------------------------------------------------
+   «أريد في تفاصيل الواجب أن أحدّد الواجب وجهاً أو نصفَ وجه؛ ولو حدّدتُ
+   وجهاً من البقرة فتحديدُ الآيات يشوف الصفحةَ اللي حدّدتُها دي من آيةٍ
+   إلى آية. ولو نصفَ وجهٍ وحدّدتُ من آية كذا تكون الآيةُ التي في نصف
+   الوجه».
+
+   فالمقدارُ صار يقود المدى: يُختار «وجه» أو «نصف وجه» (أو غيرُهما من
+   كميّات المشروع)، فيُحسب موضعُ الانتهاء بمحرّك المصحف نفسِه (rangeEnd →
+   Quran.advance) من موضع الابتداء — لا بتقديرٍ ولا بجدولٍ يُكتب هنا.
+
+   ويبقى المدى داخلَ سورته كما استقرَّ في رقعة ٢٤٣: إن تجاوزها المقدارُ
+   وقف عند آخر آيةٍ فيها.
+
+   والعدُّ المعروضُ غيرُ المخزون: الابتداءُ يُقرأ من الشاشة بعدّ صاحب
+   النظام فيُحوَّل بـ ayahStore قبل الحساب، ثمّ تُعاد النتيجةُ بـ ayahShow.
+   ولا كتابةَ هنا: العرضُ يتغيّر، والحفظُ بزرّه كما كان.
+   ========================================================================= */
+window.tsdQtyRange = function () {
+  const fSel = document.getElementById("tsd_fS");
+  const fAEl = document.getElementById("tsd_fA");
+  const qEl  = document.getElementById("tsd_qty");
+  const tSel = document.getElementById("tsd_tS");
+  const tAEl = document.getElementById("tsd_tA");
+  if (!fSel || !fAEl || !qEl || !tSel || !tAEl) return;
+
+  const fS = Number(fSel.value) || 0;
+  const shown = Number(fAEl.value) || 0;
+  const q = Number(qEl.value) || 0;
+  if (!fS || !shown || !(q > 0)) return;
+  if (typeof rangeEnd !== "function") return;
+
+  const unit = (document.getElementById("tsd_unit") || {}).value || "وجه";
+  const sheet = fSel.closest(".tsd-sheet");
+  const dir = (sheet && sheet.dataset && sheet.dataset.dir) || "forward";
+  const fA = typeof ayahStore === "function" ? ayahStore(fS, shown) : shown;
+
+  rangeEnd(fS, fA, q, unit, dir).then(function (end) {
+    if (!end || !end.surah) return;
+    let tS = Number(end.surah), tA = Number(end.ayah) || 1;
+    /* لا يتعدّى سورتَه — القاعدةُ نفسُها التي في asgCapToSurah */
+    if (tS !== fS) {
+      tS = fS;
+      const cnt = typeof ayahCountOf === "function" ? ayahCountOf(fS) : 0;
+      tA = dirOf(dir) === "backward" ? 1 : (cnt || tA);
+    }
+    tSel.value = String(tS);
+    tSel.dispatchEvent(new Event("change", { bubbles: true }));
+    const want = typeof ayahShow === "function" ? ayahShow(tS, tA) : tA;
+    window.ayahCap("tsd_tA");
+    tAEl.value = String(want);
+    window.ayahCap("tsd_tA");
+  }).catch(function () {});
+};
+
 /* بعد ملء قائمة السور: كلُّ خانةِ آيةٍ تأخذ حدَّ سورتها */
 window.ayahCapAll = function (root) {
   const box = root || document;
@@ -48285,7 +48398,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-1650";
+  var APP_BUILD = "20261011-1745";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
