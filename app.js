@@ -28384,17 +28384,25 @@ window.numStep = function (id, d) {
   /* خانةُ الآية لا تتجاوز آياتَ سورتها — «+» يتوقّف عند آخرها */
   if (el.dataset && el.dataset.sura && typeof window.ayahCap === "function") {
     window.ayahCap(String(id));
+    /* وما يتبعها يُعاد وزنُه: «إلى» تتبع «من» */
+    if (el.dataset.sync) window.ayahCap(el.dataset.sync);
   }
 };
 
 /* زرّان حول حقلٍ رقميّ: − يساراً و + يميناً كخطّ الأعداد */
-function numStepBox(id, cls, value, label, min, suraId, shown) {
+function numStepBox(id, cls, value, label, min, suraId, shown, syncId, afterId, afterSuraId) {
   /* suraId اختياريٌّ: إن مُرِّر صارت الخانةُ مقيَّدةً بعدد آيات تلك السورة.
-     و shown يقول إنّ الخانةَ تعرض بعدّ صاحب النظام لا بعدّ المصحف. */
+     و shown يقول إنّ الخانةَ تعرض بعدّ صاحب النظام لا بعدّ المصحف.
+     و syncId خانةٌ تتبع هذه فتُعاد موازنتُها كلّما تغيّرت (خانةُ «إلى»
+     تتبع «من»). و afterId/afterSuraId: هذه الخانةُ تبدأ بعد تلك. */
+  const foll = syncId ? `;window.ayahCap('${jsAttr(String(syncId))}')` : "";
   const sa = suraId ? ` data-sura="${jsAttr(String(suraId))}"` +
     (shown ? ' data-shown="1"' : "") +
-    ` oninput="window.ayahCap('${jsAttr(String(id))}')"` +
-    ` onchange="window.ayahCap('${jsAttr(String(id))}')"` : "";
+    (syncId ? ` data-sync="${jsAttr(String(syncId))}"` : "") +
+    (afterId ? ` data-after="${jsAttr(String(afterId))}"` : "") +
+    (afterSuraId ? ` data-after-sura="${jsAttr(String(afterSuraId))}"` : "") +
+    ` oninput="window.ayahCap('${jsAttr(String(id))}')${foll}"` +
+    ` onchange="window.ayahCap('${jsAttr(String(id))}')${foll}"` : "";
   return `<span class="rcv-step">
     <button type="button" class="rcv-pm" aria-label="زيادة ${esc(label)}"
       onclick="window.numStep('${jsAttr(id)}', 1)">+</button>
@@ -28487,8 +28495,10 @@ window.tstuDuty = function (id) {
         <span class="tsd-v">${canFrom && !locked
           ? `<span class="tsd-pair tsd-pair-w">
                <select id="tsd_fS" class="tsd-in tsd-sura"
-                 onchange="window.ayahCap('tsd_fA','tsd_fS')">${sOpts(a.fromS || 1)}</select>
-               ${numStepBox("tsd_fA", "tsd-ayah-n", ayahShow(a.fromS, fA0), "من آية", 1, "tsd_fS", true)}
+                 onchange="window.ayahCap('tsd_fA','tsd_fS');window.ayahCap('tsd_tA')"
+                 >${sOpts(a.fromS || 1)}</select>
+               ${numStepBox("tsd_fA", "tsd-ayah-n", ayahShow(a.fromS, fA0), "من آية", 1,
+                   "tsd_fS", true, "tsd_tA")}
              </span>`
           : `${a.fromS ? esc(surahName(a.fromS)) : "—"}${
               a.fromA ? " · الآية " + toArabicDigits(ayahShow(a.fromS, fA0)) : ""}`}</span>
@@ -28501,7 +28511,8 @@ window.tstuDuty = function (id) {
                <select id="tsd_tS" class="tsd-in tsd-sura"
                  onchange="window.ayahCap('tsd_tA','tsd_tS')">${sOpts(a.toS || a.fromS || 1)}</select>
                ${numStepBox("tsd_tA", "tsd-ayah-n",
-                   ayahShow(a.toS || a.fromS, a.toA || 1), "إلى آية", 1, "tsd_tS", true)}
+                   ayahShow(a.toS || a.fromS, a.toA || 1), "إلى آية", 1, "tsd_tS", true,
+                   "", "tsd_fA", "tsd_fS")}
              </span>`
           : `${a.toS ? esc(surahName(a.toS)) : (a.fromS ? esc(surahName(a.fromS)) : "—")}${
               a.toA ? " · الآية " + toArabicDigits(ayahShow(a.toS || a.fromS, a.toA)) : ""}`}</span>
@@ -41318,10 +41329,35 @@ window.ayahCap = function (ayahId, suraId) {
   if (el.dataset && el.dataset.shown === "1" && typeof ayahShow === "function") {
     cnt = ayahShow(Number(src ? src.value : 0) || 0, cnt) || cnt;
   }
+  /* =======================================================================
+     خانةُ «إلى» تبدأ بعد آية البداية لا عندها
+     -----------------------------------------------------------------------
+     «إذا أضفتُ حفظاً جديداً من آية واحد يجيبلي على طول ما بعد الآية اللي
+     بدأتُ بيها؛ مينفعش أقول من آية ١ إلى آية ١ — يجيبلي في اختيارات
+     «إلى» رقم ما بعد الواحد».
+
+     فحدُّها الأدنى آيةُ الابتداء زائداً واحدة، ما دامت السورتان واحدة.
+     فإن اختلفتا فالمدى يعبر السورةَ، وأوّلُها الآيةُ الأولى كما كان.
+     وإن كانت البدايةُ آخرَ آيةٍ في سورتها فلا شيءَ بعدها فيها — يبقى
+     الحدُّ عندها ولا يُدفع إلى رقمٍ لا وجودَ له.
+     ======================================================================= */
+  let lo = 1;
+  const aft = el.dataset ? el.dataset.after : "";
+  if (aft) {
+    const fA = document.getElementById(aft);
+    const fS = el.dataset.afterSura ? document.getElementById(el.dataset.afterSura) : null;
+    const same = !fS || !src || String(fS.value) === String(src.value);
+    if (same && fA) {
+      const v = Number(fA.value) || 0;
+      if (v > 0) lo = Math.min(cnt, v + 1);
+    }
+  }
+
   el.max = String(cnt);
+  el.min = String(lo);
   const n = Number(el.value) || 0;
   if (n > cnt) el.value = String(cnt);
-  else if (n < 1) el.value = "1";
+  else if (n < lo) el.value = String(lo);
 };
 
 /* بعد ملء قائمة السور: كلُّ خانةِ آيةٍ تأخذ حدَّ سورتها */
@@ -48150,7 +48186,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-1105";
+  var APP_BUILD = "20261011-1530";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
