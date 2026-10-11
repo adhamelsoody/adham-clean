@@ -29989,20 +29989,47 @@ function studentCircleDays(st) {
   return c ? daysToArray(c.days) : [];
 }
 
-/* هل اليوم من أيام دوام هذا الطالب؟
-   الدوام الكامل: كل أيام الحلقة. الجزئي: أيامه هو إن حُدّدت. */
+/* =========================================================================
+   أيامُ دوام الطالب — مصدرٌ واحدٌ يُعرض ويُحكَم به
+   -------------------------------------------------------------------------
+   «في الإدارة جايبلي إنّ أيام دوامه اليوم وفي المعلّم إنّه ليس يوم دوامه،
+   هناك تضاربٌ في البيانات».
+
+   وكان التضاربُ حقيقياً: بطاقةُ الإدارة فيها «أيام الخطة الأسبوعية»، تُحفظ
+   أزرارُها في st.plan.days (انظر out.plan.days عند الحفظ) وتُعرض منها —
+   و isDutyDay لا تقرؤها ألبتّة، إنّما تحكم بأيام الحلقة. فيضع المديرُ
+   للطالب أياماً ويراها مثبَّتةً في بطاقته، ويقول المحرّكُ «ليس يومَ دوامه»
+   لأنّ حلقتَه لا تدوم فيه.
+
+   فصار الحكمُ والعرضُ من دالّةٍ واحدة، بهذا الترتيب:
+     ١) أيامُ خطته المحفوظةُ في البطاقة إن كانت — وهي اختيارُ الإدارة له.
+     ٢) أيامُه هو إن كان «دوام جزئي» — كما كان.
+     ٣) أيامُ حلقته — كما كان.
+     ٤) فإن خلت كلُّها: لا يُمنع التحضيرُ بناءً على فراغ — كما كان.
+
+   ولم يُقرأ st.days للدوام الكامل عمداً: يُكتب عند الإضافة «يومياً» أو
+   أيامَ الحلقة وقتَها، فلو حُكم به لصار كلُّ يومٍ يومَ دوامٍ لمن أُضيف
+   بـ«يومياً» — وهو خلافُ ما تقوله حلقتُه اليوم.
+   ========================================================================= */
+function stuDutyDays(st) {
+  if (!st) return [];
+  const pd = (st.plan || {}).days;
+  const own = Array.isArray(pd) ? daysToArray(pd) : [];
+  if (own.length) return own;
+
+  if (String(st.attType) === "دوام جزئي") {
+    const d = daysToArray(st.days);
+    if (d.length) return d;
+  }
+  return studentCircleDays(st);
+}
+
 function isDutyDay(st, dateISO) {
   const day = dayNameOf(dateISO);
   if (!day) return true;
-
-  if (String(st.attType) === "دوام جزئي") {
-    const own = daysToArray(st.days);
-    if (own.length) return own.indexOf(day) > -1;
-  }
-
-  const cd = studentCircleDays(st);
-  /* حلقة بلا أيام محدَّدة: لا نمنع التحضير بناءً على فراغ */
-  return cd.length ? cd.indexOf(day) > -1 : true;
+  const d = stuDutyDays(st);
+  /* بلا أيامٍ محدَّدة: لا نمنع التحضير بناءً على فراغ */
+  return d.length ? d.indexOf(day) > -1 : true;
 }
 
 /* مقدار التأخير بالدقائق من وقت بداية الحلقة */
@@ -40935,8 +40962,12 @@ function panelStudent(id, keepDraft) {
 
   /* ---- تبويب المستوى وخطة التسميع ---- */
   const pl = bplOf(s);
-  const days = Array.isArray((s.plan || {}).days) ? s.plan.days
-             : String(s.days || "").split("·").map(x => x.trim()).filter(Boolean);
+  /* المعروضُ هو المحكومُ به: stuDutyDays تُرجّح أيامَ الخطة المحفوظة ثمّ
+     أيامَه ثمّ أيامَ حلقته — فلا تُضيء البطاقةُ يوماً يقول المحرّكُ إنّه
+     ليس يومَ دوامه. */
+  const days = typeof stuDutyDays === "function" ? stuDutyDays(s)
+             : (Array.isArray((s.plan || {}).days) ? s.plan.days
+                : String(s.days || "").split("·").map(x => x.trim()).filter(Boolean));
 
   /* حضورُ الطالب من سجلّاته لا من رقمٍ مكتوب */
   const recs = (Array.isArray(DB.attendance) ? DB.attendance : [])
@@ -48119,7 +48150,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-1015";
+  var APP_BUILD = "20261011-1105";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
