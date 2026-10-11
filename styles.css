@@ -12798,7 +12798,6 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
 .tstu-plan .sp-rev .sp-plsum, .tstu-plan .sp-card.sp-rev .sp-plsum { background: none; color: #a9896a; }
 .tstu-plan .sp-plrow .sp-pldot { margin-top: 7px; }
 .tstu-plan .sp-grid { grid-template-columns: 1fr; gap: 12px; }
-.tstu-plan .sp-startrow { grid-template-columns: 1fr; gap: 10px; }
 .tstu-plan .sp-startrow .sp-step { justify-content: flex-start; }
 .tstu-plan .sp-card { padding: 14px; }
 .tstu-plan .sp-card + .sp-card { margin-top: 12px; }
@@ -12845,3 +12844,8 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
 :root[data-theme="dark"] .selpro-menu { background: #0f2423; border-color: #1f4746; }
 :root:not([data-theme="light"]) .selpro-opt:hover,
 :root[data-theme="dark"] .selpro-opt:hover { background: rgba(127, 212, 210, .12); }
+
+/* صفُّ الابتداء: السورةُ ثمّ الآيةُ قائمتان لا قائمةٌ وعدّاد — الآيةُ
+   أضيقُ لأنّ محتواها رقم. «عند تحديد الآيات يأتي لي بقائمة الآيات». */
+.tstu-plan .sp-startrow { grid-template-columns: 1fr 112px; gap: 10px; align-items: center; }
+.tstu-plan .sp-startrow .selpro { min-width: 0; }

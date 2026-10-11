@@ -27193,19 +27193,22 @@ function tstuPlanBox(st) {
       <input type="hidden" id="${name}" value="${esc(v)}">
     </div>`;
 
+  /* «عند تحديد الآيات يأتي لي بقائمة الآيات على عدد آيات السورة»:
+     الآيةُ صارت قائمةً لا عدّاداً، خياراتُها من ١ إلى عدد آيات السورة
+     المختارة — لا أكثرَ ولا أقلّ. والعددُ من فهرس المصحف نفسِه. */
   const startRow = (pfx, sura, ayah, dirId, dirVal) => `
     <div class="sp-start">
       <label>${ic("target", 13)} الابتداء — السورة والآية</label>
       <div class="sp-startrow">
         <select id="${pfx}Sura" class="sp-sel sp-sura" data-dir="${esc(dirId)}"
-          data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}">
+          data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}"
+          onchange="window.tstuSuraPick(this)">
           <option>${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}</option>
         </select>
-        <div class="sp-step">
-          <button type="button" onclick="window.spAyah('${pfx}', 1)">+</button>
-          <input id="${pfx}Ayah" type="number" min="1" value="${Number(ayah) || 1}">
-          <button type="button" onclick="window.spAyah('${pfx}', -1)">−</button>
-        </div>
+        <select id="${pfx}Ayah" class="sp-sel sp-ayah" data-sura="${pfx}Sura"
+          data-val="${Number(ayah) || 1}">
+          <option>${toArabicDigits(Number(ayah) || 1)}</option>
+        </select>
       </div>
     </div>`;
 
@@ -27402,7 +27405,69 @@ window.tstuQtyType = function (selEl, qtyId) {
 window.tstuDirSet = function (btn, name, value) {
   try { if (typeof window.spDir === "function") window.spDir(btn, name, value); }
   catch (e) { console.warn("tstuDirSet:", e); }
+  /* الاتجاهُ يُعيد بناءَ قائمة السور، فتتبعها قائمةُ الآيات */
+  setTimeout(function () {
+    try { window.tstuAyahFill(document.getElementById("modalRoot")); } catch (e) {}
+    window.selProSync(document.getElementById("modalRoot"));
+  }, 80);
   window.selProSync(document.getElementById("modalRoot"));
+};
+
+/* =========================================================================
+   قائمةُ الآيات على عدد آيات سورتها
+   -------------------------------------------------------------------------
+   «عند تحديد الآيات يأتي لي بقائمة الآيات على عدد آيات السورة: الفاتحة لو
+   سبع آيات يجيب لي سبعة، مَيجِبش أكثر ولا أقلّ — قِسْ على المصحف كلِّه».
+
+   العددُ من فهرس المصحف نفسِه: quran/surahs.json يحمل لكلّ سورةٍ {i,n,a,p}،
+   و a عددُ آياتها. فلا جدولَ ثانٍ يُكتب هنا ولا رقمَ محفور، ويصحُّ على
+   السور كلِّها لا على مثال.
+
+   والمختارُ يبقى ما دام في المدى، فإن قصرت السورةُ الجديدةُ عنه نزل إلى
+   آخر آيةٍ فيها — ولا يبقى رقمٌ لا وجودَ له.
+   ========================================================================= */
+function tstuSuraCount(name) {
+  const n = String(name || "").trim();
+  if (!n) return 0;
+  const from = (typeof SP_SURAHS !== "undefined" && SP_SURAHS) ? SP_SURAHS
+             : (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : null;
+  if (!from) return 0;
+  const rec = from.find(x => x && String(x.n) === n);
+  return rec ? (Number(rec.a) || 0) : 0;
+}
+window.tstuSuraCount = tstuSuraCount;
+
+window.tstuAyahFill = function (root) {
+  const box = root || document;
+  Array.prototype.forEach.call(box.querySelectorAll("select.sp-ayah"), function (sel) {
+    const src = sel.dataset.sura ? document.getElementById(sel.dataset.sura) : null;
+    const cnt = tstuSuraCount(src ? src.value : "");
+    if (!cnt) return;                      /* الفهرسُ لم يصل: تبقى كما هي */
+    /* القيمةُ الحيّةُ أولى، فإن كانت نصّاً غيرَ رقميّ (الخيارُ المبدئيُّ
+       بالأرقام العربية قبل البناء) رُجع إلى ما حُفظ في data-val. */
+    const live = Number(sel.value);
+    const want = Math.max(1, (isFinite(live) && live > 0 ? live : Number(sel.dataset.val)) || 1);
+    const pick = Math.min(want, cnt);
+    let html = "";
+    for (let i = 1; i <= cnt; i++) {
+      html += '<option value="' + i + '"' + (i === pick ? ' selected' : '') + '>' +
+              toArabicDigits(i) + '</option>';
+    }
+    sel.innerHTML = html;
+    sel.dataset.val = String(pick);
+  });
+};
+
+/* السورةُ تتبدّل: تُبنى قائمةُ آياتها من جديد ويتبعها غلافُها */
+window.tstuSuraPick = function (selEl) {
+  try {
+    const pfx = selEl && selEl.id ? String(selEl.id).replace(/Sura$/, "") : "";
+    if (selEl) selEl.dataset.cur = selEl.value;
+    /* الآيةُ المختارةُ تبقى ما دامت في مدى السورة الجديدة، وتُقصَر على
+       آخر آيةٍ فيها إن قصرت عنها — تُبنى القائمةُ في tstuAyahFill. */
+    window.tstuAyahFill(document.getElementById("modalRoot"));
+    window.selProSync(document.getElementById("modalRoot"));
+  } catch (e) { console.warn("tstuSuraPick:", e); }
 };
 
 /* «تحديث»: يكتب ما في النافذة إلى ملفّ الطالب ثمّ يترجمه إلى سجلّ المحرّك
@@ -27452,12 +27517,16 @@ window.tstuPlanOpen = function () {
   setTimeout(function () {
     try { if (typeof spFillSurahs === "function") spFillSurahs(document.getElementById("modalRoot")); }
     catch (e) {}
+    try { window.tstuAyahFill(document.getElementById("modalRoot")); } catch (e) {}
     try { window.selPro(document.getElementById("modalRoot")); } catch (e) {}
   }, 40);
-  /* وإن تأخّر فهرسُ السور، يُعاد الغلافُ حين يصل */
-  setTimeout(function () {
-    try { window.selProSync(document.getElementById("modalRoot")); } catch (e) {}
-  }, 900);
+  /* وإن تأخّر فهرسُ السور، تُبنى قوائمُ الآيات ويُعاد الغلافُ حين يصل */
+  [400, 900, 1800].forEach(function (ms) {
+    setTimeout(function () {
+      try { window.tstuAyahFill(document.getElementById("modalRoot")); } catch (e) {}
+      try { window.selProSync(document.getElementById("modalRoot")); } catch (e) {}
+    }, ms);
+  });
 };
 
 window.tstuTab = function (k) { TSTU.tab = String(k || "plan"); mount(); };
@@ -27827,14 +27896,10 @@ function tstuDutyCards(st) {
      ويبقى زرُّ «تسجيل الإنجاز» تحت الصفّ كما في المواصفات المكتوبة: الصفُّ
      يفتح تفاصيلَ الواجب، والزرُّ يعتمد تسميعَه مباشرةً.
      ======================================================================= */
-  /* «ولكلّ واجبٍ زرُّ تفاصيل مثل تفاصيل الحفظ الذي في السورة»: كانت
-     التفاصيلُ تُفتح بالضغط على الصفّ كلِّه بلا زرٍّ يدلُّ عليها. صار لكلّ
-     واجبٍ زرٌّ ظاهرٌ في ذيل بطاقته.
-
-     و«شيل زرَّ تسجيل الإنجاز»: رُفع من هذا الذيل. والاعتمادُ طريقُه واحدٌ
-     الآن: تفاصيلُ الواجب ← «نتيجة التسميع» ← «تم التسميع» ← تقييمُ الأداء.
-     ولم تُحذف دالّةٌ: recvOpen كما هي، وتُنادى من صفّ الواجب في المصحف
-     ومن زرّ «تم التسميع».
+  /* «أريد حذف زرّ تفاصيل الواجب»: رُفع ذيلُ البطاقة كلُّه — لم يبقَ فيه
+     غيرُ زرّ التفاصيل بعد رفع «تسجيل الإنجاز» في رقعة ٢٣٤. والتفاصيلُ
+     تُفتح بالضغط على صفّ الواجب نفسِه كما كانت قبلُ، ومن علامة الصحّ في
+     صفّ الطالب داخل الحلقة. ولم تُحذف دالّةٌ: tstuDuty و recvOpen كما هما.
 
      والتعليقُ هنا لا في القالب: تعليقُ HTML داخل القالب يُشحن إلى الصفحة. */
   return `<div class="sls-list">${list.map(a => {
@@ -27865,11 +27930,6 @@ function tstuDutyCards(st) {
       </span>
       <span class="sls-go" aria-hidden="true">${ic("arrowLeft", 16)}</span>
     </button>
-    <div class="tdt-acts">
-      <button type="button" class="btn btn-soft btn-sm tdt-info"
-        onclick="window.tstuDuty('${jsAttr(String(a.id))}')"
-        >${ic("book", 15)} تفاصيل الواجب</button>
-    </div>
     </div>`;
   }).join("")}</div>
   ${goneBox}`;
@@ -47847,7 +47907,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261010-2320";
+  var APP_BUILD = "20261011-0540";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
