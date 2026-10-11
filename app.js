@@ -15536,6 +15536,246 @@ const UNIT_Q = {
 
 function unitQ(u) { return UNIT_Q[String(u || "وجه")] || "face"; }
 
+/* =========================================================================
+   قياسُ المقدار بأسطر المصحف
+   -------------------------------------------------------------------------
+   «اخترتُ للطالب نصفَ وجهٍ فأعطاني ثلاثةَ أسطر، والمفترَضُ بين ستّةٍ
+    وثمانيةٍ على حسب نهاية الآية» · «واخترتُ وجهاً يبدأ من آخر آيةٍ في
+    وجهٍ آخرَ فأعطاني وجهين وزيادة» · «والكمّياتُ بالأسطر لا تعمل».
+
+   وجذرُها واحد: كلُّ القياس كان بعدد الآيات. والآياتُ تتفاوت طولاً
+   تفاوتاً شديداً — إحدى عشرةَ آيةً من أوّل مريم تقع في ثلاثة عشرَ سطراً،
+   وخمسُ آياتٍ من أوّل البقرة تقع فيها كذلك. فنصفُ «عددِ الآيات» ليس
+   نصفَ الوجه في عين الحافظ، وهو يرى الورقةَ أسطراً لا آيات.
+
+   ووحدةُ السطر لم تكن في المحرّك أصلاً: Quran.advance تعرف الآيةَ والوجهَ
+   والثمنَ والحزبَ والجزء، و«أسطر» تسقط في فرع الأجزاء — فاختيارُ «ثلاثة
+   أسطر» كان يتقدّم ثلاثةَ أجزاء. ثمّ حرسها rangeEnd بتقريبٍ أفسدَ الأمرَ
+   من جهةٍ أخرى: ceil(n/15) — فثلاثةُ أسطرٍ تصير وجهاً كاملاً.
+
+   والبياناتُ موجودةٌ في المشروع ولم تكن تُستعمل في الحساب:
+   quran/lines.json — ٦٠٤ صفحةً، كلُّ صفحةٍ أسطرُها، وكلُّ سطرٍ مقاطعُه
+   [سورة، آية، من كلمة، إلى كلمة]. وهو الملفُّ الذي يرسم به مصحفُ
+   المشروع أوراقَه خمسةَ عشرَ سطراً. فالقياسُ منه، لا بجدولٍ يُختلق.
+
+   وعنوانُ السورة والبسملةُ ليسا نصّاً يُحفظ، فلا يُعدّان سطراً: صفحةُ
+   مريم ثلاثةَ عشرَ سطراً نصّيّاً لا خمسةَ عشر، وصفحةُ ٦٠٤ تسعةٌ.
+
+   والنهايةُ تُسوّى إلى نهاية آية: «على حسب نهاية الآية». فالمدى ينتهي
+   عند آخر آيةٍ تمامُها داخلَ الأسطر المطلوبة؛ فإن لم تتمّ فيها آيةٌ
+   امتدَّ إلى أوّل آيةٍ تتمّ بعدها، فلا يقف واجبٌ في منتصف آية.
+
+   وحدودُ الصفحات تبقى لـ pagemeta.json كما كانت: هو حَكَمُ أوّل الصفحة
+   وآخرِها، ويوافقه lines.json في ٥٧٩ صفحةً من ٦٠٤، والخمسُ والعشرون
+   الباقيةُ آياتٌ تنقسم بين ورقتين. فالوجهُ الكاملُ من رأس صفحةٍ يبقى
+   محسوباً بـ pagemeta حرفاً بحرف — فلا يتبدّل شيءٌ من المدى المعتمَد —
+   والأسطرُ لما دون الصفحة ولما ابتدأ من وسطها.
+   ========================================================================= */
+
+/* ملفُّ الأسطر وعداً: QLINES و qlinesLoad قائمتان للمصحف، وهذه تنتظره */
+function qlinesReady() {
+  if (typeof QLINES !== "undefined" && QLINES) return Promise.resolve(QLINES);
+  const base = location.pathname.indexOf("/admin/") > -1 ? "../" : "";
+  return fetch(base + "quran/lines.json")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) { QLINES = j || {}; return QLINES; })
+    .catch(function () { QLINES = QLINES || {}; return QLINES; });
+}
+
+/* أسطرُ صفحةٍ النصّيّةُ وحدَها — بلا عنوانِ سورةٍ ولا بسملة */
+function qTextLines(p) {
+  const v = (typeof QLINES !== "undefined" && QLINES) ? QLINES[String(p)] : null;
+  if (!v || !v.length) return [];
+  return v.filter(function (l) { return l && l[0] === 0 && l[1] && l[1].length; })
+          .map(function (l) { return l[1]; });
+}
+function qLineCount(p) { return qTextLines(p).length; }
+
+/* =========================================================================
+   المشيُ على أسطر المصحف
+   -------------------------------------------------------------------------
+   مَسلكٌ واحدٌ لكلّ قياس: يُبنى جدولُ الأسطر من صفحة الابتداء وما بعدها،
+   ويُعرف موضعُ آية الابتداء فيه، ثمّ يُقصد سطرُ النهاية — إمّا بعددٍ من
+   الأسطر («أسطر») وإمّا بإزاحةٍ صفحةً صفحةً («وجه»).
+
+   وإزاحةُ الصفحة لا تُجمع بأسطرٍ مسطّحة: أسطرُ الصفحات النصّيّةُ تتفاوت
+   (عنوانُ السورة والبسملةُ يأكلان سطرين أو أكثر)، فجمعُ «أسطر صفحتين»
+   ومشيُها مسطّحةً يتجاوز الصفحتين. فالوجهُ يُنقل بالموضع: من كان في
+   السطر الأوّل من صفحته صار في السطر الأوّل من الصفحة التالية، فينتهي
+   مداه عند آخر سطرٍ في الصفحة التي قبلها — وهو آخرُ الوجه بعينه.
+
+   والنهايةُ تُسوّى إلى أقربِ نهاية آية: «على حسب نهاية الآية». تُقاس
+   المسافةُ إلى تمام الآية الواقعة على سطر النهاية، وإلى تمام الآية التي
+   قبلها، ويُؤخذ الأقرب — فلا يقف واجبٌ في منتصف آية، ولا يُنقص المدى
+   سطرين وبينه وبين تمام الآية سطرٌ واحد.
+   ========================================================================= */
+
+/* جدولُ الأسطر من صفحةٍ: {flat, start, pageFirst} — flat أسطرٌ نصّيّةٌ
+   متوالية، و pageFirst أوّلُ سطرٍ لكلّ صفحة */
+function qLineTable(P, s, a, pages) {
+  const flat = [], pageFirst = {};
+  let start = -1;
+  for (let p = P; p <= 604 && p <= P + pages; p++) {
+    const L = qTextLines(p);
+    if (!L.length) { if (p === P) return null; continue; }
+    /* أوّلُ سطرٍ فيه آيةٌ تُسنَد: سطرُ البسملة في الفاتحة ليس آيةً على
+       عدّ صاحب النظام (skipBasmala)، فلا يُعدُّ أوّلَ الصفحة — ولولا هذا
+       لخرج وجهُ الفاتحة إلى البقرة بآية. وسائرُ الصفحات لا يتبدّل فيها
+       شيءٌ: ليس فيها سطرٌ كلُّه آيةٌ مُسقَطة. */
+    let head = flat.length;
+    for (let i = 0; i < L.length; i++) {
+      const own = L[i].some(function (g) {
+        return typeof skipBasmala !== "function" ||
+               skipBasmala(Number(g[0]), Number(g[1])) === Number(g[1]);
+      });
+      if (own) { head = flat.length + i; break; }
+    }
+    pageFirst[p] = head;
+    for (let i = 0; i < L.length; i++) flat.push({ segs: L[i], p: p });
+    if (start < 0) {
+      for (let k = 0; k < flat.length; k++) {
+        if (flat[k].segs.some(function (g) {
+          return Number(g[0]) === s && Number(g[1]) === a; })) { start = k; break; }
+      }
+    }
+  }
+  if (start < 0) return null;
+  return { flat: flat, start: start, pageFirst: pageFirst };
+}
+
+/* آخرُ سطرٍ فيه مقطعٌ لكلّ آية — به يُعرف أين تتمّ */
+function qAyahEnds(flat) {
+  const endAt = {};
+  flat.forEach(function (ln, i) {
+    ln.segs.forEach(function (g) { endAt[g[0] + ":" + g[1]] = i; });
+  });
+  return endAt;
+}
+
+/* تسويةُ النهاية إلى أقربِ تمامِ آيةٍ من سطرٍ مقصود */
+function qSnapToAyah(flat, start, last) {
+  const endAt = qAyahEnds(flat);
+  last = Math.max(start, Math.min(last, flat.length - 1));
+
+  /* آخرُ آيةٍ تتمّ عند السطر المقصود أو قبله (داخلَ المدى) */
+  let back = null;
+  for (let i = start; i <= last; i++) {
+    flat[i].segs.forEach(function (g) {
+      const k = Number(g[0]), v = Number(g[1]), e = endAt[k + ":" + v];
+      if (e <= last && (!back || e > back.at ||
+          (e === back.at && (k > back.surah || (k === back.surah && v > back.ayah))))) {
+        back = { surah: k, ayah: v, page: flat[e].p, at: e };
+      }
+    });
+  }
+  /* وأوّلُ آيةٍ تتمّ بعده */
+  let fwd = null;
+  for (let i = last + 1; i < flat.length && !fwd; i++) {
+    flat[i].segs.forEach(function (g) {
+      const k = Number(g[0]), v = Number(g[1]);
+      if (!fwd && endAt[k + ":" + v] === i) {
+        fwd = { surah: k, ayah: v, page: flat[i].p, at: i };
+      }
+    });
+  }
+  if (!back) return fwd;
+  if (!fwd) return back;
+  /* الأقرب — وإن تساويا فالأقصرُ أولى حتى لا يُزاد على المطلوب */
+  return (last - back.at) <= (fwd.at - last) ? back : fwd;
+}
+
+/* مقدارٌ بالأسطر: يُمشى بعددها ثمّ يُسوّى إلى تمام آية */
+function qWalkByLines(fromS, fromA, nLines) {
+  const s = Number(fromS) || 0, a = Number(fromA) || 0;
+  const want = Math.max(1, Math.round(Number(nLines) || 1));
+  if (!s || !a || typeof Quran === "undefined" || !Quran.locate) {
+    return Promise.resolve(null);
+  }
+  return qlinesReady().then(function () {
+    return Promise.resolve(Quran.locate(s, a)).then(function (loc) {
+      if (!loc || !loc.page) return null;
+      /* صفحاتٌ زائدةٌ: المدى قد يعبرها، وتمامُ الآية قد يقع بعدها */
+      const t = qLineTable(Number(loc.page), s, a, Math.ceil(want / 8) + 2);
+      if (!t) return null;
+      const r = qSnapToAyah(t.flat, t.start, t.start + want - 1);
+      return r ? { surah: r.surah, ayah: r.ayah, page: r.page } : null;
+    });
+  }).catch(function () { return null; });
+}
+
+/* مقدارٌ بالأوجه من غير رأس الصفحة، أو بكسرِ وجه: إزاحةٌ صفحةً صفحة */
+function qWalkByFaces(fromS, fromA, n) {
+  const s = Number(fromS) || 0, a = Number(fromA) || 0;
+  const q = Number(n) || 0;
+  if (!s || !a || !(q > 0) || typeof Quran === "undefined" || !Quran.locate) {
+    return Promise.resolve(null);
+  }
+  return qlinesReady().then(function () {
+    return Promise.resolve(Quran.locate(s, a)).then(function (loc) {
+      if (!loc || !loc.page) return null;
+      const P = Number(loc.page);
+      const full = Math.floor(q), frac = q - full;
+      const t = qLineTable(P, s, a, full + 3);
+      if (!t) return null;
+
+      /* إزاحةُ البداية في صفحتها */
+      const k = t.start - (t.pageFirst[P] || 0);
+      let last;
+      if (P + full > 604) {
+        /* المقدارُ يتجاوز آخرَ المصحف: يقف عند آخر سطرٍ فيه */
+        last = t.flat.length - 1;
+      } else {
+        /* صفحةُ الوصول، وأوّلُ سطرٍ فيه آيةٌ تُسنَد منها */
+        const target = P + full;
+        let base = t.pageFirst[target];
+        if (base === undefined) base = t.flat.length;
+        last = base + k - 1;
+        /* والكسرُ من أسطر صفحة الوصول */
+        if (frac > 0) {
+          const L = qLineCount(target) || qLineCount(P);
+          last += Math.max(1, Math.round(frac * L));
+        }
+      }
+      const r = qSnapToAyah(t.flat, t.start, last);
+      return r ? { surah: r.surah, ayah: r.ayah, page: r.page } : null;
+    });
+  }).catch(function () { return null; });
+}
+
+/* =========================================================================
+   كسرُ الوجه بعدد الآيات — المسلكُ الذي كان في rangeEnd، نُقل إلى هنا
+   -------------------------------------------------------------------------
+   لم يُحذف: صار حارساً يُنادى في حالين — واجبٌ اتجاهُه تنازليٌّ (والأسطرُ
+   تُمشى تصاعداً)، وبياناتُ الأسطر لم تصل بعد. وما دامت واصلةً والاتجاهُ
+   تصاعديّاً فالقياسُ بالأسطر لا بهذا.
+
+   وكان نصُّه: «ولا علامةَ في المصحف لنصف الوجه، فالقسمةُ بآياته» — وهو
+   أقربُ ما كان يُقال قبل أن يُستعمل quran/lines.json في الحساب.
+   ========================================================================= */
+function rangeEndFaceFrac(fromS, fromA, n, d) {
+  const whole = Math.floor(n);
+  const frac = n - whole;
+  return Promise.resolve()
+    .then(function () {
+      return whole > 0
+        ? Quran.advance(fromS, fromA, whole, "face", d)
+        : { surah: Number(fromS), ayah: Number(fromA) };
+    })
+    .then(function (lo) {
+      return Quran.advance(fromS, fromA, Math.ceil(n), "face", d).then(function (hi) {
+        if (!lo || !hi) return hi || lo || null;
+        const A = d === 1 ? lo : hi, B = d === 1 ? hi : lo;
+        if (!Quran.measure) return hi;
+        return Quran.measure(A.surah, A.ayah, B.surah, B.ayah).then(function (m) {
+          const span = Math.max(1, (Number(m && m.ayahs) || 1) - 1);
+          const steps = Math.max(1, Math.round(span * frac));
+          return Quran.advance(lo.surah, lo.ayah, steps + 1, "ayah", d);
+        }).catch(function () { return hi; });
+      });
+    })
+    .catch(function () { return null; });
+}
+
 /* موضع النهاية من البداية والمقدار — وعدٌ لأن جدول المصحف يُجلب */
 function rangeEnd(fromS, fromA, qty, unit, dir) {
   const n = Number(qty) || 1;
@@ -15544,10 +15784,57 @@ function rangeEnd(fromS, fromA, qty, unit, dir) {
 
   if (typeof Quran === "undefined" || !Quran.advance) return Promise.resolve(null);
 
-  /* السطر ليس وحدةً في جدول المصحف: يُقارب بالأوجه — خمسة عشر سطراً للوجه */
+  /* =======================================================================
+     السطرُ وحدةٌ قائمةٌ بنفسها — من quran/lines.json
+     -----------------------------------------------------------------------
+     كان يُقارَب بالأوجه: ceil(n/15) — فثلاثةُ أسطرٍ تصير وجهاً كاملاً،
+     وهو «الكمّياتُ بالأسطر لا تعمل». وصار يُقاس سطراً سطراً.
+     والتنازليُّ يبقى على مسلكه القديم: الأسطرُ تُمشى تصاعداً، ولم يُطلب
+     قياسُها إلى الوراء — فلا يُمسّ ما لم يُطلب.
+     ======================================================================= */
   if (u === "line") {
+    if (d === 1) {
+      return qWalkByLines(fromS, fromA, n).then(function (e) {
+        if (e) return e;
+        /* بياناتُ الأسطر لم تصل: المسلكُ القديمُ حارسٌ لا يُحذف */
+        const faces = Math.max(1, Math.ceil(n / 15));
+        return Quran.advance(fromS, fromA, faces, "face", d).catch(() => null);
+      }).catch(() => null);
+    }
     const faces = Math.max(1, Math.ceil(n / 15));
     return Quran.advance(fromS, fromA, faces, "face", d).catch(() => null);
+  }
+
+  /* =======================================================================
+     الوجهُ من غير رأس الصفحة، وكسرُ الوجه: كلاهما بالأسطر
+     -----------------------------------------------------------------------
+     «اخترتُ وجهاً يبدأ من آخر آيةٍ في وجهٍ آخرَ فأعطاني وجهين وزيادة»:
+     كان الكسرُ والوجهُ يُقاسان بعدد الآيات، والآياتُ متفاوتةُ الطول.
+
+     والوجهُ الكاملُ من رأس الصفحة يبقى بـ pagemeta كما كان حرفاً بحرف —
+     فلا يتبدّل مدًى معتمَدٌ ولا واجبٌ مولَّدٌ في سلسلةٍ تبدأ من رؤوس
+     الصفحات. وما ابتدأ من وسط الصفحة يُقاس بأسطرها.
+     ======================================================================= */
+  if (u === "face" && d === 1 && n > 0) {
+    /* «أرأسُ الصفحةِ هو؟» يُسأل pagemeta لا lines.json: الملفّان يوافقان
+       في ٥٧٩ صفحةً ويفترقان في خمسٍ وعشرين — آياتٌ تنقسم بين ورقتين.
+       فلو سُئلت الأسطرُ لخرجت تلك الخمسُ والعشرون من مسلكها المعتمَد.
+       و advance(…,1,"face",-1) يردُّ أوّلَ آيةٍ في صفحة الابتداء. */
+    return Promise.resolve(Quran.advance(fromS, fromA, 1, "face", -1))
+      .then(function (head) {
+        const atHead = !!(head && Number(head.surah) === Number(fromS) &&
+                                  Number(head.ayah) === Number(fromA));
+        /* رأسُ الصفحةِ ووجهٌ صحيحٌ: حَكَمُه pagemeta كما كان */
+        if (atHead && n % 1 === 0) {
+          return Quran.advance(fromS, fromA, n, "face", d).catch(() => null);
+        }
+        return qWalkByFaces(fromS, fromA, n);
+      }).then(function (e) {
+      /* لم تصل بياناتُ الأسطر: المسلكُ القديمُ كما هو */
+      if (e) return e;
+      if (n % 1 !== 0) return rangeEndFaceFrac(fromS, fromA, n, d);
+      return Quran.advance(fromS, fromA, n, "face", d).catch(() => null);
+    }).catch(() => null);
   }
 
   /* =======================================================================
@@ -15566,27 +15853,7 @@ function rangeEnd(fromS, fromA, qty, unit, dir) {
      بلا جدولٍ يُختلق.
      ======================================================================= */
   if (u === "face" && n % 1 !== 0 && n > 0) {
-    const whole = Math.floor(n);
-    const frac = n - whole;
-    return Promise.resolve()
-      .then(function () {
-        return whole > 0
-          ? Quran.advance(fromS, fromA, whole, "face", d)
-          : { surah: Number(fromS), ayah: Number(fromA) };
-      })
-      .then(function (lo) {
-        return Quran.advance(fromS, fromA, Math.ceil(n), "face", d).then(function (hi) {
-          if (!lo || !hi) return hi || lo || null;
-          const A = d === 1 ? lo : hi, B = d === 1 ? hi : lo;
-          if (!Quran.measure) return hi;
-          return Quran.measure(A.surah, A.ayah, B.surah, B.ayah).then(function (m) {
-            const span = Math.max(1, (Number(m && m.ayahs) || 1) - 1);
-            const steps = Math.max(1, Math.round(span * frac));
-            return Quran.advance(lo.surah, lo.ayah, steps + 1, "ayah", d);
-          }).catch(function () { return hi; });
-        });
-      })
-      .catch(function () { return null; });
+    return rangeEndFaceFrac(fromS, fromA, n, d);
   }
 
   /* السورة: يُقفز إلى آخر السورة المستهدفة */
@@ -28603,7 +28870,7 @@ window.tstuDuty = function (id) {
                  «ثلاثة أوجه» المولَّدُ من خطةٍ يُعرض مقدارُه ويُحسب مداه،
                  ولا يُضاف إلى القائمة لكلّ واجبٍ لأنّ القائمةَ ثلاثةٌ بطلبه.
                  والحاسبُ calculateHomeworkEnd عامٌّ لا يُقيَّد بالثلاثة:
-                 يقبل أيَّ عددِ أوجهٍ ويقيسه بصفحات المصحف. */
+                 يقبل أيَّ عددِ أوجهٍ ويقيسه بأسطر المصحف. */
               const q0 = Number(a.qty) || 0;
               const base = [["وجه", 1], ["نصف وجه", 0.5], ["ربع وجه", 0.25]];
               const list = base.slice();
@@ -41621,83 +41888,30 @@ window.calculateHomeworkEnd = function (startSurah, startAyah, amountInPages, mu
       const P = Number(from.page);
 
       /* ---------------------------------------------------------------
-         طولُ الوجه يُقاس بآيات صفحته الحقيقيّة
+         المقدارُ يُقاس بأسطر المصحف — المسلكُ نفسُه الذي في rangeEnd
          ---------------------------------------------------------------
-         Quran.page(n) يردُّ آياتِ الصفحة صفّاً صفّاً، فعددُها هو عددُ
-         آياتِ ذلك الوجه — لا متوسّطٌ ولا تقدير. وأوجهٌ متعدّدةٌ يُجمع
-         طولُها من صفحاتها واحدةً واحدة، والكسرُ يُقسَم من طول صفحته.
+         «اخترتُ نصفَ وجهٍ فأعطاني ثلاثةَ أسطر، والمفترَضُ بين ستّةٍ
+          وثمانيةٍ على حسب نهاية الآية».
+
+         فلا قياسَ بعدد الآيات: الآياتُ متفاوتةُ الطول، وثلاثةَ عشرَ
+         سطراً من أوّل مريم فيها إحدى عشرةَ آية، ومثلُها من أوّل البقرة
+         فيها خمس. والحافظُ يرى الورقةَ أسطراً.
+
+         ووجهٌ كاملٌ من رأس الصفحة يبقى بـ pagemeta حرفاً بحرف، كما في
+         rangeEnd — فلا يتبدّل مدًى راجعتَه.
          --------------------------------------------------------------- */
-      /* وآيةٌ لا تُسنَد لا تُحسب في طول الوجه: البسملةُ في الفاتحة ليست
-         آيةً على عدّ صاحب النظام (skipBasmala)، فصفحتُها ستُّ آياتٍ لا
-         سبعٌ. ولولا هذا لخرج وجهُ الفاتحة إلى البقرة بآيةٍ واحدة. */
-      const rowsOf = function (p) {
-        if (p < 1 || p > 604) return Promise.resolve([]);
-        return Promise.resolve(Quran.page(p)).then(function (rows) {
-          return (rows || []).filter(function (r) {
-            return typeof skipBasmala !== "function" ||
-                   skipBasmala(Number(r.s), Number(r.a)) === Number(r.a);
-          });
-        }).catch(function () { return []; });
-      };
-      const lenOf = function (p) {
-        return rowsOf(p).then(function (rows) { return rows.length; });
-      };
-
-      const full = Math.floor(n), frac = n - full;
-      let span = 0, i = 0;
-      const addFull = function () {
-        if (i >= full) {
-          if (frac <= 0) return Promise.resolve();
-          return lenOf(P + full).then(function (L) {
-            if (L > 0) span += Math.max(1, Math.round(frac * L));
-          });
+      return Promise.resolve(rangeEnd(s, a, n, "وجه", "forward")).then(function (end) {
+        if (!end || !end.surah) {
+          return { error: "تعذّر حسابُ نهاية الواجب — بياناتُ أسطر المصحف لم تُحمَّل" };
         }
-        return lenOf(P + i).then(function (L) { span += L; i++; return addFull(); });
-      };
-
-      return addFull().then(function () {
-        span = Math.max(1, span);
-
-        /* ---------------------------------------------------------------
-           ثمّ يُمشى بطول الوجه من موضع الابتداء نفسِه
-           ---------------------------------------------------------------
-           «عايز لما أضغط على علامة + يزوّد ويظبّطها على قدّ الوجه بالظبط».
-           فالمدى طولُه وجهٌ كاملٌ من حيث وقف المعلّم، لا ما بقي من صفحته:
-           من مريم ١ ينتهي عند ١١ (أوّلُ الصفحة فآخرُها)، ومن مريم ٣ ينتهي
-           عند ١٣ — وجهٌ بطوله لا تسعُ آياتٍ.
-
-           والمشيُ على آياتِ الصفحات نفسِها، فيعبر السورةَ إن عبرتها
-           ويقف عند آخر المصحف إن بلغه.
-           --------------------------------------------------------------- */
-        const acc = [];
-        let i0 = -1, p = P;
-        const walk = function () {
-          if (p > 604) return Promise.resolve();
-          return rowsOf(p).then(function (rows) {
-            const pg = p;
-            rows.forEach(function (r) {
-              acc.push({ s: Number(r.s), a: Number(r.a), p: pg });
-            });
-            if (i0 < 0) {
-              for (let k = 0; k < acc.length; k++) {
-                if (acc[k].s === s && acc[k].a === a) { i0 = k; break; }
-              }
-            }
-            p++;
-            if (i0 >= 0 && acc.length >= i0 + span) return;
-            return walk();
+        let eS = Number(end.surah), eA = Number(end.ayah) || 1;
+        /* لا يتجاوز آخرَ المصحف */
+        if (eS > 114) { eS = 114; eA = 6; }
+        return Promise.resolve(end.page ? end.page : Quran.locate(eS, eA))
+          .then(function (pg) {
+            const pNum = typeof pg === "number" ? pg : ((pg && pg.page) || 0);
+            return { surah: eS, ayah: eA, page: pNum, fromPage: P };
           });
-        };
-
-        return walk().then(function () {
-          if (i0 < 0) return { error: "تعذّر تحديدُ موضع الآية في صفحتها" };
-          /* إن بلغ المشيُ آخرَ المصحف وقف عند آخر آيةٍ فيه */
-          const t = acc[Math.min(i0 + span - 1, acc.length - 1)];
-          if (!t) return { error: "تعذّر حسابُ نهاية الواجب" };
-          let eS = t.s, eA = t.a;
-          if (eS > 114) { eS = 114; eA = 6; }
-          return { surah: eS, ayah: eA, page: t.p, fromPage: P, span: span };
-        });
       });
     });
   }).catch(function (e) {
@@ -48574,7 +48788,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-2010";
+  var APP_BUILD = "20261012-0040";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
