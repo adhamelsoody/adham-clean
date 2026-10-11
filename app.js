@@ -28427,7 +28427,11 @@ window.numStep = function (id, d) {
       window.ayahCap(el.dataset.sync);
     }
     if (String(el.id) === "tsd_fA" && typeof window.tsdQtyRange === "function") {
-      window.tsdQtyRange();
+      window.tsdQtyRange(1);
+    }
+    /* وتحريكُ «إلى» بيده وسمٌ يدويّ */
+    if (String(el.id) === "tsd_tA" && typeof window.tsdToManual === "function") {
+      window.tsdToManual();
     }
     return;
   }
@@ -28441,14 +28445,15 @@ window.numStep = function (id, d) {
 };
 
 /* زرّان حول حقلٍ رقميّ: − يساراً و + يميناً كخطّ الأعداد */
-function numStepBox(id, cls, value, label, min, suraId, shown, syncId, afterId, afterSuraId, qtyCall) {
+function numStepBox(id, cls, value, label, min, suraId, shown, syncId, afterId, afterSuraId, qtyCall, manual) {
   /* suraId اختياريٌّ: إن مُرِّر صارت الخانةُ مقيَّدةً بعدد آيات تلك السورة.
      و shown يقول إنّ الخانةَ تعرض بعدّ صاحب النظام لا بعدّ المصحف.
      و syncId خانةٌ تتبع هذه فتُعاد موازنتُها كلّما تغيّرت (خانةُ «إلى»
      تتبع «من»). و afterId/afterSuraId: هذه الخانةُ تبدأ بعد تلك. */
   /* qtyCall: خانةُ الابتداء تُعيد حسابَ المدى من المقدار كلّما تحرّكت */
   const foll = (syncId ? `;window.ayahCap('${jsAttr(String(syncId))}')` : "") +
-               (qtyCall ? ";window.tsdQtyRange()" : "");
+               (qtyCall ? ";window.tsdQtyRange(1)" : "") +
+               (manual ? ";window.tsdToManual()" : "");
   const sa = suraId ? ` data-sura="${jsAttr(String(suraId))}"` +
     (shown ? ' data-shown="1"' : "") +
     (syncId ? ` data-sync="${jsAttr(String(syncId))}"` : "") +
@@ -28563,7 +28568,7 @@ window.tstuDuty = function (id) {
         <span class="tsd-v">${canFrom && !locked
           ? `<span class="tsd-pair tsd-pair-w">
                <select id="tsd_fS" class="tsd-in tsd-sura"
-                 onchange="window.ayahCap('tsd_fA','tsd_fS');window.ayahCap('tsd_tA');window.tsdQtyRange()"
+                 onchange="window.ayahCap('tsd_fA','tsd_fS');window.ayahCap('tsd_tA');window.tsdQtyRange(1)"
                  >${sOpts(a.fromS || 1)}</select>
                ${numStepBox("tsd_fA", "tsd-ayah-n", ayahShow(a.fromS, fA0), "من آية", 1,
                    "tsd_fS", true, "tsd_tA", "", "", true)}
@@ -28577,10 +28582,11 @@ window.tstuDuty = function (id) {
         <span class="tsd-v">${canEnd && !locked
           ? `<span class="tsd-pair tsd-pair-w">
                <select id="tsd_tS" class="tsd-in tsd-sura"
-                 onchange="window.ayahCap('tsd_tA','tsd_tS')">${sOpts(a.toS || a.fromS || 1)}</select>
+                 onchange="window.ayahCap('tsd_tA','tsd_tS');window.tsdToManual()"
+                 >${sOpts(a.toS || a.fromS || 1)}</select>
                ${numStepBox("tsd_tA", "tsd-ayah-n",
                    ayahShow(a.toS || a.fromS, a.toA || 1), "إلى آية", 1, "tsd_tS", true,
-                   "", "tsd_fA", "tsd_fS")}
+                   "", "tsd_fA", "tsd_fS", false, true)}
              </span>`
           : `${a.toS ? esc(surahName(a.toS)) : (a.fromS ? esc(surahName(a.fromS)) : "—")}${
               a.toA ? " · الآية " + toArabicDigits(ayahShow(a.toS || a.fromS, a.toA)) : ""}`}</span>
@@ -28589,11 +28595,15 @@ window.tstuDuty = function (id) {
       ${canQty && !locked ? `<div class="tsd-row tsd-res-row">
         <span class="tsd-k">المقدار</span>
         <span class="tsd-v"><span class="tsd-pair tsd-pair-w">
-          <select id="tsd_qty" class="tsd-in" onchange="window.tsdQtyRange()">
+          <select id="tsd_qty" class="tsd-in" onchange="window.tsdQtyRange(1)">
             ${(function () {
               /* «خلّي في المقدار وجه ونص وجه وربع فقط» — ثلاثةٌ لا غير.
                  ومقدارُ الواجب المحفوظُ إن كان غيرَها يبقى خياراً فيها
-                 حتى لا يُبدَّل بصمتٍ عند أوّل حفظ. */
+                 حتى لا يُبدَّل بصمتٍ عند أوّل حفظ: فواجبُ «وجهان» أو
+                 «ثلاثة أوجه» المولَّدُ من خطةٍ يُعرض مقدارُه ويُحسب مداه،
+                 ولا يُضاف إلى القائمة لكلّ واجبٍ لأنّ القائمةَ ثلاثةٌ بطلبه.
+                 والحاسبُ calculateHomeworkEnd عامٌّ لا يُقيَّد بالثلاثة:
+                 يقبل أيَّ عددِ أوجهٍ ويقيسه بصفحات المصحف. */
               const q0 = Number(a.qty) || 0;
               const base = [["وجه", 1], ["نصف وجه", 0.5], ["ربع وجه", 0.25]];
               const list = base.slice();
@@ -41552,7 +41562,80 @@ window.ayahCap = function (ayahId, suraId) {
    النظام فيُحوَّل بـ ayahStore قبل الحساب، ثمّ تُعاد النتيجةُ بـ ayahShow.
    ولا كتابةَ هنا: العرضُ يتغيّر، والحفظُ بزرّه كما كان.
    ========================================================================= */
-window.tsdQtyRange = function () {
+/* =========================================================================
+   calculateHomeworkEnd — نهايةُ الواجب من صفحات المصحف
+   -------------------------------------------------------------------------
+   دالّةٌ مركزيّةٌ واحدة، تُستعمل من نافذة تفاصيل الواجب ومن غيرها إن احتيج.
+
+   مصدرُ البيانات: quran/pagemeta.json في المشروع نفسِه — ٦٠٤ صفحة، لكلّ
+   صفحةٍ أوّلُ آيةٍ فيها وآخرُها {p, f:[سورة,آية], l:[سورة,آية]}. وهي طبعةُ
+   مصحف المدينة النبويّة برواية حفصٍ عن عاصم، وعليها يقوم مصحفُ المشروع
+   التفاعليُّ نفسُه (quran/pages/N.json لكلّ صفحة). فلا جدولَ ثانٍ يُنشأ
+   ولا رقمَ يُخمَّن ولا متوسّطَ آياتٍ للصفحة.
+
+   معنى «الوجه» ثابتٌ ومعلن: الوجهُ الأوّلُ ينتهي عند آخر آيةٍ في الصفحة
+   التي تقع فيها آيةُ الابتداء — ولو بدأ من منتصفها — والثاني عند آخر
+   الصفحة التالية، وهكذا. ومحرّكُ المشروع (Quran.advance بوحدة face) يفعل
+   هذا بعينه: targetPage = صفحةُ البداية + (المقدار − ١).
+
+   والكسرُ (نصفُ وجهٍ وربعُه) لا علامةَ له في المصحف، فيُقسَم بآيات الوجه:
+   يُؤخذ مدى الوجه الكامل ثمّ يُمشى فيه بنسبة الكسر من آياته.
+
+   وتعبر السورةَ إن عبرتها الصفحة: نهايةُ الصفحة قد تكون في سورةٍ تالية،
+   فتُرجَع كما هي — سورةً وآيةً معاً.
+
+   ولا تتجاوز آخرَ المصحف: ما بعد الصفحة ٦٠٤ يقف عند آخر آيةٍ في الناس.
+
+   ترجع: {surah, ayah, page, fromPage} أو {error: "..."} إن نقصت البيانات.
+   ========================================================================= */
+window.calculateHomeworkEnd = function (startSurah, startAyah, amountInPages, mushafEdition) {
+  const s = Number(startSurah) || 0;
+  const a = Number(startAyah) || 0;
+  const n = Number(amountInPages) || 0;
+
+  if (!(s >= 1 && s <= 114)) {
+    return Promise.resolve({ error: "رقمُ السورة خارج المصحف: " + startSurah });
+  }
+  if (!(a >= 1)) {
+    return Promise.resolve({ error: "رقمُ آية الابتداء غير صحيح: " + startAyah });
+  }
+  if (!(n > 0)) {
+    return Promise.resolve({ error: "المقدار غير صحيح: " + amountInPages });
+  }
+  if (typeof Quran === "undefined" || !Quran.advance || !Quran.locate) {
+    return Promise.resolve({ error: "بياناتُ المصحف لم تُحمَّل بعد" });
+  }
+  /* طبعةٌ واحدةٌ في المشروع: ما في quran/. وأيُّ اسمٍ آخرَ يُعلَن ولا يُخمَّن */
+  if (mushafEdition && String(mushafEdition) !== "madinah-hafs") {
+    return Promise.resolve({ error: "طبعةٌ غيرُ متوفّرة في المشروع: " + mushafEdition });
+  }
+
+  return Promise.resolve(Quran.ayahCount(s)).then(function (cnt) {
+    if (cnt && a > Number(cnt)) {
+      return { error: "الآيةُ " + a + " خارجَ سورةِ " + s + " (آياتُها " + cnt + ")" };
+    }
+    /* locate وعدٌ لا قيمةٌ — جدولُ المواضع يُجلب عند الحاجة */
+    return Promise.resolve(Quran.locate(s, a)).then(function (from) {
+      if (!from || !from.page) return { error: "تعذّر تحديدُ صفحة الآية" };
+
+      return Promise.resolve(rangeEnd(s, a, n, "وجه", "forward")).then(function (end) {
+        if (!end || !end.surah) return { error: "تعذّر حسابُ نهاية الواجب" };
+        let eS = Number(end.surah), eA = Number(end.ayah) || 1;
+        /* لا يتجاوز آخرَ المصحف */
+        if (eS > 114) { eS = 114; eA = 6; }
+        return Promise.resolve(end.page ? end.page : Quran.locate(eS, eA))
+          .then(function (pg) {
+            const pNum = typeof pg === "number" ? pg : ((pg && pg.page) || 0);
+            return { surah: eS, ayah: eA, page: pNum, fromPage: Number(from.page) };
+          });
+      });
+    });
+  }).catch(function (e) {
+    return { error: "عطبٌ في حساب نهاية الواجب: " + ((e && e.message) || e) };
+  });
+};
+
+window.tsdQtyRange = function (force) {
   const fSel = document.getElementById("tsd_fS");
   const fAEl = document.getElementById("tsd_fA");
   const qEl  = document.getElementById("tsd_qty");
@@ -41560,44 +41643,38 @@ window.tsdQtyRange = function () {
   const tAEl = document.getElementById("tsd_tA");
   if (!fSel || !fAEl || !qEl || !tSel || !tAEl) return;
 
+  /* «لا تمسح تعديلات المستخدم دون سبب»: من حرّر «إلى» بيده يبقى تحريرُه
+     حتى يُبدّل سورةَ الابتداء أو آيتَه أو المقدار — فتُستأنف الحسبة. */
+  if (!force && tAEl.dataset && tAEl.dataset.manual === "1") return;
+
   const fS = Number(fSel.value) || 0;
   const shown = Number(fAEl.value) || 0;
   const q = Number(qEl.value) || 0;
   if (!fS || !shown || !(q > 0)) return;
-  if (typeof rangeEnd !== "function") return;
 
-  const unit = (document.getElementById("tsd_unit") || {}).value || "وجه";
   const fA = typeof ayahStore === "function" ? ayahStore(fS, shown) : shown;
 
-  /* =======================================================================
-     الحسابُ يمضي إلى الأمام دائماً من «من» إلى «إلى»
-     -----------------------------------------------------------------------
-     كان يتبع اتجاهَ الواجب، فطالبٌ خطتُه «من الناس» (تنازليّ) يُحسب له
-     الوجهُ إلى الوراء: من مريم ١ يرجع إلى الكهف، فيُقصَر على سورته فيقع
-     على مريم ١، ثمّ يرفعه حدُّ «إلى بعد من» إلى ٢ — فيرى المعلّمُ «٢»
-     ويظنُّ الحسابَ معطَّلاً. وهذا ما ظهر في مخرَج العميل: dir=backward
-     والنتيجةُ ٢، والمحرّكُ نفسُه يقول ١١ حين يُسأل تصاعداً.
-
-     وصحيفةُ الواجب تقرأ المدى تصاعداً أصلاً: «إلى» لا تكون قبل «من»
-     (رقعة ٢٤٨). فالوجهُ يُقاس من موضع الابتداء إلى ما بعده، واتجاهُ الخطة
-     شأنُه موضعُ الغد لا قياسُ صفحةِ اليوم.
-     ======================================================================= */
-  rangeEnd(fS, fA, q, unit, "forward").then(function (end) {
-    if (!end || !end.surah) return;
-    let tS = Number(end.surah), tA = Number(end.ayah) || 1;
-    /* لا يتعدّى سورتَه — القاعدةُ نفسُها التي في asgCapToSurah */
-    if (tS !== fS) {
-      tS = fS;
-      const cnt = typeof ayahCountOf === "function" ? ayahCountOf(fS) : 0;
-      tA = cnt || tA;
+  window.calculateHomeworkEnd(fS, fA, q, "madinah-hafs").then(function (r) {
+    if (!r || r.error) {
+      /* «أظهر خطأً واضحاً إن نقصت البيانات، بدل نهايةٍ خاطئة» */
+      if (r && r.error && typeof showToast === "function") showToast(r.error, "warn");
+      return;
     }
-    tSel.value = String(tS);
+    /* النهايةُ سورةً وآيةً معاً — وقد تقع في سورةٍ تالية إن عبرتها الصفحة */
+    tSel.value = String(r.surah);
     tSel.dispatchEvent(new Event("change", { bubbles: true }));
-    const want = typeof ayahShow === "function" ? ayahShow(tS, tA) : tA;
+    const want = typeof ayahShow === "function" ? ayahShow(r.surah, r.ayah) : r.ayah;
     window.ayahCap("tsd_tA");
     tAEl.value = String(want);
     window.ayahCap("tsd_tA");
+    if (tAEl.dataset) tAEl.dataset.manual = "";
   }).catch(function () {});
+};
+
+/* تحريرٌ يدويٌّ لـ«إلى» يُوسَم فيُحترم حتى تتبدّل مدخلاتُ الحساب */
+window.tsdToManual = function () {
+  const el = document.getElementById("tsd_tA");
+  if (el && el.dataset) el.dataset.manual = "1";
 };
 
 /* بعد ملء قائمة السور: كلُّ خانةِ آيةٍ تأخذ حدَّ سورتها */
@@ -48427,7 +48504,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-1900";
+  var APP_BUILD = "20261011-1940";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
