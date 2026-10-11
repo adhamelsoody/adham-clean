@@ -16344,6 +16344,17 @@ function pillarQtyOf(hwKey) {
   return PLAN_QTY_NUM[String(v.qty || "")] || 0;
 }
 
+/* مقدارُ بطاقة هذا الطالب — يكتبه spSyncEnginePlan من st.plan وحدَه، فإن
+   لم تُضبط بطاقتُه عاد صفراً ومضى المحرّكُ على ما كان. */
+function planQtyOf(plan, hwKey) {
+  if (!plan) return 0;
+  const k = String(hwKey || "");
+  const n = (k === "hifz") ? Number(plan.hifzQtyNum)
+          : (k === "rev" || k === "tilawah") ? Number(plan.revQtyNum)
+          : 0;
+  return (isFinite(n) && n > 0) ? n : 0;
+}
+
 /* =========================================================================
    التوليد
    ========================================================================= */
@@ -16414,7 +16425,11 @@ function generateAssignments(studentId, dateISO) {
          تقدّم اللاحق، فيبدأ الطالب مرقّىً بعشرين وجهاً لم يعملها. */
       levelId: plan.levelId || "",
       /* كمّيةُ الركن من خطته الافتراضية، وإلا مقدارُ نوع الواجب العام */
-      qty: pillarQtyOf(t.k) || Number(t.qty) || 0,
+      /* مقدارُ بطاقة هذا الطالب أوّلاً — هو ما يراه المعلّمُ والإدارةُ
+         والطالب. فإن لم تُضبط بطاقتُه فكمّيةُ ركنه من البرنامج، وإلا
+         مقدارُ نوع الواجب العامّ. (planQtyOf لا تُرجع شيئاً إلا من بطاقةٍ
+         ضُبطت، فخططُ الطلاب القديمةُ لا يتبدّل لها مقدار.) */
+      qty: planQtyOf(plan, t.k) || pillarQtyOf(t.k) || Number(t.qty) || 0,
       status: "pending",          /* pending · done · failed · missed */
       score: null,
       termId: typeof activeTermId === "function" ? (activeTermId() || "") : "",
@@ -36330,13 +36345,19 @@ function studentProgress() {
 
   const byGrade = RECITE_GRADES.map(g => ({ g, n: recs.filter(r => r.grade === g).length }));
 
+  /* المقدارُ بلفظ البطاقة التي ضبطها معلّمُه — «نصف وجه» لا «0.5 وجه».
+     و amountText يكتبه spSyncEnginePlan من st.plan، فإن لم يكن فالرقمُ
+     والوحدةُ كما كانا. وهكذا يقرأ الطالبُ ما يقرؤه المعلّمُ والإدارة. */
+  const qtyTxt = (txt, num, unit) => txt ? String(txt)
+    : (num ? (String(num) + " " + String(unit || "")) : "—");
   const info = [
     ["البرنامج", p.program || "—"], ["المستوى", p.level || "—"],
-    ["بداية الخطة", planPosText(p, "rev") || "—"],
+    /* الاسمُ يتبع ما يُعرض: هذا موضعُ ابتداء المراجعة لا بدايةُ الخطة */
+    ["ابتداء المراجعة", planPosText(p, "rev") || "—"],
     ["الموضع الحالي", planPosText(p, "hifz") || "—"],
     ["نهاية الخطة", p.end || "—"],
-    ["مقدار الحفظ اليومي", (p.amount || "—") + " " + (p.unit || "")],
-    ["مقدار المراجعة اليومي", (p.rAmount || "—") + " " + (p.rUnit || "")]
+    ["مقدار الحفظ اليومي", qtyTxt(p.amountText, p.amount, p.unit)],
+    ["مقدار المراجعة اليومي", qtyTxt(p.rAmountText, p.rAmount, p.rUnit)]
   ].map(r => `<div class="kv"><span>${esc(r[0])}</span><strong>${esc(String(r[1]))}</strong></div>`).join("");
 
   return `<div class="page">
@@ -41296,6 +41317,37 @@ function spSyncEnginePlan(st) {
   if (hs) { rec.hifzFromS = hs; rec.hifzFromA = Math.max(1, Number(p.hifzAyah) || 1); }
   const rs = spSurahIdx(p.revSura);
   if (rs) { rec.revFromS = rs; rec.revFromA = Math.max(1, Number(p.revAyah) || 1); }
+
+  /* =======================================================================
+     المقدارُ يُترجَم كذلك — «أريد الخطة أن تكون متوافقة في موقع الإدارة
+     والمعلّم والطالب»
+     -----------------------------------------------------------------------
+     كانت البطاقةُ عند الإدارة والمعلّم تقول «نصف وجه»، وصفحةُ الطالب «تقدّم
+     خطتي» تقول «١ وجه» أو «—»، والمحرّكُ يولّد مقداراً ثالثاً. لأنّ هذه
+     الدالّةَ كانت تترجم الاتجاهَ والموضعَ ولا تترجم المقدار، فبقي مقدارُ
+     البطاقة في st.plan وحدَه لا يراه أحدٌ غيرُها.
+
+     فتُكتب ثلاثُ صورٍ للمقدار الواحد، كلٌّ لقارئها، ولا يُحذف حقلٌ قائم:
+       • amount / unit  رقماً ووحدةً — صورةُ السجلّ القديمة التي تقرؤها
+         شاشاتُ الإدارة و modalDuty عدداً (Number(draft.amount)).
+       • amountText     نصُّ البطاقة كما اختاره المعلّم — ليقرأه الطالبُ
+         بلفظه لا بكسرٍ عشريّ.
+       • hifzQtyNum / revQtyNum  للمحرّك: لا يُكتبان إلا من بطاقةٍ ضُبطت،
+         فخططُ الطلاب القديمةُ تمضي بما كانت عليه ولا يتبدّل لها مقدار.
+     ======================================================================= */
+  const qn = t => (typeof PLAN_QTY_NUM !== "undefined" && PLAN_QTY_NUM)
+    ? Number(PLAN_QTY_NUM[String(t || "")]) || 0 : 0;
+
+  if (p.hifzQty) {
+    const n = qn(p.hifzQty);
+    rec.amountText = String(p.hifzQty);
+    if (n > 0) { rec.hifzQtyNum = n; rec.amount = String(n); rec.unit = "وجه"; }
+  }
+  if (p.revQty) {
+    const n = qn(p.revQty);
+    rec.rAmountText = String(p.revQty);
+    if (n > 0) { rec.revQtyNum = n; rec.rAmount = String(n); rec.rUnit = "وجه"; }
+  }
 
   persistSet("plans", rec);
   return rec;
@@ -47989,7 +48041,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-0800";
+  var APP_BUILD = "20261011-0845";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
