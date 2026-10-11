@@ -28525,7 +28525,9 @@ window.tstuDuty = function (id) {
 
     ${a.fromS ? `<button type="button" class="tsd-ayah"
       onclick="window.tstuMushaf('${jsAttr(a.id)}')">
-      <span class="tsd-ayah-h">${esc(surahName(a.fromS))} – الآية ${
+      <span class="tsd-ayah-h" data-s="${esc(String(a.fromS))}"
+        data-a="${esc(String(ayahShow(a.fromS, fA0)))}">${
+        esc(surahName(a.fromS))} – الآية ${
         toArabicDigits(ayahShow(a.fromS, fA0))}</span>
       <span class="tsd-ayah-t" id="tsdAyah">…</span>
       <span class="tsd-ayah-go">${ic("book", 15)} افتح في المصحف</span>
@@ -28543,12 +28545,52 @@ window.tstuDuty = function (id) {
      ${canSplit ? `<button class="btn btn-soft" onclick="window.tsplSave()">حفظ الجلسات</button>` : ""}
      <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
 
-  /* خانتا الآية تأخذان حدَّ سورتَيهما عند الفتح — وإن تأخّر الفهرسُ أُعيدتا */
-  [0, 300, 900].forEach(function (ms) {
-    setTimeout(function () {
-      try { window.ayahCapAll(document.getElementById("modalRoot")); } catch (e) {}
-    }, ms);
-  });
+  /* =======================================================================
+     قائمتا السور تُملآن حين يصل فهرسُ المصحف
+     -----------------------------------------------------------------------
+     «عندما أفتح تفاصيل الواجب بعضَ الأحيان يظهر لي هذا الشكل»: قائمتا
+     «من» و«إلى» فارغتان وفيهما شرطةٌ، والترويسةُ تقول «– الآية ٩٧» بلا
+     اسم سورة.
+
+     والسببُ سباقٌ لا عطبٌ في البيانات: sOpts تبني الخياراتِ من QSURAHS،
+     فإن فُتحت النافذةُ قبل أن يصل فهرسُ المصحف رجعت إلى خيارٍ واحدٍ نصُّه
+     «—». وحين يصل الفهرسُ بعدها يُنادى mount() — وهو يُعيد رسمَ الصفحة لا
+     النافذةَ المفتوحة، فتبقى الشرطةُ أمام عينك. ورقمُ السورة لم يضع: هو
+     في value الخيار، ولذلك ظهرت الآيةُ صحيحةً ونصُّها كذلك.
+
+     فتُملأ القائمتان في موضعهما حين يصل الفهرس — من طابور انتظاره نفسِه
+     (QSURAHS_WAIT) لا بتخمين وقت. ويُصحَّح معها اسمُ السورة في الترويسة.
+     ولا تُمسّ قيمةٌ مختارة: تُعاد كما هي بعد الملء.
+     ======================================================================= */
+  const tsdFill = function () {
+    const box = document.getElementById("modalRoot");
+    if (!box) return;
+    if (typeof QSURAHS !== "undefined" && QSURAHS && QSURAHS.length) {
+      Array.prototype.forEach.call(box.querySelectorAll("select.tsd-sura"), function (sel) {
+        if (sel.options.length > 1) return;         /* مملوءةٌ أصلاً */
+        const cur = Number(sel.value) || 1;
+        sel.innerHTML = QSURAHS.map(function (x) {
+          return '<option value="' + x.i + '"' + (cur === x.i ? ' selected' : '') +
+                 '>' + x.i + '. ' + esc(x.n) + '</option>';
+        }).join("");
+        sel.value = String(cur);
+      });
+      const h = box.querySelector(".tsd-ayah-h");
+      if (h && h.dataset && h.dataset.s && /^\s*–/.test(h.textContent)) {
+        const nm = surahName(Number(h.dataset.s));
+        if (nm) h.textContent = nm + " – الآية " +
+          toArabicDigits(Number(h.dataset.a) || 1);
+      }
+    }
+    try { window.ayahCapAll(box); } catch (e) {}
+  };
+  tsdFill();
+  if ((typeof QSURAHS === "undefined" || !QSURAHS) &&
+      typeof QSURAHS_WAIT !== "undefined" && QSURAHS_WAIT) {
+    QSURAHS_WAIT.push(tsdFill);
+  }
+  /* وحارسٌ زمنيٌّ معه: فهرسٌ وصل قبل فتح النافذة لا طابورَ له */
+  [300, 900, 1800].forEach(function (ms) { setTimeout(tsdFill, ms); });
 
   /* نصُّ الآية الأولى: يُجلب من محرّك المصحف ثمّ يُوضع في موضعه */
   if (a.fromS && typeof window.Quran !== "undefined" && window.Quran.range) {
@@ -48186,7 +48228,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261011-1530";
+  var APP_BUILD = "20261011-1600";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
