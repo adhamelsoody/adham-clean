@@ -8593,7 +8593,12 @@ const PLAN_DIR = ["من الفاتحة", "من الناس"];
 const PLAN_DIR_REV = ["من الفاتحة", "من الناس"];
 
 /* اتجاهُ الخطة نصّاً إلى اتجاه المحرّك */
-function spDirKey(v) { return String(v || "").indexOf("الناس") > -1 ? "backward" : "forward"; }
+function spDirKey(v) {
+  /* مرجعُها dirOf: كانت تعرف «الناس» وحدَها، فتقرأ «تنازلي» تصاعديّاً */
+  return (typeof dirOf === "function")
+    ? dirOf(v)
+    : (String(v || "").indexOf("الناس") > -1 ? "backward" : "forward");
+}
 
 /* النصُّ المعروض: القديمُ «تخصيصي» يظهر على «من الفاتحة» فلا يبقى زرٌّ معلَّق */
 function spDirText(v) {
@@ -15990,7 +15995,28 @@ function stepFrom(toS, toA, dir) {
   const s = Number(toS) || 0;
   const a = Number(toA) || 0;
 
-  if (!back) return { s, a: a + 1 };          /* تصاعدي: الآية التالية */
+  /* =======================================================================
+     التصاعديُّ يعبر السورةَ كما يعبرها التنازليّ
+     -----------------------------------------------------------------------
+     «تبقى التصاعديُّ»: كان الجمعُ a + 1 بلا نظرٍ إلى عدد آيات السورة.
+     فواجبٌ انتهى عند آخر الفاتحة (٧) يُولِّد غداً بدايةً من «الفاتحة ٨» —
+     آيةٌ لا وجودَ لها، فلا يُحسب لها مدًى ويقف الطالبُ عند حدّ كلّ سورة.
+     والتنازليُّ كان قد عولج (الآيةُ صفرٌ ثمّ fixBackwardStarts)، وبقي
+     التصاعديُّ على حاله.
+
+     فإن كان عددُ آيات السورة معلوماً عُبرت إلى أوّل التالية. وإن لم يكن
+     (الفهرسُ لم يصل) تُعلَّم needEnd ليُصحَّحها fixForwardStarts حين يصل،
+     كما يفعل التنازليُّ بالصفر.
+     ======================================================================= */
+  if (!back) {
+    const cnt = (typeof ayahCountOf === "function") ? Number(ayahCountOf(s)) || 0 : 0;
+    if (cnt > 0) {
+      if (a < cnt) return { s, a: a + 1 };
+      if (s >= 114) return { s: 114, a: cnt };   /* بلغ آخرَ المصحف: يقف */
+      return { s: s + 1, a: 1 };                 /* أوّلُ السورة التالية */
+    }
+    return { s, a: a + 1, needEnd: true };       /* يُصحَّح حين يصل الفهرس */
+  }
 
   /* تنازلي: ما قبلها، فإن كانت أوّل السورة فالتي قبلها — ورقمُ آيتها
      يُصحَّح عند جلب الجدول، والصفر علامةٌ على ذلك. */
@@ -15998,6 +16024,33 @@ function stepFrom(toS, toA, dir) {
   if (s <= 1) return { s: 1, a: 1 };          /* بلغ الفاتحة: يقف */
   return { s: s - 1, a: 0, needEnd: true };
 }
+
+/* =========================================================================
+   تصحيحُ بداياتِ التصاعديِّ التي تجاوزت سورتَها
+   -------------------------------------------------------------------------
+   stepFrom تجمعُ واحداً حين لا يصل الفهرس، فقد تقع البدايةُ خارجَ سورتها.
+   وهذه تردّها إلى أوّل السورة التالية حين يصل الجدول — كأختِها
+   fixBackwardStarts في الجهة الأخرى.
+   ========================================================================= */
+window.fixForwardStarts = function (list) {
+  const need = (list || []).filter(a => a && a.fromS && Number(a.fromA) > 0 &&
+                                        dirOf(a.direction) !== "backward");
+  if (!need.length || typeof Quran === "undefined" || !Quran.ayahCount) {
+    return Promise.resolve(0);
+  }
+  return Promise.all(need.map(a =>
+    Promise.resolve(Quran.ayahCount(a.fromS)).then(c => {
+      const cnt = Number(c) || 0;
+      if (!cnt || Number(a.fromA) <= cnt) return 0;
+      if (Number(a.fromS) >= 114) { a.fromA = cnt; }
+      else { a.fromS = Number(a.fromS) + 1; a.fromA = 1; }
+      /* والمدى يُعاد حسابُه من الموضع المصحَّح */
+      a.toS = null; a.toA = null;
+      persistSet("assignments", a);
+      return 1;
+    }).catch(() => 0)
+  )).then(r => r.reduce((x, y) => x + y, 0));
+};
 
 /* تصحيح ما عُلّم needEnd — يُنادى مع تعبئة المدى */
 window.fixBackwardStarts = function (list) {
@@ -16541,9 +16594,29 @@ const REPEAT_MODES = [
    تُقرأ الصيغتان هنا، ولا تُغيَّر البيانات القديمة في مكانها — تصحيحُ ما
    حُفظ يُترك لحفظٍ لاحق، والقراءة المتسامحة تكفي.
    ========================================================================= */
+/* =========================================================================
+   مرجعٌ واحدٌ لاتجاه الخطة — يفهم كلَّ ما يكتبه المشروع
+   -------------------------------------------------------------------------
+   «ما زال الاتجاهُ تنازليّاً فقط»: كان الاتجاهُ يُكتب بثلاث لغات في ثلاثة
+   مواضع — "forward"/"backward" في الواجبات، و«تصاعدي»/«تنازلي» في
+   البرامج (PRG_DIRS وبنّاءُ البرنامج)، و«من الفاتحة»/«من الناس» في بطاقة
+   الطالب (PLAN_DIR) — ويقرؤها ثلاثُ دوالَّ كلٌّ عمياءُ عن لغة الأخرى:
+
+     dirOf("من الناس")    → forward   (وهي تنازليّة!)
+     spDirKey("تنازلي")   → forward   (وهي تنازليّة!)
+     pillarDirOf("تصاعدي") → ""       (فلا يُعرف اتجاهٌ أصلاً)
+
+   فالخطةُ المحفوظةُ بكلمةٍ تُقرأ بالدالّة الأخرى تنقلب أو تضيع، ويقع
+   الطالبُ على اتجاهٍ لم يُختَر له.
+
+   فصارت dirOf مرجعاً واحداً يفهم الكلماتِ الستَّ، وأحالت إليها أختاها.
+   ولم تُحذف دالّةٌ ولا تبدّلت قيمةٌ محفوظة: التحويلُ عند القراءة وحدَها.
+   ========================================================================= */
 function dirOf(v) {
   const d = String(v || "").trim();
   if (d === "backward" || d === "تنازلي") return "backward";
+  /* ولغةُ بطاقة الطالب: «من الناس» تنازليّةٌ وإن لم تُسمَّ بذلك */
+  if (d.indexOf("الناس") > -1) return "backward";
   return "forward";                       /* «حسب الطالب» يمضي إلى الأمام */
 }
 
@@ -16775,12 +16848,45 @@ function defPillar(hwKey) {
 }
 
 /* «من الفاتحة» تصاعدٌ و«من الناس» تنازل — وما عداهما لا يفرض شيئاً */
+/* =========================================================================
+   ترجيحُ اتجاه الطالب على افتراض الركن
+   -------------------------------------------------------------------------
+   «ما زال الاتجاهُ تنازليّاً فقط» — والسببُ هنا:
+
+     plan.dirSet ? dirOf(plan.direction)
+                 : (pillarDirOf(t.k) || dirOf(plan.direction))
+
+   فاختيارُ المعلّم لا يُقرأ إلّا إن حملت الخطةُ علامةَ dirSet. وهذه
+   العلامةُ تُكتب في spSyncEnginePlan وحدَها، أي عند حفظ بطاقة الطالب بعد
+   إضافتها. فكلُّ خطةٍ أُنشئت قبلها — أو أُنشئت من مسارٍ آخر (بنّاءُ
+   البرنامج، الاستيراد، الترحيل) — تحمل direction صحيحاً بلا dirSet،
+   فيعلو عليها افتراضُ الركن ويحكم مكانَ اختيار المعلّم. وإن كان افتراضُ
+   الركن «من الناس» صار كلُّ طلّاب هذه الخطط تنازليّين مهما اختِير لهم،
+   والبطاقةُ تعرض اختيارَهم بينما يُولَّد الواجبُ بغيره.
+
+   والقاعدةُ الآن: خطةٌ تحمل اتجاهاً مكتوباً فقد اختير لها — بعلامةٍ أو
+   بغيرها. والافتراضُ لمن لا اتجاهَ له أصلاً. ولا تُكتب بياناتٌ ولا
+   تُرحَّل: الترجيحُ عند القراءة وحدَها.
+   ========================================================================= */
+function planDirOf(plan, hwKey) {
+  if (!plan) return "forward";
+  /* المراجعةُ والتلاوةُ لهما اتجاهُهما إن ضُبط */
+  if (plan.revDirection && (hwKey === "rev" || hwKey === "tilawah")) {
+    return dirOf(plan.revDirection);
+  }
+  if (plan.dirSet) return dirOf(plan.direction);
+  /* اتجاهٌ مكتوبٌ في الخطة = اختيارٌ، وإن غابت العلامة */
+  if (String(plan.direction || "").trim()) return dirOf(plan.direction);
+  return (typeof pillarDirOf === "function" ? pillarDirOf(hwKey) : "") || "forward";
+}
+
 function pillarDirOf(hwKey) {
   const v = defPillar(hwKey);
-  const d = v ? String(v.dirRev || v.dir || "") : "";
-  if (d === "من الفاتحة") return "forward";
-  if (d === "من الناس")   return "backward";
-  return "";
+  const d = v ? String(v.dirRev || v.dir || "").trim() : "";
+  /* الفراغُ يعني «لم يُحدَّد» فيُترك لخطة الطالب — وما سواه يُترجم بالمرجع،
+     فكان «تصاعدي» و«تنازلي» يُردّان فراغاً كأنّهما لم يُختارا */
+  if (!d || d === "تخصيصي" || d === "حسب الطالب") return "";
+  return dirOf(d);
 }
 
 function pillarStartOf(hwKey) {
@@ -16923,8 +17029,7 @@ function generateAssignments(studentId, dateISO) {
       rec.fromS = from.s; rec.fromA = from.a;
       /* اختيارُ المعلّم لهذا الطالب يعلو افتراضَ البرنامج — لا خلطَ بين
          خطة الطالب وخطة البرنامج العامة */
-      rec.direction = plan.dirSet ? dirOf(plan.direction)
-                                  : (pillarDirOf("hifz") || dirOf(plan.direction));
+      rec.direction = planDirOf(plan, "hifz");
       if (from.repeat) {
         rec.isRepeat = true; rec.round = from.round; rec.ofRounds = from.of;
         rec.note = from.note;
@@ -16955,9 +17060,7 @@ function generateAssignments(studentId, dateISO) {
 
       /* الاتجاهُ يُحسم قبل التقدّم لا بعده: كان يُسنَد في آخر السطور،
          و stepFrom تقرؤه قبل إسناده فتمضي تصاعداً دائماً. */
-      rec.direction = (plan.revDirection && (t.k === "rev" || t.k === "tilawah"))
-        ? dirOf(plan.revDirection)
-        : (plan.dirSet ? dirOf(plan.direction) : (pillarDirOf(t.k) || dirOf(plan.direction)));
+      rec.direction = planDirOf(plan, t.k);
 
       /* المراجعة والتلاوة تبدآن من حيث انتهى آخرُ ما سُمّع من نوعها */
       const last = asgTermOf(studentId)
@@ -17060,6 +17163,13 @@ function todayAssignments(studentId, dateISO, persist) {
       if (window.fillAsgRanges) window.fillAsgRanges(list);
       /* البدايات المعلَّمة بالصفر: آيتها آخر السورة — تُجلب من الجدول */
       if (window.fixBackwardStarts) window.fixBackwardStarts(list).then(n => { if (n) mount(); });
+      /* والتصاعديُّ كذلك: بدايةٌ تجاوزت سورتَها تُردُّ إلى التالية */
+      if (window.fixForwardStarts) {
+        window.fixForwardStarts(list).then(n => {
+          if (n && window.fillAsgRanges) window.fillAsgRanges(list);
+          if (n) mount();
+        });
+      }
 
       /* وسمُ بلوغ آخر السورة قد يفوت وقتَ الإغلاق — جدولُ المصحف يُجلب
          من الشبكة وقد لا يكون حاضراً — فيبقى الواجبُ بلا وسمٍ ولا يقع
@@ -48928,7 +49038,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261012-0700";
+  var APP_BUILD = "20261012-2040";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
