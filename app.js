@@ -28790,17 +28790,29 @@ window.tstuDutySave = function (id) {
     if (!(q > 0)) { showToast("المقدار غير صحيح", "warn"); return; }
     next.qty = q;
     next.unit = String(val("#tsd_unit") || a.unit || "وجه");
+    /* واتجاهُ هذا الواجب من زرِّه — ولا يُمسُّ اتجاهُ خطة الطالب */
+    if (document.getElementById("tsd_dir")) {
+      next.direction = dirOf(val("#tsd_dir") || a.direction);
+    }
   }
 
-  /* النهايةُ لا تسبق البداية — بالمحرّك نفسِه الذي يفحص التسميع */
+  /* النهايةُ لا تسبق البداية — بالمحرّك نفسِه الذي يفحص التسميع.
+     والتنازليُّ (من الناس إلى الفاتحة) تُخزَّن نهايتُه قبل بدايته في
+     ترتيب المصحف — كما يكتبها fillAsgRanges سواءً — فيُقاس فيه العكس:
+     البدايةُ لا تسبق النهاية. ولولا ذلك رُدَّ كلُّ حفظٍ لواجبٍ تنازليّ. */
   const fS = next.fromS != null ? next.fromS : Number(a.fromS) || 0;
   const fA = next.fromA != null ? next.fromA : Number(a.fromA) || 0;
   const tS = next.toS   != null ? next.toS   : (Number(a.toS) || fS);
   const tA = next.toA   != null ? next.toA   : (Number(a.toA) || fA);
-  if (fS && tS && typeof window.Quran !== "undefined" &&
-      typeof window.Quran.before === "function" &&
-      !window.Quran.before(fS, fA, tS, tA)) {
-    showToast("نهاية المدى قبل بدايته", "warn"); return;
+  const dSave = dirOf(next.direction != null ? next.direction : a.direction);
+  const okOrder = (fS && tS && typeof window.Quran !== "undefined" &&
+                   typeof window.Quran.before === "function")
+    ? (dSave === "backward" ? window.Quran.before(tS, tA, fS, fA)
+                            : window.Quran.before(fS, fA, tS, tA))
+    : true;
+  if (!okOrder) {
+    showToast(dSave === "backward" ? "بدايةُ المدى قبل نهايته في التنازليّ"
+                                   : "نهاية المدى قبل بدايته", "warn"); return;
   }
 
   Object.keys(next).forEach(k => { a[k] = next[k]; });
@@ -29134,7 +29146,7 @@ window.tstuDuty = function (id) {
               a.toA ? " · الآية " + toArabicDigits(ayahShow(a.toS || a.fromS, a.toA)) : ""}`}</span>
       </div>
 
-      ${canQty && !locked ? `<div class="tsd-row tsd-res-row">
+      ${canQty && !locked ? `<div class="tsd-row tsd-res-row tsd-qty-row">
         <span class="tsd-k">المقدار</span>
         <span class="tsd-v"><span class="tsd-pair tsd-pair-w">
           <select id="tsd_qty" class="tsd-in" onchange="window.tsdQtyRange(1)">
@@ -29160,7 +29172,28 @@ window.tstuDuty = function (id) {
             })()}
           </select>
           <input type="hidden" id="tsd_unit" value="${esc(a.unit || "وجه")}">
-        </span><small class="tsd-note">المدى يُحسب من المقدار وموضعِ الابتداء</small></span>
+        </span>
+        <!-- =================================================================
+             «ضيف لي زرّ من الناس ومن الفاتحة هنا بالضبط على الشمال»
+             -----------------------------------------------------------------
+             اتجاهُ هذا الواجب بجانب مقداره: فالمدى يُحسب منهما معاً، وكان
+             الاتجاهُ يُقرأ من الخطة ولا يُرى في الصحيفة ولا يُعدَّل فيها.
+             وتبديلُه يُعيد حسابَ «إلى» في الحال، ويُحفظ مع الواجب وحدَه —
+             ولا تُمسُّ خطةُ الطالب ولا واجباتُه الأخرى.
+
+             والتلميحُ (تنازلي/تصاعدي) هنا في صفةِ الزرّ لا في متنه: صفُّ
+             المقدار في عرض الجوّال لا يحمل الاثنين معاً، فإمّا أن يبقى
+             الزرُّ على شمال المقدار كما طُلب، وإمّا أن ينزل تحته. وهو في
+             متنه ظاهرٌ في شاشات الخطة حيث يتّسع الصفّ.
+             ================================================================= -->
+        <span class="tsd-dirseg" id="tsd_dirseg">
+          ${PLAN_DIR.map(o => `<button type="button" class="tsd-dirb${
+              spDirKey(o) === dirOf(a.direction) ? " on" : ""}"${
+              planDirHint(o) ? ` title="${jsAttr(o + " — " + planDirHint(o))}"` : ""}
+            onclick="window.tsdDirSet(this,'${jsAttr(o)}')">${esc(o)}</button>`).join("")}
+          <input type="hidden" id="tsd_dir" value="${esc(dirOf(a.direction))}">
+        </span>
+        <small class="tsd-note">المدى يُحسب من المقدار والاتجاه وموضعِ الابتداء</small></span>
       </div>` : ""}
 
       ${a.note ? `<div class="tsd-row">
@@ -42132,7 +42165,7 @@ window.ayahCap = function (ayahId, suraId) {
 
    ترجع: {surah, ayah, page, fromPage} أو {error: "..."} إن نقصت البيانات.
    ========================================================================= */
-window.calculateHomeworkEnd = function (startSurah, startAyah, amountInPages, mushafEdition) {
+window.calculateHomeworkEnd = function (startSurah, startAyah, amountInPages, mushafEdition, direction) {
   const s = Number(startSurah) || 0;
   const a = Number(startAyah) || 0;
   const n = Number(amountInPages) || 0;
@@ -42177,7 +42210,10 @@ window.calculateHomeworkEnd = function (startSurah, startAyah, amountInPages, mu
          ووجهٌ كاملٌ من رأس الصفحة يبقى بـ pagemeta حرفاً بحرف، كما في
          rangeEnd — فلا يتبدّل مدًى راجعتَه.
          --------------------------------------------------------------- */
-      return Promise.resolve(rangeEnd(s, a, n, "وجه", "forward")).then(function (end) {
+      /* الاتجاهُ اختياريٌّ: ما لم يُمرَّر فتصاعديٌّ كما كان */
+      const dir = (typeof direction === "undefined" || !direction)
+        ? "forward" : dirOf(direction);
+      return Promise.resolve(rangeEnd(s, a, n, "وجه", dir)).then(function (end) {
         if (!end || !end.surah) {
           return { error: "تعذّر حسابُ نهاية الواجب — بياناتُ أسطر المصحف لم تُحمَّل" };
         }
@@ -42214,8 +42250,11 @@ window.tsdQtyRange = function (force) {
   if (!fS || !shown || !(q > 0)) return;
 
   const fA = typeof ayahStore === "function" ? ayahStore(fS, shown) : shown;
+  /* واتجاهُ هذه الصحيفة: من زرِّها إن وُجد، وإلّا فتصاعديٌّ كما كان */
+  const dEl = document.getElementById("tsd_dir");
+  const dir = dEl && dEl.value ? dirOf(dEl.value) : "forward";
 
-  window.calculateHomeworkEnd(fS, fA, q, "madinah-hafs").then(function (r) {
+  window.calculateHomeworkEnd(fS, fA, q, "madinah-hafs", dir).then(function (r) {
     if (!r || r.error) {
       /* «أظهر خطأً واضحاً إن نقصت البيانات، بدل نهايةٍ خاطئة» */
       if (r && r.error && typeof showToast === "function") showToast(r.error, "warn");
@@ -42230,6 +42269,28 @@ window.tsdQtyRange = function (force) {
     window.ayahCap("tsd_tA");
     if (tAEl.dataset) tAEl.dataset.manual = "";
   }).catch(function () {});
+};
+
+/* =========================================================================
+   زرُّ الاتجاه في صحيفة الواجب
+   -------------------------------------------------------------------------
+   يُبدّل اتجاهَ هذا الواجب وحدَه، ويُعيد حسابَ «إلى» في الحال — فالمدى
+   يُقاس من المقدار والاتجاه وموضع الابتداء معاً. ولا يُكتب في السجلّ حتى
+   تُضغط «حفظ التعديلات»، ولا تُمسُّ خطةُ الطالب ولا واجباتُه الأخرى.
+   ========================================================================= */
+window.tsdDirSet = function (btn, val) {
+  const box = document.getElementById("tsd_dirseg");
+  const inp = document.getElementById("tsd_dir");
+  if (!box || !inp) return;
+  Array.prototype.forEach.call(box.querySelectorAll(".tsd-dirb"), function (b) {
+    b.classList.remove("on");
+  });
+  if (btn && btn.classList) btn.classList.add("on");
+  inp.value = (typeof spDirKey === "function") ? spDirKey(val) : String(val);
+  /* والصحيفةُ تحمل الاتجاهَ في بياناتها — منها يقرؤه الحاسب */
+  const sheet = box.closest(".tsd-sheet");
+  if (sheet && sheet.dataset) sheet.dataset.dir = inp.value;
+  if (typeof window.tsdQtyRange === "function") window.tsdQtyRange(1);
 };
 
 /* تحريرٌ يدويٌّ لـ«إلى» يُوسَم فيُحترم حتى تتبدّل مدخلاتُ الحساب */
@@ -49065,7 +49126,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261012-2120";
+  var APP_BUILD = "20261012-2200";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

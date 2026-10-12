@@ -12881,3 +12881,53 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
 :root[data-theme="dark"] .tsd-sheet .tsd-row:nth-child(odd) { background: rgba(31, 71, 70, .38); }
 
 @media (max-width: 420px) { .tsd-sheet { padding: 5px; border-radius: 14px; } }
+
+/* =========================================================================
+   زرَّا الاتجاه في صحيفة الواجب
+   -------------------------------------------------------------------------
+   «ضيف لي زرّ من الناس ومن الفاتحة هنا بالضبط على الشمال»: في صفّ المقدار،
+   يسارَ قائمتِه، فيُقرأ الاثنان معاً — فالمدى يُحسب منهما.
+   وهما على هيئة أزرار الخطة نفسِها (sp-seg) حتى لا يُستغرب شكلٌ جديد.
+   ========================================================================= */
+.tsd-dirseg {
+  display: inline-flex; align-items: stretch; gap: 0;
+  border: 1px solid #d7dedf; border-radius: 10px; overflow: hidden;
+  margin-inline-start: 8px; background: #fff;
+}
+.tsd-dirb {
+  font: inherit; font-size: 12px; font-weight: 700; color: #6b7b7c;
+  background: transparent; border: 0; cursor: pointer;
+  padding: 7px 10px; white-space: nowrap; transition: background .15s, color .15s;
+}
+.tsd-dirb + .tsd-dirb { border-inline-start: 1px solid #e6ecec; }
+.tsd-dirb small { font-weight: 600; opacity: .75; font-size: 10.5px; }
+.tsd-dirb:hover { background: rgba(15, 111, 114, .06); }
+.tsd-dirb.on { background: #0f6f72; color: #fff; }
+.tsd-dirb.on small { opacity: .85; }
+
+:root:not([data-theme="light"]) .tsd-dirseg,
+:root[data-theme="dark"] .tsd-dirseg { border-color: #1f4746; background: #0f2423; }
+:root:not([data-theme="light"]) .tsd-dirb,
+:root[data-theme="dark"] .tsd-dirb { color: #8fa3a4; }
+:root:not([data-theme="light"]) .tsd-dirb + .tsd-dirb,
+:root[data-theme="dark"] .tsd-dirb + .tsd-dirb { border-inline-start-color: #1f4746; }
+:root:not([data-theme="light"]) .tsd-dirb.on,
+:root[data-theme="dark"] .tsd-dirb.on { background: #0f6f72; color: #fff; }
+
+/* صفُّ المقدار صار يحمل ثلاثةً: المقدارَ والاتجاهَ والتنبيهَ. وكان الصفُّ
+   لا يلتفّ، فدفع عرضُه الصحيفةَ كلَّها خارجَ الشاشة في عرض الجوّال حتى
+   خرجت أزرارُ «+» و«−» عن حدِّها ولم تُدرَك باللمس. فالتنبيهُ سطرٌ وحدَه،
+   والمقدارُ والاتجاهُ يلتفّان عند الضيق. */
+.tsd-qty-row .tsd-v { flex-wrap: wrap; row-gap: 6px; }
+.tsd-qty-row .tsd-note { flex: 1 0 100%; margin-inline-start: 0; }
+/* وقائمةُ المقدار تأخذ قدرَها لا الصفَّ كلَّه، فيجاورها الاتجاهُ على شماله */
+.tsd-qty-row .tsd-pair-w { width: auto; flex: 0 1 auto; }
+.tsd-qty-row .tsd-dirseg { margin-inline-start: 0; }
+
+@media (max-width: 420px) {
+  .tsd-dirseg { margin-inline-start: 0; margin-top: 6px; width: 100%; }
+  .tsd-dirb { flex: 1 1 0; text-align: center; }
+  /* وفي صفّ المقدار يبقى على شمالِه كما طُلب، ويضيق حتى يتّسع له الصفّ */
+  .tsd-qty-row .tsd-dirseg { margin-top: 0; width: auto; }
+  .tsd-qty-row .tsd-dirb { padding: 7px 8px; font-size: 11.5px; }
+}
