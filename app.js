@@ -15610,12 +15610,16 @@ function qLineCount(p) { return qTextLines(p).length; }
    سطرين وبينه وبين تمام الآية سطرٌ واحد.
    ========================================================================= */
 
-/* جدولُ الأسطر من صفحةٍ: {flat, start, pageFirst} — flat أسطرٌ نصّيّةٌ
-   متوالية، و pageFirst أوّلُ سطرٍ لكلّ صفحة */
-function qLineTable(P, s, a, pages) {
+/* جدولُ الأسطر حول صفحةٍ: {flat, start, pageFirst} — flat أسطرٌ نصّيّةٌ
+   متوالية، و pageFirst أوّلُ سطرٍ فيه آيةٌ تُسنَد لكلّ صفحة.
+   و back يقول: ابنِ ما قبلَ الصفحة لا ما بعدَها — فالتنازليُّ يمشي إلى
+   الوراء، ولا تُقاس أسطرُه إلّا على صفحاتٍ سابقة. */
+function qLineTable(P, s, a, pages, back) {
   const flat = [], pageFirst = {};
   let start = -1;
-  for (let p = P; p <= 604 && p <= P + pages; p++) {
+  const lo = back ? Math.max(1, P - pages) : P;
+  const hi = back ? P : Math.min(604, P + pages);
+  for (let p = lo; p <= hi; p++) {
     const L = qTextLines(p);
     if (!L.length) { if (p === P) return null; continue; }
     /* أوّلُ سطرٍ فيه آيةٌ تُسنَد: سطرُ البسملة في الفاتحة ليس آيةً على
@@ -15632,12 +15636,11 @@ function qLineTable(P, s, a, pages) {
     }
     pageFirst[p] = head;
     for (let i = 0; i < L.length; i++) flat.push({ segs: L[i], p: p });
-    if (start < 0) {
-      for (let k = 0; k < flat.length; k++) {
-        if (flat[k].segs.some(function (g) {
-          return Number(g[0]) === s && Number(g[1]) === a; })) { start = k; break; }
-      }
-    }
+  }
+  /* وموضعُ آية الابتداء: أوّلُ سطرٍ فيه مقطعٌ منها */
+  for (let k = 0; k < flat.length; k++) {
+    if (flat[k].segs.some(function (g) {
+      return Number(g[0]) === s && Number(g[1]) === a; })) { start = k; break; }
   }
   if (start < 0) return null;
   return { flat: flat, start: start, pageFirst: pageFirst };
@@ -15652,7 +15655,16 @@ function qAyahEnds(flat) {
   return endAt;
 }
 
-/* تسويةُ النهاية إلى أقربِ تمامِ آيةٍ من سطرٍ مقصود */
+/* وأوّلُ سطرٍ فيه مقطعٌ لكلّ آية — به يُعرف أين تبتدئ (للتنازليّ) */
+function qAyahStarts(flat) {
+  const at = {};
+  for (let i = flat.length - 1; i >= 0; i--) {
+    flat[i].segs.forEach(function (g) { at[g[0] + ":" + g[1]] = i; });
+  }
+  return at;
+}
+
+/* تسويةُ النهاية إلى أقربِ تمامِ آيةٍ من سطرٍ مقصود (تصاعداً) */
 function qSnapToAyah(flat, start, last) {
   const endAt = qAyahEnds(flat);
   last = Math.max(start, Math.min(last, flat.length - 1));
@@ -15684,29 +15696,106 @@ function qSnapToAyah(flat, start, last) {
   return (last - back.at) <= (fwd.at - last) ? back : fwd;
 }
 
-/* مقدارٌ بالأسطر: يُمشى بعددها ثمّ يُسوّى إلى تمام آية */
-function qWalkByLines(fromS, fromA, nLines) {
+/* =========================================================================
+   وتسويةُ التنازليّ إلى أقربِ ابتداءِ آية
+   -------------------------------------------------------------------------
+   «الاتجاه من الناس إلى الفاتحة لا يعمل»: الخطةُ التنازليّةُ تمشي إلى
+   الوراء، فنهايةُ الواجب قبلَ بدايته في ترتيب المصحف. ولا يُقال «تمامُ
+   آية» هنا بل «ابتداؤها»: الواجبُ يقف عند أوّل آيةٍ تامّةٍ في المدى، لا
+   في منتصف آيةٍ سبقت.
+   ========================================================================= */
+function qSnapToAyahBack(flat, start, first, fromS, fromA) {
+  const stAt = qAyahStarts(flat);
+  first = Math.min(start, Math.max(first, 0));
+  /* ولا تكون النهايةُ آيةَ الابتداء نفسَها ما دام المطلوبُ مدًى: آيةٌ
+     طويلةٌ تسبقها قد تمنع أن تبتدئ أخرى داخلَ الأسطر المطلوبة، فيعود
+     المدى إلى موضعه فيصير «من الناس ٦ إلى الناس ٦». فتُستثنى حينئذٍ
+     ويُؤخذ ما قبلَها. */
+  const skipSelf = first < start && Number(fromS) > 0;
+
+  /* أوّلُ آيةٍ تبتدئ عند السطر المقصود أو بعده (داخلَ المدى) */
+  let inside = null;
+  for (let i = start; i >= first; i--) {
+    flat[i].segs.forEach(function (g) {
+      const k = Number(g[0]), v = Number(g[1]), e = stAt[k + ":" + v];
+      if (skipSelf && k === Number(fromS) && v === Number(fromA)) return;
+      if (e >= first && (!inside || e < inside.at ||
+          (e === inside.at && (k < inside.surah || (k === inside.surah && v < inside.ayah))))) {
+        inside = { surah: k, ayah: v, page: flat[e].p, at: e };
+      }
+    });
+  }
+  /* وآخرُ آيةٍ تبتدئ قبله */
+  let out = null;
+  for (let i = first - 1; i >= 0 && !out; i--) {
+    flat[i].segs.forEach(function (g) {
+      const k = Number(g[0]), v = Number(g[1]);
+      if (!out && stAt[k + ":" + v] === i) {
+        out = { surah: k, ayah: v, page: flat[i].p, at: i };
+      }
+    });
+  }
+  if (!inside) return out;
+  if (!out) return inside;
+  return (inside.at - first) <= (first - out.at) ? inside : out;
+}
+
+/* =========================================================================
+   أسطرُ مدًى بين موضعين — متزامنةٌ ما دامت بياناتُ الأسطر واصلة
+   -------------------------------------------------------------------------
+   تُستعمل حيث يُراد طولُ مدًى قائمٍ لا موضعُ نهايته: كإعادة حساب المقدار
+   في asgCapToSurah. وترجع صفراً إن لم تصل البيانات، فيُرجَع إلى ما كان.
+   ========================================================================= */
+function qSpanLines(s1, a1, s2, a2) {
+  if (typeof QLINES === "undefined" || !QLINES) return 0;
+  const lo = (Number(s1) < Number(s2) ||
+             (Number(s1) === Number(s2) && Number(a1) <= Number(a2)))
+             ? [Number(s1), Number(a1)] : [Number(s2), Number(a2)];
+  const hi = (lo[0] === Number(s1) && lo[1] === Number(a1))
+             ? [Number(s2), Number(a2)] : [Number(s1), Number(a1)];
+  let first = -1, last = -1, idx = 0;
+  for (let p = 1; p <= 604; p++) {
+    const L = qTextLines(p);
+    for (let i = 0; i < L.length; i++, idx++) {
+      for (let j = 0; j < L[i].length; j++) {
+        const k = Number(L[i][j][0]), v = Number(L[i][j][1]);
+        if (k === lo[0] && v === lo[1] && first < 0) first = idx;
+        if (k === hi[0] && v === hi[1]) last = idx;
+      }
+    }
+    /* لا حاجةَ إلى ما بعد صفحة النهاية */
+    if (last >= 0 && first >= 0 && idx > last + 20) break;
+  }
+  return (first >= 0 && last >= first) ? (last - first + 1) : 0;
+}
+
+/* مقدارٌ بالأسطر: يُمشى بعددها ثمّ يُسوّى إلى حدّ آية */
+function qWalkByLines(fromS, fromA, nLines, dir) {
   const s = Number(fromS) || 0, a = Number(fromA) || 0;
   const want = Math.max(1, Math.round(Number(nLines) || 1));
+  const back = dir === -1;
   if (!s || !a || typeof Quran === "undefined" || !Quran.locate) {
     return Promise.resolve(null);
   }
   return qlinesReady().then(function () {
     return Promise.resolve(Quran.locate(s, a)).then(function (loc) {
       if (!loc || !loc.page) return null;
-      /* صفحاتٌ زائدةٌ: المدى قد يعبرها، وتمامُ الآية قد يقع بعدها */
-      const t = qLineTable(Number(loc.page), s, a, Math.ceil(want / 8) + 2);
+      /* صفحاتٌ زائدةٌ: المدى قد يعبرها، وحدُّ الآية قد يقع بعدها */
+      const t = qLineTable(Number(loc.page), s, a,
+                           Math.ceil(want / 8) + 2, back);
       if (!t) return null;
-      const r = qSnapToAyah(t.flat, t.start, t.start + want - 1);
+      const r = back ? qSnapToAyahBack(t.flat, t.start, t.start - want + 1, s, a)
+                     : qSnapToAyah(t.flat, t.start, t.start + want - 1);
       return r ? { surah: r.surah, ayah: r.ayah, page: r.page } : null;
     });
   }).catch(function () { return null; });
 }
 
 /* مقدارٌ بالأوجه من غير رأس الصفحة، أو بكسرِ وجه: إزاحةٌ صفحةً صفحة */
-function qWalkByFaces(fromS, fromA, n) {
+function qWalkByFaces(fromS, fromA, n, dir) {
   const s = Number(fromS) || 0, a = Number(fromA) || 0;
   const q = Number(n) || 0;
+  const back = dir === -1;
   if (!s || !a || !(q > 0) || typeof Quran === "undefined" || !Quran.locate) {
     return Promise.resolve(null);
   }
@@ -15715,28 +15804,43 @@ function qWalkByFaces(fromS, fromA, n) {
       if (!loc || !loc.page) return null;
       const P = Number(loc.page);
       const full = Math.floor(q), frac = q - full;
-      const t = qLineTable(P, s, a, full + 3);
+      const t = qLineTable(P, s, a, full + 3, back);
       if (!t) return null;
 
       /* إزاحةُ البداية في صفحتها */
       const k = t.start - (t.pageFirst[P] || 0);
-      let last;
-      if (P + full > 604) {
-        /* المقدارُ يتجاوز آخرَ المصحف: يقف عند آخر سطرٍ فيه */
-        last = t.flat.length - 1;
+      let edge;
+      if (back) {
+        /* إلى الوراء: صفحةُ الوصول قبلَ صفحة الابتداء بعدد الأوجه */
+        if (P - full < 1) {
+          edge = 0;                      /* بلغ أوّلَ المصحف */
+        } else {
+          const target = P - full;
+          let base = t.pageFirst[target];
+          if (base === undefined) base = 0;
+          edge = base + k;
+          if (frac > 0) {
+            const L = qLineCount(target) || qLineCount(P);
+            edge -= Math.max(1, Math.round(frac * L));
+          }
+        }
       } else {
-        /* صفحةُ الوصول، وأوّلُ سطرٍ فيه آيةٌ تُسنَد منها */
-        const target = P + full;
-        let base = t.pageFirst[target];
-        if (base === undefined) base = t.flat.length;
-        last = base + k - 1;
-        /* والكسرُ من أسطر صفحة الوصول */
-        if (frac > 0) {
-          const L = qLineCount(target) || qLineCount(P);
-          last += Math.max(1, Math.round(frac * L));
+        if (P + full > 604) {
+          /* المقدارُ يتجاوز آخرَ المصحف: يقف عند آخر سطرٍ فيه */
+          edge = t.flat.length - 1;
+        } else {
+          const target = P + full;
+          let base = t.pageFirst[target];
+          if (base === undefined) base = t.flat.length;
+          edge = base + k - 1;
+          if (frac > 0) {
+            const L = qLineCount(target) || qLineCount(P);
+            edge += Math.max(1, Math.round(frac * L));
+          }
         }
       }
-      const r = qSnapToAyah(t.flat, t.start, last);
+      const r = back ? qSnapToAyahBack(t.flat, t.start, edge, s, a)
+                     : qSnapToAyah(t.flat, t.start, edge);
       return r ? { surah: r.surah, ayah: r.ayah, page: r.page } : null;
     });
   }).catch(function () { return null; });
@@ -15789,20 +15893,18 @@ function rangeEnd(fromS, fromA, qty, unit, dir) {
      -----------------------------------------------------------------------
      كان يُقارَب بالأوجه: ceil(n/15) — فثلاثةُ أسطرٍ تصير وجهاً كاملاً،
      وهو «الكمّياتُ بالأسطر لا تعمل». وصار يُقاس سطراً سطراً.
-     والتنازليُّ يبقى على مسلكه القديم: الأسطرُ تُمشى تصاعداً، ولم يُطلب
-     قياسُها إلى الوراء — فلا يُمسّ ما لم يُطلب.
+
+     والتنازليُّ مثلُه: «الاتجاه من الناس إلى الفاتحة لا يعمل» — كان
+     ceil(n/15) يُعطي وجهاً كاملاً إلى الوراء لثلاثة أسطر. فصار يُمشى
+     بالأسطر في الجهتين.
      ======================================================================= */
   if (u === "line") {
-    if (d === 1) {
-      return qWalkByLines(fromS, fromA, n).then(function (e) {
-        if (e) return e;
-        /* بياناتُ الأسطر لم تصل: المسلكُ القديمُ حارسٌ لا يُحذف */
-        const faces = Math.max(1, Math.ceil(n / 15));
-        return Quran.advance(fromS, fromA, faces, "face", d).catch(() => null);
-      }).catch(() => null);
-    }
-    const faces = Math.max(1, Math.ceil(n / 15));
-    return Quran.advance(fromS, fromA, faces, "face", d).catch(() => null);
+    return qWalkByLines(fromS, fromA, n, d).then(function (e) {
+      if (e) return e;
+      /* بياناتُ الأسطر لم تصل: المسلكُ القديمُ حارسٌ لا يُحذف */
+      const faces = Math.max(1, Math.ceil(n / 15));
+      return Quran.advance(fromS, fromA, faces, "face", d).catch(() => null);
+    }).catch(() => null);
   }
 
   /* =======================================================================
@@ -15815,20 +15917,21 @@ function rangeEnd(fromS, fromA, qty, unit, dir) {
      فلا يتبدّل مدًى معتمَدٌ ولا واجبٌ مولَّدٌ في سلسلةٍ تبدأ من رؤوس
      الصفحات. وما ابتدأ من وسط الصفحة يُقاس بأسطرها.
      ======================================================================= */
-  if (u === "face" && d === 1 && n > 0) {
-    /* «أرأسُ الصفحةِ هو؟» يُسأل pagemeta لا lines.json: الملفّان يوافقان
-       في ٥٧٩ صفحةً ويفترقان في خمسٍ وعشرين — آياتٌ تنقسم بين ورقتين.
-       فلو سُئلت الأسطرُ لخرجت تلك الخمسُ والعشرون من مسلكها المعتمَد.
-       و advance(…,1,"face",-1) يردُّ أوّلَ آيةٍ في صفحة الابتداء. */
-    return Promise.resolve(Quran.advance(fromS, fromA, 1, "face", -1))
+  if (u === "face" && n > 0) {
+    /* «أرأسُ الصفحةِ هو؟» (أو ذيلُها في التنازليّ) يُسأل pagemeta لا
+       lines.json: الملفّان يوافقان في ٥٧٩ صفحةً ويفترقان في خمسٍ
+       وعشرين — آياتٌ تنقسم بين ورقتين. فلو سُئلت الأسطرُ لخرجت تلك
+       الخمسُ والعشرون من مسلكها المعتمَد.
+       و advance(…,1,"face",±1) يردُّ طرفَ صفحة الابتداء من جهة المشي. */
+    return Promise.resolve(Quran.advance(fromS, fromA, 1, "face", d === 1 ? -1 : 1))
       .then(function (head) {
-        const atHead = !!(head && Number(head.surah) === Number(fromS) &&
+        const atEdge = !!(head && Number(head.surah) === Number(fromS) &&
                                   Number(head.ayah) === Number(fromA));
-        /* رأسُ الصفحةِ ووجهٌ صحيحٌ: حَكَمُه pagemeta كما كان */
-        if (atHead && n % 1 === 0) {
+        /* طرفُ الصفحةِ ووجهٌ صحيحٌ: حَكَمُه pagemeta كما كان */
+        if (atEdge && n % 1 === 0) {
           return Quran.advance(fromS, fromA, n, "face", d).catch(() => null);
         }
-        return qWalkByFaces(fromS, fromA, n);
+        return qWalkByFaces(fromS, fromA, n, d);
       }).then(function (e) {
       /* لم تصل بياناتُ الأسطر: المسلكُ القديمُ كما هو */
       if (e) return e;
@@ -15964,7 +16067,27 @@ function hwUnitLines(u) {
   return r ? Number(r.lines) || 0 : 15;
 }
 
+/* =========================================================================
+   القصرُ على السورة رُفع — المقدارُ يُوفّى ويعبر
+   -------------------------------------------------------------------------
+   «طالبٌ خطتُه من الناس ومقدارُه وجه: الناسُ أربعةُ أسطرٍ فلا تسعُ وجهاً»
+   — واخترتَ: «وجهاً كاملاً يعبر إلى الفلق والإخلاص».
+
+   وكان القصرُ يُوقف المدى عند حدّ سورة الابتداء (رقعة ٢٤٣)، فطالبُ السور
+   القصار يأخذ أربعةَ أسطرٍ باسم وجه، ويُكتب مقدارُه ٠٫٢٧ — وهو
+   «الكمّياتُ غير دقيقةٍ بنسبةٍ عالية».
+
+   وصحيفةُ الواجب تعبر السورةَ منذ المواصفة الأخيرة، فاتّفق المولِّدُ معها
+   ولم تعد الإدارةُ تُري غيرَ ما يُري المعلّم.
+
+   والدالّةُ لم تُحذف: جسمُها كما هو في asgCapToSurahStrict أسفلَه، ومن
+   أراد القصرَ ردَّ نداءَها. وهذه تمرّ بالمدى كما حسبه جدولُ المصحف.
+   ========================================================================= */
 function asgCapToSurah(a, end) {
+  return Promise.resolve(end);
+}
+
+function asgCapToSurahStrict(a, end) {
   if (!end || !a) return Promise.resolve(end);
   const fs = Number(a.fromS) || 0;
   if (!fs || Number(end.surah) === fs) return Promise.resolve(end);
@@ -15988,8 +16111,25 @@ function asgCapToSurah(a, end) {
       if (m) {
         const u = String(a.unit || "وجه");
         const ln = hwUnitLines(u);
-        const q = (u === "آية") ? (Number(m.ayahs) || 0)
-                : (ln > 0 ? (Number(m.faces) || 0) * 15 / ln : 0);
+        /* =================================================================
+           المقدارُ المقصورُ يُقاس بأسطر المدى لا بعدد صفحاته
+           -----------------------------------------------------------------
+           «الكمّياتُ ما زالت غير دقيقةٍ بنسبةٍ عالية»: كان m.faces عددَ
+           الصفحات التي يمسُّها المدى، وهو واحدٌ ولو كان المدى ثلاثةَ
+           أسطر. فمدًى طولُه ثلاثةُ أسطرٍ في الناس يُكتب في السجلّ
+           «خمسةَ عشرَ سطراً» — خمسةَ أضعافِ ما هو.
+
+           فيُقاس بالأسطر الحقيقيّة من quran/lines.json، ولا يُرجَع إلى
+           الصفحات إلّا إن لم تصل بياناتُها.
+           ================================================================= */
+        let q = 0;
+        if (u === "آية") {
+          q = Number(m.ayahs) || 0;
+        } else if (ln > 0) {
+          const lines = qSpanLines(m1[0], m1[1], m1[2], m1[3]);
+          q = lines > 0 ? lines / ln
+                        : (Number(m.faces) || 0) * 15 / ln;
+        }
         if (q > 0) {
           a.qtyPlan = Number(a.qty) || 0;          /* المخطَّطُ لا يُحذف */
           a.qty = Math.round(q * 100) / 100;
@@ -48788,7 +48928,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261012-0040";
+  var APP_BUILD = "20261012-0700";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
