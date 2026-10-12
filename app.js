@@ -2928,7 +2928,7 @@ function planLibrary() {
 
       <div class="tpl-meta">
         ${p.amount ? `<span>${toArabicDigits(p.amount)} ${esc(p.unit || "وجه")} يومياً</span>` : ""}
-        ${p.direction ? `<span>${dirOf(p.direction) === "backward" ? "تنازلي" : "تصاعدي"}</span>` : ""}
+        ${p.direction ? `<span>${dirLabel(p.direction)}</span>` : ""}
         ${p.fixLessons ? `<span>تثبيت ${toArabicDigits(p.fixLessons)} دروس</span>` : ""}
         ${p.weeks ? `<span>${toArabicDigits(p.weeks)} أسبوعاً</span>` : ""}
       </div>
@@ -3425,8 +3425,8 @@ function builderStep(s) {
       </div>
       <div style="margin-top:14px"><label style="font-size:12.5px;font-weight:700">اتجاه الخطة</label>
         <div class="segx" style="margin-top:7px">
-          <button class="seg-btn ${B.direction === "تصاعدي" ? "on" : ""}" data-action="builder-pick" data-key="direction" data-val="تصاعدي">تصاعدي (البقرة ← الناس)</button>
-          <button class="seg-btn ${B.direction === "تنازلي" ? "on" : ""}" data-action="builder-pick" data-key="direction" data-val="تنازلي">تنازلي (الناس ← البقرة)</button>
+          <button class="seg-btn ${B.direction === "تصاعدي" ? "on" : ""}" data-action="builder-pick" data-key="direction" data-val="تصاعدي">تنازلي (البقرة ← الناس)</button>
+          <button class="seg-btn ${B.direction === "تنازلي" ? "on" : ""}" data-action="builder-pick" data-key="direction" data-val="تنازلي">تصاعدي (الناس ← البقرة)</button>
         </div>
       </div>`;
   }
@@ -8587,6 +8587,29 @@ const QTY_NUM_LABEL = { "عدد أوجه": "عدد الأوجه", "أسطر": "�
 function qtyNumLabel(t) { return QTY_NUM_LABEL[String(t || "")] || "الكمية"; }
 
 const PLAN_DIR = ["من الفاتحة", "من الناس"];
+
+/* =========================================================================
+   تسميةُ الاتجاه بعُرف صاحب النظام
+   -------------------------------------------------------------------------
+   «عايزك تعمل زرّ من الفاتحة أم من الناس، بحيث المعلّم يحدّد: من الفاتحة
+    يكون تنازليّاً والعكس».
+
+   وكان المشروعُ يسمّي «من الفاتحة إلى الناس» تصاعديّاً (بترتيب أرقام
+   السور)، وصاحبُ النظام يسمّيها تنازليّاً (نزولاً في المصحف من أوّله).
+   فاختُلف اللفظُ على معنًى واحد، فالتبس على المعلّم ما يختار.
+
+   والتسميةُ هنا عرضٌ محضٌ: المفاتيحُ المخزَّنة (forward / backward ·
+   «من الفاتحة» / «من الناس» · «تصاعدي» / «تنازلي») لا تُمسّ، ولا تُرحَّل
+   خطةٌ ولا يتبدّل سلوك. يُقرأ المفتاحُ كما كان، ويُعرض بلفظ صاحب النظام.
+   ========================================================================= */
+const DIR_LABEL = { forward: "تنازلي", backward: "تصاعدي" };
+
+/* لفظُ الاتجاه للعرض — من أيّ قيمةٍ محفوظة */
+function dirLabel(v) { return DIR_LABEL[dirOf(v)] || DIR_LABEL.forward; }
+
+/* ولفظُه بجانب زرِّ «من الفاتحة» / «من الناس» */
+const PLAN_DIR_HINT = { "من الفاتحة": "تنازلي", "من الناس": "تصاعدي" };
+function planDirHint(o) { return PLAN_DIR_HINT[String(o).trim()] || ""; }
 /* أُلغي «تخصيصي» من اتجاه المراجعة: الاتجاهُ صار يحكم ترتيبَ السور فعلاً،
    فالخيارُ الثالث لا معنى له. والخططُ القديمة المحفوظة عليه تُقرأ كما هي
    ولا تُمَسّ بياناتُها — يُعامَل «تخصيصي» معاملةَ «من الفاتحة» عند العرض. */
@@ -10252,8 +10275,8 @@ const PRG_LEFTOVER = [
 ];
 
 const PRG_DIRS = [
-  { k: "forward",  h: "تصاعدي — من الفاتحة إلى الناس" },
-  { k: "backward", h: "تنازلي — من الناس إلى الفاتحة" },
+  { k: "forward",  h: "تنازلي — من الفاتحة إلى الناس" },
+  { k: "backward", h: "تصاعدي — من الناس إلى الفاتحة" },
   { k: "custom",   h: "مخصّص — يحدَّد لكل طالب" }
 ];
 
@@ -13110,7 +13133,7 @@ function lvbQtyDir(rid, k, kid) {
   const c = lvbCfgOf(lvbRow(rid), k, kid || "");
   const a = jsAttr(rid), kk = jsAttr(kid || "");
   const types = typeof SYS_QTY_TYPES !== "undefined" ? SYS_QTY_TYPES : ["كمية مرنة"];
-  const dirs  = typeof PRG_DIRS !== "undefined" ? PRG_DIRS : [{ k: "forward", h: "تصاعدي" }];
+  const dirs  = typeof PRG_DIRS !== "undefined" ? PRG_DIRS : [{ k: "forward", h: "تنازلي" }];
   const num = qtyIsNum(c.qtyType);
   return `<div class="lvb-qd">
     <div class="lvb-f"><label>نوع المقدار</label>
@@ -13227,7 +13250,7 @@ function lvbNextChip(rid) {
   return `<span class="pil-bit">يبدأ من ${esc(lvbSurahName(c.fromS))} : ${toArabicDigits(c.fromA)}</span>
     <span class="pil-bit">بمقدار ${esc(q)}</span>
     <span class="pil-bit">${esc(((typeof PRG_DIRS !== "undefined" ? PRG_DIRS : [])
-      .find(x => String(x.k) === String(h.dir || "forward")) || {}).h || "تصاعدي")}</span>`;
+      .find(x => String(x.k) === String(h.dir || "forward")) || {}).h || "تنازلي")}</span>`;
 }
 
 /* =========================================================================
@@ -27848,9 +27871,11 @@ function tstuPlanBox(st) {
       onch ? ` onchange="${onch}"` : ""}>
       ${opts.map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
 
+  /* اللفظُ على الزرّ بعُرف صاحب النظام، والقيمةُ المخزَّنةُ كما هي */
   const dirBtns = (name, v, opts) => `<div class="sp-seg">
       ${opts.map(o => `<button type="button" class="sp-segb${o === v ? " on" : ""}"
-        onclick="window.tstuDirSet(this,'${name}','${esc(o)}')">${esc(o)}</button>`).join("")}
+        onclick="window.tstuDirSet(this,'${name}','${esc(o)}')">${esc(o)}${
+          planDirHint(o) ? ` <small>(${esc(planDirHint(o))})</small>` : ""}</button>`).join("")}
       <input type="hidden" id="${name}" value="${esc(v)}">
     </div>`;
 
@@ -41675,9 +41700,11 @@ function panelStudent(id, keepDraft) {
       onch ? ` onchange="${onch}"` : ""}>
       ${opts.map(o => `<option${o === val ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
 
+  /* اللفظُ على الزرّ بعُرف صاحب النظام، والقيمةُ المخزَّنةُ كما هي */
   const dirBtns = (name, val, opts) => `<div class="sp-seg">
       ${opts.map(o => `<button type="button" class="sp-segb${o === val ? " on" : ""}"
-        onclick="window.spDir(this,'${name}','${esc(o)}')">${esc(o)}</button>`).join("")}
+        onclick="window.spDir(this,'${name}','${esc(o)}')">${esc(o)}${
+          planDirHint(o) ? ` <small>(${esc(planDirHint(o))})</small>` : ""}</button>`).join("")}
       <input type="hidden" id="${name}" value="${esc(val)}">
     </div>`;
 
@@ -49038,7 +49065,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261012-2040";
+  var APP_BUILD = "20261012-2120";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
