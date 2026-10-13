@@ -16290,8 +16290,17 @@ function advNotify(plan, fromS, toS) {
 
 window.advancePlanAfter = function (asg) {
   if (!asg || !asg.toS) return Promise.resolve(false);
-  const plan = (cur("plans") || []).find(p => String(p.id) === String(asg.planId) ||
-                                              String(p.studentId) === String(asg.studentId));
+  /* الخطةُ تُقرأ كما يقرؤها المولّد: cur() يمرُّ بحصر المنشأة فقد يحجبها،
+     فلا يتقدّم الموضعُ بعد الاعتماد ويبدأ الغدُ من بداية الركن — سورةٍ
+     أخرى. وهو العطلُ نفسُه الذي عولج في generateAssignments. */
+  const plan = (typeof planOfStudent === "function"
+    ? planOfStudent({ id: asg.studentId })
+    : null) ||
+    (cur("plans") || []).find(p => String(p.id) === String(asg.planId) ||
+                                   String(p.studentId) === String(asg.studentId)) ||
+    (Array.isArray(DB.plans) ? DB.plans : []).find(p =>
+      String(p.id) === String(asg.planId) ||
+      String(p.studentId) === String(asg.studentId));
   if (!plan) return Promise.resolve(false);
   /* الموضعُ قبل التقدّم — عليه يُعرف تبدُّلُ السورة */
   const wasS = Number(plan.hifzFromS) || 0;
@@ -16839,11 +16848,28 @@ function nextHifzFrom(plan) {
      فارقاً. والترتيبُ باليوم ثمّ بوقت الكتابة، فآخرُ ما اعتُمد هو
      المنتهى — ولا يُقدَّم أصلٌ على فارقٍ سُمِّع بعده.
      ======================================================================= */
-  const done = asgTermOf(plan.studentId)
-    .filter(a => String(a.kind || "").replace("_makeup", "") === "hifz" &&
-                 a.status === "done")
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
-                    (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
+  const hifzDone = function (list) {
+    return (list || [])
+      .filter(a => a && String(a.kind || "").replace("_makeup", "") === "hifz" &&
+                   a.status === "done" && a.toS)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
+                      (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
+  };
+  /* والبحثُ على ثلاث مراتب، لئلّا يُفلت المنتهى فيُبتدأ من سورةٍ أخرى:
+       ١· واجباتُ الفترة النشطة — وهي الأصل.
+       ٢· فإن لم تُرجع شيئاً (وسمُ فترةٍ مفقودٌ أو مختلفٌ) فواجباتُه كلُّها.
+       ٣· فإن لم يُغلَق الواجبُ أصلاً وله تسميعٌ مسجَّل، فآخرُ تسميعِ حفظٍ
+          في السجلّ — فالتسميعُ هو الواقعُ الذي بلغه الطالب. */
+  let done = hifzDone(asgTermOf(plan.studentId));
+  if (!done && typeof asgOf === "function") done = hifzDone(asgOf(plan.studentId));
+  if (!done) {
+    const rec = (Array.isArray(DB.recitations) ? DB.recitations : [])
+      .filter(r => r && String(r.studentId) === String(plan.studentId) &&
+                   String(r.kind || "").indexOf("حفظ") > -1 && r.toS)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
+                      (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
+    if (rec) done = { toS: rec.toS, toA: rec.toA, date: rec.date, kind: "hifz" };
+  }
 
   if (done && done.toS) {
     /* بلغ آخر السورة ولم يتمّ تكرارها: يعود إلى أوّلها لا إلى ما بعدها */
@@ -17121,11 +17147,16 @@ function generateAssignments(studentId, dateISO) {
 
       /* المراجعة والتلاوة تبدآن من حيث انتهى آخرُ ما سُمّع من نوعها —
          والفارقُ من نوعها كذلك، كما في الحفظ سواءً بسواء */
-      const last = asgTermOf(studentId)
-        .filter(a => String(a.kind || "").replace("_makeup", "") === t.k &&
-                     a.status === "done" && a.toS)
-        .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
-                        (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
+      const lastOf = function (list) {
+        return (list || [])
+          .filter(a => a && String(a.kind || "").replace("_makeup", "") === t.k &&
+                       a.status === "done" && a.toS)
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
+                          (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
+      };
+      /* والمرتبتان كما في الحفظ: الفترةُ النشطة ثمّ واجباتُه كلُّها */
+      const last = lastOf(asgTermOf(studentId)) ||
+                   (typeof asgOf === "function" ? lastOf(asgOf(studentId)) : null);
 
       if (last) {
         const nx = stepFrom(last.toS, last.toA, rec.direction);
@@ -28529,18 +28560,40 @@ window.tstuDayStep = function (n) { TSTU.day = tstuDayShift(tstuDay(), Number(n)
 window.tstuDayNow  = function () { TSTU.day = ""; mount(); };
 
 /* واجباتُ يومٍ بعينه: المحفوظُ أوّلاً، والقادمُ توليدٌ للعرض لا للكتابة */
+/* =========================================================================
+   واجباتُ يومٍ بعينه: المحفوظُ والمولَّدُ معاً لا أحدُهما
+   -------------------------------------------------------------------------
+   «يكون عند الطالب واجبان، فعند الاعتماد والرجوع يكون واجبٌ واحدٌ ويختفي
+   الثاني».
+
+   والسببُ أنّ هذه كانت تقول: إن وُجد في السجلّ واجبٌ واحدٌ لهذا اليوم
+   فالسجلُّ وحدَه هو الحقّ — «if (stored.length) return stored». وواجباتُ
+   اليوم لا تُثبَّت كلُّها دفعةً: المعتمَدُ وحدَه يُثبَّت عند اعتماده
+   (asgEnsure قبل التقييم). فإذا اعتُمد الحفظُ صار المحفوظُ واحداً، فرجع
+   وحدَه — واختفت المراجعةُ التي كانت تُعرض توليداً.
+
+   فصارا يُجمعان بالنوع: المحفوظُ أولى بنوعه، وما لم يُثبَّت بعدُ يُكمَّل
+   من المولّد. ولا كتابةَ هنا ألبتّة — عرضٌ محض.
+   ========================================================================= */
 function tstuAsgOf(st, d) {
   const stored = (cur("assignments") || []).filter(a => a &&
     String(a.studentId) === String(st.id) && String(a.date) === String(d));
-  if (stored.length) return stored;
+  let gen = [];
   if (String(d) >= String(tstuToday()) && typeof todayAssignments === "function") {
     try {
-      const list = todayAssignments(st.id, d, false) || [];
-      tstuPreEnds(list);
-      return list;
-    } catch (e) { return []; }
+      gen = todayAssignments(st.id, d, false) || [];
+      tstuPreEnds(gen);
+    } catch (e) { gen = []; }
   }
-  return [];
+  if (!stored.length) return gen;
+  if (!gen.length) return stored;
+  const have = {};
+  stored.forEach(function (a) { have[String(a.kind || "")] = 1; });
+  const add = gen.filter(function (a) {
+    return a && !have[String(a.kind || "")] &&
+           !stored.some(function (x) { return String(x.id) === String(a.id); });
+  });
+  return add.length ? stored.concat(add) : stored;
 }
 
 /* =========================================================================
@@ -49455,7 +49508,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-1800";
+  var APP_BUILD = "20261013-1855";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
