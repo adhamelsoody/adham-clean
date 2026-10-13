@@ -12956,3 +12956,13 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
 :root[data-theme="dark"] .tcal-nav:hover { background: #12302f; border-color: #1f4746; }
 :root:not([data-theme="light"]) .tcal-nav:active,
 :root[data-theme="dark"] .tcal-nav:active { background: #16403e; border-color: #2f8f8c; }
+
+/* =========================================================================
+   شريطُ «واجبُ يومٍ لم يأتِ بعد» في صحيفة الواجب
+   -------------------------------------------------------------------------
+   «لا يقيّمه إلّا في يوم الواجب»: فيُقال لِمَ غاب زرُّ الاعتماد، بلونٍ
+   كهرمانيٍّ هادئٍ يفرّقه عن شريط المعتمَد الأخضر.
+   ========================================================================= */
+.tsd-lock.tsd-soon { background: rgba(180, 119, 42, .12); color: #9a6420; }
+:root:not([data-theme="light"]) .tsd-lock.tsd-soon,
+:root[data-theme="dark"] .tsd-lock.tsd-soon { background: rgba(180, 119, 42, .18); color: #e0a862; }

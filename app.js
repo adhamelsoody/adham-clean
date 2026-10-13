@@ -28772,6 +28772,11 @@ window.tsplSave = function () {
   if (!teacherCan("splitDuty")) {
     showToast("صلاحيةُ تقسيم الواجب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
   }
+  /* وجلساتُ واجبٍ لم يأتِ يومُه لا تُسجَّل: جلسةٌ لم تقع، وقد تُغلق الواجبَ
+     بتقييمٍ نهائيّ — وهو ما مُنع «حتى يأتيَ اليومُ الخاصُّ بالواجب». */
+  if (typeof asgNotYet === "function" && asgNotYet(a)) {
+    showToast(asgNotYetMsg(a), "warn"); return;
+  }
   const u = (STATE && STATE.user) || {};
   const got = [];
   for (let i = 0; i < TSPL.rows; i++) {
@@ -29017,12 +29022,43 @@ window.tstuDutyUndo = function (id, res) {
   mount();
 };
 
+/* =========================================================================
+   واجبُ يومٍ لم يأتِ بعدُ: يُطَّلع عليه ولا يُقيَّم
+   -------------------------------------------------------------------------
+   «عندما يكون المعلّمُ اعتمد واجبَ الطالب ليس له صلاحيةُ أن يعتمد واجبَ
+   الغد حتى يأتيَ اليومُ الخاصُّ بالواجب — من الممكن أن يطّلع على الواجب
+   فقط ولا يقيّمه إلّا في يوم الواجب فقط».
+
+   فالتقييمُ كلُّه موقوفٌ على يوم الواجب: الاعتمادُ و«لم يتم التسميع»
+   و«يُعاد» — ثلاثتُها أحكامٌ على جلسةٍ لم تقع بعد. والاطّلاعُ مفتوحٌ:
+   تفاصيلُ الواجب تُفتح، ومداه يُقرأ، والمصحفُ يُفتح عليه.
+
+   والقياسُ بيوم الواجب نفسِه (a.date) مقابلَ اليوم الحقيقيّ (todayISO)
+   لا بيوم الشاشة المعروض — فالمعلّمُ قد يتصفّح الغد وهو في اليوم.
+   وواجبُ أمسِ لا يُمنع: التسميعُ المتأخّرُ حقٌّ قائمٌ في النظام.
+   ========================================================================= */
+function asgNotYet(a) {
+  if (!a || !a.date) return false;
+  return String(a.date) > String(todayISO());
+}
+
+/* ويُقال له يومُه بالتقويم الذي يقرؤه في سائر الشاشات: هجريٌّ واسمُ يوم */
+function asgNotYetMsg(a) {
+  const d = a && a.date ? String(a.date) : "";
+  const nm = (typeof dayNameOf === "function" && d) ? dayNameOf(d) : "";
+  const hj = (typeof hijriOf === "function" && d) ? hijriOf(d) : "";
+  const when = (nm ? nm + " " : "") + (hj || (typeof toArabicDigits === "function"
+    ? toArabicDigits(d) : d));
+  return "واجبُ يومٍ لم يأتِ بعدُ — يُقيَّم في يومه" + (when ? ": " + when : "");
+}
+
 window.tstuDutyResult = function (id, res) {
   const a = tstuAsgById(id);
   if (!a) { showToast("الواجب غير موجود", "warn"); return; }
   if (!teacherCan("recite")) {
     showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
   }
+  if (asgNotYet(a)) { showToast(asgNotYetMsg(a), "warn"); return; }
 
   /* الضغطُ على الحال القائمة: يُقال ولا يُكتب */
   const now = a.status === "done" ? "done"
@@ -29185,7 +29221,9 @@ window.tstuDuty = function (id) {
      ما تزال تحرس كتابةَ المقدار في tstuDutySave و tstuQtySave وتعديلَه
      في بطاقة الطالب والخطة. */
   const canQty   = teacherCan("planQty");
+  /* وتقسيمُ الجلسات تقييمٌ كذلك: يُمنع على واجبٍ لم يأتِ يومُه */
   const canSplit = teacherCan("splitDuty") &&
+    !(typeof asgNotYet === "function" && asgNotYet(a)) &&
     (typeof asgSplittable === "function" ? asgSplittable(a) : false);
   /* =======================================================================
      الواجبُ القديمُ لا يُعرض مبتدَؤه بالبسملة
@@ -29244,10 +29282,17 @@ window.tstuDuty = function (id) {
      كان يُسجَّل «لم يتم» و«يُعاد» ويُنقض المعتمَد. فمن أراد إعادةَ الصفّ
      ردَّ نداءَه إلى جسم الصحيفة.
      ======================================================================= */
-  const canRecite = !locked && teacherCan("recite");
+  /* وواجبُ يومٍ لم يأتِ بعدُ: يُطَّلع عليه ولا يُقيَّم — فلا زرَّ اعتمادٍ
+     له في الذيل، ويُقال في جسم الصحيفة لِمَ غاب. والتفاصيلُ والمدى
+     والمصحفُ مفتوحةٌ كما هي. */
+  const notYet = (typeof asgNotYet === "function") ? asgNotYet(a) : false;
+  const canRecite = !locked && !notYet && teacherCan("recite");
 
   openModal("تفاصيل الواجب", esc(a.kindName || t.h || ""),
     `${locked ? `<div class="tsd-lock">${ic("check", 14)} واجبٌ معتمَدٌ — تفاصيلُه للعرض لا للتعديل</div>` : ""}
+    ${!locked && notYet ? `<div class="tsd-lock tsd-soon">${ic("clock", 14)} واجبُ ${
+      esc(dayNameOf(a.date) || "")} ${esc(hijriOf(a.date) || toArabicDigits(a.date))
+      } — يُطَّلع عليه، ويُقيَّم في يومه</div>` : ""}
     <div class="tsd-sheet" data-dir="${esc(dirOf(a.direction))}">
       <div class="tsd-row">
         <span class="tsd-k">نوع الواجب</span>
@@ -29829,6 +29874,10 @@ window.recvOpen = function (asgId) {
     showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
   }
   if (a.status === "done") { showToast("هذا الواجبُ معتمَدٌ أصلاً", "warn"); return; }
+  /* وواجبُ يومٍ لم يأتِ لا يُقيَّم — ولا يُثبَّت له سجلٌّ قبل يومه */
+  if (typeof asgNotYet === "function" && asgNotYet(a)) {
+    showToast(asgNotYetMsg(a), "warn"); return;
+  }
   /* المولَّدُ يُثبت سجلّاً قبل أن يُبنى عليه تسميعٌ واعتماد */
   a = asgEnsure(a);
   RECV.asgId = String(a.id);
@@ -29940,6 +29989,10 @@ window.recvSave = function () {
   }
   /* ضغطتان متتاليتان كانتا تكتبان تسميعين للواجب نفسِه */
   if (a.status === "done") { showToast("هذا الواجبُ معتمَدٌ أصلاً", "warn"); return; }
+  /* وحارسُ يوم الواجب هنا أيضاً: النافذةُ قد تكون فُتحت قبل أن يتبدّل اليوم */
+  if (typeof asgNotYet === "function" && asgNotYet(a)) {
+    showToast(asgNotYetMsg(a), "warn"); return;
+  }
   if (RECV.saving) return;
   RECV.saving = true;
   setTimeout(function () { RECV.saving = false; }, 4000);
@@ -49256,7 +49309,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-1005";
+  var APP_BUILD = "20261013-1035";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
