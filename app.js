@@ -16310,12 +16310,28 @@ function asgStepEdge(plan, asg, hwKey) {
   const k = String(hwKey || "hifz");
   const planDir = (typeof planDirOf === "function")
     ? planDirOf(plan, k) : dirOf(plan && plan.direction);
-  const dir = (plan && plan.dirSet) ? planDir
-    : (String((asg && asg.direction) || "").trim() ? dirOf(asg.direction)
-       : (String((plan && plan.direction) || "").trim() ? dirOf(plan.direction)
-          : planDir));
   const fS = Number(asg && asg.fromS) || 0, fA = Number(asg && asg.fromA) || 0;
   const tS = Number(asg && asg.toS) || 0,   tA = Number(asg && asg.toA) || 0;
+  /* =======================================================================
+     جهةُ السير تُقرأ من المدى المسمَّع نفسِه
+     -----------------------------------------------------------------------
+     مدى الواجب المسمَّع يقول جهتَه بلا لبس: مبتدؤه قبل منتهاه فتصاعديّ،
+     وبعدَه فتنازليّ. وهذا أصدقُ من حقل direction — فكثيرٌ من الواجبات
+     القديمة بلا حقلٍ أصلاً — وأصدقُ من حقل الخطة: خطةُ هذا الطالب تحمل
+     «تنازليّ» وكلُّ واجباته تمشي تصاعداً (البقرة ١٨ ← ٢٤)، فكان النظامُ
+     يرتدّ به إلى ما قبل مبتدئه.
+
+     فالترتيب: اختيارُ الإدارة الصريحُ لخطته (dirSet) حكمٌ لا يُنازَع، ثمّ
+     جهةُ المدى المسمَّع، ثمّ حقلُ اتجاه الواجب، ثمّ اتجاهُ الخطة.
+     ======================================================================= */
+  const rangeDir = (fS && tS && !(tS === fS && tA === fA))
+    ? ((tS > fS || (tS === fS && tA > fA)) ? "forward" : "backward")
+    : "";
+  const dir = (plan && plan.dirSet) ? planDir
+    : (rangeDir
+       || (String((asg && asg.direction) || "").trim() ? dirOf(asg.direction) : "")
+       || (String((plan && plan.direction) || "").trim() ? dirOf(plan.direction) : "")
+       || planDir);
   /* جهةُ المدى المسمَّع: مبتدؤه قبل منتهاه أم بعده */
   const ranFwd = !fS ? true : (tS > fS || (tS === fS && tA >= fA));
   const goFwd = dir !== "backward";
@@ -29026,8 +29042,13 @@ function tstuAsgById(id) {
    السجلّ نفسِه (tstuAsgById) — فلا تُكتب حروفٌ في نسخةِ عرض.
    ========================================================================= */
 function tstuAsgShown(id) {
-  return (dutiesOfDay(TSTU.id, tstuDay()) || [])
-           .find(a => String(a.id) === String(id)) || tstuAsgById(id);
+  const list = dutiesOfDay(TSTU.id, tstuDay()) || [];
+  /* والمنتهى يُحسب لهذه النسخة كما حُسب لنسخة القائمة: المولّدُ يبني
+     كائناً جديداً في كلّ نداء، فكانت القائمةُ تحمل منتهاها والتفاصيلُ
+     تُفتح على كائنٍ آخرَ بلا منتهى فتعرض «إلى» غيرَ ما في البطاقة.
+     و tstuPreEnds تقرأ من ذاكرتها المؤقّتة فلا حسابَ مكرَّر ولا كتابة. */
+  try { if (typeof tstuPreEnds === "function") tstuPreEnds(list); } catch (e) {}
+  return list.find(a => String(a.id) === String(id)) || tstuAsgById(id);
 }
 
 /* =========================================================================
@@ -49739,7 +49760,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-0030";
+  var APP_BUILD = "20261014-0145";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
