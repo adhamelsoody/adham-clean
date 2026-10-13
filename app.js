@@ -17002,6 +17002,50 @@ function planQtyOf(plan, hwKey) {
 /* =========================================================================
    التوليد
    ========================================================================= */
+/* =========================================================================
+   «يولّد ما وضعه المعلّمُ أو الإدارةُ لليوم — والنظامُ لا يضع شيئاً من خياله»
+   -------------------------------------------------------------------------
+   كان ركنُ الواجب يُولَّد متى كان مفعَّلاً في إعدادات النظام العامّة
+   (hwTypes) وكان اليومُ من أيامه الافتراضية — ولو لم تضبط الإدارةُ لهذا
+   الطالب بعينه شيئاً من ذلك الركن. فيرى المعلّمُ عند الطالب تثبيتاً
+   ومراجعةً لم يضعهما أحد، ويزيد عددُ واجباته من تلقاء النظام.
+
+   فصار الركنُ لا يُولَّد إلّا بأثرٍ من الإدارة أو المعلّم في خطة هذا
+   الطالب بعينها:
+
+     • جدولُ أيامٍ ضُبط لهذا الركن في خطته (plan.hwDays[kind]) — أيّاً كان،
+       فضبطُه قصدٌ صريح.
+     • أو مقدارٌ ضُبط له في بطاقته (hifzQtyNum · revQtyNum · amount).
+     • أو سورةُ ابتداءٍ ضُبطت له (hifzFromS · revFromS).
+     • والتثبيتُ خاصّةً: قاعدتُه في خطة الطالب مضبوطةٌ صراحةً (fixation=true)
+       — لا بافتراضٍ عامّ.
+
+   وما لم يُضبط له شيءٌ لا يُولَّد، ولا يُحذف من النظام ركنٌ ولا إعداد:
+   hwTypes وافتراضاتُها باقيةٌ كما هي، وتُقرأ في المقدار والجدولة لمن ضُبط
+   له الركنُ أصلاً.
+   ========================================================================= */
+function planHasPillar(plan, kind) {
+  if (!plan) return false;
+  const k = String(kind || "").replace("_makeup", "");
+  /* جدولُ أيامٍ مضبوطٌ لهذا الركن في خطته: قصدٌ صريحٌ مهما كانت أيامُه */
+  const days = plan.hwDays && plan.hwDays[k];
+  if (Array.isArray(days)) return true;
+  if (k === "hifz") {
+    return Number(plan.hifzFromS) > 0 || Number(plan.hifzQtyNum) > 0 ||
+           Number(plan.amount) > 0;
+  }
+  if (k === "rev") {
+    return Number(plan.revFromS) > 0 || Number(plan.revQtyNum) > 0 ||
+           Number(plan.rAmount) > 0;
+  }
+  if (k === "fix") {
+    const r = (cur("planRules") || []).find(x => String(x.planId) === String(plan.id));
+    return !!(r && r.rules && r.rules.fixation === true);
+  }
+  /* التلاوةُ وما تضيفه الإدارةُ من أنواع: لا تُولَّد إلّا بجدولٍ مضبوطٍ لها */
+  return false;
+}
+
 function generateAssignments(studentId, dateISO) {
   const st = (cur("students") || []).find(x => String(x.id) === String(studentId));
   if (!st) return [];
@@ -17076,6 +17120,11 @@ function generateAssignments(studentId, dateISO) {
        ===================================================================== */
     const follows = exists && asgFollowsPlan(exists);
     if (exists && !follows) { out.push(exists); return; }   /* لا يُعاد توليد ما وُلّد */
+
+    /* ولا يُولَّد ركنٌ لم تضعه الإدارةُ أو المعلّمُ في خطة هذا الطالب —
+       والمحفوظُ لا يُمَسُّ: ما كُتب في السجلّ يبقى ويُعرض كما هو، فإنّما
+       المنعُ عن إنشاءِ ما لم يطلبه أحد. */
+    if (!planHasPillar(plan, t.k)) { if (exists) out.push(exists); return; }
 
     const rec = {
       id, date: dateISO,
@@ -17292,6 +17341,17 @@ function asgSkipWhy(studentId, dateISO) {
 
     hwTypes().forEach(t => {
       if (asgFind(dateISO, studentId, t.k)) return;      /* مولَّدٌ فعلاً */
+      /* وبالحارس نفسِه الذي في المولّد: ركنٌ لم يُضبط لهذا الطالب.
+         والتثبيتُ المطفأُ صراحةً يُقال بلفظه كما كان، فلا يختلط المُطفأُ
+         بما لم يُضبط أصلاً. */
+      if (typeof planHasPillar === "function" && !planHasPillar(plan, t.k)) {
+        const pr = (cur("planRules") || []).find(x => String(x.planId) === String(plan.id));
+        const off = t.fromLessons && pr && pr.rules && pr.rules.fixation === false;
+        out.push({ h: t.h, why: off
+          ? "قاعدةُ «التثبيت يلحق الحفظ» مُطفأةٌ في خطته"
+          : "لم يُضبط هذا الركنُ في خطة الطالب" });
+        return;
+      }
       const myDays = hwDaysFor(t.k, plan);
       const offDay = myDays && myDays.length && day && myDays.indexOf(day) === -1;
       if (offDay && !(lock && t.critical)) {
@@ -49530,7 +49590,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-1925";
+  var APP_BUILD = "20261013-2000";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
