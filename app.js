@@ -28389,9 +28389,52 @@ function tstuAsgOf(st, d) {
     String(a.studentId) === String(st.id) && String(a.date) === String(d));
   if (stored.length) return stored;
   if (String(d) >= String(tstuToday()) && typeof todayAssignments === "function") {
-    try { return todayAssignments(st.id, d, false) || []; } catch (e) { return []; }
+    try {
+      const list = todayAssignments(st.id, d, false) || [];
+      tstuPreEnds(list);
+      return list;
+    } catch (e) { return []; }
   }
   return [];
+}
+
+/* =========================================================================
+   مدى واجبِ الغد في العرض — بلا كتابةٍ في السجلّ
+   -------------------------------------------------------------------------
+   «إذا قمتُ بتم التسميع ورحتُ لواجب الغد يتحدّث النظامُ ويظهر واجبُ
+   الغد»: وهو يتحدّث فعلاً — الموضعُ يتقدّم بعد الاعتماد فيبتدئ واجبُ
+   الغد من بعد منتهى المعتمَد. لكنّه كان يُعرض ناقصاً: «من مريم ١٢» بلا
+   «إلى»، لأنّ واجبَ يومٍ لم يأتِ بعدُ يُولَّد للعرض لا للكتابة
+   (persist=false)، وإتمامُ المدى (fillAsgRanges) يكتب في السجلّ فلا
+   يُنادى هناك.
+
+   فيُحسب المدى للعرض وحدَه: بالمحرّك نفسِه (rangeEnd) وفي ذاكرةٍ مؤقّتة
+   بمفتاحٍ من مُدخلات الحساب — فلا كتابةَ في Firestore، ولا إعادةَ حسابٍ
+   لكلّ رسم، ولا دورةَ رسمٍ لا تنتهي: المحسوبُ سلفاً يُقرأ من الذاكرة
+   فلا يُنادي mount مرّةً أخرى.
+   ========================================================================= */
+const TSTU_PRE_END = {};
+function tstuPreEnds(list) {
+  if (typeof rangeEnd !== "function") return;
+  (list || []).forEach(function (a) {
+    if (!a || !a.fromS || a.toS || !(Number(a.qty) > 0)) return;
+    if (String(a.kind) === "fix") return;          /* التثبيتُ مداه من واجبه */
+    const k = [a.studentId, a.date, a.kind, a.fromS, a.fromA,
+               a.qty, a.unit, dirOf(a.direction)].join("|");
+    if (Object.prototype.hasOwnProperty.call(TSTU_PRE_END, k)) {
+      const v = TSTU_PRE_END[k];
+      if (v) { a.toS = v[0]; a.toA = v[1]; }       /* null = قيدَ الحساب */
+      return;
+    }
+    TSTU_PRE_END[k] = null;
+    Promise.resolve(rangeEnd(a.fromS, a.fromA, a.qty, a.unit, a.direction))
+      .then(function (end) {
+        if (!end || !end.surah) { TSTU_PRE_END[k] = 0; return; }
+        TSTU_PRE_END[k] = [Number(end.surah), Number(end.ayah) || 1];
+        if (typeof mount === "function") mount();
+      })
+      .catch(function () { TSTU_PRE_END[k] = 0; });
+  });
 }
 
 function tstuCalendar(st) {
@@ -49211,7 +49254,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-0250";
+  var APP_BUILD = "20261013-0420";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
