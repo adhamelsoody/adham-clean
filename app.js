@@ -17162,13 +17162,32 @@ function asgFollowsPlan(a) {
   return true;
 }
 
-/* ويُطابَق حقلاً حقلاً: المختلفُ وحدَه يُؤخذ */
+/* ويُطابَق حقلاً حقلاً: المختلفُ وحدَه يُؤخذ.
+
+   ولا يُستبدل قائمٌ بفراغ: المولّدُ قد يعجز عن الموضع — خطةٌ لم تُضبط
+   بداياتُها، أو ركنٌ بلا سورة ابتداء، أو جدولُ المصحف لم يصل — فيعود
+   بموضعٍ خالٍ (fromS صفرٌ أو لا شيء). وكانت هذه الحالُ تمحو مدى الواجب
+   المحفوظ: «الحفظ كان من آل عمران ١ إلى ٦ فصار من ١ إلى ١»، و«المراجعة
+   اختفت» — لأنّ موضعَها صار فراغاً فلم يبقَ ما يُعرض.
+
+   فالقاعدةُ: لا يُؤخذ من المولّد إلّا موضعٌ صحيحٌ (سورةٌ وآيةٌ موجبتان)،
+   ولا مقدارٌ إلّا موجباً، ولا وحدةٌ ولا اتجاهٌ إلّا غيرَ فارغين. وما عجز
+   عنه المولّدُ يبقى في السجلّ كما هو. */
 function asgPlanDiff(exists, rec) {
+  if (!(Number(rec.fromS) > 0 && Number(rec.fromA) > 0)) return null;
   const out = {};
   let diff = false;
+  const empty = function (k, v) {
+    if (k === "qty") return !(Number(v) > 0);
+    if (k === "unit" || k === "direction") return !String(v || "").trim();
+    if (k === "fromS" || k === "fromA") return !(Number(v) > 0);
+    return v === undefined || v === null || v === "";
+  };
   ASG_PLAN_FIELDS.forEach(function (k) {
     const v = rec[k] === undefined ? null : rec[k];
     const o = exists[k] === undefined ? null : exists[k];
+    /* الفارغُ لا يُكتب فوق قائمٍ — ويُكتب إن كان القائمُ فارغاً مثلَه */
+    if (empty(k, v) && !empty(k, o)) return;
     if (String(o) !== String(v)) { out[k] = v; diff = true; }
   });
   /* المنتهى يُؤخذ إن أملته الخطةُ (التثبيت)، وإلّا فُرّغ ليُعاد حسابُه من
@@ -49414,7 +49433,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-1705";
+  var APP_BUILD = "20261013-1730";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
