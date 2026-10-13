@@ -28758,17 +28758,21 @@ window.tstuQtySave = function (id) {
    كلُّ حقلٍ يُقرأ بصلاحيته: ما لا يملكه المستخدمُ لا يُرسَم أصلاً فلا
    يُقرأ، وما يملكه يُفحص قبل الكتابة. والمعتمَدُ لا يُعدَّل.
    وحقولُ الارتباط (الطالب والحلقة والمسجد والخطة) لا تُمسّ هنا ألبتّة.
+
+   وترجع true إن حُفظ وfalse إن ردَّه تحقّقٌ أو صلاحية — ليُبنى عليه
+   مَن يحفظ قبل خطوةٍ تالية. و opts.chain يمنع إغلاقَ النافذة والبُشرى
+   وإعادةَ الرسم، لأنّ الخطوةَ التالية تفتح نافذتها بنفسها.
    ========================================================================= */
-window.tstuDutySave = function (id) {
+window.tstuDutySave = function (id, opts) {
   const a = tstuAsgById(id);
-  if (!a) { showToast("الواجب غير موجود", "warn"); return; }
-  if (a.status === "done") { showToast("واجبٌ معتمَدٌ — لا يُعدَّل", "warn"); return; }
+  if (!a) { showToast("الواجب غير موجود", "warn"); return false; }
+  if (a.status === "done") { showToast("واجبٌ معتمَدٌ — لا يُعدَّل", "warn"); return false; }
 
   const cQty = teacherCan("planQty"),
         cFrom = teacherCan("planStart"),
         cEnd = teacherCan("planEnd");
   if (!cQty && !cFrom && !cEnd) {
-    showToast("صلاحيةُ تعديل الواجب غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+    showToast("صلاحيةُ تعديل الواجب غيرُ مفعَّلةٍ لحسابك", "warn"); return false;
   }
 
   const next = {};
@@ -28777,17 +28781,17 @@ window.tstuDutySave = function (id) {
     /* المعروضُ بعدّ صاحب النظام، والمخزونُ بعدّ المصحف */
     next.fromA = ayahStore(next.fromS, Number(val("#tsd_fA") || 0));
     if (!(next.fromS > 0 && next.fromA > 0)) {
-      showToast("موضعُ الابتداء غير صحيح", "warn"); return; }
+      showToast("موضعُ الابتداء غير صحيح", "warn"); return false; }
   }
   if (cEnd && document.getElementById("tsd_tS")) {
     next.toS = Number(val("#tsd_tS") || 0);
     next.toA = ayahStore(next.toS, Number(val("#tsd_tA") || 0));
     if (!(next.toS > 0 && next.toA > 0)) {
-      showToast("موضعُ الانتهاء غير صحيح", "warn"); return; }
+      showToast("موضعُ الانتهاء غير صحيح", "warn"); return false; }
   }
   if (cQty && document.getElementById("tsd_qty")) {
     const q = Number(val("#tsd_qty") || 0);
-    if (!(q > 0)) { showToast("المقدار غير صحيح", "warn"); return; }
+    if (!(q > 0)) { showToast("المقدار غير صحيح", "warn"); return false; }
     next.qty = q;
     next.unit = String(val("#tsd_unit") || a.unit || "وجه");
     /* واتجاهُ هذا الواجب من زرِّه — ولا يُمسُّ اتجاهُ خطة الطالب */
@@ -28812,16 +28816,60 @@ window.tstuDutySave = function (id) {
     : true;
   if (!okOrder) {
     showToast(dSave === "backward" ? "بدايةُ المدى قبل نهايته في التنازليّ"
-                                   : "نهاية المدى قبل بدايته", "warn"); return;
+                                   : "نهاية المدى قبل بدايته", "warn"); return false;
   }
 
   Object.keys(next).forEach(k => { a[k] = next[k]; });
   a.shortQty = typeof asgRemain === "function" ? asgRemain(a) : a.shortQty;
   persistSet("assignments", a);
-  closeModal();
-  showToast("حُفظ تعديلُ الواجب", "success");
-  mount();
+  if (!(opts && opts.chain)) {
+    closeModal();
+    showToast("حُفظ تعديلُ الواجب", "success");
+    mount();
+  }
+  return true;
 };
+
+/* =========================================================================
+   تعديلٌ في الصحيفة لم يُحفظ ثمّ ضُغط «تم التسميع»
+   -------------------------------------------------------------------------
+   «علوتُ على المقدار ونقصتُ آيةً أو زدتُها في الخانة، وضغطتُ تم التسميع،
+   فقال تمّ التسميع — لكنّي أرى المسمَّعَ هو ما وضعه النظام، وتعديلي لم
+   يحفظه النظام».
+
+   وزرُّ «تم التسميع» كان يفتح التقييمَ من السجلّ المخزون لا من الصحيفة
+   التي أمام المعلّم، فيُعتمد مدىً غيرُ الذي يراه، ويُطرح تعديلُه صامتاً.
+
+   فتُقاس الصحيفةُ أوّلاً: هذه الدالّةُ تقول هل في حقولها المرسومة ما
+   يخالف السجلَّ — ولا تنظر إلا إلى حقلٍ مرسومٍ يملكه المستخدم، فمن لا
+   صلاحيةَ له لا حقلَ له ولا خلافَ عنده.
+
+   ويُشترط معه أثرُ يدِ المعلّم (data-touched على الصحيفة) لا مجرّدُ
+   اختلافٍ عن السجلّ: الصحيفةُ تُعيد حسابَ «إلى» من المقدار عند فتحها،
+   فلو كُتب كلُّ اختلافٍ لكُتب حسابُ النظام نفسُه في كلّ ضغطةِ اعتمادٍ
+   بلا أن يطلبه أحد — وذلك تعديلُ بياناتٍ لم يأمر به المعلّم.
+   ========================================================================= */
+function tsdPending(a) {
+  if (!a) return false;
+  const sh = document.querySelector(".tsd-sheet");
+  if (!(sh && sh.dataset && sh.dataset.touched === "1")) return false;
+  const g = i => document.getElementById(i);
+  const n = v => Number(v) || 0;
+  if (teacherCan("planStart") && g("tsd_fS") && g("tsd_fA")) {
+    const s = n(g("tsd_fS").value);
+    if (s !== n(a.fromS) || ayahStore(s, n(g("tsd_fA").value)) !== n(a.fromA)) return true;
+  }
+  if (teacherCan("planEnd") && g("tsd_tS") && g("tsd_tA")) {
+    const s = n(g("tsd_tS").value);
+    if (s !== n(a.toS) || ayahStore(s, n(g("tsd_tA").value)) !== n(a.toA)) return true;
+  }
+  if (teacherCan("planQty") && g("tsd_qty")) {
+    if (n(g("tsd_qty").value) !== n(a.qty)) return true;
+    if (g("tsd_unit") && String(g("tsd_unit").value) !== String(a.unit || "وجه")) return true;
+    if (g("tsd_dir") && dirOf(g("tsd_dir").value) !== dirOf(a.direction)) return true;
+  }
+  return false;
+}
 
 /* =========================================================================
    نتيجةُ التسميع من نافذة الواجب — الأزرارُ الثلاثة
@@ -28915,8 +28963,15 @@ window.tstuDutyResult = function (id, res) {
     showToast("الواجبُ على هذه الحال أصلاً", "info"); return;
   }
 
-  /* الاعتمادُ يمرّ بالتقييم كما كان — الزرُّ بابُه لا بديلُه */
+  /* الاعتمادُ يمرّ بالتقييم كما كان — الزرُّ بابُه لا بديلُه.
+     وما في الصحيفة من تعديلٍ لم يُحفظ يُحفظ أوّلاً بمسار الحفظ نفسِه —
+     بصلاحياته وتحقّقه — فلا يُسمَّع غيرُ ما يرى المعلّم. وإن ردَّه
+     التحقّقُ لم يُفتح التقييمُ: مدىً مردودٌ لا يُعتمد. */
   if (String(res) === "done") {
+    if (typeof tsdPending === "function" && tsdPending(a) &&
+        typeof window.tstuDutySave === "function") {
+      if (window.tstuDutySave(a.id, { chain: true }) === false) return;
+    }
     if (typeof window.recvOpen === "function") window.recvOpen(a.id);
     return;
   }
@@ -28968,9 +29023,19 @@ window.tstuDutyResult = function (id, res) {
    لا تنزل دون واحدة، والمقدارُ لا ينزل دون صفر، كما كُتب في مرسَمهما.
    وهي الدالّةُ التي تقوم عليها أزرارُ «تقييم الأداء» أيضاً.
    ========================================================================= */
+/* وسمُ يدِ المعلّم على صحيفة الواجب: منه تُعرف تعديلاتُه من حسابِ النظام */
+window.tsdTouch = function () {
+  const s = document.querySelector(".tsd-sheet");
+  if (s && s.dataset) s.dataset.touched = "1";
+};
+
 window.numStep = function (id, d) {
   const el = document.getElementById(String(id));
   if (!el) return;
+  /* أزرارُ «+» و«−» لا تُضغط إلا بيد: فحقولُ الصحيفة تُوسَم بها */
+  if (String(id).indexOf("tsd_") === 0 && typeof window.tsdTouch === "function") {
+    window.tsdTouch();
+  }
   const lo = Number(el.getAttribute("min"));
   const n = (Number(el.value) || 0) + (Number(d) || 0);
   /* القائمةُ تُخطى بخيارها لا بقيمةٍ حرّة: ما ليس فيها لا يُختار */
@@ -29222,6 +29287,22 @@ window.tstuDuty = function (id) {
           ic("check", 15)} حفظ التعديلات</button>` : ""}
      ${canSplit ? `<button class="btn btn-soft" onclick="window.tsplSave()">حفظ الجلسات</button>` : ""}
      <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+
+  /* يدُ المعلّم تُوسَم على الصحيفة: حدثا change وinput لا يصدران إلا عن
+     تفاعلٍ بشريّ — فما كتبه النظامُ في القيم لا يُوسَم. ومنه يُعرف ما
+     يُحفظ عند «تم التسميع». */
+  (function () {
+    const sh = document.querySelector(".tsd-sheet");
+    if (!sh || !sh.addEventListener) return;
+    const mark = function (e) {
+      if (window.__tsdSys) return;          /* حدثٌ أطلقه النظامُ لا يدٌ */
+      const t = e && e.target;
+      if (t && t.id && String(t.id).indexOf("tsd_") === 0 &&
+          typeof window.tsdTouch === "function") window.tsdTouch();
+    };
+    sh.addEventListener("change", mark);
+    sh.addEventListener("input", mark);
+  })();
 
   /* =======================================================================
      قائمتا السور تُملآن حين يصل فهرسُ المصحف
@@ -42262,7 +42343,10 @@ window.tsdQtyRange = function (force) {
     }
     /* النهايةُ سورةً وآيةً معاً — وقد تقع في سورةٍ تالية إن عبرتها الصفحة */
     tSel.value = String(r.surah);
-    tSel.dispatchEvent(new Event("change", { bubbles: true }));
+    /* وهذا حدثُ النظامِ لا حدثُ يدٍ: يُعلَم لئلّا يُوسَم تعديلاً للمعلّم */
+    window.__tsdSys = 1;
+    try { tSel.dispatchEvent(new Event("change", { bubbles: true })); }
+    finally { window.__tsdSys = 0; }
     const want = typeof ayahShow === "function" ? ayahShow(r.surah, r.ayah) : r.ayah;
     window.ayahCap("tsd_tA");
     tAEl.value = String(want);
@@ -42282,6 +42366,7 @@ window.tsdDirSet = function (btn, val) {
   const box = document.getElementById("tsd_dirseg");
   const inp = document.getElementById("tsd_dir");
   if (!box || !inp) return;
+  if (typeof window.tsdTouch === "function") window.tsdTouch();
   Array.prototype.forEach.call(box.querySelectorAll(".tsd-dirb"), function (b) {
     b.classList.remove("on");
   });
@@ -49126,7 +49211,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261012-2200";
+  var APP_BUILD = "20261013-0250";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
