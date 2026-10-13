@@ -16824,9 +16824,26 @@ window.ayahStore = ayahStore;
 function nextHifzFrom(plan) {
   /* من الفترة النشطة: بعد الترحيل يبدأ الطالب من نقطة انطلاقٍ محدَّدة
      في خطته لا من حيث انتهى في دورةٍ مؤرشفة. */
+  /* =======================================================================
+     التعويضُ من الحفظ لا من غيره: «يمشي على السياق ولا يتجاوزه»
+     -----------------------------------------------------------------------
+     «الطالبُ سمّع من البقرة ١٨ إلى ٢٤، والمفترضُ أن يكمل غداً من ٢٤ — أمّا
+     الآن فيضع سورةً مختلفةً تماماً».
+
+     والسببُ أنّ الواجبَ المسمَّعَ كان «حفظ جديد (فارق)» — تعويضُ فارقِ
+     أمسِ، ونوعُه في السجلّ hifz_makeup. وهذه كانت تقرأ النوعَ حرفياً
+     (kind === "hifz") فلا ترى التعويضَ أصلاً، فتبني على آخر حفظٍ عاديٍّ
+     قبله — وهو موضعٌ أقدمُ في سورةٍ أخرى.
+
+     فالموضعُ يُبنى على آخر ما سُمِّع من ركن الحفظ أيّاً كان: أصلاً أو
+     فارقاً. والترتيبُ باليوم ثمّ بوقت الكتابة، فآخرُ ما اعتُمد هو
+     المنتهى — ولا يُقدَّم أصلٌ على فارقٍ سُمِّع بعده.
+     ======================================================================= */
   const done = asgTermOf(plan.studentId)
-    .filter(a => a.kind === "hifz" && a.status === "done")
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+    .filter(a => String(a.kind || "").replace("_makeup", "") === "hifz" &&
+                 a.status === "done")
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
+                    (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
 
   if (done && done.toS) {
     /* بلغ آخر السورة ولم يتمّ تكرارها: يعود إلى أوّلها لا إلى ما بعدها */
@@ -17102,10 +17119,13 @@ function generateAssignments(studentId, dateISO) {
          و stepFrom تقرؤه قبل إسناده فتمضي تصاعداً دائماً. */
       rec.direction = planDirOf(plan, t.k);
 
-      /* المراجعة والتلاوة تبدآن من حيث انتهى آخرُ ما سُمّع من نوعها */
+      /* المراجعة والتلاوة تبدآن من حيث انتهى آخرُ ما سُمّع من نوعها —
+         والفارقُ من نوعها كذلك، كما في الحفظ سواءً بسواء */
       const last = asgTermOf(studentId)
-        .filter(a => a.kind === t.k && a.status === "done" && a.toS)
-        .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+        .filter(a => String(a.kind || "").replace("_makeup", "") === t.k &&
+                     a.status === "done" && a.toS)
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
+                        (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
 
       if (last) {
         const nx = stepFrom(last.toS, last.toA, rec.direction);
@@ -17407,8 +17427,10 @@ window.asgClose = function (asgIdStr, score, recitationId) {
     try { if (typeof autoPromoteCheck === "function") autoPromoteCheck(a.studentId); } catch (e) {}
   }
 
-  /* النجاح يقدّم موضع الخطة بحسب الاتجاه — الرسوب يُبقيه فلا تقدّم */
-  if (a.status === "done" && a.kind === "hifz") {
+  /* النجاح يقدّم موضع الخطة بحسب الاتجاه — الرسوب يُبقيه فلا تقدّم.
+     والفارقُ (hifz_makeup) حفظٌ سُمِّع، فيقدّم الموضعَ كأصله: وإلّا سمّع
+     الطالبُ فارقَ أمسِ ثمّ بدأ غداً من موضعٍ أقدمَ في سورةٍ أخرى. */
+  if (a.status === "done" && String(a.kind || "").replace("_makeup", "") === "hifz") {
     try { if (window.advancePlanAfter) window.advancePlanAfter(a); } catch (e) {}
   }
 
@@ -49433,7 +49455,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-1730";
+  var APP_BUILD = "20261013-1800";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
