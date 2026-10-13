@@ -16163,6 +16163,94 @@ function asgCapToSurah(a, end) {
   return Promise.resolve(end);
 }
 
+/* =========================================================================
+   «المراجعةُ لا تتجاوز التثبيتَ والحفظ» — بندٌ مهمّ
+   -------------------------------------------------------------------------
+   كانت المراجعةُ تمضي في المصحف بمقدارها لا يحدُّها شيء، فيُطالَب الطالبُ
+   بمراجعة ما لم يحفظه بعد: حفظُه في البقرة ومراجعتُه في طه. وهذا عبثٌ
+   بالخطة: لا يُراجَع إلّا ما حُفظ.
+
+   والحدُّ هو مدى ما اعتُمد من الحفظ: أبعدُ موضعٍ بلغه في واجبات حفظٍ
+   مُنجَزة (أصلاً أو فارقاً). والتثبيتُ داخلَه أصلاً — مداه من آخر الدروس
+   المحفوظة — فحدُّ الحفظ هو الحادُّ.
+
+   وحارسان لا ثالثَ لهما:
+     • المبتدأ: إن وقع بعد حدّ الحفظ عاد إلى أوّل ما حُفظ (أو إلى ابتداء
+       المراجعة الذي اختارته الإدارةُ إن كان داخلَ المحفوظ).
+     • والمنتهى: يُقصَر على الحدّ، فلا يعبره المقدارُ ولو اتّسع.
+
+   وما لم يُعتمد للطالب حفظٌ قطّ فلا حدَّ يُقاس عليه — فتُترك المراجعةُ
+   كما ضبطتها الإدارة (طالبٌ ملتحقٌ بمحفوظٍ سابق). ولا تُكتب بياناتٌ هنا
+   ولا يُمَسُّ ارتباط: حسابٌ محض.
+   ========================================================================= */
+function hifzSpanOf(studentId) {
+  const list = (typeof asgOf === "function") ? asgOf(studentId) : [];
+  let lo = null, hi = null;
+  (list || []).forEach(function (a) {
+    if (!a || String(a.kind || "").replace("_makeup", "") !== "hifz") return;
+    if (a.status !== "done") return;
+    const fS = Number(a.fromS) || 0, fA = Number(a.fromA) || 1;
+    const tS = Number(a.toS) || fS,  tA = Number(a.toA) || fA;
+    [[fS, fA], [tS, tA]].forEach(function (p) {
+      if (!(p[0] > 0)) return;
+      if (!lo || p[0] < lo[0] || (p[0] === lo[0] && p[1] < lo[1])) lo = p;
+      if (!hi || p[0] > hi[0] || (p[0] === hi[0] && p[1] > hi[1])) hi = p;
+    });
+  });
+  return (lo && hi) ? { lo: { s: lo[0], a: lo[1] }, hi: { s: hi[0], a: hi[1] } } : null;
+}
+
+/* الحدُّ في جهة السير: التصاعديُّ يقف عند أبعد ما حُفظ، والتنازليُّ عند
+   أقربِه — و«أوّلُ المحفوظ» هو الطرفُ الآخر، إليه يعود الدوران. */
+function hifzLimitFor(a) {
+  const sp = hifzSpanOf(a && a.studentId);
+  if (!sp) return null;
+  const back = dirOf(a && a.direction) === "backward";
+  return { lim: back ? sp.lo : sp.hi, home: back ? sp.hi : sp.lo, back: back };
+}
+
+function asgCapToHifz(a, end) {
+  if (!a || !end) return Promise.resolve(end);
+  if (String(a.kind || "").replace("_makeup", "") !== "rev") {
+    return Promise.resolve(end);
+  }
+  const L = hifzLimitFor(a);
+  if (!L) return Promise.resolve(end);
+  const eS = Number(end.surah) || 0, eA = Number(end.ayah) || 1;
+  if (!eS) return Promise.resolve(end);
+  const past = L.back
+    ? (eS < L.lim.s || (eS === L.lim.s && eA < L.lim.a))
+    : (eS > L.lim.s || (eS === L.lim.s && eA > L.lim.a));
+  if (!past) return Promise.resolve(end);
+  a.capped = true;
+  a.note = "وقف عند حدّ الحفظ — المراجعةُ لا تتجاوز ما حُفظ";
+  return Promise.resolve({ surah: L.lim.s, ayah: L.lim.a, capped: true });
+}
+
+/* ومبتدأُ المراجعة لا يقع خارجَ المحفوظ أصلاً */
+function revClampStart(rec, plan) {
+  if (!rec || String(rec.kind || "").replace("_makeup", "") !== "rev") return rec;
+  const L = hifzLimitFor(rec);
+  if (!L) return rec;
+  const s = Number(rec.fromS) || 0, a = Number(rec.fromA) || 1;
+  if (!s) return rec;
+  const past = L.back
+    ? (s < L.lim.s || (s === L.lim.s && a < L.lim.a))
+    : (s > L.lim.s || (s === L.lim.s && a > L.lim.a));
+  if (!past) return rec;
+  /* ابتداءُ المراجعة الذي اختارته الإدارةُ أولى — إن كان داخلَ المحفوظ */
+  const rS = Number(plan && plan.revFromS) || 0;
+  const rA = Number(plan && plan.revFromA) || 1;
+  const inSpan = rS > 0 && !(L.back
+    ? (rS < L.lim.s || (rS === L.lim.s && rA < L.lim.a))
+    : (rS > L.lim.s || (rS === L.lim.s && rA > L.lim.a)));
+  rec.fromS = inSpan ? rS : L.home.s;
+  rec.fromA = inSpan ? rA : L.home.a;
+  rec.toS = null; rec.toA = null;        /* يُعاد حسابُ المنتهى من المبتدإ الجديد */
+  rec.note = "عاد إلى أوّل ما حُفظ — المراجعةُ لا تتجاوز الحفظ";
+  return rec;
+}
+
 function asgCapToSurahStrict(a, end) {
   if (!end || !a) return Promise.resolve(end);
   const fs = Number(a.fromS) || 0;
@@ -16232,6 +16320,7 @@ window.fillAsgRanges = function (list) {
   return Promise.all(need.map(a =>
     rangeEnd(a.fromS, a.fromA, a.qty, a.unit, a.direction)
       .then(end => asgCapToSurah(a, end))
+      .then(end => asgCapToHifz(a, end))
       .then(end => {
       if (!end) return 0;
       a.toS = end.surah; a.toA = end.ayah;
@@ -17249,6 +17338,7 @@ function generateAssignments(studentId, dateISO) {
         rec.fromS = jump.surah; rec.fromA = jump.ayah;
         rec.direction = dirOf(plan.direction);
         if (jump.looped) rec.note = "عاد من بداية نطاقه";
+        revClampStart(rec, plan);          /* لا تتجاوز المراجعةُ ما حُفظ */
         out.push(exists ? asgPlanMerge(exists, rec) : rec);
         return;
       }
@@ -17290,6 +17380,7 @@ function generateAssignments(studentId, dateISO) {
         else if (ps) { rec.fromS = ps; rec.fromA = rec.direction === "backward" ? 0 : 1; }
         else if (plan.hifzFromS) { rec.fromS = plan.hifzFromS; rec.fromA = plan.hifzFromA || 1; }
       }
+      revClampStart(rec, plan);            /* لا تتجاوز المراجعةُ ما حُفظ */
     }
 
     out.push(exists ? asgPlanMerge(exists, rec) : rec);
@@ -28807,14 +28898,22 @@ function tstuPreEnds(list) {
                a.qty, a.unit, dirOf(a.direction)].join("|");
     if (Object.prototype.hasOwnProperty.call(TSTU_PRE_END, k)) {
       const v = TSTU_PRE_END[k];
-      if (v) { a.toS = v[0]; a.toA = v[1]; }       /* null = قيدَ الحساب */
+      if (v) {
+        a.toS = v[0]; a.toA = v[1];                /* null = قيدَ الحساب */
+        /* وسببُ القِصَر يُنقل مع المدى: المولّدُ يبني كائناً جديداً في كلّ
+           نداء، فتضيع الملاحظةُ التي كُتبت عند أوّل حساب */
+        if (v[2] && !a.note) {
+          a.note = "وقف عند حدّ الحفظ — المراجعةُ لا تتجاوز ما حُفظ";
+        }
+      }
       return;
     }
     TSTU_PRE_END[k] = null;
     Promise.resolve(rangeEnd(a.fromS, a.fromA, a.qty, a.unit, a.direction))
+      .then(function (end) { return asgCapToHifz(a, end); })
       .then(function (end) {
         if (!end || !end.surah) { TSTU_PRE_END[k] = 0; return; }
-        TSTU_PRE_END[k] = [Number(end.surah), Number(end.ayah) || 1];
+        TSTU_PRE_END[k] = [Number(end.surah), Number(end.ayah) || 1, !!end.capped];
         if (typeof mount === "function") mount();
       })
       .catch(function () { TSTU_PRE_END[k] = 0; });
@@ -30316,6 +30415,7 @@ window.recvOpen = function (asgId) {
   if (needEnd && typeof rangeEnd === "function") {
     const aid = String(a.id);
     Promise.resolve(rangeEnd(a.fromS, a.fromA, a.qty, a.unit, a.direction))
+      .then(function (end) { return asgCapToHifz(a, end); })
       .then(function (end) {
         if (!end || !(Number(end.surah) > 0)) return;
         const cur_ = tstuAsgById(aid);
@@ -49784,7 +49884,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-0215";
+  var APP_BUILD = "20261014-0300";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
