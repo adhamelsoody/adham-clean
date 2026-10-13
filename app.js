@@ -30149,6 +30149,47 @@ window.recvOpen = function (asgId) {
   }
   /* المولَّدُ يُثبت سجلّاً قبل أن يُبنى عليه تسميعٌ واعتماد */
   a = asgEnsure(a);
+
+  /* =======================================================================
+     مدىً ناقصٌ لا يُعتمد عليه تسميعٌ — «آل عمران ١ – آل عمران ١»
+     -----------------------------------------------------------------------
+     «اعتمدتُ الحفظ من آل عمران ١ إلى ٩، فإذا بنتائج اليوم تقول: آل عمران ١
+     – آل عمران ١». وسجلُّ التسميع يُكتب من مدى الواجب المخزون (recvSave
+     تقرأ a.toS/a.toA)، فإن كان المخزونُ ناقصاً أو منهاراً على موضع
+     ابتدائه كُتب في السجلّ كذلك — وإن كانت الشاشةُ تعرض المدى الصحيح،
+     لأنّ العرضَ يُعيد حسابَه من المقدار ولا يكتبه.
+
+     فيُصلَح المدى قبل فتح التقييم: إن غاب منتهاه، أو انهار على مبتدئه
+     والمقدارُ يقتضي أكثر، حُسب من محرّك المصحف نفسِه (المقدار والاتجاه
+     وموضع الابتداء) وكُتب في الواجب — ثمّ يُفتح التقييمُ عليه. فلا يُعتمد
+     تسميعٌ على مدىً لم يُحسب، ولا يُكتب في السجلّ غيرُ ما سُمِّع.
+
+     ولا يُمَسُّ مدىً تامٌّ صحيح، ولا ما حرّره المعلّمُ بيده (edited).
+     ======================================================================= */
+  const needEnd = Number(a.fromS) > 0 && Number(a.qty) > 0 && !a.edited &&
+    (!(Number(a.toS) > 0) ||
+     (Number(a.toS) === Number(a.fromS) && Number(a.toA) <= Number(a.fromA)));
+  if (needEnd && typeof rangeEnd === "function") {
+    const aid = String(a.id);
+    Promise.resolve(rangeEnd(a.fromS, a.fromA, a.qty, a.unit, a.direction))
+      .then(function (end) {
+        if (!end || !(Number(end.surah) > 0)) return;
+        const cur_ = tstuAsgById(aid);
+        if (!cur_ || cur_.status === "done") return;
+        if (Number(cur_.toS) > 0 &&
+            !(Number(cur_.toS) === Number(cur_.fromS) &&
+              Number(cur_.toA) <= Number(cur_.fromA))) return;   /* صار تامّاً */
+        cur_.toS = Number(end.surah);
+        cur_.toA = Number(end.ayah) || 1;
+        persistSet("assignments", cur_);
+        /* والنافذةُ المفتوحةُ تُعاد بالمدى الصحيح إن كانت ما تزال له */
+        if (String(RECV.asgId) === aid && document.querySelector(".rcv-sheet")) {
+          window.recvOpen(aid);
+        }
+      })
+      .catch(function () {});
+  }
+
   RECV.asgId = String(a.id);
   RECV.grade = "ممتاز";
   const st = (cur("students") || []).find(x => String(x.id) === String(a.studentId)) || {};
@@ -30292,7 +30333,10 @@ window.recvSave = function () {
     mosqueId: st.mosqueId || "",
     kind: String(a.kindName || "حفظ"),
     fromS: Number(a.fromS) || 0, fromA: Number(a.fromA) || 0,
-    toS: Number(a.toS) || 0, toA: Number(a.toA) || 0,
+    /* ومنتهى المدى: ما في الواجب، فإن غاب فمبتدؤه — ولا يُكتب صفرٌ في
+       السجلّ، فالصفرُ يُقرأ في التقارير سورةً لا وجودَ لها */
+    toS: Number(a.toS) || Number(a.fromS) || 0,
+    toA: Number(a.toS) ? (Number(a.toA) || 0) : (Number(a.fromA) || 0),
     fromName: a.fromS ? surahName(a.fromS) : "", toName: a.toS ? surahName(a.toS) : "",
     /* المقدارُ المعتمد للواجب: هو ما سُمّع باعتماد المعلّم */
     faces: Number(a.qty) || 0, ayahs: 0,
@@ -49590,7 +49634,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-2000";
+  var APP_BUILD = "20261013-2215";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
