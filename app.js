@@ -27388,12 +27388,40 @@ window.tchEnterCircle = function () {
    هنا المصدرُ واحد: المحفوظُ أوّلاً فهو سجلُّ ما جرى، فإن لم يكن فالمولَّدُ
    من الخطة. ولا كتابةَ ألبتّة — العرضُ لا يكتب.
    ========================================================================= */
+/* =========================================================================
+   جمعُ المحفوظ والمولَّد بالنوع — قاعدةٌ واحدةٌ لكلّ الشاشات
+   -------------------------------------------------------------------------
+   «أرى عند طالبٍ ثلاثةَ واجبات، وعند الضغط على التثبيت والمراجعة يظهر لي
+   أنّ الواجب ليس موجوداً وهو ظاهرٌ أمامي»: الشاشةُ كانت تعرض المحفوظَ
+   والمولَّدَ معاً، وبحثُ المعرّف (tstuAsgById → dutiesOfDay) يعود إلى
+   المحفوظ وحدَه إن وُجد منه شيء — فلا يجد المولَّدَ فيقول «غير موجود».
+
+   فصار الجمعُ قاعدةً واحدةً في موضعٍ واحد: المحفوظُ أولى بنوعه، وما لم
+   يُثبَّت بعدُ يُكمَّل من المولّد. ولا يُعرض مولَّدٌ بلا موضعٍ صحيح —
+   فليس واجباً يُعمل عليه. ولا كتابةَ هنا ألبتّة.
+   ========================================================================= */
+function asgMergeByKind(saved, gen) {
+  const g = (gen || []).filter(function (a) { return a && Number(a.fromS) > 0; });
+  if (!(saved || []).length) return g;
+  if (!g.length) return saved;
+  const have = {};
+  saved.forEach(function (a) { have[String(a.kind || "")] = 1; });
+  const add = g.filter(function (a) {
+    return !have[String(a.kind || "")] &&
+           !saved.some(function (x) { return String(x.id) === String(a.id); });
+  });
+  return add.length ? saved.concat(add) : saved;
+}
+
 function dutiesOfDay(sid, d) {
   const day = d || (typeof attDate === "function" ? attDate() : todayISO());
   const saved = (cur("assignments") || []).filter(a => a &&
     String(a.studentId) === String(sid) && String(a.date) === String(day));
-  if (saved.length) return saved;
-  try { return generateAssignments(sid, day) || []; } catch (e) { return []; }
+  /* ويومٌ مضى لا يُولَّد له شيءٌ جديد: سجلُّه ما كُتب فيه */
+  if (String(day) < String(todayISO())) return saved;
+  let gen = [];
+  try { gen = generateAssignments(sid, day) || []; } catch (e) { gen = []; }
+  return asgMergeByKind(saved, gen);
 }
 
 function tcrcDuties(sid) {
@@ -28585,15 +28613,9 @@ function tstuAsgOf(st, d) {
       tstuPreEnds(gen);
     } catch (e) { gen = []; }
   }
-  if (!stored.length) return gen;
-  if (!gen.length) return stored;
-  const have = {};
-  stored.forEach(function (a) { have[String(a.kind || "")] = 1; });
-  const add = gen.filter(function (a) {
-    return a && !have[String(a.kind || "")] &&
-           !stored.some(function (x) { return String(x.id) === String(a.id); });
-  });
-  return add.length ? stored.concat(add) : stored;
+  return (typeof asgMergeByKind === "function")
+    ? asgMergeByKind(stored, gen)
+    : (stored.length ? stored : gen);
 }
 
 /* =========================================================================
@@ -49508,7 +49530,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-1855";
+  var APP_BUILD = "20261013-1925";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
