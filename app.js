@@ -17015,7 +17015,24 @@ function generateAssignments(studentId, dateISO) {
 
     const id = asgId(dateISO, studentId, t.k);
     const exists = asgFind(dateISO, studentId, t.k);
-    if (exists) { out.push(exists); return; }   /* لا يُعاد توليد ما وُلّد */
+    /* =====================================================================
+       الواجبُ المثبَّتُ الذي لم يُمسَّ يتبع الخطةَ إن تحرّك موضعُها
+       ---------------------------------------------------------------------
+       «عند التسميع لطالبٍ ويأتي اليومُ الذي بعده أرى أنّ نفس الواجب لا
+       يتغيّر — المفترضُ أنّ الخطة تسير كما وضعتها الإدارة».
+
+       والسببُ أنّ واجبَ اليوم كان يُثبَّت في السجلّ أوّلَ ما يُفتح يومُه
+       (todayAssignments بـ persist)، ثمّ لا يُعاد حسابُه أبداً: «لا يُعاد
+       توليدُ ما وُلّد». فإن أُثبت قبل أن يُعتمد واجبُ أمسِ بقي على الموضع
+       القديم وإن تقدّمت الخطةُ بعده — فيرى المعلّمُ الواجبَ نفسَه في يومين.
+
+       فصار المثبَّتُ الذي لم يمسَّه أحدٌ يُعاد حسابُ موضعِه من الخطة:
+       لا حالتُه ولا تقييمُه ولا ارتباطاتُه — الموضعُ والمقدارُ وحدَهما.
+       ولا يُمَسُّ ما مسَّته يد: ما سُمّع، أو قُسّم جلساتٍ، أو عدّله
+       المعلّمُ بنفسه (edited)، أو خرج عن «بانتظار».
+       ===================================================================== */
+    const follows = exists && asgFollowsPlan(exists);
+    if (exists && !follows) { out.push(exists); return; }   /* لا يُعاد توليد ما وُلّد */
 
     const rec = {
       id, date: dateISO,
@@ -17077,7 +17094,7 @@ function generateAssignments(studentId, dateISO) {
         rec.fromS = jump.surah; rec.fromA = jump.ayah;
         rec.direction = dirOf(plan.direction);
         if (jump.looped) rec.note = "عاد من بداية نطاقه";
-        out.push(rec);
+        out.push(exists ? asgPlanMerge(exists, rec) : rec);
         return;
       }
 
@@ -17112,10 +17129,72 @@ function generateAssignments(studentId, dateISO) {
       }
     }
 
-    out.push(rec);
+    out.push(exists ? asgPlanMerge(exists, rec) : rec);
   });
 
   return out;
+}
+
+/* =========================================================================
+   أيُّ واجبٍ مثبَّتٍ يتبع الخطةَ، وأيُّ حقولِه تُؤخذ منها
+   -------------------------------------------------------------------------
+   يتبعها ما كان «بانتظار» ولم يمسَّه أحد. ولا تُؤخذ منها إلّا حقولُ
+   الموضع والمقدار: فلا حالةٌ ولا تقييمٌ ولا تاريخٌ ولا معرّف، ولا حقلُ
+   ارتباطٍ البتّة — لا طالبٌ ولا حلقةٌ ولا مسجدٌ ولا مجمّعٌ ولا برنامجٌ
+   ولا خطةٌ ولا مستوى.
+   ========================================================================= */
+/* حقولُ المصدر: ما تُمليه الخطةُ ويُقاس عليه الاختلاف */
+const ASG_PLAN_FIELDS = ["fromS", "fromA", "qty", "unit",
+                         "direction", "isRepeat", "round", "ofRounds", "lessons"];
+
+function asgFollowsPlan(a) {
+  if (!a || a.status !== "pending") return false;
+  if (a.edited) return false;                      /* عدّله المعلّمُ بيده */
+  if (a.settled) return false;
+  if (Array.isArray(a.parts) && a.parts.length) return false;
+  if (Number(a.doneQty) > 0) return false;
+  if (String(a.kind || "").indexOf("_makeup") > -1) return false;   /* تعويضٌ له موضعُه */
+  /* وله تسميعٌ مسجَّل: يُقرأ من السجلّ كلِّه لا من المصفّى — فحجبُ نطاقٍ
+     لا يجعل الواجبَ بكراً فيُزاح موضعُه وقد سُمّع فعلاً. */
+  const recs = Array.isArray(DB.recitations) ? DB.recitations : [];
+  if (recs.some(function (r) { return r && String(r.asgId) === String(a.id); })) return false;
+  if (typeof asgDone === "function" && asgDone(a)) return false;
+  return true;
+}
+
+/* ويُطابَق حقلاً حقلاً: المختلفُ وحدَه يُؤخذ */
+function asgPlanDiff(exists, rec) {
+  const out = {};
+  let diff = false;
+  ASG_PLAN_FIELDS.forEach(function (k) {
+    const v = rec[k] === undefined ? null : rec[k];
+    const o = exists[k] === undefined ? null : exists[k];
+    if (String(o) !== String(v)) { out[k] = v; diff = true; }
+  });
+  /* المنتهى يُؤخذ إن أملته الخطةُ (التثبيت)، وإلّا فُرّغ ليُعاد حسابُه من
+     المقدار حين يتبدّل المبتدأ — ولا يُفرَّغ بلا سبب، وإلّا دارت الكتابةُ
+     بلا نهاية: يُفرَّغ فيملؤه fillAsgRanges فيُفرَّغ ثانيةً. */
+  const hasEnd = rec.toS != null && rec.toA != null;
+  if (hasEnd) {
+    if (String(exists.toS) !== String(rec.toS) || String(exists.toA) !== String(rec.toA)) {
+      out.toS = rec.toS; out.toA = rec.toA; diff = true;
+    }
+  } else if (diff && (out.fromS !== undefined || out.fromA !== undefined)) {
+    if (exists.toS != null || exists.toA != null) { out.toS = null; out.toA = null; }
+  }
+  /* والملاحظةُ المولَّدةُ تُنقل إن وُجدت، ولا تُمحى ملاحظةٌ قائمةٌ بفراغ */
+  if (rec.note && String(rec.note) !== String(exists.note || "")) {
+    out.note = rec.note; diff = true;
+  }
+  return diff ? out : null;
+}
+
+/* نسخةٌ للعرض: الأصلُ لا يُمَسُّ هنا — الكتابةُ موضعُها todayAssignments */
+function asgPlanMerge(exists, rec) {
+  if (!exists) return rec;
+  if (!asgFollowsPlan(exists)) return exists;
+  const d = asgPlanDiff(exists, rec);
+  return d ? Object.assign({}, exists, d) : exists;
 }
 
 /* =========================================================================
@@ -17176,9 +17255,20 @@ function todayAssignments(studentId, dateISO, persist) {
   if (persist) {
     if (!Array.isArray(DB.assignments)) DB.assignments = [];
     list.forEach(a => {
-      if (!(cur("assignments") || []).some(x => String(x.id) === String(a.id))) {
+      const old = (cur("assignments") || []).find(x => String(x.id) === String(a.id));
+      if (!old) {
         DB.assignments.push(a);
         persistSet("assignments", a);
+        return;
+      }
+      /* وما تحرّك موضعُه بتقدّم الخطة يُكتب — إن كان يتبعها أصلاً.
+         والكتابةُ هنا وحدَها: العرضُ (persist=false) لا يكتب شيئاً. */
+      if (a !== old && typeof asgFollowsPlan === "function" && asgFollowsPlan(old)) {
+        const d = typeof asgPlanDiff === "function" ? asgPlanDiff(old, a) : null;
+        if (d) {
+          Object.keys(d).forEach(function (k) { old[k] = d[k]; });
+          persistSet("assignments", old);
+        }
       }
     });
     /* النهاية تُترجم من جدول المصحف: «وجه» تصير «من البقرة ١ إلى ٧» */
@@ -28894,6 +28984,9 @@ window.tstuDutySave = function (id, opts) {
 
   Object.keys(next).forEach(k => { a[k] = next[k]; });
   a.shortQty = typeof asgRemain === "function" ? asgRemain(a) : a.shortQty;
+  /* وسمُ يدِ المعلّم على السجلّ: ما عدّله بنفسه لا يُعيد المولّدُ حسابَه
+     من الخطة في اليوم التالي — فتعديلُه قرارٌ لا يُدهَس. */
+  a.edited = true;
   persistSet("assignments", a);
   if (!(opts && opts.chain)) {
     closeModal();
@@ -49309,7 +49402,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-1035";
+  var APP_BUILD = "20261013-1620";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
