@@ -37629,6 +37629,12 @@ function stuLessonDate() {
 function stuLessonRows(st) {
   const d = stuLessonDate();
   const list = dutiesOfDay(st.id, d);
+  /* «يجب أن يكون من آيةٍ وإلى آية»: هذه الشاشةُ كانت تعرض المبتدأ وحدَه
+     — «حفظ جديد: من الفاتحة (٧)» — لأنّ منتهى الواجب يُحسب من المقدار
+     ولا يُكتب في السجلّ قبل تثبيته، وسائرُ الشاشات تمرّ بالحاسب
+     (tstuPreEnds) وهذه لا تمرّ. فصارت تمرّ به كأخواتها: حسابٌ للعرض في
+     ذاكرةٍ مؤقّتة، لا كتابةَ فيه ولا تبديلَ لسجلّ. */
+  try { if (typeof tstuPreEnds === "function") tstuPreEnds(list); } catch (e) {}
 
   if (!list.length) {
     return `<div class="ntf-empty">${SLSN.tab === "next"
@@ -49884,7 +49890,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-0300";
+  var APP_BUILD = "20261014-0340";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
