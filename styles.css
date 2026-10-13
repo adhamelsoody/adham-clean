@@ -12931,3 +12931,28 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
   .tsd-qty-row .tsd-dirseg { margin-top: 0; width: auto; }
   .tsd-qty-row .tsd-dirb { padding: 7px 8px; font-size: 11.5px; }
 }
+
+/* =========================================================================
+   زرّا الأسبوع في شريط التقويم — «ظبّط الأزرار دي»
+   -------------------------------------------------------------------------
+   كانا يتقلّصان حين يضيق الصفّ فيخرج السهمُ عن وسطه، ولا أثرَ لضغطةٍ
+   عليهما في الجوّال. فثُبّت مقاسُهما (لا ينضغط ولا يُمطّ)، ووُسّط السهمُ
+   فيهما، وصار للضغط أثرٌ يُرى، وأُطفئ وميضُ اللمس في iOS. والتاريخُ
+   بينهما يأخذ ما بقي فلا يزاحمهما.
+   ========================================================================= */
+.tcal-nav {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  transition: background .15s, border-color .15s, transform .08s;
+}
+.tcal-nav svg { display: block; }
+.tcal-nav:hover { border-color: #cfe3e2; background: #f4f9f9; }
+.tcal-nav:active { background: #e8f2f2; border-color: #0f6f72; transform: scale(.94); }
+.tcal-nav:focus-visible { outline: 2px solid #0f6f72; outline-offset: 2px; }
+.tcal-now { flex: 1 1 auto; min-width: 0; text-align: center; }
+
+:root:not([data-theme="light"]) .tcal-nav:hover,
+:root[data-theme="dark"] .tcal-nav:hover { background: #12302f; border-color: #1f4746; }
+:root:not([data-theme="light"]) .tcal-nav:active,
+:root[data-theme="dark"] .tcal-nav:active { background: #16403e; border-color: #2f8f8c; }
