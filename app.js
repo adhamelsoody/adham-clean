@@ -28837,10 +28837,12 @@ window.tstuDutySave = function (id, opts) {
     if (!(q > 0)) { showToast("المقدار غير صحيح", "warn"); return false; }
     next.qty = q;
     next.unit = String(val("#tsd_unit") || a.unit || "وجه");
-    /* واتجاهُ هذا الواجب من زرِّه — ولا يُمسُّ اتجاهُ خطة الطالب */
-    if (document.getElementById("tsd_dir")) {
-      next.direction = dirOf(val("#tsd_dir") || a.direction);
-    }
+  }
+  /* واتجاهُ هذا الواجب من زرِّه — ولا يُمسُّ اتجاهُ خطة الطالب. وهو خارجَ
+     صلاحيةِ المقدار: خانةُ المقدار رُفعت من الصحيفة، وزرُّ الاتجاه باقٍ
+     لمن يملك تعديلَ الواجب — فلو بقي داخلَها لم يُحفظ لمن لا يملكها. */
+  if (document.getElementById("tsd_dir")) {
+    next.direction = dirOf(val("#tsd_dir") || a.direction);
   }
 
   /* النهايةُ لا تسبق البداية — بالمحرّك نفسِه الذي يفحص التسميع.
@@ -28909,8 +28911,9 @@ function tsdPending(a) {
   if (teacherCan("planQty") && g("tsd_qty")) {
     if (n(g("tsd_qty").value) !== n(a.qty)) return true;
     if (g("tsd_unit") && String(g("tsd_unit").value) !== String(a.unit || "وجه")) return true;
-    if (g("tsd_dir") && dirOf(g("tsd_dir").value) !== dirOf(a.direction)) return true;
   }
+  /* والاتجاهُ خارجَ صلاحية المقدار كما في الحافظ */
+  if (g("tsd_dir") && dirOf(g("tsd_dir").value) !== dirOf(a.direction)) return true;
   return false;
 }
 
@@ -29155,6 +29158,9 @@ window.tstuDuty = function (id) {
   if (typeof reciteLoadSurahs === "function") reciteLoadSurahs();
   TSPL.id = String(id); TSPL.rows = 1;
   const t = typeof hwType === "function" ? hwType(String(a.kind || "").replace("_makeup", "")) : {};
+  /* صلاحيةُ المقدار باقيةٌ ولم تُحذف: خانتُه رُفعت من هذه الصحيفة، وهي
+     ما تزال تحرس كتابةَ المقدار في tstuDutySave و tstuQtySave وتعديلَه
+     في بطاقة الطالب والخطة. */
   const canQty   = teacherCan("planQty");
   const canSplit = teacherCan("splitDuty") &&
     (typeof asgSplittable === "function" ? asgSplittable(a) : false);
@@ -29254,32 +29260,29 @@ window.tstuDuty = function (id) {
               a.toA ? " · الآية " + toArabicDigits(ayahShow(a.toS || a.fromS, a.toA)) : ""}`}</span>
       </div>
 
-      ${canQty && !locked ? `<div class="tsd-row tsd-res-row tsd-qty-row">
+      ${!locked ? `<div class="tsd-row${canEdit ? " tsd-res-row tsd-qty-row" : ""}">
         <span class="tsd-k">المقدار</span>
         <span class="tsd-v"><span class="tsd-pair tsd-pair-w">
-          <select id="tsd_qty" class="tsd-in" onchange="window.tsdQtyRange(1)">
-            ${(function () {
-              /* «خلّي في المقدار وجه ونص وجه وربع فقط» — ثلاثةٌ لا غير.
-                 ومقدارُ الواجب المحفوظُ إن كان غيرَها يبقى خياراً فيها
-                 حتى لا يُبدَّل بصمتٍ عند أوّل حفظ: فواجبُ «وجهان» أو
-                 «ثلاثة أوجه» المولَّدُ من خطةٍ يُعرض مقدارُه ويُحسب مداه،
-                 ولا يُضاف إلى القائمة لكلّ واجبٍ لأنّ القائمةَ ثلاثةٌ بطلبه.
-                 والحاسبُ calculateHomeworkEnd عامٌّ لا يُقيَّد بالثلاثة:
-                 يقبل أيَّ عددِ أوجهٍ ويقيسه بأسطر المصحف. */
-              const q0 = Number(a.qty) || 0;
-              const base = [["وجه", 1], ["نصف وجه", 0.5], ["ربع وجه", 0.25]];
-              const list = base.slice();
-              if (q0 > 0 && !base.some(x => Math.abs(x[1] - q0) < 1e-9)) {
-                const nm = (typeof PLAN_QTY_NUM !== "undefined")
-                  ? Object.keys(PLAN_QTY_NUM).find(k => Math.abs(Number(PLAN_QTY_NUM[k]) - q0) < 1e-9)
-                  : "";
-                list.push([nm || (toArabicDigits(q0) + " " + (a.unit || "وجه")), q0]);
-              }
-              return list.map(x => `<option value="${x[1]}"${
-                Math.abs(x[1] - q0) < 1e-9 ? " selected" : ""}>${esc(x[0])}</option>`).join("");
-            })()}
-          </select>
-          <input type="hidden" id="tsd_unit" value="${esc(a.unit || "وجه")}">
+        <!-- =================================================================
+             «المقدار عند المعلّم ألغِه»
+             -----------------------------------------------------------------
+             خانةُ المقدار (القائمةُ المختارةُ منها) رُفعت من شاشة المعلّم:
+             مقدارُ الواجب تُحدّده الخطةُ، ولا يُبدّله المعلّمُ من صحيفة
+             الواجب. وموضعُ تعديله لم يُحذف: الإدارةُ تُبدّله من بطاقة
+             الطالب وخطّته ومن نافذة الواجب اليدويّ كما كان، وحافظُ
+             المقدار tstuQtySave باقٍ كما هو لمن ينادها.
+
+             وقيمتُه تبقى ظاهرةً للمعلّم يقرؤها، وتبقى في حقلٍ مخفيٍّ
+             بمعرّفه tsd_qty — لأنّ حاسبَ المدى يقرأ منه: «إلى» تُحسب من
+             المقدار والاتجاه وموضع الابتداء. فلو رُفع الحقلُ كلُّه توقّف
+             حسابُ المدى عند تحريك «من» أو تبديل الاتجاه. ومن لا يملك
+             تعديلَ الواجب لا حقلَ له ولا زرَّ اتجاهٍ — قراءةٌ محضة.
+             ================================================================= -->
+          <b class="tsd-qtyv">${toArabicDigits(Number(a.qty) || 0)} ${
+            esc(a.unit || "وجه")}</b>
+          ${canEdit ? `<input type="hidden" id="tsd_qty" value="${
+            esc(String(Number(a.qty) || 0))}">
+          <input type="hidden" id="tsd_unit" value="${esc(a.unit || "وجه")}">` : ""}
         </span>
         <!-- =================================================================
              «ضيف لي زرّ من الناس ومن الفاتحة هنا بالضبط على الشمال»
@@ -29294,14 +29297,14 @@ window.tstuDuty = function (id) {
              الزرُّ على شمال المقدار كما طُلب، وإمّا أن ينزل تحته. وهو في
              متنه ظاهرٌ في شاشات الخطة حيث يتّسع الصفّ.
              ================================================================= -->
-        <span class="tsd-dirseg" id="tsd_dirseg">
+        ${canEdit ? `<span class="tsd-dirseg" id="tsd_dirseg">
           ${PLAN_DIR.map(o => `<button type="button" class="tsd-dirb${
               spDirKey(o) === dirOf(a.direction) ? " on" : ""}"${
               planDirHint(o) ? ` title="${jsAttr(o + " — " + planDirHint(o))}"` : ""}
             onclick="window.tsdDirSet(this,'${jsAttr(o)}')">${esc(o)}</button>`).join("")}
           <input type="hidden" id="tsd_dir" value="${esc(dirOf(a.direction))}">
         </span>
-        <small class="tsd-note">المدى يُحسب من المقدار والاتجاه وموضعِ الابتداء</small></span>
+        <small class="tsd-note">المدى يُحسب من المقدار والاتجاه وموضعِ الابتداء</small>` : ""}</span>
       </div>` : ""}
 
       ${a.note ? `<div class="tsd-row">
@@ -49254,7 +49257,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-0420";
+  var APP_BUILD = "20261013-0840";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
