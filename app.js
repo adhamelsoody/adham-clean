@@ -16288,6 +16288,41 @@ function advNotify(plan, fromS, toS) {
   } catch (e) { console.warn("advNotify:", e); }
 }
 
+/* =========================================================================
+   من أين يُستأنَف السيرُ بعد واجبٍ سُمِّع — وفي أيّ جهة
+   -------------------------------------------------------------------------
+   «يكون واجبُ الغد تكملةَ ما سمّعه أمسِ ليُكمل السورةَ كاملة»: سمّع
+   البقرة ١٨←٢٤ فجاءه الغدُ «من ٢٣ إلى ١٥» — رجوعٌ إلى داخل ما حفظه.
+
+   وسببُه أمران: اتجاهُ السير كان يُؤخذ من الخطة وحدَها، وخطةُ هذا الطالب
+   لا اتجاهَ صريحاً فيها فيعلو عليها افتراضُ الركن العامّ (تنازليّ) وإن
+   كانت واجباتُه كلُّها تمشي تصاعداً؛ ثمّ يُخطى من منتهى المدى في جهةٍ
+   تخالفه فيقع الموضعُ داخل المحفوظ نفسِه.
+
+   فالقاعدتان هنا، ومنهما تقرأ nextHifzFrom و advancePlanAfter معاً:
+     • اتجاهُ ما سُمِّع فعلاً أولى من افتراضٍ عامّ — إلّا أن تكون الإدارةُ
+       اختارت لخطته اتجاهاً صريحاً (dirSet) فاختيارُها حكم.
+     • ولا يقع الموضعُ التالي داخل ما سُمِّع: يُخطى من طرف المدى الموافق
+       لجهة السير — منتهاه إن وافقه، ومبتدئه إن خالفه.
+   ولا تكتب شيئاً: حسابٌ محض.
+   ========================================================================= */
+function asgStepEdge(plan, asg, hwKey) {
+  const k = String(hwKey || "hifz");
+  const planDir = (typeof planDirOf === "function")
+    ? planDirOf(plan, k) : dirOf(plan && plan.direction);
+  const dir = (plan && plan.dirSet) ? planDir
+    : (String((asg && asg.direction) || "").trim() ? dirOf(asg.direction)
+       : (String((plan && plan.direction) || "").trim() ? dirOf(plan.direction)
+          : planDir));
+  const fS = Number(asg && asg.fromS) || 0, fA = Number(asg && asg.fromA) || 0;
+  const tS = Number(asg && asg.toS) || 0,   tA = Number(asg && asg.toA) || 0;
+  /* جهةُ المدى المسمَّع: مبتدؤه قبل منتهاه أم بعده */
+  const ranFwd = !fS ? true : (tS > fS || (tS === fS && tA >= fA));
+  const goFwd = dir !== "backward";
+  const edge = (!fS || goFwd === ranFwd) ? { s: tS, a: tA } : { s: fS, a: fA };
+  return { s: edge.s, a: edge.a, dir: dir };
+}
+
 window.advancePlanAfter = function (asg) {
   if (!asg || !asg.toS) return Promise.resolve(false);
   /* الخطةُ تُقرأ كما يقرؤها المولّد: cur() يمرُّ بحصر المنشأة فقد يحجبها،
@@ -16305,7 +16340,9 @@ window.advancePlanAfter = function (asg) {
   /* الموضعُ قبل التقدّم — عليه يُعرف تبدُّلُ السورة */
   const wasS = Number(plan.hifzFromS) || 0;
 
-  return nextAfter(asg.toS, asg.toA, plan.direction).then(nx => {
+  /* طرفُ الاستئناف وجهتُه — بالقاعدة نفسِها التي يقرأ بها المولّد */
+  const _e = asgStepEdge(plan, asg, "hifz");
+  return nextAfter(_e.s, _e.a, _e.dir).then(nx => {
     if (!nx) return false;
     plan.hifzFromS = nx.surah;
     /* والبسملةُ لا تكون موضعَ الغد: تُتجاوَز إلى ﴿الحمد لله ربّ العالمين﴾ */
@@ -16882,8 +16919,16 @@ function nextHifzFrom(plan) {
        أنهى «الناس ١-٦» يبدأ حفظه التالي من «الناس ٧» — آيةٌ لا وجود لها.
        و advancePlanAfter تصلحه لاحقاً، لكنّ الطالب يرى الموضع الباطل
        بينهما، ويبقى كما هو إن تعذّر جلب جدول المصحف. */
-    const nx = stepFrom(done.toS, done.toA, plan.direction);
-    return { s: nx.s, a: skipBasmala(nx.s, nx.a), after: true };
+    /* طرفُ الاستئناف وجهتُه — asgStepEdge تشرح القاعدة، ولا يقع الموضعُ
+       التالي داخل ما سُمِّع، ولا يعلو افتراضُ الركن على ما مشى عليه */
+    const _e = asgStepEdge(plan, done, "hifz");
+    const nx = stepFrom(_e.s, _e.a, _e.dir);
+    /* والصفرُ علامةُ «آخرِ السورة السابقة» في التنازليّ تترجمها
+       fixBackwardStarts من جدول المصحف. وكانت skipBasmala تمحوها فتصير
+       الآيةَ الأولى: فطالبٌ تنازليٌّ عبر حدَّ سورته يرتدّ إلى أوّلها لا
+       إلى آخرها — ولا يجد fixBackwardStarts علامةً يصحّحها. */
+    return { s: nx.s, a: nx.a === 0 ? 0 : skipBasmala(nx.s, nx.a),
+             after: true, dir: _e.dir };
   }
   /* بلا سجلٍّ سابق: بدايةُ خطته، وإلا سورةُ بداية ركن الحفظ من الخطة
      الافتراضية، وإلا موضعُه الحالي. */
@@ -17160,8 +17205,10 @@ function generateAssignments(studentId, dateISO) {
       const from = nextHifzFrom(plan);
       rec.fromS = from.s; rec.fromA = from.a;
       /* اختيارُ المعلّم لهذا الطالب يعلو افتراضَ البرنامج — لا خلطَ بين
-         خطة الطالب وخطة البرنامج العامة */
-      rec.direction = planDirOf(plan, "hifz");
+         خطة الطالب وخطة البرنامج العامة.
+         واتجاهُ السير الذي حُسم في nextHifzFrom هو نفسُه هنا، وإلّا حُسب
+         المدى في جهةٍ ويُبتدأ من طرفِ جهةٍ أخرى. */
+      rec.direction = from.dir || planDirOf(plan, "hifz");
       if (from.repeat) {
         rec.isRepeat = true; rec.round = from.round; rec.ofRounds = from.of;
         rec.note = from.note;
@@ -28956,6 +29003,8 @@ function tstuDayResults(st) {
    ========================================================================= */
 const TSPL = { id: "", rows: 1 };
 
+/* سجلُّ الواجب نفسُه: ما يُكتب عليه ويُبنى عليه التقييم — لا نسخةَ عرض،
+   وإلّا ضاعت كتابةٌ في نسخةٍ عابرة. */
 function tstuAsgById(id) {
   return (cur("assignments") || []).find(a => String(a.id) === String(id)) ||
          (Array.isArray(DB.assignments)
@@ -28966,6 +29015,22 @@ function tstuAsgById(id) {
 }
 
 /* =========================================================================
+   تفاصيلُ الواجب تعرض ما تعرضه القائمةُ لا سجلّاً سواه
+   -------------------------------------------------------------------------
+   «الذي يُعرض برّا غيرُ الذي أراه لمّا أدخل على تفاصيل الواجب»: القائمةُ
+   تمرّ بقاعدة الجمع الواحدة (dutiesOfDay) فتُظهر الموضعَ بعد تتبّع
+   الخطة، والتفاصيلُ كانت تقرأ السجلَّ المحفوظَ خاماً فتعرض الموضعَ
+   القديم — فيرى المعلّمُ في القائمة موضعاً وفي التفاصيل موضعاً آخر.
+
+   فالعرضُ من مصدرٍ واحد: ما يعرضه يومُ الطالب أوّلاً. والكتابةُ تبقى على
+   السجلّ نفسِه (tstuAsgById) — فلا تُكتب حروفٌ في نسخةِ عرض.
+   ========================================================================= */
+function tstuAsgShown(id) {
+  return (dutiesOfDay(TSTU.id, tstuDay()) || [])
+           .find(a => String(a.id) === String(id)) || tstuAsgById(id);
+}
+
+/* =========================================================================
    الواجبُ قبل العمل عليه: يُكتب إن كان مولَّداً
    -------------------------------------------------------------------------
    واجباتُ اليوم تُولَّد من الخطة عند العرض ولا تُكتب. فإن اعتُمد تسميعُها
@@ -28973,11 +29038,27 @@ function tstuAsgById(id) {
    «بانتظار التسميع» عند أوّل إعادةِ رسم. فأوّلُ عملٍ عليه يُثبته سجلّاً.
    ويُكتب كما هو من المحرّك: لا يُغيَّر فيه حقلٌ ولا ارتباط.
    ========================================================================= */
+/* وسجلٌّ مثبَّتٌ لم يمسَّه أحدٌ وقد تحرّك موضعُ خطته: يُسوّى عند أوّل عملٍ
+   عليه لا عند عرضه — فلا يُسمَّع على موضعٍ غيرِ الذي يراه المعلّمُ أمامه،
+   ولا تُكتب حروفٌ من مجرّد الرسم. والحقولُ حقولُ asgPlanDiff وحدَها:
+   موضعٌ ومقدار، لا حالةَ ولا تقييمَ ولا ارتباط. */
 function asgEnsure(a) {
   if (!a || a.id == null) return a;
   if (!Array.isArray(DB.assignments)) DB.assignments = [];
   const has = DB.assignments.some(x => x && String(x.id) === String(a.id));
-  if (has) return DB.assignments.find(x => String(x.id) === String(a.id));
+  if (has) {
+    const rec = DB.assignments.find(x => String(x.id) === String(a.id));
+    try {
+      if (typeof asgFollowsPlan === "function" && asgFollowsPlan(rec) &&
+          typeof dutiesOfDay === "function" && typeof asgPlanDiff === "function") {
+        const shown = (dutiesOfDay(rec.studentId, rec.date) || [])
+          .find(x => String(x.id) === String(rec.id));
+        const d = shown && shown !== rec ? asgPlanDiff(rec, shown) : null;
+        if (d) { Object.assign(rec, d); persistSet("assignments", rec); }
+      }
+    } catch (e) { console.warn("asgEnsure/plan:", e); }
+    return rec;
+  }
   DB.assignments.push(a);
   try { persistSet("assignments", a); } catch (e) { console.warn("asgEnsure:", e); }
   return a;
@@ -29504,7 +29585,8 @@ function numStepBox(id, cls, value, label, min, suraId, shown, syncId, afterId, 
 }
 
 window.tstuDuty = function (id) {
-  const a = tstuAsgById(id);
+  /* العرضُ من مصدر القائمة نفسِه — والكتابةُ في tstuDutySave على السجلّ */
+  const a = tstuAsgShown(id);
   if (!a) { showToast("الواجب غير موجود", "warn"); return; }
   if (typeof reciteLoadSurahs === "function") reciteLoadSurahs();
   TSPL.id = String(id); TSPL.rows = 1;
@@ -49657,7 +49739,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261013-2340";
+  var APP_BUILD = "20261014-0030";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
