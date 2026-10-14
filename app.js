@@ -14798,6 +14798,8 @@ const ASG_TEXT = { pending: "بانتظار التسميع", done: "أُنجز",
 
 const MANU = { kind: "", qty: 1, unit: "وجه", date: "", note: "",
                fromS: 0, fromA: 1, toS: 0, toA: 0,
+               /* اتجاهُ المراجعة في هذه النافذة: الفراغُ يعني «كما في خطته» */
+               dir: "",
                circle: "", q: "", picked: {}, sameRange: true };
 
 window.manuSet = function (k, v) {
@@ -14889,6 +14891,18 @@ function manuRender() {
            ${HW_UNITS.map(u => `<option value="${esc(u.k)}"${
              MANU.unit === u.k ? " selected" : ""}>${esc(u.h)}</option>`).join("")}
          </select></div>
+
+       <!-- اتجاهُ المراجعة: لركن المراجعة والتلاوة وحدَهما، و«كما في خطته»
+            يُبقي اختيارَ الخطة (plan.revDirection) على حاله -->
+       ${(MANU.kind === "rev" || MANU.kind === "tilawah") ? `
+       <div class="field"><label>اتجاه المراجعة</label>
+         <select onchange="window.manuSet('dir',this.value)">
+           <option value=""${MANU.dir ? "" : " selected"}>كما في خطته</option>
+           <option value="من الفاتحة"${MANU.dir === "من الفاتحة" ? " selected" : ""
+             }>من الفاتحة إلى الناس</option>
+           <option value="من الناس"${MANU.dir === "من الناس" ? " selected" : ""
+             }>من الناس إلى الفاتحة</option>
+         </select></div>` : ""}
      </div>
 
      <label class="manu-same">
@@ -14981,7 +14995,20 @@ window.manuAssignDo = function () {
       manual: true,
       by: ((STATE && STATE.user) || {}).name || "",
       note: MANU.note || "واجب إضافي",
-      direction: plan ? dirOf(plan.direction) : "forward",
+      /* =================================================================
+         «اجعل اتجاه المراجعة مستقلًّا عن اتجاه الحفظ»
+         -----------------------------------------------------------------
+         كان اتجاهُ كلّ واجبٍ يُؤخذ من plan.direction — وهو اتجاهُ الحفظ —
+         فيرث واجبُ المراجعة جهةَ الحفظ وإن كانت خطتُه تقول غيرَها.
+         فصار يُقرأ بالقارئ الذي يعرف الأركان (planDirOf): المراجعةُ
+         والتلاوةُ من plan.revDirection إن ضُبط، وما سواهما من اتجاه
+         الخطة كما كان. وما اختاره المعلّمُ في هذه النافذة يعلو عليهما.
+         ================================================================= */
+      direction: MANU.dir
+        ? spDirKey(MANU.dir)
+        : (plan && typeof planDirOf === "function"
+            ? planDirOf(plan, MANU.kind)
+            : (plan ? dirOf(plan.direction) : "forward")),
       termId: typeof activeTermId === "function" ? activeTermId() : "",
       ts: Date.now()
     };
@@ -14999,7 +15026,27 @@ window.manuAssignDo = function () {
       /* التقدّم بالاتجاه: الجمع تصاعدٌ دائماً فتفترق المراجعة عن الحفظ */
       if (last) { const nx = stepFrom(last.toS, last.toA, rec.direction);
                   rec.fromS = nx.s; rec.fromA = nx.a; }
-      else if (plan && plan.hifzFromS) { rec.fromS = plan.hifzFromS; rec.fromA = plan.hifzFromA || 1; }
+      /* =================================================================
+         «لا تجعل المراجعةَ ترث موضعَ الحفظ الجديد»
+         -----------------------------------------------------------------
+         كان المرجعُ عند غياب سابقةٍ هو plan.hifzFromS دائماً، فيبتدئ
+         واجبُ المراجعة من موضع الحفظ — وهو ما يحذّر منه الطلب صراحةً.
+         فصار لكلّ ركنٍ مبتدؤه: المراجعةُ والتلاوةُ من plan.revFromS وهو
+         الحقلُ الذي يقرؤه المولّدُ نفسُه، فإن لم يُضبط فمن بداية ركنه في
+         الخطة الافتراضية، فإن غابت فمن موضع الحفظ كما كان.
+         ================================================================= */
+      else {
+        const kb = String(MANU.kind || "").replace("_makeup", "");
+        const isR = kb === "rev" || kb === "tilawah";
+        const ps = (typeof pillarStartOf === "function") ? pillarStartOf(kb) : 0;
+        if (isR && plan && Number(plan.revFromS) > 0) {
+          rec.fromS = Number(plan.revFromS); rec.fromA = Number(plan.revFromA) || 1;
+        } else if (isR && ps > 0) {
+          rec.fromS = ps; rec.fromA = rec.direction === "backward" ? 0 : 1;
+        } else if (plan && plan.hifzFromS) {
+          rec.fromS = plan.hifzFromS; rec.fromA = plan.hifzFromA || 1;
+        }
+      }
     }
 
     DB.assignments.push(rec);
@@ -30077,6 +30124,28 @@ window.tstuDuty = function (id) {
      باقيةٌ في السجلّ، وتُقرأ في سطر البطاقة («... · ١ وجه») وفي تقسيم
      الجلسات. وحافظُ المقدار tstuQtySave باقٍ كما هو لمن ينادها. */
   const canEdit = !locked && (canFrom || canEnd);
+  /* =======================================================================
+     اتجاهُ المراجعة — حقلٌ ظاهرٌ في واجب المراجعة وحدَه
+     -----------------------------------------------------------------------
+     «أريد أن يستطيع المعلّمُ أو الإدارةُ تحديدَ اتجاه المراجعة عند إنشاء
+     واجب مراجعةٍ جديدٍ أو تعديله … يظهر عند اختيار نوع الواجب (مراجعة)،
+     دون فرضِ هذا الحقل على أنواع الواجبات الأخرى التي لا تحتاج إليه».
+
+     ولا يناقض هذا رفعَ صفّ الاتجاه من صحيفة الحفظ («شيل الاتجاه الذي في
+     تفاصيل الواجب»): الصفُّ يظهر لركن المراجعة والتلاوة وحدَهما، وصحيفةُ
+     الحفظ تبقى كما طُلبت.
+
+     والآلةُ قائمةٌ لم تُنشأ من جديد: الحقلُ المخفيُّ tsd_dir وزرُّه
+     tsdDirSet وحاسبُ المدى tsdQtyRange كلُّها باقيةٌ — وإنّما رُدَّ
+     ظهورُها هنا. فتبديلُ الاتجاه يُعيد حسابَ «إلى» في الحال من بيانات
+     المصحف (rangeEnd) بموضع الابتداء والمقدار والاتجاه، ويُحفظ في سجلّ
+     هذا الواجب عند «حفظ التعديلات». ولا تُمسُّ خطةُ الطالب ولا اتجاهُها
+     ولا اتجاهُ حفظه.
+     ======================================================================= */
+  const kBase = String(a.kind || "").replace("_makeup", "");
+  const isRev = kBase === "rev" || kBase === "tilawah";
+  const revDirRow = isRev && canEdit;
+  const aDir = dirOf(a.direction);
   const sOpts = (sel) => (typeof QSURAHS !== "undefined" && QSURAHS)
     ? QSURAHS.map(x => `<option value="${x.i}"${Number(sel) === x.i ? " selected" : ""}>${
         x.i}. ${esc(x.n)}</option>`).join("")
@@ -30141,6 +30210,22 @@ window.tstuDuty = function (id) {
           : `${a.toS ? esc(surahName(a.toS)) : (a.fromS ? esc(surahName(a.fromS)) : "—")}${
               a.toA ? " · الآية " + toArabicDigits(ayahShow(a.toS || a.fromS, a.toA)) : ""}`}</span>
       </div>
+
+      ${revDirRow ? `<div class="tsd-row">
+        <span class="tsd-k">اتجاه المراجعة</span>
+        <span class="tsd-v"><span class="tsd-dirseg" id="tsd_dirseg">
+          <button type="button" class="tsd-dirb${aDir !== "backward" ? " on" : ""}"
+            onclick="window.tsdDirSet(this,'من الفاتحة')">من الفاتحة
+            <small>إلى الناس</small></button>
+          <button type="button" class="tsd-dirb${aDir === "backward" ? " on" : ""}"
+            onclick="window.tsdDirSet(this,'من الناس')">من الناس
+            <small>إلى الفاتحة</small></button>
+        </span></span>
+      </div>` : isRev ? `<div class="tsd-row">
+        <span class="tsd-k">اتجاه المراجعة</span>
+        <span class="tsd-v">${aDir === "backward"
+          ? "من الناس إلى الفاتحة" : "من الفاتحة إلى الناس"}</span>
+      </div>` : ""}
 
       <!-- ===================================================================
            «شيل المقدار من عند المعلّم» ثمّ «شيل الاتجاه الي في تفاصيل الواجب»
@@ -50441,7 +50526,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-2250";
+  var APP_BUILD = "20261014-2340";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
