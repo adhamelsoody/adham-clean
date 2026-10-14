@@ -13071,3 +13071,6 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
   button:active, .btn:active, .fac-tbtn:active, .tst-tool:active,
   .tat-opt:active, .tcal-nav:active, .tcd-nav:active, .duty-listen:active { transform: none; }
 }
+
+/* زرُّ المقرأة مع زرّي التحضير في شاشة الحلقة — سطرٌ ثالثٌ بعرض الشاشة */
+.tcl-act .maq-btn { flex: 1 1 100%; justify-content: center; }
