@@ -15539,8 +15539,8 @@ function asgCard(studentId, dateISO, forTeacher) {
     const t = hwType(a.kind.replace("_makeup", ""));
     const blocked = asgBlocked(a);
     const range = a.fromS
-      ? `${esc(surahName(a.fromS))} ${toArabicDigits(a.fromA)}` +
-        (a.toS ? ` — ${esc(surahName(a.toS))} ${toArabicDigits(a.toA)}` : "")
+      ? `${esc(surahName(a.fromS))} ${toArabicDigits(asgAyahShown(a.fromS, a.fromA, true))}` +
+        (a.toS ? ` — ${esc(surahName(a.toS))} ${toArabicDigits(asgAyahShown(a.toS, a.toA))}` : "")
       : "";
 
     return `<div class="asg-row ${a.status}">
@@ -17091,6 +17091,31 @@ function ayahStore(s, shown) {
 }
 window.ayahShow = ayahShow;
 window.ayahStore = ayahStore;
+
+/* =========================================================================
+   رقمُ آيةِ الواجب كما تُعرض — موضعٌ واحدٌ تقرؤه الشاشاتُ كلُّها
+   -------------------------------------------------------------------------
+   «يجب الواجبُ الذي يحدّده المعلّمُ يصل الطالبَ كما هو بالضبط: أن تكون
+   البياناتُ نفسَها، بياناتٌ موحَّدة».
+
+   وكان الواجبُ الواحدُ يُقرأ برقمين: صحيفةُ التفاصيل التي يعدّل فيها
+   المعلّمُ تُظهره بعدّ صاحب النظام (﴿ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِینَ﴾ هي الآيةُ
+   ١، والبسملةُ لا تُعدّ)، وسطرُ بطاقةِ المعلّم وشاشةُ واجبات الإدارة
+   وبطاقةُ الطالب وصفحةُ واجباته وتقريرُه تُظهره بالعدّ المخزون كما
+   المصحف. فيحدّد المعلّمُ «الفاتحة ١ إلى ٦» ويقرأ الطالبُ «الفاتحة ٢ إلى
+   ٧» — واجبٌ واحدٌ بوجهين، والطالبُ يحفظ غيرَ ما طُلب منه.
+
+   فالعرضُ كلُّه يمرُّ بهذه: المبتدأُ تُتجاوَز فيه البسملةُ كما في الصحيفة
+   (skipBasmala)، ثمّ يُزاح العدُّ (ayahShow). والمخزونُ لا يُمسّ — يبقى
+   كما المصحفُ حرفاً بحرف — ولا حقلٌ يُغيَّر ولا سجلٌّ يُكتب.
+   ========================================================================= */
+function asgAyahShown(s, a, isStart) {
+  const n = Number(a) || 0;
+  const raw = (isStart && typeof skipBasmala === "function")
+    ? skipBasmala(s, n || 1) : n;
+  return (typeof ayahShow === "function") ? ayahShow(s, raw) : raw;
+}
+window.asgAyahShown = asgAyahShown;
 
 function nextHifzFrom(plan) {
   /* من الفترة النشطة: بعد الترحيل يبدأ الطالب من نقطة انطلاقٍ محدَّدة
@@ -29197,8 +29222,11 @@ function tstuCalendar(st) {
    ========================================================================= */
 function tstuRange(a) {
   if (!a || !a.fromS) return "";
-  return surahName(a.fromS) + " " + toArabicDigits(a.fromA || 1) +
-    (a.toS ? " — " + surahName(a.toS) + " " + toArabicDigits(a.toA || 1) : "");
+  /* العرضُ من الموضع الواحد (asgAyahShown) — لا يختلف سطرُ البطاقة
+     عن صحيفة التفاصيل ولا عن شاشة الطالب */
+  return surahName(a.fromS) + " " + toArabicDigits(asgAyahShown(a.fromS, a.fromA || 1, true)) +
+    (a.toS ? " — " + surahName(a.toS) + " " +
+             toArabicDigits(asgAyahShown(a.toS, a.toA || 1)) : "");
 }
 
 /* زرُّ «إضافة واجب» لهذا الطالب — يُعيد استعمال نافذة الواجب اليدويّ
@@ -36638,9 +36666,11 @@ function studentDuties(st, forTomorrow) {
 
   const rangeText = a => {
     if (!a.fromS) return "";
-    const from = surahName(a.fromS) + " " + toArabicDigits(a.fromA);
+    const from = surahName(a.fromS) + " " +
+      toArabicDigits(asgAyahShown(a.fromS, a.fromA, true));
     if (!a.toS) return from + " فما بعدها";
-    return from + " — " + surahName(a.toS) + " " + toArabicDigits(a.toA);
+    return from + " — " + surahName(a.toS) + " " +
+      toArabicDigits(asgAyahShown(a.toS, a.toA));
   };
 
   /* القفل يُقال للطالب أيضاً — هو صاحب الدَّين */
@@ -38055,8 +38085,10 @@ window.stuOpenDuty = function (id) {
 function stuRangeText(a) {
   if (!a || !a.fromS) return "";
   const nm = s => (typeof surahName === "function" && surahName(s)) || ("سورة " + s);
-  const one = (s, y) => nm(s) + " (" + toArabicDigits(y || 1) + ")";
-  const from = "من " + one(a.fromS, a.fromA);
+  /* بالعدّ المعروضِ نفسِه الذي يحدّده المعلّمُ في صحيفة الواجب */
+  const one = (s, y, st) => nm(s) + " (" +
+    toArabicDigits(asgAyahShown(s, y || 1, !!st)) + ")";
+  const from = "من " + one(a.fromS, a.fromA, true);
   return a.toS ? from + " إلى " + one(a.toS, a.toA) : from;
 }
 
@@ -43721,8 +43753,10 @@ function spPlanLiveCard(s) {
     ? duties.map(a => `<tr>
         <td><strong>${esc(a.kindName || a.kind)}</strong></td>
         <td class="muted" style="font-size:12px">${a.fromS
-          ? esc(surah(a.fromS)) + " " + toArabicDigits(a.fromA || 1) +
-            (a.toS ? " — " + esc(surah(a.toS)) + " " + toArabicDigits(a.toA || 1) : "")
+          ? esc(surah(a.fromS)) + " " +
+            toArabicDigits(asgAyahShown(a.fromS, a.fromA || 1, true)) +
+            (a.toS ? " — " + esc(surah(a.toS)) + " " +
+                     toArabicDigits(asgAyahShown(a.toS, a.toA || 1)) : "")
           : "—"}</td>
         <td class="pt-num">${toArabicDigits(a.qty || 0)} ${esc(a.unit || "وجه")}</td>
         <td><span class="pt-badge ${stCls[a.status] || ""}">${esc(stAr[a.status] || a.status || "—")}</span>${
@@ -50379,7 +50413,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-2115";
+  var APP_BUILD = "20261014-2200";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
