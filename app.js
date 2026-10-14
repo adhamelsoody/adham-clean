@@ -8426,7 +8426,7 @@ window.blkSearch = function (q) {
 window.blkApply = function () {
   const n = blkCount();
   if (!n) { showToast("لم تختر تعديلاً لأحد", "warn"); return; }
-  let done = 0;
+  let done = 0, blkFull = 0;
   const all = {};
   Object.keys(BLK.circle).forEach(k => all[k] = 1);
   Object.keys(BLK.level).forEach(k => all[k] = 1);
@@ -8438,6 +8438,9 @@ window.blkApply = function () {
     const cid = BLK.circle[sid];
     if (cid) {
       const c = (cur("circles") || []).find(x => String(x.id) === String(cid));
+      /* والمكتملةُ لا تُدخَل ولو جماعةً: يُتخطّى ويُعدّ ويُقال */
+      if (c && typeof circleCapBlock === "function" &&
+          circleCapBlock(c.id, st.id, true)) { blkFull++; return; }
       if (c) {
         st.circleId = c.id;
         st.circle   = c.name || "—";
@@ -8456,7 +8459,9 @@ window.blkApply = function () {
   });
 
   blkReset();
-  showToast("عُدّل " + done + " طالباً", "success");
+  showToast("عُدّل " + done + " طالباً" +
+    (blkFull ? " · تُخطّي " + toArabicDigits(blkFull) + " لامتلاء حلقتهم" : ""),
+    blkFull && !done ? "warn" : "success");
   mount();
 };
 
@@ -31459,6 +31464,11 @@ window.tstuMoveDo = function (confirmed) {
        <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
     return;
   }
+  /* وسعةُ الحلقة تُحترم في النقل كذلك */
+  if (typeof circleCapBlock === "function" && circleCapBlock(c.id, st.id)) {
+    try { closeModal(); } catch (e) {}
+    return;
+  }
   st.circleId = String(c.id);
   st.circle = c.name || "";
   st.teacher = c.teacher || st.teacher || "";
@@ -44205,6 +44215,25 @@ window.stuSave = function (id) {
   /* الحلقةُ تُختار باسمها: يُزامَن معرّفُها ومعلّمُها وإلا تناقض الاسمُ
      والمعرّف — وهو ما كان يفعله نموذجُ التعديل القديم. */
   if (stu.circle !== undefined) {
+    /* =====================================================================
+       «العددُ الأقصى إذا حُدِّد ١٢ وأردنا طالباً زيادةً يُرفض ويُقال مكتمل»
+       ---------------------------------------------------------------------
+       حارسُ السعة كان على بابَي النموذج القديم والنقل الجماعيّ، وهذا البابُ
+       — بطاقةُ الطالب — أوسعُها استعمالاً ولم يكن عليه حارس. فيُنقل الطالبُ
+       إلى حلقةٍ مكتملةٍ من حيث لا يمرّ.
+       ===================================================================== */
+    const _newCid = idByName("circles", s.circle) || "";
+    if (_newCid && String(_newCid) !== String(s.circleId || "") &&
+        typeof circleCapBlock === "function" && circleCapBlock(_newCid, s.id)) {
+      /* ويُردُّ السجلُّ إلى ما كان: اسمُ الحلقة كُتب في الذاكرة قبل الحارس،
+         فلو تُرك بقي الاسمُ الجديدُ مع معرّفٍ قديمٍ — تناقضٌ بلا حفظ. */
+      if (before) {
+        Object.keys(s).forEach(function (k) { delete s[k]; });
+        Object.assign(s, before);
+      }
+      try { mount(); } catch (e) {}
+      return false;                       /* الرسالةُ قيلت في الحارس */
+    }
     s.circleId = idByName("circles", s.circle) || s.circleId || "";
     const cRec = recByName("circles", s.circle);
     if (cRec) {
@@ -44218,8 +44247,32 @@ window.stuSave = function (id) {
   if (Object.keys(plan).length) {
     const dys = plan.days;
     delete plan.days;
+    /* =====================================================================
+       «أيامُ الحلقة إذا حُدِّدت تتفعّل»
+       ---------------------------------------------------------------------
+       أزرارُ «أيام الخطة الأسبوعية» تُضاء من stuDutyDays، وهي لمن لا أيامَ
+       له ترجعُ أيامَ حلقته. فكان كلُّ حفظٍ للبطاقة — ولو لم يمسّ المستخدمُ
+       يوماً واحداً — يَنسخ أيامَ الحلقة إلى الطالب ويُثبّتها فيه. فإذا
+       بدّلت الإدارةُ أيامَ الحلقة بعدها لم يتغيّر شيء: كلُّ طالبٍ يحمل
+       صورةً مجمَّدةً من أيامها القديمة، فتبدو الأيامُ «لا تعمل».
+
+       فما كان نسخةً من أيام الحلقة ولم يكن للطالب اختيارٌ سابقٌ خاصٌّ به
+       لا يُكتب: يبقى تابعاً لحلقته فتسري عليه كلُّ تغييرٍ فيها. وما اختاره
+       المستخدمُ مخالفاً لحلقته يُكتب ويُحترم كما كان.
+       ===================================================================== */
+    let pin = dys;
+    try {
+      if (Array.isArray(dys) && typeof studentCircleDays === "function") {
+        const cDays = studentCircleDays(s) || [];
+        const same = cDays.length === dys.length &&
+                     cDays.every(function (x) { return dys.indexOf(x) > -1; });
+        const hadOwn = Array.isArray((s.plan || {}).days) && (s.plan.days || []).length > 0;
+        if (same && !hadOwn) pin = null;      /* تابعٌ لحلقته لا نسخةٌ منها */
+      }
+    } catch (e) {}
     s.plan = Object.assign({}, s.plan || {}, plan);
-    if (dys) { s.plan.days = dys; if (dys.length) s.days = dys.join(" · "); }
+    if (pin) { s.plan.days = pin; if (pin.length) s.days = pin.join(" · "); }
+    else if (Array.isArray(dys)) { delete s.plan.days; }
     /* الاتجاهُ وسورةُ الابتداء يُكتبان في خطة الطالب الفعلية أيضاً */
     try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(s); } catch (e) {}
   }
@@ -50645,7 +50698,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-0310";
+  var APP_BUILD = "20261015-0410";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
