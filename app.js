@@ -17164,7 +17164,7 @@ function asgAyahShown(s, a, isStart) {
 }
 window.asgAyahShown = asgAyahShown;
 
-function nextHifzFrom(plan) {
+function nextHifzFrom(plan, forDate) {
   /* من الفترة النشطة: بعد الترحيل يبدأ الطالب من نقطة انطلاقٍ محدَّدة
      في خطته لا من حيث انتهى في دورةٍ مؤرشفة. */
   /* =======================================================================
@@ -17203,6 +17203,51 @@ function nextHifzFrom(plan) {
       .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
                       (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
     if (rec) done = { toS: rec.toS, toA: rec.toA, date: rec.date, kind: "hifz" };
+  }
+
+  /* =========================================================================
+     ٤· وموضعٌ وضعه المعلّمُ بيده في واجبٍ لم يُسمَّع بعد
+     -------------------------------------------------------------------------
+     «حفظُ اليوم من البقرة ١ إلى ٥، واليومُ الذي عليه حفظٌ بعد ذلك جاء
+     بسورةٍ أخرى تماماً — لازم يكمل السورة إلى نهايتها».
+
+     والسببُ أنّ الأيّامَ القادمة تُبنى على موضع الخطة، وموضعُها ما يزال
+     حيث كان (طه)، فتعديلُ المعلّمِ غيّر الواجبَ ولم يُغيّر الخطة — ولا
+     يجوز أن يُغيّرها النظامُ من تلقائه. فيبقى اليومُ البقرةَ وما بعده طه:
+     قولان متناقضان في طالبٍ واحد.
+
+     فالموضعُ المرجعيُّ صار يُقرأ من قولِ المعلّم نفسِه: آخرُ واجبِ حفظٍ
+     **لم يُسمَّع** وسَمه بيده هو موضعُ الطالب الآن، فتُبنى عليه أيّامُه
+     القادمة. ولا يُكتب في الخطة شيء — حسابٌ محضٌ عند العرض — ولا تتغيّر
+     بياناتُ الطالب ولا ارتباطُه.
+
+     ولا تُتجاوَز آياتُه: المأخوذُ **مبتدأُ** الواجب لا ما بعد منتهاه، فلا
+     يُحسب محفوظاً ما لم يُسمَّع — والتقدّمُ إلى ما بعده يبقى بالاعتماد
+     وحدَه (advancePlanAfter) كما كان.
+     ========================================================================= */
+  /* ولا يحكم تعديلُ يومٍ على يومٍ قبله: المرجعُ ما كان تاريخُه في اليوم
+     المطلوب أو قبله — وإلّا جرّ واجبُ غدٍ موضعَ اليومِ إليه. */
+  const edDay = String(forDate || (typeof todayISO === "function" ? todayISO() : ""));
+  const edPend = ((typeof asgOf === "function") ? asgOf(plan.studentId) : [])
+    .filter(a => a && String(a.kind || "").replace("_makeup", "") === "hifz" &&
+                 a.status === "pending" && a.edited && Number(a.fromS) > 0 &&
+                 (!edDay || String(a.date) <= edDay) &&
+                 /* وتعديلٌ سبقه التسميعُ فسقط وسمُه لا يكون مرجعاً:
+                    حُكمُ asgEditStale واحدٌ هنا وهناك */
+                 !(typeof asgEditStale === "function" && asgEditStale(a)))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
+                    (Number(b.editedTs) || 0) - (Number(a.editedTs) || 0))[0];
+  if (edPend) {
+    /* ولا يعلو على تسميعٍ جاء بعده: الأحدثُ منهما هو القول */
+    const newer = !done ||
+      String(edPend.date) >= String(done.date || "") ||
+      (Number(edPend.editedTs) || 0) > (Number(done.closedAt) || 0);
+    if (newer) {
+      return { s: Number(edPend.fromS),
+               a: skipBasmala(Number(edPend.fromS), Number(edPend.fromA) || 1),
+               after: false, byTeacher: true,
+               dir: dirOf(edPend.direction) };
+    }
   }
 
   if (done && done.toS) {
@@ -17499,7 +17544,7 @@ function generateAssignments(studentId, dateISO) {
       rec.lessons = r.lessons;
       rec.note = "من آخر " + r.lessons + " دروس";
     } else if (t.k === "hifz") {
-      const from = nextHifzFrom(plan);
+      const from = nextHifzFrom(plan, dateISO);
       rec.fromS = from.s; rec.fromA = from.a;
       /* اختيارُ المعلّم لهذا الطالب يعلو افتراضَ البرنامج — لا خلطَ بين
          خطة الطالب وخطة البرنامج العامة.
@@ -50553,7 +50598,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-0010";
+  var APP_BUILD = "20261015-0130";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
