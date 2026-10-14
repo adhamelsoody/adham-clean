@@ -16200,13 +16200,72 @@ function hifzSpanOf(studentId) {
   return (lo && hi) ? { lo: { s: lo[0], a: lo[1] }, hi: { s: hi[0], a: hi[1] } } : null;
 }
 
+/* =========================================================================
+   وإذا بلغت المراجعةُ حدَّها عادت من البداية — تلقائياً بلا ضبطٍ بشريّ
+   -------------------------------------------------------------------------
+   «إذا كان فيه مراجعةٌ وحفظٌ: المراجعةُ إذا وصلت الحفظَ ترجع. وكذلك لو في
+   تثبيتٌ ومراجعة: المراجعةُ إذا وصلت للتثبيت ترجع من البداية».
+
+   فالترتيبُ في المصحف: الحفظُ في المقدّمة، ويليه التثبيتُ على آخر دروسه،
+   وخلفَهما المراجعةُ في القديم المتمكّن. فحدُّ المراجعة هو **أقربُ
+   الحاجزين إليها**:
+     • فإن كان التثبيتُ مضبوطاً في خطة الطالب فحدُّها طرفُ مدى التثبيت —
+       ولا تبلغه: تقف قبله (حدٌّ مستثنىً).
+     • وإلّا فمنتهى ما حُفظ — تبلغه ولا تتجاوزه.
+   وإذا بلغت الحدَّ عادت من أوّل ما حُفظ من تلقائها، فتدور في المحفوظ
+   دورةً بعد دورة. ولا إعدادَ يُضبط ولا تدخّلَ بشريّ: الحدُّ يتقدّم وحدَه
+   كلّما تقدّم الحفظُ والتثبيت.
+   ========================================================================= */
+function revFixBound(a) {
+  try {
+    const st = (cur("students") || []).find(x =>
+      String(x.id) === String(a && a.studentId));
+    const plan = (st && typeof planOfStudent === "function")
+      ? planOfStudent(st) : null;
+    if (!plan) return null;
+    /* بالحارسين نفسِهما اللذين يولّدان التثبيت: ركنٌ مضبوطٌ في خطة هذا
+       الطالب، وقاعدتُه غيرُ مُطفأة. فمن لا تثبيتَ له لا يحدُّ مراجعتَه
+       تثبيتٌ لا وجودَ له. */
+    if (typeof planHasPillar === "function" && !planHasPillar(plan, "fix")) return null;
+    if (typeof planRuleOn === "function" && !planRuleOn(plan.id, "fixation")) return null;
+    return (typeof fixRangeFor === "function") ? fixRangeFor(a.studentId) : null;
+  } catch (e) { return null; }
+}
+
 /* الحدُّ في جهة السير: التصاعديُّ يقف عند أبعد ما حُفظ، والتنازليُّ عند
    أقربِه — و«أوّلُ المحفوظ» هو الطرفُ الآخر، إليه يعود الدوران. */
 function hifzLimitFor(a) {
   const sp = hifzSpanOf(a && a.studentId);
   if (!sp) return null;
   const back = dirOf(a && a.direction) === "backward";
-  return { lim: back ? sp.lo : sp.hi, home: back ? sp.hi : sp.lo, back: back };
+  let lim = back ? sp.lo : sp.hi;
+  let excl = false;                     /* حدٌّ مستثنىً: يُوقَف قبلَه لا عندَه */
+  const fx = revFixBound(a);
+  if (fx && Number(fx.fromS) > 0 && Number(fx.toS) > 0) {
+    /* طرفُ التثبيت الذي يستقبل المراجعة: مبتدؤه في التصاعديّ ومنتهاه في التنازليّ */
+    const p = back ? { s: Number(fx.toS), a: Number(fx.toA) || 1 }
+                   : { s: Number(fx.fromS), a: Number(fx.fromA) || 1 };
+    const nearer = back ? (p.s > lim.s || (p.s === lim.s && p.a > lim.a))
+                        : (p.s < lim.s || (p.s === lim.s && p.a < lim.a));
+    /* وما لم يتجاوز المحفوظُ مدى التثبيت بعدُ فلا موضعَ قبله تُراجَع فيه:
+       يُترك حدُّ التثبيت ويعود الحدُّ إلى منتهى الحفظ، فلا تسقط المراجعةُ
+       عن المبتدئ ولا تدور في الفراغ. */
+    const home0 = back ? sp.hi : sp.lo;
+    const room = back ? (home0.s > p.s || (home0.s === p.s && home0.a > p.a))
+                      : (home0.s < p.s || (home0.s === p.s && home0.a < p.a));
+    if (nearer && room) { lim = p; excl = true; }
+  }
+  return { lim: lim, excl: excl, home: back ? sp.hi : sp.lo, back: back };
+}
+
+/* أبلغَ الموضعُ حدَّه؟ — والمستثنى يُعدّ بالغاً ببلوغه لا بتجاوزه */
+function revPastLimit(L, s, a) {
+  if (!L || !(Number(s) > 0)) return false;
+  const y = Number(a) || 1;
+  if (L.back) {
+    return s < L.lim.s || (s === L.lim.s && (L.excl ? y <= L.lim.a : y < L.lim.a));
+  }
+  return s > L.lim.s || (s === L.lim.s && (L.excl ? y >= L.lim.a : y > L.lim.a));
 }
 
 function asgCapToHifz(a, end) {
@@ -16218,13 +16277,31 @@ function asgCapToHifz(a, end) {
   if (!L) return Promise.resolve(end);
   const eS = Number(end.surah) || 0, eA = Number(end.ayah) || 1;
   if (!eS) return Promise.resolve(end);
-  const past = L.back
-    ? (eS < L.lim.s || (eS === L.lim.s && eA < L.lim.a))
-    : (eS > L.lim.s || (eS === L.lim.s && eA > L.lim.a));
-  if (!past) return Promise.resolve(end);
+  if (!revPastLimit(L, eS, eA)) return Promise.resolve(end);
   a.capped = true;
-  a.note = "وقف عند حدّ الحفظ — المراجعةُ لا تتجاوز ما حُفظ";
-  return Promise.resolve({ surah: L.lim.s, ayah: L.lim.a, capped: true });
+  if (!L.excl) {
+    a.note = "وقف عند حدّ الحفظ — المراجعةُ لا تتجاوز ما حُفظ";
+    return Promise.resolve({ surah: L.lim.s, ayah: L.lim.a, capped: true });
+  }
+  /* حدُّ التثبيت لا يُبلَغ: يقف الموضعُ قبله بآية */
+  a.note = "وقف قبل التثبيت — المراجعةُ لا تبلغ التثبيت";
+  const back0 = typeof stepFrom === "function"
+    ? stepFrom(L.lim.s, L.lim.a, L.back ? "forward" : "backward") : null;
+  if (!back0 || !(Number(back0.s) > 0)) {
+    return Promise.resolve({ surah: L.lim.s, ayah: L.lim.a, capped: "fix" });
+  }
+  if (Number(back0.a) > 0) {
+    return Promise.resolve({ surah: back0.s, ayah: back0.a, capped: "fix" });
+  }
+  /* الصفرُ علامةُ «آخرِ السورة السابقة» — يُجلب رقمُها من جدول المصحف */
+  if (typeof Quran === "undefined" || !Quran.ayahCount) {
+    return Promise.resolve({ surah: back0.s, ayah: 1, capped: "fix" });
+  }
+  return Quran.ayahCount(back0.s)
+    .then(function (c) {
+      return { surah: back0.s, ayah: Number(c) || 1, capped: "fix" };
+    })
+    .catch(function () { return { surah: back0.s, ayah: 1, capped: "fix" }; });
 }
 
 /* ومبتدأُ المراجعة لا يقع خارجَ المحفوظ أصلاً */
@@ -16234,20 +16311,17 @@ function revClampStart(rec, plan) {
   if (!L) return rec;
   const s = Number(rec.fromS) || 0, a = Number(rec.fromA) || 1;
   if (!s) return rec;
-  const past = L.back
-    ? (s < L.lim.s || (s === L.lim.s && a < L.lim.a))
-    : (s > L.lim.s || (s === L.lim.s && a > L.lim.a));
-  if (!past) return rec;
+  if (!revPastLimit(L, s, a)) return rec;
   /* ابتداءُ المراجعة الذي اختارته الإدارةُ أولى — إن كان داخلَ المحفوظ */
   const rS = Number(plan && plan.revFromS) || 0;
   const rA = Number(plan && plan.revFromA) || 1;
-  const inSpan = rS > 0 && !(L.back
-    ? (rS < L.lim.s || (rS === L.lim.s && rA < L.lim.a))
-    : (rS > L.lim.s || (rS === L.lim.s && rA > L.lim.a)));
+  const inSpan = rS > 0 && !revPastLimit(L, rS, rA);
   rec.fromS = inSpan ? rS : L.home.s;
   rec.fromA = inSpan ? rA : L.home.a;
   rec.toS = null; rec.toA = null;        /* يُعاد حسابُ المنتهى من المبتدإ الجديد */
-  rec.note = "عاد إلى أوّل ما حُفظ — المراجعةُ لا تتجاوز الحفظ";
+  rec.note = L.excl
+    ? "عاد من البداية — المراجعةُ لا تبلغ التثبيت"
+    : "عاد إلى أوّل ما حُفظ — المراجعةُ لا تتجاوز الحفظ";
   return rec;
 }
 
@@ -28903,7 +28977,9 @@ function tstuPreEnds(list) {
         /* وسببُ القِصَر يُنقل مع المدى: المولّدُ يبني كائناً جديداً في كلّ
            نداء، فتضيع الملاحظةُ التي كُتبت عند أوّل حساب */
         if (v[2] && !a.note) {
-          a.note = "وقف عند حدّ الحفظ — المراجعةُ لا تتجاوز ما حُفظ";
+          a.note = (v[2] === "fix")
+            ? "وقف قبل التثبيت — المراجعةُ لا تبلغ التثبيت"
+            : "وقف عند حدّ الحفظ — المراجعةُ لا تتجاوز ما حُفظ";
         }
       }
       return;
@@ -28913,7 +28989,7 @@ function tstuPreEnds(list) {
       .then(function (end) { return asgCapToHifz(a, end); })
       .then(function (end) {
         if (!end || !end.surah) { TSTU_PRE_END[k] = 0; return; }
-        TSTU_PRE_END[k] = [Number(end.surah), Number(end.ayah) || 1, !!end.capped];
+        TSTU_PRE_END[k] = [Number(end.surah), Number(end.ayah) || 1, end.capped || false];
         if (typeof mount === "function") mount();
       })
       .catch(function () { TSTU_PRE_END[k] = 0; });
@@ -30606,29 +30682,26 @@ window.recvSave = function () {
   catch (e) { console.warn("asgClose:", e); }
 
   closeModal();
+  /* =======================================================================
+     «لا أريد الانتقال إلّا أن يريده المعلّمُ أو الإدارةُ بنفسه»
+     -----------------------------------------------------------------------
+     كان النظامُ ينتقل بعد كلّ اعتماد: إلى واجبٍ آخرَ يفتح صحيفتَه من
+     تلقائه، فإن فرغت واجباتُ الطالب انتقل إلى **طالبٍ آخرَ** في الحلقة.
+     فيجد المعلّمُ نفسَه في بطاقةٍ لم يفتحها وقد يعتمد لغير من أراد.
+
+     فصار يبقى حيث هو بعد الاعتماد — لا تُبدَّل بطاقةُ الطالب ولا الصفحةُ
+     ولا يُفتح شيءٌ من تلقائه — ويُقال له ما بقي ليذهب إليه متى شاء.
+     والدالّتان recvNext و recvNextStudent باقيتان كما هما: تُقرأ منهما
+     الرسالةُ ولا يُنقَل بهما.
+     ======================================================================= */
   const nx = recvNext(a);
-  if (nx) {
-    showToast("اعتُمد التسميع — الواجبُ التالي: " + (nx.kindName || ""), "success");
-    MUSD.asgId = ""; MUSD.kind = ""; MUSD.name = "";
-    TSTU.id = String(a.studentId);
-    if (STATE.page !== "student") { if (typeof go === "function") go("student"); }
-    setTimeout(function () { window.tstuDuty(nx.id); }, 120);
-  } else {
-    /* «الانتقال إلى الطالب التالي» — آخرُ خطوةٍ في تسلسل الوثيقة: من فرغت
-       واجباتُه يُنتقل إلى من بعده في الحلقة بالترتيب الأبجديّ ممّن له
-       واجبٌ معلَّق، فلا يعود المعلّمُ إلى القائمة في كلّ طالب. */
-    const nxSt = recvNextStudent(a);
-    if (nxSt) {
-      showToast("اعتُمد التسميع — الطالبُ التالي: " + (nxSt.name || ""), "success");
-      MUSD.asgId = ""; MUSD.kind = ""; MUSD.name = "";
-      TSTU.id = String(nxSt.id); TSTU.day = "";
-      if (STATE.page !== "student") { if (typeof go === "function") go("student"); }
-      else mount();
-    } else {
-      showToast("اعتُمد التسميع — لا واجباتٍ أخرى", "success");
-      mount();
-    }
-  }
+  const nxSt = nx ? null : recvNextStudent(a);
+  MUSD.asgId = ""; MUSD.kind = ""; MUSD.name = "";
+  showToast("اعتُمد التسميع" +
+    (nx ? " — بقي له: " + (nx.kindName || "واجبٌ آخر")
+        : nxSt ? " — وبقي في الحلقة: " + (nxSt.name || "طالبٌ آخر")
+               : " — لا واجباتٍ أخرى"), "success");
+  mount();
 };
 
 /* الطالبُ التالي في الحلقة ممّن له واجبٌ معلَّقٌ في اليوم نفسِه */
@@ -49890,7 +49963,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-0340";
+  var APP_BUILD = "20261014-0640";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
