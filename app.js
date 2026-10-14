@@ -15360,11 +15360,27 @@ function maqraahCfg(mosqueId) {
 }
 
 /* رابط الغرفة لحلقة: رابط الحلقة إن خُصّص، وإلا رابط المسجد */
+/* =========================================================================
+   رابطُ الحلقة نفسُه تفعيلٌ لمقرأتها
+   -------------------------------------------------------------------------
+   «وضعتُ رابط قوقل ميت في إعدادات الحلقة وفعّلته، والمفروض تظهر المقرأةُ
+   للمعلّم وطلابه — لكن ما ظهرت».
+
+   والسببُ أنّ البوّابة كانت من إعداد المسجد أو العامّ وحدَه (cfg.on)، ورابطُ
+   الحلقة لا يُقرأ إلّا بعد عبورها. فمن ضبط رابطاً لحلقةٍ بعينها لا يرى
+   شيئاً ما لم يُفعّل المقرأةَ للمسجد كلِّه.
+
+   وضبطُ رابطٍ لحلقةٍ قصدٌ صريحٌ من الإدارة لهذه الحلقة: فهو تفعيلٌ لها.
+   والبوّابةُ العامّةُ تبقى حاكمةً للرابط العامّ وحدَه — فلا يُفتح بهذا ما
+   أُغلق عمداً، وإنّما يُفتح ما ضُبط بعينه.
+   ========================================================================= */
 function maqraahLink(circle) {
   if (!circle) return "";
+  const own = String(circle.maqraahUrl || "").trim();
+  if (own) return own;                 /* رابطُ الحلقة: قصدٌ صريحٌ لا يحتاج إذناً عامّاً */
   const cfg = maqraahCfg(circle.mosqueId);
   if (!cfg.on) return "";
-  return String(circle.maqraahUrl || cfg.url || "");
+  return String(cfg.url || "");
 }
 
 window.maqraahJoin = function (circleId) {
@@ -27959,6 +27975,8 @@ function teacherCircle() {
     <div class="tq-bar">
       <button type="button" class="btn btn-primary" onclick="window.tcrcAttOpen()">
         ${ic("attend", 16)} اعتماد التحضير</button>
+      ${/* المقرأةُ تظهر للمعلّم كما تظهر لطلابه — كانت للطالب وحدَه */
+        (typeof maqraahBtn === "function" ? maqraahBtn(c) : "")}
       ${/* علامةُ «+» أعلى القائمة: ظهورُها بصلاحيةٍ تمنحها الإدارة وحدَها،
             فإن مُنعت اختفت — كما نصّت الوثيقة. */
         teacherCan("addStudent") ? `<button type="button" class="btn btn-soft tq-add"
@@ -27994,17 +28012,20 @@ function tcrcAttLegend() {
       esc(attLabel(st))}</span>`).join("")}</div>`;
 }
 
-/* صفُّ طالبٍ في شاشة التسجيل */
-function tcrcAttRow(s) {
+/* صفُّ طالبٍ في شاشة التسجيل.
+   off: ليس اليومُ من أيام دوامه · locked: خانتُه مقفلةٌ (وضعُ التمويه) */
+function tcrcAttRow(s, off, locked) {
   const sid = String(s.id);
-  return `<div class="tat-row" data-sid="${jsAttr(sid)}">
+  return `<div class="tat-row${off ? " off" : ""}${locked ? " locked" : ""}"
+      data-sid="${jsAttr(sid)}"${off ? ' title="ليس اليومُ من أيام دوامه"' : ""}>
     <span class="tat-av">${(s.photo
       ? `<img src="${esc(s.photo)}" alt="">`
       : ic("user", 16))}</span>
     <span class="tat-name" title="${esc(s.name || "")}">${esc(s.name || "—")}</span>
     <span class="tat-opts">${ATT_STATES.map(st =>
       `<button type="button" class="tat-opt ${ATT_TINT[st] || ""}${
-        TATT.sel[sid] === st ? " on" : ""}" title="${esc(attLabel(st))}"
+        TATT.sel[sid] === st ? " on" : ""}" title="${esc(attLabel(st))}"${
+        locked ? " disabled" : ""}
         onclick="window.tcrcAttPick(this,'${jsAttr(sid)}','${jsAttr(st)}')"
         >${ic(attStateIcon(st), 17)}</button>`).join("")}</span>
   </div>`;
@@ -28019,15 +28040,59 @@ window.tcrcAttOpen = function () {
   const d = typeof attDate === "function" ? attDate() : todayISO();
   const map = attMap(d, String(c.id));
   TATT.sel = {};
-  /* الافتراضُ «حاضر» كما نصّت الوثيقة، وما سُجِّل قبلُ يُحترم */
+
+  /* =======================================================================
+     من ليس اليومُ من أيام دوامه لا يُخلط بالحاضرين
+     -----------------------------------------------------------------------
+     «عيّنتُ لطالبٍ أياماً معيّنةً واليومُ ليس منها، وفي التحضير ظهر لي مع
+     بقيّة الطلاب». وكانت هذه الصحيفةُ تسرد الجميعَ سواءً وتُثبت للكلّ
+     «حاضر» ابتداءً — فيُعتمد حاضراً في يومٍ ليس من أيامه أصلاً.
+
+     والخيارُ للإدارة كما في شاشة الحضور (offDutyMode):
+       • التمويه (الافتراض): يبقى في موضعه باهتاً وخانتُه مقفلة.
+       • الفصل: يُعزل إلى قسمٍ أسفل القائمة، وتُترك خانتُه مفتوحةً
+         لتحضيرٍ استثنائيٍّ إن حضر.
+     وفي الحالين لا يُثبَّت له «حاضر» ابتداءً — فلا يُكتب له شيءٌ ما لم
+     يختر المعلّمُ بنفسه. وما سُجِّل له من قبلُ يبقى ويُعرض.
+     ======================================================================= */
+  const offMode = (DB.settings || {}).offDutyMode === "split" ? "split" : "dim";
+  const onD = [], offD = [];
   studs.forEach(s => {
+    ((typeof isDutyDay === "function" ? isDutyDay(s, d) : true) ? onD : offD).push(s);
+  });
+
+  /* الافتراضُ «حاضر» كما نصّت الوثيقة، وما سُجِّل قبلُ يُحترم */
+  onD.forEach(s => {
     const r = map[String(s.id)];
     TATT.sel[String(s.id)] = (r && r.status) || "حاضر";
   });
+  /* ولا افتراضَ لمن ليس اليومُ يومَه: سجلُّه القديمُ وحدَه إن كان */
+  offD.forEach(s => {
+    const r = map[String(s.id)];
+    if (r && r.status) TATT.sel[String(s.id)] = r.status;
+  });
 
-  openModal("تسجيل الحضور والغياب", esc(c.name || ""),
-    `${tcrcAttLegend()}
-     <div class="tat-list">${studs.map(tcrcAttRow).join("")}</div>`,
+  const offLocked = offMode !== "split";
+  const offNote = offD.length
+    ? (offMode === "split"
+        ? `<div class="tat-sep">ليس اليومُ من أيام دوامهم
+             <small>تحضيرُهم استثناءٌ إن حضروا</small></div>`
+        : `<div class="tat-hint">${toArabicDigits(offD.length)} من طلابك ليس اليومُ
+             (${esc(dayNameOf(d) || "")}) من أيام دوامهم — يظهرون باهتين وخانتُهم مقفلة.</div>`)
+    : "";
+
+  const body = offD.length && offMode !== "split"
+    /* التمويهُ يُبقي الترتيبَ كما هو */
+    ? `${tcrcAttLegend()}${offNote}
+       <div class="tat-list">${studs.map(s =>
+         tcrcAttRow(s, offD.indexOf(s) > -1, offD.indexOf(s) > -1)).join("")}</div>`
+    : `${tcrcAttLegend()}
+       <div class="tat-list">${onD.map(s => tcrcAttRow(s, false, false)).join("")}</div>
+       ${offD.length ? offNote +
+         `<div class="tat-list tat-offlist">${offD.map(s =>
+            tcrcAttRow(s, true, false)).join("")}</div>` : ""}`;
+
+  openModal("تسجيل الحضور والغياب", esc(c.name || ""), body,
     `<button class="btn btn-primary tat-go" onclick="window.tcrcAttSave()">${
       ic("attend", 16)} اعتماد التحضير</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
@@ -50050,7 +50115,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-0805";
+  var APP_BUILD = "20261014-0900";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

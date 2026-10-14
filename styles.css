@@ -12993,3 +12993,32 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
 /* وذيلُ النافذة لا يُقتطع: يبقى ظاهراً والجسمُ وحدَه يمرّر */
 .modal-foot { flex: 0 0 auto; }
 .modal-body { flex: 1 1 auto; min-height: 0; }
+
+/* =========================================================================
+   صحيفةُ التحضير: من ليس اليومُ من أيام دوامه
+   -------------------------------------------------------------------------
+   «ظهر لي مع بقيّة الطلاب — المفروض يصير مموّهاً أو مفصولاً أسفل القائمة
+   حسب اختيار الإدارة». فالتمويهُ باهتٌ بخانةٍ مقفلة، والفصلُ بعنوانٍ
+   يفصله عمّن دوامُهم اليوم.
+   ========================================================================= */
+.tat-row.off { opacity: .52; }
+.tat-row.off .tat-name { color: var(--text-muted); }
+.tat-row.locked .tat-opt { pointer-events: none; cursor: default; }
+.tat-row.locked .tat-opt[disabled] { opacity: .45; }
+
+.tat-hint {
+  font-size: 11.5px; color: var(--text-muted); line-height: 1.7;
+  padding: 8px 12px; margin: 2px 0 10px; border-radius: 10px;
+  background: var(--border-soft);
+}
+.tat-sep {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 12.5px; font-weight: 800; color: var(--text-muted);
+  margin: 14px 0 8px; padding-top: 12px;
+  border-top: 1px dashed var(--border-soft);
+}
+.tat-sep small { font-weight: 500; font-size: 11px; color: var(--text-faint); }
+.tat-offlist { opacity: 1; }
+
+/* وزرُّ المقرأة في شريط الحلقة عند المعلّم لا يتمدّد على السطر */
+.tq-bar .maq-btn { flex: 0 0 auto; }
