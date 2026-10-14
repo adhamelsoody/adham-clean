@@ -17521,9 +17521,43 @@ function generateAssignments(studentId, dateISO) {
 const ASG_PLAN_FIELDS = ["fromS", "fromA", "qty", "unit",
                          "direction", "isRepeat", "round", "ofRounds", "lessons"];
 
+/* =========================================================================
+   وتعديلُ المعلّمِ يُحترم حتى يسبقَه ما حُفظ فعلاً
+   -------------------------------------------------------------------------
+   «وفي واجب الغد لا يعطيني نفسَ مقدارِ الذي سمّعه الطالبُ اليوم — يُكمل
+   على السورة من حيث انتهى أمسِ، من الآية التي بعده».
+
+   وواجبُ الغد قد يكون مثبَّتاً في السجلّ قبل تسميعِ اليوم؛ فإن مسّه
+   المعلّمُ بتعديلٍ وُسم edited — والوسمُ يُخرجه من متابعة الخطة أبداً.
+   فيُسمَّع اليومُ ويتقدّم موضعُ الخطة، وواجبُ الغد جامدٌ على المدى الذي
+   سُمِّع بعينه: يُطلب من الطالب أن يحفظ ما حفظه أمسِ.
+
+   فحدُّ احترامِ التعديل: أن لا يكون ما حُفظ قد جاوز مبتدأَه. فتعديلُ
+   المعلّمِ قرارٌ في «ما يُحفظ بعدُ» لا أمرٌ بإعادةِ ما فُرغ منه؛ ومتى بلغ
+   المحفوظُ مبتدأَ الواجب المعدَّل سقط الوسمُ وعاد يتبع الخطةَ كأخواته.
+
+   وهذا لركن الحفظ وحدَه: المراجعةُ والتثبيتُ مدارُهما في المحفوظ أصلاً،
+   فلا يُنقض تعديلُهما بوقوعه داخله. والتعويضُ (_makeup) مستثنىً قبلَها
+   بسطرٍ: له موضعُه الذي أُنشئ له.
+   ========================================================================= */
+function asgEditStale(a) {
+  if (!a || !a.edited) return false;
+  if (String(a.kind || "").replace("_makeup", "") !== "hifz") return false;
+  const fS = Number(a.fromS) || 0, fA = Number(a.fromA) || 0;
+  if (!(fS > 0 && fA > 0)) return false;
+  const span = (typeof hifzSpanOf === "function") ? hifzSpanOf(a.studentId) : null;
+  if (!span) return false;
+  const fwd = dirOf(a.direction) !== "backward";
+  const edge = fwd ? span.hi : span.lo;
+  if (!(edge && Number(edge.s) > 0)) return false;
+  /* مبتدأُ الواجب داخلَ ما حُفظ أو على طرفه: التعديلَ سبقه الواقع */
+  return fwd ? (edge.s > fS || (edge.s === fS && Number(edge.a) >= fA))
+             : (edge.s < fS || (edge.s === fS && Number(edge.a) <= fA));
+}
+
 function asgFollowsPlan(a) {
   if (!a || a.status !== "pending") return false;
-  if (a.edited) return false;                      /* عدّله المعلّمُ بيده */
+  if (a.edited && !asgEditStale(a)) return false;   /* عدّله المعلّمُ بيده */
   if (a.settled) return false;
   if (Array.isArray(a.parts) && a.parts.length) return false;
   if (Number(a.doneQty) > 0) return false;
@@ -50345,7 +50379,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-2015";
+  var APP_BUILD = "20261014-2115";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
