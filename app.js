@@ -18016,10 +18016,12 @@ function setRollDate(d) {
 }
 
 /* اليوم السابق لتاريخ */
+/* و«أمسِ» كذلك: بالإزاحة المحليّة كان يعود اليومَ نفسَه في المناطق
+   الموجبة، فلا تُرى متأخّراتُ أمسِ ولا يُرحَّل فارقُها */
 function prevDay(dateISO) {
-  const d = new Date(String(dateISO) + "T00:00:00");
+  const d = new Date(String(dateISO) + "T12:00:00Z");
   if (isNaN(d.getTime())) return "";
-  d.setDate(d.getDate() - 1);
+  d.setUTCDate(d.getUTCDate() - 1);
   return d.toISOString().slice(0, 10);
 }
 
@@ -30681,6 +30683,9 @@ window.recvSave = function () {
   try { if (typeof window.asgClose === "function") window.asgClose(a.id, score, rec.id); }
   catch (e) { console.warn("asgClose:", e); }
 
+  /* والإدارةُ تُبلَّغ: ما سُمِّع اليومَ وما سيُسمَّع غداً */
+  try { recvNotifyAdmin(a, score); } catch (e) { console.warn("recvNotifyAdmin:", e); }
+
   closeModal();
   /* =======================================================================
      «لا أريد الانتقال إلّا أن يريده المعلّمُ أو الإدارةُ بنفسه»
@@ -30703,6 +30708,80 @@ window.recvSave = function () {
                : " — لا واجباتٍ أخرى"), "success");
   mount();
 };
+
+/* =========================================================================
+   الإدارةُ تعلم بالتسميع ساعةَ وقوعه — وبواجب الغد معه
+   -------------------------------------------------------------------------
+   «عندما يقول المعلّمُ تمّ التسميعُ لطالبٍ تصل الإدارةَ أنّ الطالب سمّع
+   اليوم، ويظهر للإدارة ما الذي سيسمّعه في الغد».
+
+   وكان بلوغُ سورةٍ جديدةٍ وحدَه يُبلَّغ (advNotify)، فيمضي الأسبوعُ بتسميعٍ
+   يوميٍّ لا تعلم به الإدارةُ ما لم تتبدّل السورة. فصار كلُّ اعتمادٍ يرفع
+   تنبيهاً واحداً يحمل: مَن سمّع، وماذا سمّع بمداه وتقييمه، وما واجبُه غداً
+   بمداه — يُحسب بالمحرّك نفسِه الذي يراه المعلّمُ والطالب، فلا تختلف
+   الجهاتُ على رقم.
+
+   والمفتاحُ من الطالب واليوم والنوع فلا يتكرّر التنبيهُ بإعادة الاعتماد.
+   ولا يُكتب في الواجبات حرف: نسخةٌ للعرض يُحسب عليها مدى الغد.
+   ========================================================================= */
+function recvNotifyAdmin(a, score) {
+  if (!a || typeof pushNotif !== "function") return;
+  const st = (cur("students") || []).find(x =>
+    String(x.id) === String(a.studentId)) || {};
+  const who = st.name || a.student || "طالب";
+  const nm = s => (typeof surahName === "function" && surahName(s)) || ("سورة " + s);
+  const one = (s, y) => nm(s) + " (" + toArabicDigits(Number(y) || 1) + ")";
+  const rng = o => (Number(o.fromS) > 0)
+    ? ("من " + one(o.fromS, o.fromA) +
+       (Number(o.toS) > 0 ? " إلى " + one(o.toS, o.toA) : ""))
+    : "";
+
+  const todayTxt = (a.kindName || a.kind || "واجب") + ": " + rng(a) +
+    ((score == null || score === "") ? ""
+      : " · " + toArabicDigits(Number(score)) + "٪");
+
+  const send = function (tomTxt) {
+    pushNotif({
+      key: "rcv|" + String(a.studentId) + "|" + String(a.date) + "|" + String(a.kind),
+      toRole: "admin", auto: false, byUser: true,
+      studentId: String(a.studentId || ""),
+      mosqueId: st.mosqueId || a.mosqueId || "",
+      complexId: st.complexId || a.complexId || "",
+      circleId: st.circleId || a.circleId || "",
+      title: who + " سمّع اليوم",
+      text: todayTxt + (tomTxt ? " — وغداً: " + tomTxt : ""),
+      type: "success", label: "التسميع"
+    });
+  };
+
+  const tom = (typeof nextDayISO === "function") ? nextDayISO(a.date) : "";
+  let list = [];
+  try {
+    list = tom && typeof dutiesOfDay === "function"
+      ? (dutiesOfDay(a.studentId, tom) || []) : [];
+  } catch (e) { list = []; }
+  /* نسخٌ للحساب: لا يُمَسُّ سجلٌّ محفوظٌ بمدىً يُحسب للعرض */
+  list = list.filter(x => x && Number(x.fromS) > 0 && x.status !== "done")
+             .map(x => Object.assign({}, x));
+  if (!list.length) { send(""); return; }
+
+  const fin = function () {
+    send(list.map(x => (x.kindName || x.kind || "واجب") + " " + rng(x))
+             .filter(s => s.trim()).join(" · "));
+  };
+  const need = (typeof rangeEnd === "function")
+    ? list.filter(x => !(Number(x.toS) > 0) && Number(x.qty) > 0) : [];
+  if (!need.length) { fin(); return; }
+
+  Promise.all(need.map(x =>
+    Promise.resolve(rangeEnd(x.fromS, x.fromA, x.qty, x.unit, x.direction))
+      .then(e => (typeof asgCapToHifz === "function" ? asgCapToHifz(x, e) : e))
+      .then(e => {
+        if (e && Number(e.surah) > 0) { x.toS = Number(e.surah); x.toA = Number(e.ayah) || 1; }
+      })
+      .catch(() => {})
+  )).then(fin).catch(fin);
+}
 
 /* الطالبُ التالي في الحلقة ممّن له واجبٌ معلَّقٌ في اليوم نفسِه */
 function recvNextStudent(a) {
@@ -36461,10 +36540,18 @@ function studentDuties(st, forTomorrow) {
 }
 
 /* تاريخ الغد */
+/* =========================================================================
+   «غدٌ» في المناطق الموجبة كان يعود اليومَ نفسَه
+   -------------------------------------------------------------------------
+   الإزاحةُ كانت بالتوقيت المحليّ ثمّ toISOString تُرجع إلى UTC، فمن كان
+   في توقيتٍ موجبٍ (القاهرة +٣) يصير «غدٌ» عنده هو اليومَ نفسَه: شاشةُ
+   «واجب الغد» تعرض واجبَ اليوم، والإدارةُ تُبلَّغ بواجبِ غدٍ وهو واجبُ
+   اليوم. والحسابُ هنا بتوقيت UTC وظهراً — كما في tstuDayShift سواءً.
+   ========================================================================= */
 function nextDayISO(dateISO) {
-  const d = new Date(String(dateISO) + "T00:00:00");
+  const d = new Date(String(dateISO) + "T12:00:00Z");
   if (isNaN(d.getTime())) return dateISO;
-  d.setDate(d.getDate() + 1);
+  d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 
@@ -49963,7 +50050,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-0640";
+  var APP_BUILD = "20261014-0740";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
