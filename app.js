@@ -15374,20 +15374,45 @@ function maqraahCfg(mosqueId) {
    والبوّابةُ العامّةُ تبقى حاكمةً للرابط العامّ وحدَه — فلا يُفتح بهذا ما
    أُغلق عمداً، وإنّما يُفتح ما ضُبط بعينه.
    ========================================================================= */
+/* =========================================================================
+   رابطٌ بلا بروتوكول لا يفتح شيئاً
+   -------------------------------------------------------------------------
+   «رابط المقرأة لا يعمل»: من لصق «meet.google.com/abc-defg-hij» بلا
+   https:// يقرؤه المتصفّحُ نسبيّاً، فيفتح
+   mirath-72e2f.web.app/meet.google.com/... — صفحةً لا وجودَ لها.
+
+   فيُسوّى الرابطُ عند القراءة: ما بدأ بـ http أو https يمضي كما هو، وما
+   بدأ ببروتوكولٍ آخرَ يُردّ (لا javascript: ولا data: في زرٍّ يُضغط)،
+   وما لا بروتوكولَ له يُلبَس https. ولا تُكتب بياناتٌ: التسويةُ عند
+   القراءة وحدَها، والمحفوظُ في السجلّ كما كتبته الإدارة.
+   ========================================================================= */
+function maqraahUrlOf(raw) {
+  const u = String(raw || "").trim();
+  if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  if (/^[a-z][a-z0-9+.\-]*:/i.test(u)) return "";   /* بروتوكولٌ آخرُ: لا يُفتح */
+  return "https://" + u.replace(/^\/+/, "");
+}
+
 function maqraahLink(circle) {
   if (!circle) return "";
-  const own = String(circle.maqraahUrl || "").trim();
+  const own = maqraahUrlOf(circle.maqraahUrl);
   if (own) return own;                 /* رابطُ الحلقة: قصدٌ صريحٌ لا يحتاج إذناً عامّاً */
   const cfg = maqraahCfg(circle.mosqueId);
   if (!cfg.on) return "";
-  return String(cfg.url || "");
+  return maqraahUrlOf(cfg.url);
 }
 
 window.maqraahJoin = function (circleId) {
   const c = (cur("circles") || []).find(x => String(x.id) === String(circleId));
   const url = maqraahLink(c);
   if (!url) { showToast("لا رابط غرفةٍ مضبوط لهذه الحلقة", "warn"); return; }
-  window.open(url, "_blank", "noopener");
+  /* ومانعُ النوافذ في الجوّال يردّ window.open فيظنّ المعلّمُ الزرَّ معطّلاً:
+     فإن رُدّ فُتحت في اللسان نفسِه. */
+  let w = null;
+  try { w = window.open(url, "_blank", "noopener"); } catch (e) { w = null; }
+  if (!w) { try { window.location.href = url; } catch (e) {
+    showToast("تعذّر فتحُ المقرأة — افتح الرابطَ من إعدادات الحلقة", "warn"); } }
 };
 
 /* زرّ الدخول — يظهر في لوحة الطالب ولوحة المعلّم */
@@ -50115,7 +50140,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-0900";
+  var APP_BUILD = "20261014-0925";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
