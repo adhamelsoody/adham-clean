@@ -29663,16 +29663,29 @@ window.tstuDutySave = function (id, opts) {
   const fA = next.fromA != null ? next.fromA : Number(a.fromA) || 0;
   const tS = next.toS   != null ? next.toS   : (Number(a.toS) || fS);
   const tA = next.toA   != null ? next.toA   : (Number(a.toA) || fA);
-  const dSave = dirOf(next.direction != null ? next.direction : a.direction);
-  const okOrder = (fS && tS && typeof window.Quran !== "undefined" &&
-                   typeof window.Quran.before === "function")
-    ? (dSave === "backward" ? window.Quran.before(tS, tA, fS, fA)
-                            : window.Quran.before(fS, fA, tS, tA))
-    : true;
-  if (!okOrder) {
-    showToast(dSave === "backward" ? "بدايةُ المدى قبل نهايته في التنازليّ"
-                                   : "نهاية المدى قبل بدايته", "warn"); return false;
-  }
+  /* =======================================================================
+     «عندما أعدّل الحفظ تظهر لي: بدايةُ المدى قبل نهايته في التنازليّ»
+     -----------------------------------------------------------------------
+     كان الاتجاهُ يُقرأ من حقل الواجب أو الخطة، ويُقاس به ترتيبُ ما كتبه
+     المعلّم. فمن كانت خطتُه تنازليّةً (من الناس) وكتب مدًى تصاعديّاً
+     رُدَّ حفظُه — وزرُّ الاتجاه مرفوعٌ من هذه الصحيفة بطلبه، فلا سبيلَ
+     عنده إلى موافقة الشرط: قاعدةٌ تُلزِم بما لا أداةَ له به، فيقف العملُ.
+
+     والمدى الذي يكتبه المعلّمُ بيده يقول جهتَه بلا لبس — وهي القاعدةُ
+     نفسُها في asgStepEdge: «جهةُ المدى أصدقُ من حقل direction». فصارت
+     جهةُ هذا الواجب تُؤخذ منه، وتُكتب في سجلّ الواجب وحدَه.
+
+     ولا تُمسُّ خطةُ الطالب ولا اتجاهُها ولا شيءٌ من ارتباطه — وإن خالف
+     المدى اتجاهَ خطته قيل له ذلك في رسالة الحفظ ولم يُردّ عملُه: القرارُ
+     قرارُه، والتنبيهُ إعلامٌ لا حجْب.
+     ======================================================================= */
+  const samePos = (tS === fS && tA === fA);
+  const rangeDir = (fS && tS && !samePos)
+    ? ((tS > fS || (tS === fS && tA > fA)) ? "forward" : "backward") : "";
+  const dSave = rangeDir ||
+    dirOf(next.direction != null ? next.direction : a.direction);
+  /* وتُكتب جهتُه إن تبدّلت — فلا يبقى في السجلّ وصفٌ يخالف مداه */
+  if (rangeDir && rangeDir !== dirOf(a.direction)) next.direction = rangeDir;
 
   Object.keys(next).forEach(k => { a[k] = next[k]; });
   a.shortQty = typeof asgRemain === "function" ? asgRemain(a) : a.shortQty;
@@ -29682,7 +29695,22 @@ window.tstuDutySave = function (id, opts) {
   persistSet("assignments", a);
   if (!(opts && opts.chain)) {
     closeModal();
-    showToast("حُفظ تعديلُ الواجب", "success");
+    /* وإن خالف مداه اتجاهَ خطته قيل له — إعلامٌ بعد الحفظ لا حجْبٌ له */
+    let tail = "";
+    try {
+      const stu = (cur("students") || []).find(x =>
+        String(x.id) === String(a.studentId));
+      const pl = (stu && typeof planOfStudent === "function")
+        ? planOfStudent(stu) : null;
+      const pd = (pl && typeof planDirOf === "function")
+        ? planDirOf(pl, String(a.kind || "hifz").replace("_makeup", "")) : "";
+      if (pd && dSave && pd !== dSave) {
+        tail = dSave === "backward"
+          ? " — ومداه تنازليٌّ وخطتُه تصاعديّة"
+          : " — ومداه تصاعديٌّ وخطتُه تنازليّة";
+      }
+    } catch (e) {}
+    showToast("حُفظ تعديلُ الواجب" + tail, "success");
     mount();
   }
   return true;
@@ -50413,7 +50441,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-2200";
+  var APP_BUILD = "20261014-2250";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
