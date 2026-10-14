@@ -8342,9 +8342,14 @@ window.mvsRunDo = function () {
   const toC = cur("circles").find(c => String(c.id) === String(MVS.toCir));
   const fromC = cur("circles").find(c => String(c.id) === String(MVS.fromCir));
   const names = [];
+  let full = 0;
   ids.forEach(id => {
     const st = (DB.students || []).find(x => String(x.id) === String(id));
     if (!st) return;
+    /* ولا يتجاوز النقلُ الجماعيُّ سعةَ الحلقة: يُنقل ما تسعه وتُقال البقيّة */
+    if (typeof circleCapBlock === "function" && circleCapBlock(MVS.toCir, st.id, true)) {
+      full++; return;
+    }
     names.push(st.name || id);
     st.circleId = MVS.toCir;
     if (toC) { st.mosqueId = toC.mosqueId || ""; st.complexId = toC.complexId || ""; }
@@ -28059,6 +28064,9 @@ function tcrcAttRow(s, off, locked) {
 window.tcrcAttOpen = function () {
   const c = tcrcCircle();
   if (!c) { showToast("لا حلقةَ مفتوحة", "warn"); return; }
+  /* «جهةُ التحضير» كانت تُحترم في شاشة الحضور ولا أثرَ لها هنا: فيحضّر
+     المعلّمُ من شاشة حلقته وقد جُعل التحضيرُ للمشرف والإدارة وحدَهم. */
+  if (typeof attMayTake === "function" && !attMayTake(c.id)) return;
   const studs = tcrcStudents(c);
   if (!studs.length) { showToast("لا طلابَ في الحلقة", "warn"); return; }
 
@@ -28181,6 +28189,8 @@ window.tcrcAttPick = function (btn, sid, st) {
 window.tcrcAttSave = async function () {
   const c = tcrcCircle();
   if (!c) return;
+  /* والحارسُ على الحفظ كذلك لا على الفتح وحدَه */
+  if (typeof attMayTake === "function" && !attMayTake(c.id)) return;
   const d = typeof attDate === "function" ? attDate() : todayISO();
   const map = attMap(d, String(c.id));
   let ok = 0, fail = 0, skip = 0;
@@ -39941,6 +39951,37 @@ function circleFull(c) {
 }
 
 /* =========================================================================
+   سعةُ الحلقة تُحترم في كلّ بابٍ يُدخل طالباً إليها
+   -------------------------------------------------------------------------
+   «وضعتُ الحدَّ الأقصى ١١ وأضفتُ أكثرَ من ١١ وقَبِل»: الحارسُ كان في
+   نموذج «إضافة طالب» وحدَه، وأبوابُ الدخول أكثرُ — تعديلُ بطاقة الطالب
+   ينقله إلى حلقةٍ أخرى، والنقلُ الجماعيُّ يُدخل عشرةً دفعةً — فتمتلئ
+   الحلقةُ من حيث لا يمرّ الحارس.
+
+   وهذه تُسأل من كلّ باب: تردُّ true إن كانت الحلقةُ ممتلئةً ولم يكن
+   الطالبُ فيها أصلاً — فلا تُمنع إعادةُ حفظ من هو فيها، ولا تُمسّ بياناتُ
+   ارتباطٍ قائمة.
+   ========================================================================= */
+function circleCapBlock(circleId, studentId, silent) {
+  const cid = String(circleId || "");
+  if (!cid) return false;
+  const c = (cur("circles") || []).find(x => String(x.id) === cid) ||
+            (Array.isArray(DB.circles) ? DB.circles.find(x => String(x.id) === cid) : null);
+  if (!c) return false;
+  const st = (cur("students") || []).find(x => String(x.id) === String(studentId || "")) ||
+             (Array.isArray(DB.students)
+               ? DB.students.find(x => String(x.id) === String(studentId || "")) : null);
+  if (st && String(st.circleId || "") === cid) return false;   /* فيها أصلاً */
+  if (!circleFull(c)) return false;
+  if (!silent && typeof showToast === "function") {
+    showToast("حلقة " + (c.name || "") + " مكتملة (" +
+      toArabicDigits(Number(c.capacity) || 0) + " طالباً) — ارفع الحدَّ أو اختر حلقةً أخرى",
+      "warn");
+  }
+  return true;
+}
+
+/* =========================================================================
    مواقيت الصلاة
    -------------------------------------------------------------------------
    المواصفات: «بما أنه لا توجد أجهزة بصمة، يُحتسب حضور المعلّم ذكياً... يُربط
@@ -46506,6 +46547,14 @@ document.addEventListener("click", (e) => {
       s.mosque    = esFac.mosque;
       s.mosqueId  = esFac.mosqueId;
       s.complexId = esFac.complexId;
+      /* والسعةُ تُحترم هنا كما في نموذج الإضافة: من ينتقل إلى حلقةٍ
+         ممتلئةٍ يُردّ، ومن هو فيها أصلاً يُحفظ كما كان */
+      {
+        const _newCir = val("#es_circle", s.circle);
+        const _newId  = idByName("circles", _newCir) || "";
+        if (_newId && String(_newId) !== String(s.circleId || "") &&
+            typeof circleCapBlock === "function" && circleCapBlock(_newId, s.id)) break;
+      }
       s.circle = val("#es_circle", s.circle);
       /* مزامنة معرّف الحلقة مع الاسم الجديد — بدونها يتناقض الاثنان */
       s.circleId = idByName("circles", s.circle) || s.circleId || "";
@@ -50140,7 +50189,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-0925";
+  var APP_BUILD = "20261014-1000";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
