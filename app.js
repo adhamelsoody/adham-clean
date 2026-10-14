@@ -46860,7 +46860,20 @@ document.addEventListener("click", (e) => {
       c.status = val("#ec_status", c.status);
       c.capacity = Number(val("#ec_cap")) || 0;
       c.termId = val("#ec_term", c.termId || "");
-      c.maqraahUrl = val("#ec_maq", c.maqraahUrl || "");
+      /* =================================================================
+         «إذا أضفتُ رابطاً لجوجل ميت وأردتُ أن أُزيله بعد ذلك يُزال معي»
+         -----------------------------------------------------------------
+         val تردُّ القيمةَ القديمة حين يكون الحقلُ فارغاً، وهو حارسٌ في
+         محلِّه: حقلٌ غائبٌ عن النموذج لا يُمحى بفراغ. لكنّ هذا الحقل
+         مرسومٌ أمام صاحبه، وإفراغُه قصدٌ لا سهو — فكان الرابطُ لا يُمحى
+         أبداً، ومقرأةُ الحلقة تُفتَّح بوجوده وحدَه فلا سبيلَ إلى إطفائها.
+
+         فيُقرأ من الحقل نفسِه متى كان مرسوماً، فإن غاب بقي ما في السجلّ
+         كما هو. ولا يُمسّ حقلٌ آخر.
+         ================================================================= */
+      { const elMaq = document.getElementById("ec_maq");
+        if (elMaq) c.maqraahUrl = String(elMaq.value || "").trim();
+        else c.maqraahUrl = c.maqraahUrl || ""; }
       { const aw = val("#ec_attwho", ""); if (ATT_WHO.some(x => x.k === aw)) c.attWho = aw; else delete c.attWho; }
 
       const ecFac = facTwoValue("ec_cx", "ec_mosque");
@@ -50598,7 +50611,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-0130";
+  var APP_BUILD = "20261015-0215";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
