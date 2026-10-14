@@ -28394,6 +28394,40 @@ window.tcrcAttSave = async function () {
     rec.studentId = String(sid);
     rec.date = String(d);
     rec.status = TATT.sel[sid];
+    /* =====================================================================
+       السجلُّ يحمل منشأتَه وفترتَه — كما يكتبه شاشةُ الحضور سواءً بسواء
+       ---------------------------------------------------------------------
+       «آخذُ الغيابَ وأضغط حفظ، وأدخل ثانيةً فلا تُحفظ البيانات».
+
+       وهذه الصحيفةُ كانت تكتب سجلّاً عارياً: معرّفُ الطالب والتاريخُ
+       والحلقةُ والحالة، بلا مسجدٍ ولا مجمّعٍ ولا فترة. وشاشةُ الحضور تكتب
+       المنشأةَ والفترةَ مع كلّ سجلّ — فافترق سجلّانِ لمجموعةٍ واحدة.
+
+       وما لا منشأةَ له لا يراه صاحبُ النطاق: facilityFilter تُسقط ما لا
+       مسجدَ له ولا مجمّع إلا أن تُدركه حلقتُه، و scopeStamp لا تبصم
+       للمعلّم (البصمُ لمديرِ المسجد). فيُكتب التحضيرُ ويغيب عمّن كتبه.
+
+       فيحمل السجلُّ منشأةَ الطالب وحلقتِه وفترةَ العمل. والقيمُ منقولةٌ من
+       سجلّ الطالب وحلقتِه لا مخترعة، ولا يتغيّر بها ارتباطُ طالبٍ ولا
+       حلقة: هذه حقولُ سجلِّ الحضور نفسِه.
+       ===================================================================== */
+    if (!rec.mosqueId) {
+      const mq = st.mosqueId || c.mosqueId || "";
+      if (mq) rec.mosqueId = String(mq);
+    }
+    if (!rec.complexId) {
+      const cx = st.complexId || c.complexId || "";
+      if (cx) rec.complexId = String(cx);
+    }
+    if (!rec.termId) {
+      const tm = (typeof activeTermId === "function" && activeTermId()) ||
+                 (typeof termOfDate === "function" ? termOfDate(d) : "");
+      if (tm) rec.termId = String(tm);
+    }
+    /* واليومُ من أيام دوامه؟ يُحفظ ليُقرأ في التقارير بلا إعادة حساب */
+    try {
+      if (typeof isDutyDay === "function") rec.onDuty = isDutyDay(st, d);
+    } catch (e) {}
     rec.by = ((STATE && STATE.user) || {}).email || "";
     rec.ts = Date.now();
     if (!old) DB.attendance.push(rec);
@@ -50611,7 +50645,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-0215";
+  var APP_BUILD = "20261015-0310";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
