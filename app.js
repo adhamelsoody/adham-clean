@@ -17617,6 +17617,29 @@ function asgEditStale(a) {
   if (String(a.kind || "").replace("_makeup", "") !== "hifz") return false;
   const fS = Number(a.fromS) || 0, fA = Number(a.fromA) || 0;
   if (!(fS > 0 && fA > 0)) return false;
+  /* =======================================================================
+     ولا يُنقض التعديلُ إلّا بتسميعٍ جاء بعده
+     -----------------------------------------------------------------------
+     «عدّلتُ الحفظَ البقرة ١ إلى ٥ فجاءني غيرُ الذي وضعتُه»: طالبٌ بلغ
+     حفظُه طه، فأعاده معلّمُه إلى البقرة عمداً — وكان مجرّدُ وقوع المدى في
+     المحفوظ يُسقط التعديلَ فيرتدّ الواجبُ إلى موضع الخطة (طه). وذلك نقضُ
+     قرارِ معلّمٍ بالظنّ: إعادةُ موضعٍ ضعيفٍ أمرٌ مقصودٌ لا خطأ.
+
+     فالميزانُ الزمن: الوسمُ لا يسقط إلّا إذا أُغلق واجبُ حفظٍ **بعد**
+     التعديل وتجاوز المحفوظُ مبتدأَه — وتلك هي صورةُ «واجبِ غدٍ مسّه
+     المعلّمُ قبل تسميع اليوم فجمد على ما سُمِّع». وما لا وقتَ لتعديله
+     (سجلٌّ قديمٌ قبل هذه الرقعة) يُحترم ولا يُنقض.
+     ======================================================================= */
+  const ed = Number(a.editedTs) || 0;
+  if (!ed) return false;
+  let last = 0;
+  ((typeof asgOf === "function") ? asgOf(a.studentId) : []).forEach(function (x) {
+    if (!x || String(x.kind || "").replace("_makeup", "") !== "hifz") return;
+    if (x.status !== "done") return;
+    const t = Number(x.closedAt) || Number(x.ts) || 0;
+    if (t > last) last = t;
+  });
+  if (!(last > ed)) return false;
   const span = (typeof hifzSpanOf === "function") ? hifzSpanOf(a.studentId) : null;
   if (!span) return false;
   const fwd = dirOf(a.direction) !== "backward";
@@ -29739,6 +29762,10 @@ window.tstuDutySave = function (id, opts) {
   /* وسمُ يدِ المعلّم على السجلّ: ما عدّله بنفسه لا يُعيد المولّدُ حسابَه
      من الخطة في اليوم التالي — فتعديلُه قرارٌ لا يُدهَس. */
   a.edited = true;
+  /* ووقتُ التعديل معه: به يُعرف أسبقَ التعديلُ التسميعَ أم جاء بعده —
+     وعليه وحدَه يُنقض الوسمُ في asgEditStale. فما عدّله المعلّمُ الآن لا
+     يُنقضه حفظٌ مضى، ولو وقع مداه في المحفوظ (كإعادةِ موضعٍ ضعيف). */
+  a.editedTs = Date.now();
   persistSet("assignments", a);
   if (!(opts && opts.chain)) {
     closeModal();
@@ -50526,7 +50553,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-2340";
+  var APP_BUILD = "20261015-0010";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
