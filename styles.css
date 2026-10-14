@@ -13042,3 +13042,32 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
 :root[data-theme="dark"] .att-bar.t-red { background: rgba(179,38,30,.18); color: #f0a9a2; }
 :root:not([data-theme="light"]) .att-bar.t-amber,
 :root[data-theme="dark"] .att-bar.t-amber { background: rgba(180,119,42,.18); color: #e0a862; }
+
+/* =========================================================================
+   استجابةٌ فوريّةٌ للمسّ — ما تُعطيه رياكت بلا رياكت
+   -------------------------------------------------------------------------
+   المتصفّحُ في الجوّال ينتظر نحو ثلاثِ مئةِ مللي بعد اللمسة ليعرف
+   أنقرةٌ هي أم تكبير، فيبدو الزرُّ بطيئاً وإن كان الكودُ فوريّاً.
+   و touch-action: manipulation تُلغي هذا الانتظار. ومعها انخفاضةٌ
+   محسوسةٌ عند الضغط، فتعرف اليدُ أنّ الضغطةَ وصلت قبل أن تُرسم الشاشة.
+   ========================================================================= */
+button, .btn, [role="button"], a.btn, label.switch,
+.tat-opt, .tat-row, .tcal-day, .tq-row, .sls-row, .tsd-step,
+.opt-row, .fac-tbtn, .tst-tool, .tcd-nav, .tcal-nav, .duty, .duty-listen {
+  touch-action: manipulation;
+}
+button:active, .btn:active, .fac-tbtn:active, .tst-tool:active,
+.tat-opt:active, .tcal-nav:active, .tcd-nav:active, .duty-listen:active {
+  transform: scale(.965);
+}
+button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
+  transition: transform .11s ease, background .15s ease,
+              color .15s ease, border-color .15s ease;
+}
+/* والصفوفُ التي تُفتح بالضغط تُضيء تحت الإصبع */
+.tq-row:active, .sls-row:active, .tat-row:active { filter: brightness(.97); }
+@media (prefers-reduced-motion: reduce) {
+  button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen { transition: none; }
+  button:active, .btn:active, .fac-tbtn:active, .tst-tool:active,
+  .tat-opt:active, .tcal-nav:active, .tcd-nav:active, .duty-listen:active { transform: none; }
+}

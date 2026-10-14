@@ -39512,45 +39512,51 @@ if (typeof window !== "undefined" && window.addEventListener) {
   });
 }
 
-function mount() {
+/* =========================================================================
+   الشاشةُ تُرسم أوّلاً، وما حولها يلحق
+   -------------------------------------------------------------------------
+   «أيُّ زرٍّ أو نافذةٍ تكون معمولةً باستخدام رياكت» — والذي تُعطيه رياكت
+   هنا هو الاستجابةُ الفوريّة، وسبيلُه أقصرُ من إطار عمل: كلُّ نقرةٍ كانت
+   تدفع — قبل أن تُرسم الشاشة — شعارَ المنشأة والفحوصَ الدوريّة والشاراتِ
+   وصورةَ الشريط والشريطَ السفليَّ والجانبيَّ ومقاسَ المصحف. فيقف الإصبعُ
+   على الزرّ ريثما تتمّ هذه كلُّها ثمّ تظهر الشاشة.
+
+   وهذه كلُّها زينةُ ما حول الشاشة لا الشاشةَ نفسَها: لا يتوقّف عليها ما
+   يُرسم. فصارت تُؤجَّل إلى ما بعد الرسم، فتظهر الشاشةُ في اللحظة ثمّ تلحق
+   هي في الإطار التالي. ولم يُحذف منها شيء.
+
+   واثنتان منها كانتا تُنادَيان قبل الرسم فتعملان على شاشةٍ ذهبت: ملءُ
+   صندوق المراسلة ومنتقي الأبناء، ومقاسُ أسطر المصحف الذي يُقاس بالعرض.
+   موضعُهما الصحيح بعد الرسم — وهو ما صرن إليه.
+   ========================================================================= */
+function mountChrome() {
   /* شعارُ المنشأة في القائمة الجانبية — يتبع ما نحن داخله */
   try { brandLogoSync(); } catch (e) {}
   /* الفحوص الثقيلة كلّ دقيقتين — والشارات مع كلّ رسم لأنها خفيفة */
   try { runPeriodicScans(); } catch (e) {}
-  /* مغادرةُ المصحف تُغلق مستمعَه اللحظيّ */
-  try { if (STATE.page !== "mushaf" && typeof musLiveStop === "function" && MUS_LIVE.off) musLiveStop(); } catch (e) {}
-
-  /* قوائمُ السور في أي شاشة: الفهرسُ يُجلب من الشبكة فقد لا يكون حاضراً
-     وقت الرسم، فتبقى القائمةُ فارغةً بلا سبب ظاهر. تُملأ بعد كلّ رسم —
-     والدالّةُ تنصرف فوراً إن لم تجد قائمةً تنتظر. */
-  try { setTimeout(function () { if (window.plFillSurahs) window.plFillSurahs(); }, 0); } catch (e) {}
-
   try { if (typeof offqBadge === "function") offqBadge(); } catch (e) {}
-
   /* منتقيات ما بعد الرسم: عناصرُها تُبنى مع الصفحة فتُملأ بعدها */
   try {
     if (document.getElementById("tmsgBox") && typeof tmsgRender === "function") tmsgRender();
     if (document.getElementById("usKidBox") && typeof usKidRender === "function") usKidRender();
   } catch (e) {}
   try { if (typeof updateNotifBadge === "function") updateNotifBadge(); } catch (e) {}
-
   /* صورة الشريط تُحدَّث مع كل رسم، فتظهر فور الحفظ بلا إعادة تحميل */
   try { if (window.refreshTopbarPhoto) window.refreshTopbarPhoto(); } catch (e) {}
-  /* الشريطان يُراجَعان مع كلّ رسم: auth.js يستبدل renderNav بدالّته هو
-     (renderNav = buildSidebarNav)، فلا يُنادى renderTabBar من خلالها —
-     فكان شريطُ المعلّم السفليُّ لا يُرسم في index.html أصلاً. ومراجعةُ
-     الجانبيّ هنا لازمةٌ كذلك: زرُّ الخروج يضعه auth.js بعد أوّل رسم. */
   try { renderTabBar(); } catch (e) {}
-  /* وزرُّ التحضير في الشريط العلويّ: يُركَّب للمعلّم ويُنزع لغيره */
   try { tchTopCheckBtn(); } catch (e) {}
-  /* وبقيّةُ الشريط تُخفى عنه: اسمُ البرنامج والتنبيهاتُ والتحضيرُ فقط */
   try { tchTopbarTrim(); } catch (e) {}
-  /* والشريطُ الجانبيُّ يُراجَع مع كلّ رسم: زرُّ الخروج يضعه auth.js بعد
-     أوّل رسمٍ للقائمة، فلا يكفي مراجعتُه عند إعادتها. */
   try { hideSideNavFor(STATE.iface); } catch (e) {}
   /* وأسطرُ المصحف تُضبط على عرض الورقة بعد الرسم — القياسُ لا يصحّ قبله */
   try { if (typeof musFit === "function") musFit(); } catch (e) {}
+  /* قوائمُ السور: الفهرسُ يُجلب من الشبكة فقد لا يكون حاضراً وقت الرسم */
+  try { if (window.plFillSurahs) window.plFillSurahs(); } catch (e) {}
+}
+window.mountChrome = mountChrome;
 
+function mount() {
+  /* مغادرةُ المصحف تُغلق مستمعَه اللحظيّ */
+  try { if (STATE.page !== "mushaf" && typeof musLiveStop === "function" && MUS_LIVE.off) musLiveStop(); } catch (e) {}
   /* الواجهة تُصحَّح عند كل رسم، فلا يكفي تعديل STATE.iface يدوياً للتحايل */
   const allow = allowedIface();
   if (allow && STATE.iface !== allow) {
@@ -39639,7 +39645,42 @@ function mount() {
   /* مشغّلُ القرآن المسموع: يُركَّب مرّةً ويبقى خارج #pageContent، فيستمرّ
      الصوتُ عند التنقّل بين الشاشات ولا يُعاد تحميله. */
   try { if (QA.rid) qaBarMount(); } catch (e) {}
+
+  /* وزينةُ ما حول الشاشة تلحق بعد أن ظهرت الشاشةُ للعين */
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(function () { try { mountChrome(); } catch (e) {} });
+  } else {
+    setTimeout(function () { try { mountChrome(); } catch (e) {} }, 0);
+  }
 }
+
+/* =========================================================================
+   نداءُ الرسم المكرَّرُ في الدورة الواحدة يُرسم مرّةً واحدة
+   -------------------------------------------------------------------------
+   النقرةُ الواحدةُ تستدعي mount أكثرَ من مرّةٍ أحياناً: الدالّةُ تُغلق
+   الواجبَ فترسم، ثمّ تكتب التنبيهَ فترسم، ثمّ يرسم المستمعُ بعدها. وكلُّ
+   رسمٍ يُعيد بناءَ الشاشة كاملةً — والنتيجةُ واحدة.
+
+   فصار الأوّلُ يُرسم في حينه كما كان (فمن يقرأ الشاشةَ بعد النداء مباشرةً
+   يجدها)، وما تلاه في الدورة نفسِها يُطوى في رسمٍ واحدٍ في الإطار التالي
+   — فيُرى آخرُ حالٍ ولا يُبنى الشيءُ ثلاثاً. ولا يسقط رسمٌ ألبتّة.
+   ========================================================================= */
+(function () {
+  var inTick = false, queued = 0;
+  var raw = mount;
+  window.mount = function () {
+    if (inTick) {
+      if (!queued && typeof requestAnimationFrame === "function") {
+        queued = requestAnimationFrame(function () { queued = 0; raw(); });
+      } else if (!queued) {
+        queued = setTimeout(function () { queued = 0; raw(); }, 0);
+      }
+      return;
+    }
+    inTick = true;
+    try { raw(); } finally { setTimeout(function () { inTick = false; }, 0); }
+  };
+})();
 
 /* =========================================================
    ANIMATIONS
@@ -50264,7 +50305,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-1040";
+  var APP_BUILD = "20261014-1145";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
