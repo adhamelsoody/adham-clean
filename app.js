@@ -28194,6 +28194,7 @@ window.tcrcAttSave = async function () {
   const d = typeof attDate === "function" ? attDate() : todayISO();
   const map = attMap(d, String(c.id));
   let ok = 0, fail = 0, skip = 0;
+  const jobs = [];
   if (!Array.isArray(DB.attendance)) DB.attendance = [];
 
   for (const sid of Object.keys(TATT.sel)) {
@@ -28229,11 +28230,26 @@ window.tcrcAttSave = async function () {
        ردَّها الخادم. فيطمئنُّ المعلّمُ وقد ضاع تحضيرُه — ولا يعلم إلا حين
        يعود فلا يجده. الآن يُنتظر الجوابُ ويُقال ما كان.
        ===================================================================== */
-    const r = await Promise.resolve(persistSet("attendance", rec));
-    if (r) ok++; else fail++;
+    /* =====================================================================
+       الكتابةُ تُطلق للجميع معاً ثمّ يُنتظر الجوابُ مرّةً واحدة
+       ---------------------------------------------------------------------
+       «عند اعتماد التحضير يأخذ وقتاً طويلاً حتى يستجيب»: كانت كلُّ كتابةٍ
+       تُنتظر قبل التي تليها، فحلقةٌ فيها عشرون طالباً عشرون ذهاباً وإياباً
+       إلى الخادم متتاليةً — ثوانٍ طويلةٌ والشاشةُ واقفة.
+
+       والكتاباتُ مستقلّةٌ لا يتوقّف بعضُها على بعض، فتُطلق جميعاً ثمّ
+       يُنتظر مجموعُها مرّةً واحدة: زمنُ أبطئها لا زمنُ مجموعها. ولا يتغيّر
+       شيءٌ في المكتوب ولا في الحساب — الصدقُ نفسُه: ما وصل يُعدّ وما رُدّ
+       يُقال.
+       ===================================================================== */
+    jobs.push(Promise.resolve(persistSet("attendance", rec))
+      .then(function (r) { if (r) ok++; else fail++; })
+      .catch(function () { fail++; }));
   }
 
+  /* والنافذةُ تُغلق فوراً: العملُ جارٍ والنتيجةُ تُقال عند تمامه */
   closeModal();
+  await Promise.all(jobs);
   if (fail) {
     showToast("لم يصل تحضيرُ " + toArabicDigits(fail) + " من " +
               toArabicDigits(ok + fail) + " — الخادمُ ردَّ الكتابة", "warn");
@@ -28453,6 +28469,9 @@ function teacherStudent() {
     ${pageHead(st.name || "الطالب", (c && c.name) || st.circle || "", backArrow())}
     ${tools}
     <div style="height:14px"></div>
+    ${/* علامةُ الغياب على بطاقته — «توضّح أنّه غائبٌ أو مستأذن» */
+      (typeof attAbsentBar === "function"
+        ? attAbsentBar(st.id, (typeof tstuDay === "function" ? tstuDay() : ""), false) : "")}
     ${tstuStatCards(st)}
     <div class="card">${duties}</div>
   </div>`;
@@ -30564,6 +30583,9 @@ window.recvOpen = function (asgId) {
     showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
   }
   if (a.status === "done") { showToast("هذا الواجبُ معتمَدٌ أصلاً", "warn"); return; }
+  /* والغائبُ لا يُسمَّع له: حالتُه اليومَ تمنع قبل أن يُثبَّت له سجلّ */
+  if (typeof attBlocksRecite === "function" &&
+      attBlocksRecite(a.studentId, a.date)) return;
   /* وواجبُ يومٍ لم يأتِ لا يُقيَّم — ولا يُثبَّت له سجلٌّ قبل يومه */
   if (typeof asgNotYet === "function" && asgNotYet(a)) {
     showToast(asgNotYetMsg(a), "warn"); return;
@@ -30774,6 +30796,10 @@ window.recvSave = function () {
     termId: typeof activeTermId === "function" ? (activeTermId() || "") : "",
     by: u.email || "", ts: Date.now()
   };
+
+  /* والحارسُ على الحفظ كذلك: لو بُدّل تحضيرُه إلى «غائب» والنافذةُ مفتوحة */
+  if (typeof attBlocksRecite === "function" &&
+      attBlocksRecite(a.studentId, a.date)) return;
 
   if (!Array.isArray(DB.recitations)) DB.recitations = [];
   DB.recitations.push(rec);
@@ -38099,6 +38125,8 @@ function studentDashboard() {
   return `<div class="page stu-home">
     ${stuHero(st)}
     ${kidSwitcher()}
+    ${/* «وفي موقع الطالب يبيّن عنده أنّه غاب اليوم» */
+      (typeof attAbsentBar === "function" ? attAbsentBar(st.id, todayISO(), true) : "")}
     ${stuAppOn("home.tasks") ? stuTasksCard(st) : ""}
     <div style="height:16px"></div>
     <div class="dash-top">
@@ -44043,6 +44071,53 @@ function attWhoOf(circleId) {
             (DB.circles || []).find(x => String(x.id) === String(circleId || ""));
   const v = c && c.attWho;
   return ATT_WHO.some(x => x.k === v) ? v : attCfg(c && c.mosqueId).who;
+}
+
+/* =========================================================================
+   حالةُ حضور الطالب في يومٍ — ومنها يُعرف أغائبٌ هو
+   -------------------------------------------------------------------------
+   «عندما يضع المعلّمُ أنّ الطالب غائبٌ لا يُسمِّع له، ويكون على اسمه علامةٌ
+   تبيّن أنّه غائبٌ أو مستأذن». فتُقرأ الحالةُ من سجلّ الحضور مرّةً واحدةً
+   وتُستعمل في الحارس وفي العلامات — قراءةٌ محضة.
+   ========================================================================= */
+function attStatusOf(studentId, dateISO) {
+  const d = String(dateISO || (typeof attDate === "function" ? attDate() : todayISO()));
+  const r = (Array.isArray(DB.attendance) ? DB.attendance : [])
+    .filter(x => x && String(x.studentId) === String(studentId) && String(x.date) === d)
+    .sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
+  return r ? { status: String(r.status || ""), kind: r.kind || "", rec: r } : null;
+}
+
+/* الغيابُ وأخواتُه: ما لا يكون الطالبُ فيه حاضراً في الحلقة */
+function attIsAbsent(status) {
+  const v = String(status || "");
+  return v === "غائب" || v === "مستأذن" || v === "معذور";
+}
+
+/* علامةُ الغياب: شريطٌ ظاهرٌ على بطاقة الطالب وفي صفحته هو */
+function attAbsentBar(studentId, dateISO, forStudent) {
+  const a = attStatusOf(studentId, dateISO);
+  if (!a || !attIsAbsent(a.status)) return "";
+  const lbl = (typeof attLabel === "function") ? attLabel(a.status, a.kind) : a.status;
+  const ico = (typeof attStateIcon === "function") ? attStateIcon(a.status) : "alert";
+  return `<div class="att-bar ${esc((typeof ATT_TINT !== "undefined" &&
+      ATT_TINT[a.status]) || "t-amber")}">
+    ${ic(ico, 16)}<strong>${esc(forStudent ? ("سُجِّلتَ اليومَ: " + lbl)
+      : ("مُسجَّلٌ اليومَ: " + lbl))}</strong>
+    <small>${esc(forStudent ? "لا تسميعَ لك اليوم — راجع معلّمك إن حضرت"
+      : "لا تسميعَ له اليوم حتى يُبدَّل تحضيرُه")}</small></div>`;
+}
+
+/* هل يُسمَّع لهذا الطالب اليوم؟ الغائبُ لا يُسمَّع له */
+function attBlocksRecite(studentId, dateISO, silent) {
+  const a = attStatusOf(studentId, dateISO);
+  if (!a || !attIsAbsent(a.status)) return false;
+  if (!silent && typeof showToast === "function") {
+    showToast("الطالبُ مُسجَّلٌ اليومَ «" +
+      (typeof attLabel === "function" ? attLabel(a.status, a.kind) : a.status) +
+      "» — لا تسميعَ له. غيّر تحضيرَه إن حضر.", "warn");
+  }
+  return true;
 }
 
 /* هل يحضّر هذا المستخدم في هذه الحلقة؟ المالكُ يبقى مخرجاً للطوارئ */
@@ -50189,7 +50264,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261014-1000";
+  var APP_BUILD = "20261014-1040";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

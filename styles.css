@@ -13022,3 +13022,23 @@ html.tch-boot .topbar .topbar-left { margin-inline-start: auto; }
 
 /* وزرُّ المقرأة في شريط الحلقة عند المعلّم لا يتمدّد على السطر */
 .tq-bar .maq-btn { flex: 0 0 auto; }
+
+/* =========================================================================
+   شريطُ الغياب — على بطاقة الطالب عند المعلّم وفي صفحة الطالب
+   ========================================================================= */
+.att-bar {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  padding: 11px 14px; margin: 0 0 14px; border-radius: 12px;
+  background: var(--border-soft); color: var(--text);
+  font-size: 13px; line-height: 1.6;
+}
+.att-bar strong { font-weight: 800; }
+.att-bar small { font-size: 11.5px; color: var(--text-muted); width: 100%; }
+.att-bar svg { flex: 0 0 auto; }
+.att-bar.t-red    { background: rgba(179, 38, 30, .10); color: #8c1d18; }
+.att-bar.t-amber  { background: rgba(180, 119, 42, .12); color: #9a6420; }
+.att-bar.t-gray   { background: var(--border-soft); color: var(--text-muted); }
+:root:not([data-theme="light"]) .att-bar.t-red,
+:root[data-theme="dark"] .att-bar.t-red { background: rgba(179,38,30,.18); color: #f0a9a2; }
+:root:not([data-theme="light"]) .att-bar.t-amber,
+:root[data-theme="dark"] .att-bar.t-amber { background: rgba(180,119,42,.18); color: #e0a862; }
