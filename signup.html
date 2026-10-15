@@ -172,6 +172,23 @@
         </select>
       </div>
 
+      <!-- =================================================================
+           المسجدُ الذي ينضمّ إليه
+           -----------------------------------------------------------------
+           «عند تسجيل الطالب لأوّل مرّة تكون خانةٌ يتبع لأيّ مسجد… يرى كلّ
+           المساجد ويختار منهم»، ويتحوّل طلبُه إلى مدير ذلك المسجد.
+
+           والقائمةُ تُملأ من فهرسٍ علنيٍّ لا يحمل إلّا المعرّفَ والاسم —
+           لا رابطَ مقرأةٍ ولا رقمَ مشرف.
+           ================================================================= -->
+      <div class="f" id="mosqueBox" style="grid-column:1/-1">
+        <label for="mosque">المسجد الذي تنضمّ إليه <i>*</i></label>
+        <select id="mosque">
+          <option value="">— جارٍ تحميل المساجد… —</option>
+        </select>
+        <div class="hint" id="mosqueHint">يصل طلبُك إلى مدير هذا المسجد</div>
+      </div>
+
       <div class="f">
         <label for="pass">كلمة المرور <i>*</i></label>
         <input id="pass" type="password" dir="ltr" placeholder="********" autocomplete="new-password">
@@ -201,7 +218,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="firebase-config.js?v=202610151320"></script>
+<script src="firebase-config.js?v=202610151430"></script>
 <script>
 (function () {
   "use strict";
@@ -221,6 +238,51 @@
   });
 
   /* ====================================================================
+     قائمةُ المساجد — من الفهرس العلنيّ
+     --------------------------------------------------------------------
+     مستندٌ واحدٌ publicIndex/mosques فيه {id, name} لكلّ مسجدٍ فعّال.
+     ولا تُسرَد مجموعةُ المساجد: صفحةُ التسجيل يفتحها من لا حسابَ له.
+
+     وإن تعذّرت القراءةُ (قواعدُ لم تُنشر بعد، أو انقطاعُ شبكة) لم يُغلَق
+     التسجيل: يُقال إنّ الاختيارَ غيرُ متاحٍ الآن، ويمضي الطلبُ بلا مسجدٍ
+     فتُسنده الإدارة.
+     -------------------------------------------------------------------- */
+  var mosqueBox  = document.getElementById("mosqueBox");
+  var mosqueSel  = document.getElementById("mosque");
+  var mosqueHint = document.getElementById("mosqueHint");
+  var mosquesOk  = false;
+
+  function fillMosques(items) {
+    var html = '<option value="">— اختر المسجد —</option>';
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i] || {};
+      if (!it.id || !it.name) continue;
+      html += '<option value="' + String(it.id).replace(/"/g, "&quot;") + '">' +
+              String(it.name).replace(/[<>&]/g, "") + "</option>";
+    }
+    mosqueSel.innerHTML = html;
+    mosquesOk = items.length > 0;
+    if (!mosquesOk) {
+      mosqueSel.innerHTML = '<option value="">— لا مساجد متاحة —</option>';
+      mosqueHint.textContent = "لا مساجد متاحةً الآن — سيُسنِدك المشرفُ بعد الاعتماد.";
+    }
+  }
+
+  (function loadMosques() {
+    try {
+      db.collection("publicIndex").doc("mosques").get().then(function (snap) {
+        var d = snap && snap.exists ? (snap.data() || {}) : {};
+        fillMosques(Array.isArray(d.items) ? d.items : []);
+      }).catch(function () {
+        mosqueSel.innerHTML = '<option value="">— الاختيار غير متاح الآن —</option>';
+        mosqueHint.textContent = "تعذّر تحميلُ المساجد — أرسِل طلبَك وستُسنِدك الإدارة.";
+      });
+    } catch (e) {
+      mosqueSel.innerHTML = '<option value="">— الاختيار غير متاح الآن —</option>';
+    }
+  })();
+
+  /* ====================================================================
      صفوف الأبناء
      -------------------------------------------------------------------- */
   var kidsBox  = document.getElementById("kidsBox");
@@ -229,6 +291,9 @@
   function toggleKids() {
     kidsBox.style.display = (role === "parent") ? "" : "none";
     if (role === "parent" && !kidsList.children.length) addKidRow();
+    /* والمسجدُ للطالب ووليّ الأمر: طلبُهما يصل مديرَ المسجد. أمّا المعلّمُ
+       والمديرُ والمشرفُ فطلبُهم إلى مدير النظام، فلا يُسألون عنه. */
+    mosqueBox.style.display = (role === "student" || role === "parent") ? "" : "none";
   }
 
   function addKidRow() {
@@ -357,6 +422,12 @@
          الإدارة عند الاعتماد، فلا تُنال صلاحية إشراف بتسجيل ذاتي. */
       var selfRole = (role === "mosqueManager" || role === "complexManager" || role === "supervisor") ? "student" : role;
 
+      /* المسجدُ المختارُ يُكتب في requestedMosqueId لا في mosqueId:
+         الأوّلُ طلبٌ يبتّ فيه مديرُ المسجد، والثاني انتماءٌ لا يُكتب إلّا
+         بيدٍ مخوّلةٍ عند الاعتماد — فلا ينتسب أحدٌ إلى مسجدٍ بتسجيلٍ ذاتيّ. */
+      var reqMosque = (role === "student" || role === "parent")
+        ? (document.getElementById("mosque") || {}).value || "" : "";
+
       await db.collection("users").doc(uid).set({
         uid: uid,
         name: name,
@@ -370,6 +441,7 @@
         active: false,
         pending: true,
         selfSignup: true,
+        requestedMosqueId: reqMosque,
         createdAt: Date.now()
       }, { merge: true });
 

@@ -9169,7 +9169,12 @@ function urqFacName(u) {
   const m = (DB.mosques || []).find(x => String(x.id) === String((u && u.mosqueId) || ""));
   if (m) return m.name || "—";
   const c = (DB.complexes || []).find(x => String(x.id) === String((u && u.complexId) || ""));
-  return c ? (c.name || "—") : "—";
+  if (c) return c.name || "—";
+  /* ولمن لم يُسنَد بعد: المسجدُ الذي اختاره بنفسه عند التسجيل — يُقال
+     إنّه طلبٌ لا انتماء، فلا يُحسب المسجّلُ عضواً قبل الاعتماد. */
+  const rq = (DB.mosques || []).find(x =>
+    String(x.id) === String((u && u.requestedMosqueId) || ""));
+  return rq ? ("طلب: " + (rq.name || "—")) : "—";
 }
 
 function selfSignupRequests() {
@@ -9179,6 +9184,18 @@ function selfSignupRequests() {
        ولا يُعلم به. وعلامةُ pending تُكتب عند الإنشاء الموقوف وتُمحى عند
        البتّ، فلا يعود الموقوفُ بعد تفعيلٍ «طلباً». */
     .filter(u => u && u.active === false && (u.selfSignup === true || u.pending === true))
+    /* =======================================================================
+       «ومدير النظام يكون هو المسؤول عن طلبات المعلّمين والمديرين والمشرفين»
+       -----------------------------------------------------------------------
+       فطلبُ الطالب ووليِّ الأمر يبتّ فيه مديرُ المسجد الذي اختاره (ومديرُ
+       مجمّعه)، وطلبُ المعلّم والمدير والمشرف لا يراه إلّا مديرُ النظام.
+       ولا يُحجب عن مدير النظام شيء: هو يرى الجميع.
+       ======================================================================= */
+    .filter(u => {
+      if (typeof isTopAdmin === "function" && isTopAdmin()) return true;
+      const rk = String(u.requestedRole || u.role || "student");
+      return rk === "student" || rk === "parent";
+    })
     .map(u => {
       const roleAr = (USER_ROLES.find(x => x.k === (u.requestedRole || u.role)) || {}).h ||
               (u.requestedRole === "parent" ? "ولي أمر" :
@@ -9194,6 +9211,7 @@ function selfSignupRequests() {
         roleKey: u.requestedRole || u.role || "student",
         roleAr: roleAr,
         facId: u.complexId || u.mosqueId || "",
+        requestedMosqueId: u.requestedMosqueId || "",
         /* أعمدةُ الجدول: كانت تُقرأ من مفاتيحَ لا وجودَ لها هنا فتظهر
            شَرَطاتٍ في كلّ صفّ — تُملأ الآن بأسمائها. */
         as: roleAr,
@@ -9272,6 +9290,26 @@ window.urqDecide = function (to, ids) {
         u.active = true;
         u.pending = false;
         if (u.requestedRole) u.role = u.requestedRole;
+        /* =================================================================
+           هنا — وهنا وحدَه — يصير الطلبُ انتماءً
+           -----------------------------------------------------------------
+           المسجدُ الذي اختاره المسجّلُ بنفسه بقي طلباً (requestedMosqueId)
+           ولم يُكتب في ارتباطه. فإذا اعتمده مسؤولٌ مخوَّلٌ بإجراءٍ صريحٍ
+           داخل النظام — وهو هذا الزرّ — كُتب مسجدُه ومجمّعُه.
+
+           ولا يُدهس ارتباطٌ قائم: من أسندته الإدارةُ إلى مسجدٍ قبل البتّ
+           يبقى على ما أُسنِد.
+           ================================================================= */
+        const rqId = String(u.requestedMosqueId || "");
+        if (rqId && !u.mosqueId) {
+          const mq0 = (DB.mosques || []).find(x => String(x.id) === rqId);
+          if (mq0) {
+            u.mosqueId = String(mq0.id);
+            u.mosque = mq0.name || "";
+            if (mq0.complexId && !u.complexId) u.complexId = String(mq0.complexId);
+          }
+        }
+        delete u.requestedMosqueId;
         u.approvedAt = Date.now();
         u.approvedBy = ((STATE && STATE.user) || {}).email || "";
       } else {
@@ -40406,6 +40444,39 @@ function circleTypeOptions(mosqueId, complexId) {
 }
 
 /* عدد طلاب الحلقة محسوباً — الحقل students كان يُكتب صفراً ولا يُحدَّث */
+/* =========================================================================
+   فهرسُ المساجد العلنيّ — لصفحة التسجيل وحدَها
+   -------------------------------------------------------------------------
+   «عند تسجيل الطالب لأوّل مرّة تكون خانةٌ يتبع لأيّ مسجد… يرى كلّ المساجد
+   ويختار منهم».
+
+   وصفحةُ التسجيل يفتحها من لا حسابَ له، ولا يقرأ مجموعةَ المساجد إلّا
+   حسابٌ فعّال. ولم تُفتح المجموعةُ للعامّة: مستندُ المسجد يحمل رابطَ
+   مقرأته ورقمَ مشرفه. فيُكتب مستندٌ واحدٌ لا يحمل إلّا المعرّفَ والاسمَ
+   وتبعيّةَ المجمّع — قدرَ ما تحتاجه القائمةُ المنسدلة ولا حرفَ زيادة.
+
+   ويُعاد بناؤه عند كلّ حفظِ مسجد، فلا يحتاج صيانةً ولا زرّاً.
+   ========================================================================= */
+function pubMosqueIndexBuild() {
+  const items = (Array.isArray(DB.mosques) ? DB.mosques : [])
+    .filter(m => m && m.status !== "متوقف" && String(m.name || "").trim())
+    .map(m => ({ id: String(m.id), name: String(m.name),
+                 cx: String(m.complexId || "") }))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), "ar"));
+  return { id: "mosques", items: items, ts: Date.now() };
+}
+
+window.pubMosqueIndexSync = function () {
+  try {
+    const db = typeof FDB === "function" ? FDB() : null;
+    if (!db) return Promise.resolve(false);
+    /* لا تمرُّ بـ persistSet: ليست من مجموعات النظام ولا تُحمَّل معها،
+       وهي فهرسُ عرضٍ لا سجلُّ بيانات. */
+    return db.collection("publicIndex").doc("mosques")
+      .set(pubMosqueIndexBuild()).then(() => true).catch(() => false);
+  } catch (e) { return Promise.resolve(false); }
+};
+
 function circleCount(c) {
   if (!c) return 0;
   return (cur("students") || []).filter(s =>
@@ -46971,6 +47042,8 @@ document.addEventListener("click", (e) => {
       m.phone = val("#ecx_phone", m.phone || "");
       m.status = val("#ecx_status", m.status);
       persistSet("mosques", m);
+      /* وفهرسُ صفحة التسجيل يتبع الاسمَ والحالة */
+      try { if (window.pubMosqueIndexSync) window.pubMosqueIndexSync(); } catch (e) {}
       closeModal(); mount();
       showToast("تم حفظ تعديلات المسجد");
       break;
@@ -47347,6 +47420,7 @@ document.addEventListener("click", (e) => {
         /* لا تُخزَّن أعداد: كانت أصفاراً جامدة تُفضَّل على الحساب فتحجبه */
         status: val("#m_status", "نشط"), attendance: 0, plan: 0 };
       DB.mosques.push(o); persistSet("mosques", o);
+      try { if (window.pubMosqueIndexSync) window.pubMosqueIndexSync(); } catch (e) {}
       closeModal(); renderNav(); mount();
       showToast(mCx ? "أُضيف المسجد إلى " + complexName(mCx) : "أُضيف المسجد كمسجد مستقل");
       break;
@@ -48997,7 +49071,34 @@ function facilityFilter(coll, raw) {
          وهو لا يحمل بياناتِ منشأةٍ أخرى ولا صلاحيةً — فلا يُعيد التسرّبَ
          الذي أُغلق. وبمجرّد اعتماده يُسنَد إلى منشأةٍ فيخضع للنطاق كغيره
          (urqDecide يحذف selfSignup بعد البتّ). */
-      if (u.selfSignup === true && u.active === false && !userScopeIds(u).length) return true;
+      /* ومن اختار مسجداً بعينه لا يَعمّ: يُوجَّه إلى مديره وحدَه — انظر
+         الفقرة التالية. فالاستثناءُ لمن لم يختر، وهو الحالُ قبل هذه الرقعة. */
+      if (u.selfSignup === true && u.active === false && !userScopeIds(u).length
+          && !String(u.requestedMosqueId || "")) return true;
+
+      /* =====================================================================
+         طلبُ الانضمام يصل من اختاره المسجّل
+         ---------------------------------------------------------------------
+         «ولمّا يختار أيّ مسجد يتحوّل طلبُ انضمامه إلى مدير المسجد أو مدير
+         المجمّع».
+
+         والمسجدُ المختارُ يُكتب في requestedMosqueId لا في mosqueId: الأوّلُ
+         طلبٌ، والثاني انتماءٌ لا يُكتب إلّا بيد مخوَّلٍ عند الاعتماد — وهي
+         قاعدةُ المشروع في بيانات الارتباط.
+
+         فيُقرأ هنا للمعلَّقين وحدَهم (موقوفٌ بانتظار البتّ): يراه مديرُ
+         ذلك المسجد، ومديرُ المجمّع الذي يتبعه المسجد. ولا يمنحه الطلبُ
+         شيئاً: الحسابُ موقوفٌ حتى يُعتمد.
+         ===================================================================== */
+      if (u.active === false && (u.selfSignup === true || u.pending === true)) {
+        const rq = String(u.requestedMosqueId || "");
+        if (rq) {
+          if (mqAll.indexOf(rq) > -1) return true;
+          const mq0 = (Array.isArray(DB.mosques) ? DB.mosques : [])
+            .find(x => x && String(x.id) === rq);
+          if (mq0 && cxWide.indexOf(String(mq0.complexId || "")) > -1) return true;
+        }
+      }
 
       return userScopeIds(u).some(k => {
         const p = String(k).split(":");
@@ -50773,7 +50874,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-1320";
+  var APP_BUILD = "20261015-1430";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
