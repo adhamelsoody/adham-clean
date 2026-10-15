@@ -30560,18 +30560,112 @@ function tsdReactSheet(cfg) {
       try { if (typeof window.tsdQtyRange === "function") window.tsdQtyRange(); } catch (e) {}
     });
 
+    /* وسمُ يدِ المعلّم: لا يُوسَم ما أطلقه النظامُ نفسُه — tsdQtyRange
+       تكتب في سورة المنتهى وتُطلق change وهي تعلِّم __tsdSys، فيُحترم. */
     const touch = function () {
+      if (window.__tsdSys) return;
       try { if (typeof window.tsdTouch === "function") window.tsdTouch(); } catch (e) {}
     };
 
-    const sOpts = function (sel) {
-      if (surahs.length) {
-        return surahs.map(function (x) {
-          return h("option", { key: x.i, value: x.i }, x.i + ". " + x.n);
+    /* =====================================================================
+       منتقي السورة — «وفي قائمة السور خلّيها بروفيشنال»
+       ---------------------------------------------------------------------
+       القائمةُ المنسدلةُ أربعَ عشرةَ ومئةُ سورةٍ لا تُبحث ولا تُقرأ: من
+       أراد «الأنفال» نزل إليها بعينه. فصار الظاهرُ زرّاً يفتح لوحةً فيها
+       بحثٌ وقائمةٌ مصفّاةٌ تُعاد رسمُها مع كلّ حرف، ويُعلَّم فيها المختارُ.
+
+       و<select> الأصليُّ باقٍ بمعرّفه وخياراته، مخفيّاً لا محذوفاً: منه
+       يقرأ ayahCap وإليه يكتب tsdQtyRange قيمةَ سورةِ المنتهى ثمّ يُطلق
+       change. فيُنصَت إليه، فيتبعه الزرُّ الظاهر — فلا يفترق ما يُرى عمّا
+       يقرؤه الحفظ.
+       ===================================================================== */
+    const SurahPick = function (props) {
+      const [open, setOpen] = R.useState(false);
+      const [q, setQ] = R.useState("");
+      const [cur, setCur] = R.useState(String(props.value || 1));
+      const boxRef = R.useRef(null);
+
+      /* نقرةٌ خارج اللوحة تُغلقها */
+      R.useEffect(function () {
+        if (!open) return;
+        const away = function (e) {
+          if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+        };
+        document.addEventListener("mousedown", away);
+        return function () { document.removeEventListener("mousedown", away); };
+      }, [open]);
+
+      const label = function () {
+        const n = Number(cur) || 0;
+        /* الأرقامُ عربيةٌ كعُرف المشروع — والقيمةُ في <select> لاتينيةٌ كما
+           يقرؤها الحفظ، فلا يتأثّر بها شيء. */
+        const rec = surahs.find(function (x) { return Number(x.i) === n; });
+        return rec ? (toArabicDigits(rec.i) + ". " + rec.n) : (surahName(n) || "—");
+      };
+
+      const hits = function () {
+        const s = String(q).trim().replace(/\s+/g, " ");
+        if (!s) return surahs;
+        /* بحثٌ بالاسم وبرقم السورة معاً */
+        return surahs.filter(function (x) {
+          return String(x.n).indexOf(s) > -1 || String(x.i) === s ||
+                 String(x.i).indexOf(s) === 0;
         });
-      }
-      return [h("option", { key: "one", value: Number(sel) || 1 },
-                surahName(sel) || "—")];
+      };
+
+      const pick = function (i) {
+        const el = document.getElementById(props.id);
+        setCur(String(i)); setOpen(false); setQ("");
+        if (!el) return;
+        el.value = String(i);
+        /* حدثُ يدٍ لا حدثُ نظام: يُوسَم تعديلاً كما لو بُدّلت القائمة */
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+
+      const list = hits();
+      return h("span", { className: "sura-pick", ref: boxRef },
+        /* القائمةُ الأصليّةُ مخفيّةٌ وباقيةٌ — هي مصدرُ الحقيقة للحفظ */
+        h("select", {
+          id: props.id, className: "tsd-in tsd-sura sura-src",
+          defaultValue: String(props.value || 1), "aria-hidden": "true", tabIndex: -1,
+          onChange: function (e) {
+            setCur(String(e.target.value));
+            if (props.onChange) props.onChange(e);
+          }
+        }, surahs.length
+            ? surahs.map(function (x) {
+                return h("option", { key: x.i, value: x.i }, x.i + ". " + x.n);
+              })
+            : [h("option", { key: "one", value: Number(props.value) || 1 },
+                 surahName(props.value) || "—")]),
+        h("button", {
+          type: "button", className: "sura-btn" + (open ? " on" : ""),
+          "aria-expanded": open ? "true" : "false", "aria-label": props.label,
+          onClick: function () { setOpen(!open); setQ(""); }
+        }, h("span", { className: "sura-cur" }, label()),
+           h("span", { className: "sura-caret" }, "▾")),
+        open ? h("span", { className: "sura-pop" },
+          h("input", {
+            className: "sura-q", autoFocus: true, value: q,
+            placeholder: "ابحث باسم السورة أو رقمها…",
+            onChange: function (e) { setQ(e.target.value); },
+            onKeyDown: function (e) {
+              if (e.key === "Escape") setOpen(false);
+              if (e.key === "Enter" && list.length) { e.preventDefault(); pick(list[0].i); }
+            }
+          }),
+          h("span", { className: "sura-list" },
+            list.length
+              ? list.map(function (x) {
+                  return h("button", {
+                    key: x.i, type: "button",
+                    className: "sura-opt" + (String(x.i) === String(cur) ? " on" : ""),
+                    onClick: function () { pick(x.i); }
+                  }, h("b", null, toArabicDigits(x.i)), x.n);
+                })
+              : h("span", { className: "sura-none" }, "لا سورةَ بهذا الاسم")),
+          h("span", { className: "sura-foot" },
+            toArabicDigits(list.length) + " من " + toArabicDigits(surahs.length || 114))) : null);
     };
 
     /* خانةُ الآية: قائمةٌ بلا خياراتٍ من React — ayahCap تملؤها بحدودها،
@@ -30617,15 +30711,15 @@ function tsdReactSheet(cfg) {
       h("span", { className: "tsd-k" }, "من"),
       h("span", { className: "tsd-v" }, cfg.canFrom && !cfg.locked
         ? h("span", { className: "tsd-pair tsd-pair-w" },
-            h("select", {
-              id: "tsd_fS", className: "tsd-in tsd-sura", defaultValue: String(a.fromS || 1),
+            h(SurahPick, {
+              id: "tsd_fS", value: a.fromS || 1, label: "سورة الابتداء",
               onChange: function () {
                 touch();
                 window.ayahCap("tsd_fA", "tsd_fS");
                 window.ayahCap("tsd_tA");
                 window.tsdQtyRange(1);
               }
-            }, sOpts(a.fromS || 1)),
+            }),
             stepBox({ id: "tsd_fA", label: "من آية", value: ayahShow(a.fromS, cfg.fA0),
                       sura: "tsd_fS", sync: "tsd_tA", qty: true }))
         : ((a.fromS ? surahName(a.fromS) : "—") +
@@ -30637,15 +30731,14 @@ function tsdReactSheet(cfg) {
       h("span", { className: "tsd-k" }, "إلى"),
       h("span", { className: "tsd-v" }, cfg.canEnd && !cfg.locked
         ? h("span", { className: "tsd-pair tsd-pair-w" },
-            h("select", {
-              id: "tsd_tS", className: "tsd-in tsd-sura",
-              defaultValue: String(a.toS || a.fromS || 1),
+            h(SurahPick, {
+              id: "tsd_tS", value: a.toS || a.fromS || 1, label: "سورة المنتهى",
               onChange: function () {
                 touch();
                 window.ayahCap("tsd_tA", "tsd_tS");
                 window.tsdToManual();
               }
-            }, sOpts(a.toS || a.fromS || 1)),
+            }),
             stepBox({ id: "tsd_tA", label: "إلى آية",
                       value: ayahShow(a.toS || a.fromS, a.toA || 1),
                       sura: "tsd_tS", after: "tsd_fA", afterSura: "tsd_fS", manual: true }))
@@ -51372,7 +51465,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-2310";
+  var APP_BUILD = "20261016-0030";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

@@ -13095,3 +13095,77 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
    ليس تعديلَ بيانٍ ولا حذفاً بل قطعُ جلساتٍ وتسليمُ كلمةٍ جديدة. */
 .pt-act.a-key { background: #fdf3e3; color: #8a5a12; }
 .pt-act.a-key:hover { background: #f8e9cf; }
+
+/* =========================================================================
+   منتقي السورة في صحيفة الواجب — «وفي قائمة السور خلّيها بروفيشنال»
+   -------------------------------------------------------------------------
+   القائمةُ المنسدلةُ ١١٤ سورةً لا تُبحث. فصار الظاهرُ زرّاً يفتح لوحةَ
+   بحثٍ وقائمةً مصفّاة. و<select> الأصليُّ باقٍ مخفيّاً لا محذوفاً — منه
+   يقرأ ayahCap وإليه يكتب tsdQtyRange، فيُخفى بلا display:none لئلّا
+   يسقط من حسابِ المتصفّح.
+   ========================================================================= */
+.sura-pick { position: relative; display: inline-block; min-width: 0; flex: 1 1 auto; }
+.sura-src {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.sura-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; min-height: 40px; padding: 8px 12px; font: inherit; font-size: 14px;
+  color: var(--text, #1f3b3d); background: var(--card, #fff); cursor: pointer;
+  border: 1px solid var(--border, #e6eaea); border-radius: 10px; text-align: right;
+}
+.sura-btn:hover { border-color: #9fd9db; }
+.sura-btn.on { border-color: #4bdee4; box-shadow: 0 0 0 3px rgba(75, 222, 228, .16); }
+.sura-cur { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sura-caret { flex: 0 0 auto; font-size: 11px; color: #8ba0a1; }
+
+.sura-pop {
+  position: absolute; z-index: 40; top: calc(100% + 5px); right: 0; left: 0;
+  display: flex; flex-direction: column; min-width: 210px; padding: 8px;
+  background: var(--card, #fff); border: 1px solid var(--border, #e6eaea);
+  border-radius: 12px; box-shadow: 0 14px 34px rgba(12, 38, 38, .18);
+}
+.sura-q {
+  width: 100%; padding: 9px 11px; margin-bottom: 7px; font: inherit; font-size: 13px;
+  border: 1px solid var(--border, #e6eaea); border-radius: 9px; background: #f7fbfb;
+}
+.sura-q:focus { outline: 0; border-color: #4bdee4; background: #fff; }
+.sura-list { display: block; max-height: 232px; overflow-y: auto; }
+.sura-opt {
+  display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px;
+  font: inherit; font-size: 13.5px; color: var(--text, #1f3b3d); text-align: right;
+  background: none; border: 0; border-radius: 8px; cursor: pointer;
+}
+.sura-opt b {
+  flex: 0 0 34px; font-size: 11.5px; font-weight: 700; color: #8ba0a1;
+  text-align: center; padding: 2px 0; background: #f0f7f7; border-radius: 6px;
+}
+.sura-opt:hover, .sura-opt:focus { background: #f2fbfb; outline: 0; }
+.sura-opt.on { background: #e3f7f8; font-weight: 700; }
+.sura-opt.on b { color: #0f6f72; background: #cdeef0; }
+.sura-none { display: block; padding: 12px 10px; font-size: 12.5px; color: #909fa0; }
+.sura-foot {
+  display: block; padding: 6px 4px 1px; font-size: 11px; color: #9bacad;
+  border-top: 1px solid #eef3f3; margin-top: 6px;
+}
+
+:root:not([data-theme="light"]) .sura-btn,
+:root[data-theme="dark"] .sura-btn { background: #0c1f1e; border-color: #1f4746; color: #d8eceb; }
+:root:not([data-theme="light"]) .sura-pop,
+:root[data-theme="dark"] .sura-pop { background: #0c1f1e; border-color: #1f4746; }
+:root:not([data-theme="light"]) .sura-q,
+:root[data-theme="dark"] .sura-q { background: #102a29; border-color: #1f4746; color: #d8eceb; }
+:root:not([data-theme="light"]) .sura-opt,
+:root[data-theme="dark"] .sura-opt { color: #d8eceb; }
+:root:not([data-theme="light"]) .sura-opt:hover,
+:root[data-theme="dark"] .sura-opt:hover { background: #143433; }
+:root:not([data-theme="light"]) .sura-opt.on,
+:root[data-theme="dark"] .sura-opt.on { background: #17403e; }
+:root:not([data-theme="light"]) .sura-opt b,
+:root[data-theme="dark"] .sura-opt b { background: #16403e; color: #9fd9db; }
+
+@media (max-width: 420px) {
+  .sura-pop { left: auto; right: 0; min-width: 190px; }
+  .sura-list { max-height: 190px; }
+}
