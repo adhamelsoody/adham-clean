@@ -28339,6 +28339,23 @@ function asgProjectStarts(list, sid, dateISO, saved) {
   if (typeof rangeEnd !== "function" || typeof stepFrom !== "function") return;
   const day = String(dateISO || "");
   if (!day) return;
+  /* =======================================================================
+     اليومُ وما مضى لا يُقدَّر البتّة
+     -----------------------------------------------------------------------
+     «المعلّمُ يحدّد من البقرة ٥ إلى ١٠، فتذهب إلى الطالب سورةٌ أخرى
+     ومقاديرُ مختلفة، وتختلف عند الإدارة كذلك».
+
+     وسببُه أنّ فرعَ المرجع في هذه الدالّة كان بلا حارسٍ زمنيّ: فإن كان
+     للطالب واجبٌ مخزونٌ في يومٍ سابق، وبينه وبين اليوم أيّامٌ من أيّام
+     ركنه، أُزيح **واجبُ اليوم نفسِه** إلى ما بعدها — فرأى كلُّ طرفٍ شيئاً
+     غيرَ ما رآه الآخر بحسب ما بلغه مولّدُه.
+
+     والرصفُ إنّما هو تقديرٌ لما لم يأتِ بعد. أمّا اليومُ فله مصدرُه:
+     ما خزّنه المعلّم، وإلّا فموضعُ الخطة. فلا تُقدَّر إلّا الأيّامُ
+     التي بعد اليوم.
+     ======================================================================= */
+  const _td = (typeof todayISO === "function") ? todayISO() : "";
+  if (!_td || day <= _td) return;
   const plan = (cur("plans") || []).find(p => p && String(p.studentId) === String(sid));
   const all = (typeof asgOf === "function") ? asgOf(sid) : [];
   const savedIds = (saved || []).map(x => String(x && x.id));
@@ -28393,8 +28410,7 @@ function asgProjectStarts(list, sid, dateISO, saved) {
       n = cnt(ref.date, false);
       tag = "r" + ref.id + "|" + ref.toS + ":" + ref.toA;
     } else {
-      const td = (typeof todayISO === "function") ? todayISO() : "";
-      if (!td || day <= td) return;              /* اليومُ وما مضى: لا تقدير */
+      const td = _td;                            /* الحارسُ الزمنيُّ أعلاه */
       let base = null;
       try {
         base = (generateAssignments(sid, td) || [])
@@ -51787,7 +51803,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-1440";
+  var APP_BUILD = "20261016-1605";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
