@@ -3969,6 +3969,14 @@ window.ptRowOpen = function (ev, action, id) {
   if (action === "edit-teacher")  { modalEditTeacher(id); return; }
   if (action === "edit-circle")   { modalEditCircle(id);  return; }
   if (action === "panel-teacher") { panelTeacher(id); return; }
+  /* صفوفُ المشرفين والمدراء حساباتٌ في users لا سجلّاتُ كادرٍ في teachers،
+     فبطاقتُها بطاقةُ الحساب (userView) ومنها زرُّ التعديل. وكان صفُّ
+     المشرف لا يُفتح أصلاً، وصفُّ المدير يُنادى له نموذجُ المعلّم فيقول
+     «المعلم غير موجود» — فعلٌ خاطئٌ لا غيابُ فعل. */
+  if (action === "panel-user") {
+    if (typeof window.userView === "function") { window.userView(id); return; }
+    showToast("بطاقةُ الحساب غير متاحة", "warn"); return;
+  }
   panelStudent(id);
 };
 
@@ -4522,8 +4530,10 @@ function adminManagers() {
 
   return personTable({
     list: _list, title: _title, toolbar: "circles", actionsPanel: true,
-    /* صفُّ المشرف لا يفتح نموذجَ المعلّم: هو حسابٌ لا سجلُّ كادر */
-    rowPanel: _tab === "sups" ? "" : "edit-teacher",
+    /* صفُّ المشرف والمديرِ يفتح بطاقةَ حسابه: هما حسابان في users لا
+       سجلّا كادرٍ في teachers، فنموذجُ المعلّم لا يجدهما. والمعلّمون
+       وحدهم يفتحون نموذجَهم. */
+    rowPanel: _tab === "teachers" ? "edit-teacher" : "panel-user",
     /* «في مدراء المنشآت أريد أن يكون بداخلها المدراء والمشرفين»: تبويبُ
        المدراء كان يُمرَّر null فلا يُرسم أصلاً — فتُسمّى الصفحةُ «مدراء
        المنشآت» وليس فيها تبويبٌ للمدراء. فيُرسَم بعددهم كأخويه،
@@ -5965,6 +5975,9 @@ function adminSupervisors() {
     list, title: "المشرفين / ات", showCount: true,
     toolbar: "add", addLabel: "إضافة مشرف", addAction: "modal-user",
     searchHint: "إبحث عن مشرف", actionsPanel: true,
+    /* النقرُ على الصفّ يفتح بطاقةَ الحساب — كانت الصفحةُ بلا مدخلٍ إلى
+       التفاصيل أصلاً، فلا بطاقةَ ولا تعديلَ إلا من صفحةِ المستخدمين. */
+    rowPanel: "panel-user",
     empty: "المشرف هو مستخدم دوره «مشرف». أضِفه من صفحة المستخدمون والحسابات.",
     cols: [ colPhoto(), colName(), colState(),
       { h: "عدد الطلاب/ات", cell: p2 => `<td class="pt-num">${cur("students").filter(st => String(st.supervisorId) === String(p2.id)).length}</td>` },
@@ -51024,7 +51037,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-1710";
+  var APP_BUILD = "20261015-1835";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
