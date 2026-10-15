@@ -2313,6 +2313,7 @@ function adminStudents() {
           return `<td>${mq ? esc(mq) : `<span class="pt-muted">بلا مسجد</span>`}
             ${cxName ? `<div class="pt-muted" style="font-size:11.5px">${esc(cxName)}</div>` : ""}</td>`;
         } }]),
+      colIdNo(),
       { h: "الحلقة", cell: p2 => `<td class="${p2.circle && p2.circle !== "—" ? "" : "pt-muted"}">${esc(p2.circle && p2.circle !== "—" ? p2.circle : "بلا حلقة")}</td>` },
       { h: "المعلم", cell: p2 => `<td class="${p2.teacher ? "" : "pt-muted"}">${esc(p2.teacher || "بلا معلم")}</td>` },
       { h: "نوع الدوام", cell: p2 => `<td>${p2.attType === "دوام جزئي"
@@ -4228,6 +4229,22 @@ function colState() { return { h: "الحالة", cell: (p2, a) => `<td><span cl
 function colPhone() { return { h: "رقم الواتس", cell: p2 => `<td dir="ltr" class="pt-num">${esc(p2.phone || p2.whatsapp || "—")}</td>` }; }
 function colNat()   { return { h: "الجنسية", cell: p2 => `<td>${esc(p2.nationality || "المملكة العربية السعودية")}</td>` }; }
 
+/* =========================================================================
+   رقمُ الهوية في جداول الأشخاص
+   -------------------------------------------------------------------------
+   «أريد أن يظهر لي في بيانات المعلّم أو المدير أو المشرف أو الطالب رقمُ
+   الهوية».
+
+   وهو رقمُ الدخول نفسُه: حسابُ المستخدم يحمله في username، وسجلُّ الكادر
+   والطالب في idNo. فيُقرأ من أيّهما وُجد، ولا يُخترع له حقلٌ جديد.
+   ========================================================================= */
+function colIdNo()  {
+  return { h: "رقم الهوية", cell: p2 => {
+    const v = String((p2 && (p2.idNo || p2.username || p2.idNumber)) || "").trim();
+    return `<td dir="ltr" class="pt-num${v ? "" : " pt-muted"}">${esc(v || "—")}</td>`;
+  } };
+}
+
 /* تبويبا صفحة الكادر: المعلّمون والمدراء في مجموعةٍ واحدة، وقد صار
    بينهما فارقٌ مخزَّن (staffRole) — فيُفصلان في العرض أيضاً، وإلا فما
    فائدةُ التمييز. الافتراضُ المعلّمون: هم غالبُ المجموعة. */
@@ -4325,6 +4342,8 @@ function adminManagers() {
   const _acctMap = u => ({
     id: u.id, name: u.name || u.email || "—",
     photo: u.photo || "", phone: u.phone || u.whatsapp || "",
+    /* رقمُ الهوية هو رقمُ الدخول: username في حساب المستخدم */
+    idNo: u.username || u.idNo || "",
     nationality: u.nationality || "", status: u.active === false ? "متوقف" : "نشط",
     active: u.active !== false, _isSup: true,
     /* نطاقُ الحساب نصّاً: أيَّ منشأةٍ يدير — وإلا فالصفُّ اسمٌ بلا موضع */
@@ -4374,11 +4393,11 @@ function adminManagers() {
        وعمودُ «الإجراءات» حُذف: التعديلُ بالنقر على الصفّ، والباقي في
        لوحة الإجراءات جانباً، فلا يتكرّر الفعلُ في موضعين. */
     cols: (_tab === "teachers")
-      ? [ colPhoto(), colName(), colState(), colPhone(), colNat() ]
+      ? [ colPhoto(), colName(), colState(), colIdNo(), colPhone(), colNat() ]
       : [ colPhoto(), colName(), colState(),
           { h: "الدور",   cell: p2 => `<td>${esc(p2.roleAr || "—")}</td>` },
           { h: "المنشأة", cell: p2 => `<td class="${p2.scopeName ? "" : "pt-muted"}">${esc(p2.scopeName || "غير مربوط")}</td>` },
-          colPhone() ]
+          colIdNo(), colPhone() ]
   });
 }
 
@@ -50754,7 +50773,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-1230";
+  var APP_BUILD = "20261015-1320";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
