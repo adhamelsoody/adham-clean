@@ -28377,7 +28377,12 @@ function asgProjectStarts(list, sid, dateISO, saved) {
      ======================================================================= */
   const _td = (typeof todayISO === "function") ? todayISO() : "";
   if (!_td || day <= _td) return;
-  const plan = (cur("plans") || []).find(p => p && String(p.studentId) === String(sid));
+  /* الخطةُ تُقرأ كما يقرؤها المولّد: cur() يمرُّ بحصر المنشأة فقد يحجبها،
+     فتُحسب أيّامُ الركن بجدولةِ النظام العامّة بدل جدولة هذا الطالب، ويخلو
+     الرصفُ من موضعِ خطةٍ يقيس عليه. وهو العطلُ نفسُه المعالَج في
+     generateAssignments و advancePlanAfter. */
+  const plan = (typeof planOfStudent === "function" ? planOfStudent({ id: sid }) : null) ||
+    (cur("plans") || []).find(p => p && String(p.studentId) === String(sid));
   const all = (typeof asgOf === "function") ? asgOf(sid) : [];
   const savedIds = (saved || []).map(x => String(x && x.id));
 
@@ -28442,10 +28447,33 @@ function asgProjectStarts(list, sid, dateISO, saved) {
         base = (generateAssignments(sid, td) || [])
           .find(x => x && String(x.kind || "").replace("_makeup", "") === k) || null;
       } catch (e) { base = null; }
-      if (!base || !(Number(base.fromS) > 0)) return;
-      baseS = Number(base.fromS); baseA = Number(base.fromA) || 1;
-      n = cnt(td, true);
-      tag = "p" + td + "|" + baseS + ":" + baseA;
+      const hasBase = !!(base && Number(base.fromS) > 0);
+      if (hasBase) {
+        baseS = Number(base.fromS); baseA = Number(base.fromA) || 1;
+        tag = "p" + td + "|" + baseS + ":" + baseA;
+      } else {
+        /* =================================================================
+           واليومُ قد لا يكون من أيّام هذا الركن — وموضعُ الخطة باقٍ
+           -------------------------------------------------------------------
+           «يبدأ من البقرة وجهاً كلَّ يوم، فيعطيه النظامُ كلَّ يومٍ وجهاً
+           جديداً لا يكرّر واجبَ اليوم في غدٍ حتى تنتهي السورة».
+
+           وكان المقياسُ واجبَ اليومِ وحدَه: فإن كان اليومُ الخميسَ وأيّامُ
+           الحفظ من السبت إلى الأربعاء لم يجد المولّدُ للحفظ واجباً اليوم،
+           فانصرفت هذه الدالّةُ بلا تقدير — فوقفت أيّامُ الأسبوع كلُّها على
+           موضع الخطة الواحد: «البقرة ١» في السبت والأحد والاثنين سواء.
+
+           وموضعُ الخطة نفسُه مقياسٌ كافٍ: منه يُعدّ وجهٌ لكلّ يومٍ من أيّام
+           الركن. ولا يُعدّ اليومُ في الحسبة إلّا إن كان له فيه واجبٌ فعلاً،
+           وإلّا طُوي وجهٌ لم يُعطَ لأحد.
+           ================================================================= */
+        const _pS = Number(plan && (k === "hifz" ? plan.hifzFromS : plan.revFromS)) || 0;
+        const _pA = Number(plan && (k === "hifz" ? plan.hifzFromA : plan.revFromA)) || 1;
+        if (!_pS) return;
+        baseS = _pS; baseA = Math.max(1, _pA);
+        tag = "q" + td + "|" + baseS + ":" + baseA;
+      }
+      n = cnt(td, hasBase);
     }
     if (n < 1) return;                 /* لا يومَ بينهما: الحسبةُ القائمةُ صحيحة */
 
@@ -28461,11 +28489,32 @@ function asgProjectStarts(list, sid, dateISO, saved) {
       .then(function (e) {
         if (!e || !(Number(e.surah) > 0)) { TSTU_PRE_START[key] = 0; return; }
         const nx = stepFrom(Number(e.surah), Number(e.ayah), dir);
-        if (!nx || !(Number(nx.s) > 0) || !(Number(nx.a) > 0)) {
+        if (!nx || !(Number(nx.s) > 0)) { TSTU_PRE_START[key] = 0; return; }
+        if (Number(nx.a) > 0) {
+          TSTU_PRE_START[key] = [Number(nx.s), Number(nx.a)];
+          if (typeof mount === "function") mount();
+          return;
+        }
+        /* =================================================================
+           والتنازليُّ يعبر حدَّ السورة فتعود آيتُه صفراً
+           -------------------------------------------------------------------
+           stepFrom تُعلّم الصفرَ (needEnd) حين يقع الموضعُ على أوّل سورةٍ
+           فيكون التالي آخرَ التي قبلها — ورقمُ آخرِ آيةٍ لا يُعرف إلّا من
+           جدول المصحف. وكانت الدالّةُ تردُّ الصفرَ وتنصرف، فيبقى اليومُ
+           على موضعِ أمسِه بعينه: «الناس ١» في السبت والأحد سواء.
+
+           فيُسأل الجدولُ عن آخر آياتها كما تفعل fixBackwardStarts
+           بالواجبات المخزونة — ولا جدولَ أسماءٍ ولا تقديرَ هنا.
+           ================================================================= */
+        if (typeof Quran === "undefined" || !Quran.ayahCount) {
           TSTU_PRE_START[key] = 0; return;
         }
-        TSTU_PRE_START[key] = [Number(nx.s), Number(nx.a)];
-        if (typeof mount === "function") mount();
+        return Promise.resolve(Quran.ayahCount(Number(nx.s))).then(function (c) {
+          const _a = Number(c) || 0;
+          if (!_a) { TSTU_PRE_START[key] = 0; return; }
+          TSTU_PRE_START[key] = [Number(nx.s), _a];
+          if (typeof mount === "function") mount();
+        });
       })
       .catch(function () { TSTU_PRE_START[key] = 0; });
   });
@@ -51887,7 +51936,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-1930";
+  var APP_BUILD = "20261016-2110";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
