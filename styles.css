@@ -13089,3 +13089,9 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
   .fac-card .fac-stats-4 .fac-stat b { min-width: 32px; padding: 0 6px; font-size: 15px; }
   .fac-card .fac-stats-4 .fac-stat span { font-size: 10.5px; }
 }
+
+/* زرُّ «تعيين كلمة مرور» في لوحة إجراءات جدول الأشخاص — لمدير النظام
+   وحده. لونٌ كهرمانيّ يفصله عن «تعديل» الأخضر و«حذف» الأحمر، فالإجراءُ
+   ليس تعديلَ بيانٍ ولا حذفاً بل قطعُ جلساتٍ وتسليمُ كلمةٍ جديدة. */
+.pt-act.a-key { background: #fdf3e3; color: #8a5a12; }
+.pt-act.a-key:hover { background: #f8e9cf; }

@@ -8,6 +8,8 @@
                        قادراً على الدخول بعد حذف المستخدم من النظام.
      updateUserLogin   تعديل البريد أو رقم الهوية في المستند وفي Authentication
                        معاً — كان المستخدم يجد نفسه يدخل بالبريد القديم.
+                       ويعيّن كلمةَ مرورٍ جديدةً للمدير وحده: القديمةُ لا
+                       تُقرأ ولا تُخزَّن، فالتسليمُ بتعيينِ جديدةٍ لا بعرضها.
      resetPasswordSMS  إعادة تعيين كلمة المرور بعد التحقق من الجوال برمز SMS.
      listOrphans       كشف الحسابات اليتيمة في الاتجاهين.
      approveUser       اعتماد حساب معلّق وتفعيله بدور محدَّد.
@@ -133,7 +135,19 @@ exports.updateUserLogin = onCall(opts, async (req) => {
   let email    = String((req.data && req.data.email) || "").trim().toLowerCase();
   let username = String((req.data && req.data.username) || "").replace(/\D/g, "");
 
-  if (!email && !username) throw new HttpsError("invalid-argument", "لا جديد للحفظ.");
+  /* كلمةُ المرور لا تُقرأ من فايربيس ولا تُخزَّن في المشروع: الخادمُ يحفظها
+     مُلبَّدةً (hash) ولا يُرجعها لأحد، وملفُّ المستخدم لا يحمل منها شيئاً.
+     فسبيلُ الإدارة إلى تسليم حسابٍ ضاعت كلمتُه تعيينُ جديدةٍ لا عرضُ
+     القديمة — وهذا ما يفعله هذا الحقل، لمدير النظام وحده. */
+  const password = String((req.data && req.data.password) || "");
+
+  if (!email && !username && !password)
+    throw new HttpsError("invalid-argument", "لا جديد للحفظ.");
+  if (password) {
+    if (!isAdmin) throw new HttpsError("permission-denied", "تعيينُ كلمة المرور لمدير النظام وحده.");
+    if (password.length < 8)
+      throw new HttpsError("invalid-argument", "كلمة المرور ثمانية أحرف على الأقل.");
+  }
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     throw new HttpsError("invalid-argument", "صيغة البريد غير صحيحة.");
   }
@@ -153,7 +167,9 @@ exports.updateUserLogin = onCall(opts, async (req) => {
   const newUsername = username || target.username || "";
   const loginEmail  = email || (newUsername ? newUsername + "@mirath.id" : target.loginEmail);
 
-  if (loginEmail) {
+  /* بريدُ الدخول لا يُمسّ إن كان النداءُ لتعيين كلمة المرور وحدها —
+     وإلا أُعيد emailVerified إلى false بلا سبب. */
+  if (loginEmail && (email || username)) {
     try {
       await auth.updateUser(uid, { email: loginEmail, emailVerified: false });
     } catch (e) {
@@ -164,15 +180,25 @@ exports.updateUserLogin = onCall(opts, async (req) => {
     }
   }
 
-  const patch = { loginEmail };
-  if (email)    patch.email = email;
-  if (username) patch.username = username;
-  await db.doc(`users/${uid}`).set(patch, { merge: true });
+  if (password) {
+    await auth.updateUser(uid, { password });
+    /* إبطالُ الجلسات القائمة: من بيده الكلمةُ القديمة يخرج فوراً */
+    await auth.revokeRefreshTokens(uid).catch(() => {});
+    await audit(callerUid, caller.name, "تعيين كلمة مرور", uid, target.name || uid);
+  }
 
-  await audit(callerUid, caller.name, "تعديل بيانات الدخول", uid,
-              (target.name || uid) + " ← " + loginEmail);
+  const patch = {};
+  if (loginEmail && (email || username)) patch.loginEmail = loginEmail;
+  if (email)      patch.email    = email;
+  if (username)   patch.username = username;
+  if (Object.keys(patch).length) await db.doc(`users/${uid}`).set(patch, { merge: true });
 
-  return { ok: true, loginEmail };
+  if (email || username) {
+    await audit(callerUid, caller.name, "تعديل بيانات الدخول", uid,
+                (target.name || uid) + " ← " + loginEmail);
+  }
+
+  return { ok: true, loginEmail, passwordSet: !!password };
 });
 
 /* =========================================================================

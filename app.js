@@ -4049,7 +4049,8 @@ function personActionsPanel() {
     play:  '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="12" cy="12" r="9"/><path d="M10.2 8.3l6 3.7-6 3.7z" fill="#fff"/></svg>',
     trash: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9.4 3h5.2c.5 0 .9.4.9.9V5h4.1c.5 0 .9.4.9.9s-.4.9-.9.9h-.9v12.4c0 1-.8 1.8-1.8 1.8H7.1c-1 0-1.8-.8-1.8-1.8V6.8h-.9c-.5 0-.9-.4-.9-.9S3.9 5 4.4 5h4.1V3.9c0-.5.4-.9.9-.9z"/></svg>',
     edit:  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
-    move:  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l-3 3 3 3M2 12h9M19 15l3-3-3-3M22 12h-9"/></svg>'
+    move:  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l-3 3 3 3M2 12h9M19 15l3-3-3-3M22 12h-9"/></svg>',
+    key:   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L19 4M16 4h3v3"/></svg>'
   };
   return `<aside class="pt-panel${ptPanelCollapsed() ? " collapsed" : ""}" id="ptPanel">
     <button class="pt-panel-toggle" onclick="window.ptPanelToggle()" aria-label="طيّ">&laquo;</button>
@@ -4060,6 +4061,8 @@ function personActionsPanel() {
     ${String((STATE && STATE.page) || "") === "students"
       ? `<button class="pt-act a-move" onclick="window.ptAct('move')">نقل طالب${I.move}</button>` : ""}
     <button class="pt-act a-edit"  onclick="window.ptAct('edit')">تعديل${I.edit}</button>
+    ${isTopAdmin()
+      ? `<button class="pt-act a-key" onclick="window.ptAct('pwd')">تعيين كلمة مرور${I.key}</button>` : ""}
     <button class="pt-act a-del"   onclick="window.ptAct('delete')">حذف${I.trash}</button>
   </aside>`;
 }
@@ -4132,6 +4135,35 @@ function ptSetActive(ids, val) {
 }
 
 /* إجراءات لوحة الجانب — كلها تعمل فعلياً */
+/* حسابُ الدخول الموافقُ لصفٍّ في الجدول: صفوفُ الكادر والمشرفين حساباتٌ
+   في users بنفسها، وصفوفُ الطلاب والمعلّمين سجلّاتٌ في مجموعاتها لها
+   حسابٌ منفصل — فيُبحث عن الحساب ولا يُفترض أنّ معرّف الصفّ هو معرّفُه. */
+function ptAcctOf(id) {
+  const users = Array.isArray(DB.users) ? DB.users : [];
+  const sid = String(id);
+  const eq  = (a, b) => a && b && String(a).trim() === String(b).trim();
+  const eqi = (a, b) => a && b && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+
+  let u = users.find(x => x && String(x.id) === sid);
+  if (u) return u;
+
+  const st = (Array.isArray(DB.students) ? DB.students : [])
+    .find(x => x && String(x.id) === sid);
+  if (st && typeof spAccountOf === "function") { u = spAccountOf(st); if (u) return u; }
+
+  const t = (Array.isArray(DB.teachers) ? DB.teachers : [])
+    .find(x => x && String(x.id) === sid);
+  if (t) {
+    u = users.find(x => x && eq(x.teacherId, t.id)) ||
+        users.find(x => x && x.role === "teacher" && eq(x.uid, t.uid)) ||
+        users.find(x => x && x.role === "teacher" && eqi(x.email, t.email)) ||
+        (t.idNo ? users.find(x => x && (eq(x.username, t.idNo) || eq(x.idNo, t.idNo))) : null) ||
+        users.find(x => x && x.role === "teacher" && eq(x.name, t.name)) || null;
+    if (u) return u;
+  }
+  return null;
+}
+
 window.ptAct = function (kind) {
   const ids = ptSelected();
   if (!ids.length) { showToast("حدّد صفاً واحداً على الأقل", "warn"); return; }
@@ -4173,6 +4205,45 @@ window.ptAct = function (kind) {
     return;
   }
 
+  /* تعيينُ كلمةِ مرورٍ جديدة — لا عرضُ القديمة.
+     القديمةُ لا تُعرض لأنّها لا توجد عندنا: فايربيس يحفظها مُلبَّدةً
+     ولا يُرجعها لأحد، وملفُّ المستخدم في Firestore لا يحمل منها شيئاً
+     (انظر createAuthUser: «لا تُخزَّن ولا تُسجَّل»). وخزنُها نصّاً ظاهراً
+     يجعل كلَّ من قرأ المجموعةَ مالكاً لحسابات النظام كلِّها. فسبيلُ
+     الإدارة إلى تسليم حسابٍ ضاعت كلمتُه: تعيينُ جديدةٍ تُعرض مرّةً
+     واحدةً ثمّ تُسلَّم لصاحبها. */
+  if (kind === "pwd") {
+    if (!isTopAdmin()) { showToast("تعيين كلمة المرور لمدير النظام وحده", "warn"); return; }
+    if (ids.length !== 1) { showToast("حدّد صفاً واحداً لتعيين كلمة مروره", "warn"); return; }
+    const acc = ptAcctOf(ids[0]);
+    if (!acc) {
+      showToast("لا حساب دخولٍ لهذا السجلّ — أنشئ له حساباً أوّلاً", "warn");
+      return;
+    }
+    const uid0 = String(acc.uid || acc.id || "");
+    if (!uid0) { showToast("لم يُعرف معرّفُ حساب الدخول", "warn"); return; }
+    window.__ptPwdUid  = uid0;
+    window.__ptPwdName = String(acc.name || "");
+    const gen = (typeof randomPassword === "function") ? randomPassword(14) : "";
+    openModal("تعيين كلمة مرور", esc(acc.name || ""),
+      noteCard("كلمةُ المرور الحاليّة <strong>لا تُعرض</strong>: فايربيس يحفظها " +
+               "مُلبَّدةً ولا يُرجعها لأحد، والمشروعُ لا يخزّنها. " +
+               "اكتب كلمةً جديدةً أو خُذ المولَّدة، ثمّ سلّمها لصاحبها — " +
+               "<strong>لن تظهر مرّةً أخرى</strong>. وستُقطع جلساتُه القائمة.") +
+      `<div class="form-grid" style="margin-top:12px">
+        <div class="field full"><label>كلمة المرور الجديدة <span class="req">*</span></label>
+          <input id="ptPwdVal" dir="ltr" value="${esc(gen)}" onclick="this.select()"></div>
+        <div class="field full">
+          <button type="button" class="btn btn-ghost"
+            onclick="(function(){var e=document.getElementById('ptPwdVal');
+              if(e){e.value=window.randomPassword?window.randomPassword(14):e.value;e.select();}})()"
+            >توليد كلمة أخرى</button></div>
+      </div>`,
+      `<button class="btn btn-primary" data-action="pt-set-pwd">تعيين</button>
+       <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+    return;
+  }
+
   if (kind === "stop" || kind === "play") {
     const val2 = kind === "play";
     const n = ptSetActive(ids, val2);
@@ -4188,6 +4259,36 @@ window.ptAct = function (kind) {
        <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`
     );
   }
+};
+
+/* تنفيذُ تعيين كلمة المرور — عبر الدالة السحابية updateUserLogin:
+   تغييرُ كلمةِ مرورِ غيرك لا يقدر عليه عميلُ المتصفّح، فهو من عملِ
+   Admin SDK على الخادم وحده. */
+window.ptPwdSave = function () {
+  const uid = String(window.__ptPwdUid || "");
+  const el  = document.getElementById("ptPwdVal");
+  const pw  = el ? String(el.value || "") : "";
+  if (!uid) { showToast("لم يُعرف الحساب", "warn"); return; }
+  if (pw.length < 8) { showToast("كلمة المرور ثمانية أحرف على الأقل", "warn"); return; }
+  const btn = document.querySelector('[data-action="pt-set-pwd"]');
+  if (btn) { btn.disabled = true; btn.textContent = "جارٍ التعيين.."; }
+  spCallFn("updateUserLogin", { uid: uid, password: pw })
+    .then(function () {
+      try { closeModal(); } catch (e) {}
+      openModal("كلمة المرور الجديدة", esc(window.__ptPwdName || ""),
+        noteCard("تُغيَّرت كلمةُ المرور وقُطعت الجلساتُ القائمة. " +
+                 "سلّم هذه الكلمةَ لصاحبها — <strong>لن تظهر مرّةً أخرى</strong>.") +
+        `<div class="form-grid" style="margin-top:12px">
+          <div class="field full"><label>كلمة المرور</label>
+            <input dir="ltr" readonly value="${esc(pw)}" onclick="this.select()"></div>
+        </div>`,
+        `<button class="btn btn-primary" data-action="close-modal">تم</button>`);
+      window.__ptPwdUid = "";
+    })
+    .catch(function (e) {
+      if (btn) { btn.disabled = false; btn.textContent = "تعيين"; }
+      showToast(String((e && e.message) || "تعذّر تعيين كلمة المرور"), "warn");
+    });
 };
 
 /* تنفيذ الإرسال والحذف بعد التأكيد */
@@ -46918,6 +47019,7 @@ document.addEventListener("click", (e) => {
     case "pt-send-msg":  window.ptSend("msg");  break;
     case "pt-send-bell": window.ptSend("bell"); break;
     case "pt-delete":    window.ptDelete();     break;
+    case "pt-set-pwd":   window.ptPwdSave();    break;
 
     /* ---- المجمعات ---- */
     case "panel-complex": panelComplex(t.dataset.id); break;
@@ -50874,7 +50976,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-1430";
+  var APP_BUILD = "20261015-1545";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
