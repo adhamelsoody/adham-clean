@@ -18354,6 +18354,46 @@ function rollForward(studentId, fromDate, toDate) {
         DB.assignments.push(rec);
         persistSet("assignments", rec);
         carried++;
+
+        /* =================================================================
+           «عدم تكرار الآية: إذا كان من آية ١ لا تتكرّر ١ في الذي يبتدئ
+           من بعدها، واحسب حفظَ التعديلات التي يضعها المعلّم»
+           -----------------------------------------------------------------
+           الفارقُ كان يُنسخ من أصله بمداه كلِّه (Object.assign)، فيبتدئ من
+           حيث ابتدأ الأصلُ — فيُعيد الطالبُ ما سُمّعه بالأمس. ورآه صاحبُ
+           النظام «الأنفال ٧٥ ← الأنفال ٧٥».
+
+           فيُزاح مبتدؤه إلى ما بعد المسمَّع: يُحسب منتهى المقدار المسمَّع
+           من مبتدأ الأصل، ثمّ تُؤخذ الآيةُ التي بعده (stepFrom — تعبر
+           السورةَ ولا تقف عند حدّها)، ثمّ يُحسب منتهى الفارق من هناك
+           بمقداره هو.
+
+           والمبتدأُ المقروءُ هو ما في السجلّ الآن — أي تعديلُ المعلّم
+           المحفوظُ إن كان عدّله، لا موضعُ الخطة.
+
+           والحسبةُ وعدٌ (جدولُ المصحف)، والسجلُّ مكتوبٌ قبلها: فيُحدَّث
+           حين تصل. وإن تعذّرت بقي المدى كما كان — لا ينكسر الواجب.
+           ================================================================= */
+        (function (orig, mk, left) {
+          const recited = Math.max(0, (Number(orig.qty) || 0) - left);
+          if (!(recited > 0) || !(Number(orig.fromS) > 0)) return;
+          if (typeof rangeEnd !== "function" || typeof stepFrom !== "function") return;
+          rangeEnd(orig.fromS, orig.fromA, recited, orig.unit, orig.direction)
+            .then(function (e) {
+              if (!e || !(Number(e.surah) > 0)) return null;
+              const nx = stepFrom(e.surah, e.ayah, orig.direction);
+              if (!nx || !(Number(nx.s) > 0) || !(Number(nx.a) > 0)) return null;
+              mk.fromS = Number(nx.s); mk.fromA = Number(nx.a);
+              return rangeEnd(mk.fromS, mk.fromA, left, mk.unit, mk.direction);
+            })
+            .then(function (e2) {
+              if (e2 && Number(e2.surah) > 0) {
+                mk.toS = Number(e2.surah); mk.toA = Number(e2.ayah);
+              }
+              if (Number(mk.fromS) > 0) persistSet("assignments", mk);
+            })
+            .catch(function () {});
+        })(a, rec, short);
       }
       a.settled = true;
       persistSet("assignments", a);
@@ -51465,7 +51505,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-0030";
+  var APP_BUILD = "20261016-0215";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
