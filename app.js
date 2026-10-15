@@ -28513,9 +28513,22 @@ function tcrcSummary(sid) {
 
 /* السطرُ الثاني: حالُ الواجبات إن كانت، وإلا المستوى والحلقة كما كان */
 function tcrcSubLine(s) {
-  const sm = typeof tcrcSummary === "function" ? tcrcSummary(s.id) : null;
-  return sm ? `<small class="tq-sum tq-sum-${sm.tone}">${esc(sm.txt)}</small>`
-            : `<small>${esc(stuLevelName(s) || s.circle || "—")}</small>`;
+  /* «شيل الكلام الذي تحت»: سطرُ ملخّص الواجبات («حفظ جديد: متبقٍ، مراجعة:
+     متبقٍ») رُفع من تحت الاسم، فيبقى المستوى وحدَه. وحالُ الواجبات باقيةٌ
+     في علامات الصفّ (tcrcMarks) وفي صفحة الطالب.
+     ولم تُحذف tcrcSummary: هي كما هي لمن ينادها. */
+  return `<small>${esc(stuLevelName(s) || s.circle || "—")}</small>`;
+}
+
+/* ليس يومَه: لا واجبَ مجدولٌ له في هذا اليوم — لا لأنّه أنجز، بل لأنّ
+   جدولَ أركانه لا يقع فيه. تُقاس من مولّد اليوم نفسِه لا بتخمين. */
+function tcrcNotHisDay(sid, d) {
+  try {
+    const day = d || (typeof attDate === "function" ? attDate() : todayISO());
+    const list = (typeof dutiesOfDay === "function") ? (dutiesOfDay(sid, day) || []) : null;
+    if (!list) return false;
+    return list.length === 0;
+  } catch (e) { return false; }
 }
 
 /* الضغطُ على علامةٍ يفتح صفحةَ الطالب على بطاقة واجبها */
@@ -47482,12 +47495,24 @@ function tcrcView() {
     </div>
   </div>`;
 
-  const rows = studs.map(s => {
-    return `<div class="tq-row tq-click"
+  /* «وعندما لا يكون يومه يكون أسفل القائمة ومكتوبٌ عليه (ليس يومه)
+     باللون الأصفر»: الترتيبُ الأبجديُّ يبقى داخل كلّ مجموعة، ومن ليس
+     يومُه يُؤخَّر إلى آخرها جميعاً. */
+  const _noDay = {};
+  studs.forEach(s => { _noDay[String(s.id)] = tcrcNotHisDay(s.id, d); });
+  const studsOrd = studs.slice().sort((a2, b2) => {
+    const x = _noDay[String(a2.id)] ? 1 : 0, y = _noDay[String(b2.id)] ? 1 : 0;
+    return x !== y ? x - y : 0;        /* الأبجديُّ محفوظٌ داخل المجموعة */
+  });
+
+  const rows = studsOrd.map(s => {
+    const off = _noDay[String(s.id)];
+    return `<div class="tq-row tq-click${off ? " tq-off" : ""}"
       onclick="window.tcrcOpenStudent && window.tcrcOpenStudent('${jsAttr(s.id)}')">
       <div class="mini-avatar">${initials(s.name)}</div>
       <div class="tq-name"><strong>${esc(s.name || "—")}</strong>
         ${tcrcSubLine(s)}</div>
+      ${off ? `<span class="tq-noday">ليس يومه</span>` : ""}
       <div class="tq-marks">${(typeof tcrcMarks === "function") ? tcrcMarks(s.id) : ""}</div>
       ${/* شارةُ حالة الحضور («لم يُسجَّل» / «حاضر» …) رُفعت بطلب صاحب
             المشروع. حالُ التحضير يبقى في بطاقات الإحصاء أعلى الشاشة
@@ -51762,7 +51787,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-1320";
+  var APP_BUILD = "20261016-1440";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

@@ -13169,3 +13169,20 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
   .sura-pop { left: auto; right: 0; min-width: 190px; }
   .sura-list { max-height: 190px; }
 }
+
+/* =========================================================================
+   «ليس يومه» في قائمة طلاب الحلقة
+   -------------------------------------------------------------------------
+   من لا يقع هذا اليومُ في جدول أركانه يُؤخَّر إلى أسفل القائمة وتُكتب
+   عليه شارةٌ صفراء — فيُعرف بنظرةٍ لِمَ لا واجبَ له اليوم.
+   ========================================================================= */
+.tq-noday {
+  flex: 0 0 auto; padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+  color: #8a5a12; background: #fdf3e3; border: 1px solid #f0dcb4;
+}
+.tq-row.tq-off .mini-avatar, .tq-row.tq-off .tq-name { opacity: .72; }
+:root:not([data-theme="light"]) .tq-noday,
+:root[data-theme="dark"] .tq-noday {
+  color: #f0c475; background: #3a2d14; border-color: #5a4520;
+}
