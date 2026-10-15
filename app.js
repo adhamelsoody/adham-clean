@@ -28310,7 +28310,90 @@ function dutiesOfDay(sid, d) {
   if (String(day) < String(todayISO())) return saved;
   let gen = [];
   try { gen = generateAssignments(sid, day) || []; } catch (e) { gen = []; }
-  return asgMergeByKind(saved, gen);
+  const out = asgMergeByKind(saved, gen);
+  /* ورصفُ الأيّام القادمة: ما لم يُخزَّن يُقاس من مرجعه مضافاً إليه ما
+     بينهما من أيّام ركنه — للعرض وحدَه، بلا كتابةٍ في السجلّ. */
+  try { asgProjectStarts(out, sid, day, saved); } catch (e) { console.warn("asgProjectStarts:", e); }
+  return out;
+}
+
+/* =========================================================================
+   رصفُ أيّام الجدول القادمة — «الأحد والاثنين نفس الحفظ لا يتغيّر»
+   -------------------------------------------------------------------------
+   الواجبُ المخزونُ واحدٌ (الخميس مثلاً)، وما بعده يُولَّد عند العرض ولا
+   يُكتب. فكلُّ يومٍ قادمٍ يُقاس من ذلك الواجب وحدَه، فيخرج السبتُ والأحدُ
+   والاثنينُ والأربعاءُ كلُّهم «الأنفال ٩ ← ١٦»: قياسٌ من المرجع نفسِه.
+
+   فالصوابُ أن يُقاس اليومُ القادم من مرجعِه مضافاً إليه ما بينهما من
+   أيّام هذا الركن: إن كان بين المرجع واليوم المطلوب يومان من أيّام الحفظ،
+   فموضعُه بعد مقدارِ يومين لا بعد مقدارِ يومٍ واحد.
+
+   والحسبةُ للعرض وحدَه: في ذاكرةٍ مؤقّتةٍ كـ tstuPreEnds سواءً بسواء، لا
+   تُكتب في السجلّ ولا تمسّ خطةَ الطالب. والواجبُ المخزونُ لا يُمَسّ — هو
+   الحقيقةُ لا التقدير.
+   ========================================================================= */
+const TSTU_PRE_START = {};
+
+function asgProjectStarts(list, sid, dateISO, saved) {
+  if (!Array.isArray(list) || !list.length) return;
+  if (typeof rangeEnd !== "function" || typeof stepFrom !== "function") return;
+  const day = String(dateISO || "");
+  if (!day) return;
+  const plan = (cur("plans") || []).find(p => p && String(p.studentId) === String(sid));
+  const all = (typeof asgOf === "function") ? asgOf(sid) : [];
+  const savedIds = (saved || []).map(x => String(x && x.id));
+
+  list.forEach(function (a) {
+    if (!a || !a.fromS || !(Number(a.qty) > 0)) return;
+    if (savedIds.indexOf(String(a.id)) > -1) return;   /* مخزونٌ: لا يُقدَّر */
+    const k = String(a.kind || "").replace("_makeup", "");
+    if (k !== "hifz" && k !== "rev" && k !== "tilawah") return;
+
+    /* المرجعُ: آخرُ واجبٍ من نوعه قبل هذا اليوم وله منتهًى */
+    const ref = all
+      .filter(x => x && String(x.kind || "").replace("_makeup", "") === k &&
+                   Number(x.toS) > 0 && String(x.date) < day)
+      .sort((x, y) => String(y.date).localeCompare(String(x.date)) ||
+                      (Number(y.ts) || 0) - (Number(x.ts) || 0))[0];
+    if (!ref) return;
+
+    /* أيّامُ هذا الركن بين المرجع واليوم المطلوب — طرفاهما خارجَها */
+    const days = (typeof hwDaysFor === "function") ? (hwDaysFor(k, plan) || []) : [];
+    let n = 0, guard = 0;
+    const cur2 = new Date(String(ref.date) + "T12:00:00Z");
+    while (guard++ < 400) {
+      cur2.setUTCDate(cur2.getUTCDate() + 1);
+      const iso = cur2.toISOString().slice(0, 10);
+      if (iso >= day) break;
+      if (!days.length || days.indexOf(dayNameOf(iso)) > -1) n++;
+    }
+    if (n < 1) return;                 /* لا يومَ بينهما: الحسبةُ القائمةُ صحيحة */
+
+    const dir = dirOf(a.direction);
+    const key = [sid, k, day, ref.id, ref.toS, ref.toA, n, a.qty, a.unit, dir].join("|");
+    if (Object.prototype.hasOwnProperty.call(TSTU_PRE_START, key)) {
+      const v = TSTU_PRE_START[key];
+      if (v) { a.fromS = v[0]; a.fromA = v[1]; a.toS = 0; a.toA = 0; }
+      return;
+    }
+    TSTU_PRE_START[key] = null;        /* قيدَ الحساب */
+
+    const st0 = stepFrom(Number(ref.toS), Number(ref.toA), dir);
+    if (!st0 || !(Number(st0.s) > 0) || !(Number(st0.a) > 0)) {
+      TSTU_PRE_START[key] = 0; return;
+    }
+    Promise.resolve(rangeEnd(st0.s, st0.a, (Number(a.qty) || 0) * n, a.unit, dir))
+      .then(function (e) {
+        if (!e || !(Number(e.surah) > 0)) { TSTU_PRE_START[key] = 0; return; }
+        const nx = stepFrom(Number(e.surah), Number(e.ayah), dir);
+        if (!nx || !(Number(nx.s) > 0) || !(Number(nx.a) > 0)) {
+          TSTU_PRE_START[key] = 0; return;
+        }
+        TSTU_PRE_START[key] = [Number(nx.s), Number(nx.a)];
+        if (typeof mount === "function") mount();
+      })
+      .catch(function () { TSTU_PRE_START[key] = 0; });
+  });
 }
 
 function tcrcDuties(sid) {
@@ -51640,7 +51723,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-0905";
+  var APP_BUILD = "20261016-1050";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
