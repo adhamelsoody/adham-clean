@@ -17460,10 +17460,23 @@ function nextHifzFrom(plan, forDate) {
      فارقاً. والترتيبُ باليوم ثمّ بوقت الكتابة، فآخرُ ما اعتُمد هو
      المنتهى — ولا يُقدَّم أصلٌ على فارقٍ سُمِّع بعده.
      ======================================================================= */
+  /* =======================================================================
+     «يوم السبت يبدأ ما بعد آية ٨» — الجدولُ يُرصَف متتابعاً
+     -----------------------------------------------------------------------
+     كان المرجعُ ما سُمِّع وحدَه (status === "done"). فواجبُ الخميس الذي لم
+     يُسمَّع بعدُ لا يُحرّك شيئاً، فيُعرض السبتُ والأحدُ وما بعدهما بالمدى
+     نفسِه: «الأنفال ١ ← ٨» في كلّ يوم.
+
+     فصار المرجعُ: ما سُمِّع، أو واجبٌ مجدولٌ **قبل** اليوم المطلوب أيّاً
+     كانت حالتُه — فاليومُ التالي يبتدئ بعد منتهى سابقِه ويمضي بمقداره.
+     وواجبُ اليومِ نفسِه لا يُحرّكه: الشرطُ «قبل» لا «حتى».
+     ======================================================================= */
+  const _day = String(forDate || (typeof todayISO === "function" ? todayISO() : ""));
   const hifzDone = function (list) {
     return (list || [])
       .filter(a => a && String(a.kind || "").replace("_makeup", "") === "hifz" &&
-                   a.status === "done" && a.toS)
+                   a.toS &&
+                   (a.status === "done" || (_day && String(a.date) < _day)))
       .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
                       (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
   };
@@ -17509,7 +17522,9 @@ function nextHifzFrom(plan, forDate) {
   const edPend = ((typeof asgOf === "function") ? asgOf(plan.studentId) : [])
     .filter(a => a && String(a.kind || "").replace("_makeup", "") === "hifz" &&
                  a.status === "pending" && a.edited && Number(a.fromS) > 0 &&
-                 (!edDay || String(a.date) <= edDay) &&
+                 /* ليومِه هو لا لما بعده: اليومُ التالي يبتدئ بعد
+                    منتهاه لا عند مبتدئه — وذلك تتولّاه مرتبةُ الجدول */
+                 (!edDay || String(a.date) === edDay) &&
                  /* وتعديلٌ سبقه التسميعُ فسقط وسمُه لا يكون مرجعاً:
                     حُكمُ asgEditStale واحدٌ هنا وهناك */
                  !(typeof asgEditStale === "function" && asgEditStale(a)))
@@ -17866,8 +17881,10 @@ function generateAssignments(studentId, dateISO) {
          والفارقُ من نوعها كذلك، كما في الحفظ سواءً بسواء */
       const lastOf = function (list) {
         return (list || [])
+          /* كالحفظ: ما سُمِّع، أو مجدولٌ قبل هذا اليوم — «وكذلك المراجعة» */
           .filter(a => a && String(a.kind || "").replace("_makeup", "") === t.k &&
-                       a.status === "done" && a.toS)
+                       a.toS &&
+                       (a.status === "done" || String(a.date) < String(dateISO)))
           .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
                           (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
       };
@@ -51623,7 +51640,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-0735";
+  var APP_BUILD = "20261016-0905";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
