@@ -28355,22 +28355,59 @@ function asgProjectStarts(list, sid, dateISO, saved) {
                    Number(x.toS) > 0 && String(x.date) < day)
       .sort((x, y) => String(y.date).localeCompare(String(x.date)) ||
                       (Number(y.ts) || 0) - (Number(x.ts) || 0))[0];
-    if (!ref) return;
 
-    /* أيّامُ هذا الركن بين المرجع واليوم المطلوب — طرفاهما خارجَها */
     const days = (typeof hwDaysFor === "function") ? (hwDaysFor(k, plan) || []) : [];
-    let n = 0, guard = 0;
-    const cur2 = new Date(String(ref.date) + "T12:00:00Z");
-    while (guard++ < 400) {
-      cur2.setUTCDate(cur2.getUTCDate() + 1);
-      const iso = cur2.toISOString().slice(0, 10);
-      if (iso >= day) break;
-      if (!days.length || days.indexOf(dayNameOf(iso)) > -1) n++;
+    const cnt = function (fromISO, incl) {
+      /* أيّامُ هذا الركن من fromISO إلى day — الأوّلُ داخلٌ إن incl */
+      let m = 0, g = 0;
+      const c = new Date(String(fromISO) + "T12:00:00Z");
+      if (!incl) c.setUTCDate(c.getUTCDate() + 1);
+      while (g++ < 400) {
+        const iso = c.toISOString().slice(0, 10);
+        if (iso >= day) break;
+        if (!days.length || days.indexOf(dayNameOf(iso)) > -1) m++;
+        c.setUTCDate(c.getUTCDate() + 1);
+      }
+      return m;
+    };
+
+    /* =================================================================
+       ولا مرجعَ مخزون؟ فمن موضع الخطة — «مقدار الحفظ لا يتغيّر»
+       -----------------------------------------------------------------
+       الطالبُ قد لا يكون له في قاعدة البيانات واجبٌ محفوظٌ ألبتّة: كلُّ
+       أيّامه تُولَّد عند العرض. وكانت هذه الدالّةُ تشترط مرجعاً مخزوناً،
+       فإن لم تجده تركت الأيّامَ كما هي — فتقف كلُّها على موضع الخطة
+       نفسِه: «الأنفال ٩ ← ١٦» في كلّ يوم.
+
+       فإن لم يوجد مرجعٌ، فالمقياسُ موضعُ اليوم نفسِه (وهو ما تحسبه
+       الخطة)، ويُعدّ معه يومُ اليوم: فغدٌ بعد مقدارِ يومٍ واحد، وبعد غدٍ
+       بعد مقدارِ يومين — وهكذا.
+       ================================================================= */
+    let baseS = 0, baseA = 0, n = 0, tag = "";
+    const dir = dirOf(a.direction);
+
+    if (ref) {
+      const st1 = stepFrom(Number(ref.toS), Number(ref.toA), dir);
+      if (!st1 || !(Number(st1.s) > 0) || !(Number(st1.a) > 0)) return;
+      baseS = Number(st1.s); baseA = Number(st1.a);
+      n = cnt(ref.date, false);
+      tag = "r" + ref.id + "|" + ref.toS + ":" + ref.toA;
+    } else {
+      const td = (typeof todayISO === "function") ? todayISO() : "";
+      if (!td || day <= td) return;              /* اليومُ وما مضى: لا تقدير */
+      let base = null;
+      try {
+        base = (generateAssignments(sid, td) || [])
+          .find(x => x && String(x.kind || "").replace("_makeup", "") === k) || null;
+      } catch (e) { base = null; }
+      if (!base || !(Number(base.fromS) > 0)) return;
+      baseS = Number(base.fromS); baseA = Number(base.fromA) || 1;
+      n = cnt(td, true);
+      tag = "p" + td + "|" + baseS + ":" + baseA;
     }
     if (n < 1) return;                 /* لا يومَ بينهما: الحسبةُ القائمةُ صحيحة */
 
-    const dir = dirOf(a.direction);
-    const key = [sid, k, day, ref.id, ref.toS, ref.toA, n, a.qty, a.unit, dir].join("|");
+    const key = [sid, k, day, tag, n, a.qty, a.unit, dir].join("|");
     if (Object.prototype.hasOwnProperty.call(TSTU_PRE_START, key)) {
       const v = TSTU_PRE_START[key];
       if (v) { a.fromS = v[0]; a.fromA = v[1]; a.toS = 0; a.toA = 0; }
@@ -28378,11 +28415,7 @@ function asgProjectStarts(list, sid, dateISO, saved) {
     }
     TSTU_PRE_START[key] = null;        /* قيدَ الحساب */
 
-    const st0 = stepFrom(Number(ref.toS), Number(ref.toA), dir);
-    if (!st0 || !(Number(st0.s) > 0) || !(Number(st0.a) > 0)) {
-      TSTU_PRE_START[key] = 0; return;
-    }
-    Promise.resolve(rangeEnd(st0.s, st0.a, (Number(a.qty) || 0) * n, a.unit, dir))
+    Promise.resolve(rangeEnd(baseS, baseA, (Number(a.qty) || 0) * n, a.unit, dir))
       .then(function (e) {
         if (!e || !(Number(e.surah) > 0)) { TSTU_PRE_START[key] = 0; return; }
         const nx = stepFrom(Number(e.surah), Number(e.ayah), dir);
@@ -51723,7 +51756,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-1050";
+  var APP_BUILD = "20261016-1205";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
