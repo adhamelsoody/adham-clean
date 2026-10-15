@@ -44835,6 +44835,9 @@ function spFillSurahs(root) {
 /* فهرسُ السور للبحث عن رقم سورة الابتداء — يُملأ مع قائمة السور */
 let SP_SURAHS = null;
 
+/* من طُلب له الفهرسُ مرّةً فلا يُطلب له ثانية — حرزٌ من دورةٍ لا تنتهي */
+const SP_SURA_RETRY = {};
+
 function spSurahIdx(name) {
   const n = String(name || "").trim();
   if (!n) return 0;
@@ -44906,6 +44909,36 @@ function spSyncEnginePlan(st) {
 
      والوسمُ لا يقع إلّا إن تغيّر الموضعُ فعلاً: حفظُ الخطة لتبديل مقدارٍ
      أو يومٍ لا يُرجِع الطالبَ إلى الوراء. */
+  /* =======================================================================
+     فهرسُ السور قد لا يكون وصل وقتَ الحفظ — ولا يُصمَت على ضياع السورة
+     -----------------------------------------------------------------------
+     spSurahIdx تقرأ SP_SURAHS (تملؤها spFillSurahs بعد ردِّ الشبكة) ثمّ
+     QSURAHS (يملؤها reciteLoadSurahs). وكلاهما null عند أوّل فتحةٍ لصحيفة
+     الخطة، فمن حفظ قبل وصول أحدِهما عادت الدالّةُ صفراً فسقط شرطُ
+     `if (hs)` بلا خبر: بقي hifzFromS على قيمته القديمة (الفاتحة) وبطاقةُ
+     الطالب تقول «الناس». وهو بعينه ما ظهر في بيانات صاحب النظام:
+     st.plan.hifzSura = 'الناس' و plans.hifzFromS = 1 — والمقدارُ مترجَمٌ
+     صحيحاً لأنّه لا يسأل فهرساً.
+
+     فيُطلب الفهرسُ من مصدره (Quran.surahs — ملفُّ المصحف نفسُه، لا جدولُ
+     أسماءٍ يُكتب في الكود)، ويُعاد الجسرُ مرّةً واحدةً حين يصل. والكتابةُ
+     الأولى تمضي كما كانت فلا يتعطّل حفظٌ ولا يُحجب، والثانيةُ تصحّح الموضع.
+     ======================================================================= */
+  if ((p.hifzSura && !spSurahIdx(p.hifzSura)) ||
+      (p.revSura && !spSurahIdx(p.revSura))) {
+    const _k = String(st.id);
+    if (!SP_SURA_RETRY[_k] && window.Quran && typeof Quran.surahs === "function") {
+      SP_SURA_RETRY[_k] = 1;
+      Quran.surahs().then(function (list) {
+        const _l = (list || []).filter(x => x && x.i && x.n);
+        if (!_l.length) return;
+        SP_SURAHS = _l;
+        /* ولا يُعاد الجسرُ إلّا إن صار للاسم رقمٌ — وإلّا فالاسمُ ليس سورة */
+        if (spSurahIdx(p.hifzSura) || spSurahIdx(p.revSura)) spSyncEnginePlan(st);
+      }).catch(function () { delete SP_SURA_RETRY[_k]; });
+    }
+  }
+
   const hs = spSurahIdx(p.hifzSura);
   if (hs) {
     const _hA = Math.max(1, Number(p.hifzAyah) || 1);
@@ -51854,7 +51887,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-1800";
+  var APP_BUILD = "20261016-1930";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
