@@ -30455,6 +30455,281 @@ function numStepBox(id, cls, value, label, min, suraId, shown, syncId, afterId, 
   </span>`;
 }
 
+/* =========================================================================
+   React في صحيفة «تفاصيل الواجب» وحدَها
+   -------------------------------------------------------------------------
+   «عايز الصفحة دي تكون مدعومة بريئاكت».
+
+   والمشروعُ بلا إطارِ عملٍ ولا خطوةِ بناء، فلا تُفرض React عليه كلِّه من
+   أجل صحيفة. فتُحمَّل عند فتح هذه الصحيفة وحدَها، مرّةً في الجلسة، من
+   cdnjs بنسختين مثبّتتين (react@18.3.1 و react-dom@18.3.1) — بلا JSX ولا
+   Babel، فالبناءُ بـ createElement.
+
+   وثلاثةُ حرّاس، فلا تكون المكتبةُ شرطاً لعمل الصحيفة:
+     ١· الصحيفةُ تُرسم أوّلاً بالكود القائم كما كانت — فلا تأخيرَ ولا وميض.
+     ٢· فإن وصلت React تولّت رسمَ .tsd-sheet مكانَه.
+     ٣· وإن تعذّر التحميل (بلا اتصال · CDN محجوب · مهلة) بقيت الصحيفةُ
+        الأولى عاملةً، ولا يُعاد المحاولة في هذه الجلسة.
+
+   وحدُّ التولّي مرسومٌ بدقّة: React تملك البنيةَ وقوائمَ السور وأزرارَ
+   الاتجاه وما يُعاد رسمُه حين يصل فهرسُ المصحف. أمّا قيمُ الحقول فتبقى
+   غيرَ مُتحكَّمٍ فيها (uncontrolled) عمداً، لأنّ ayahCap و tsdQtyRange و
+   numStep تكتب فيها مباشرةً — وهي الحسبةُ التي استقرّت في الرقعات
+   ٣٠١ و٣٠٤ و٣٠٦ و٣٠٧. فلا يُعاد بناءُ منطقِ المدى ولا الحفظِ، ولا
+   تتنازع React والكودُ القائم على قيمةٍ واحدة.
+   ========================================================================= */
+var TSD_RX = { p: null, failed: false, root: null, host: null };
+
+var TSD_RX_SRC = [
+  "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"
+];
+
+function tsdReactLoad() {
+  if (window.React && window.ReactDOM && window.ReactDOM.createRoot) {
+    return Promise.resolve(true);
+  }
+  if (TSD_RX.failed) return Promise.reject(new Error("سبق أن تعذّر التحميل"));
+  if (TSD_RX.p) return TSD_RX.p;
+
+  const one = function (src) {
+    return new Promise(function (ok, no) {
+      const s = document.createElement("script");
+      s.src = src; s.async = true; s.crossOrigin = "anonymous";
+      s.onload = function () { ok(true); };
+      s.onerror = function () { no(new Error("تعذّر تحميل " + src)); };
+      document.head.appendChild(s);
+    });
+  };
+
+  TSD_RX.p = new Promise(function (res, rej) {
+    /* مهلةٌ صريحة: شبكةٌ بطيئةٌ لا تُبقي الصحيفةَ معلّقةً بلا نهاية */
+    const t = setTimeout(function () { rej(new Error("مهلةُ تحميل React")); }, 7000);
+    one(TSD_RX_SRC[0])
+      .then(function () { return one(TSD_RX_SRC[1]); })
+      .then(function () {
+        clearTimeout(t);
+        if (window.React && window.ReactDOM && window.ReactDOM.createRoot) res(true);
+        else rej(new Error("React لم تُعرَّف بعد التحميل"));
+      })
+      .catch(function (e) { clearTimeout(t); rej(e); });
+  }).catch(function (e) {
+    TSD_RX.failed = true; TSD_RX.p = null;
+    console.warn("tsdReact:", e && e.message);
+    throw e;
+  });
+  return TSD_RX.p;
+}
+
+/* مكوّنُ الصحيفة — يُبنى بعد تحميل المكتبة لأنّه يحتاج React في مداه */
+function tsdReactSheet(cfg) {
+  const R = window.React;
+  const h = R.createElement;
+  const a = cfg.a;
+
+  return function TsdSheet() {
+    /* الحالة: فهرسُ السور (قد يصل بعد الفتح) واتجاهُ هذا الواجب */
+    const [surahs, setSurahs] = R.useState(
+      (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : []);
+    const [dir, setDir] = R.useState(dirOf(a.direction));
+
+    /* فهرسُ المصحف يصل متأخّراً أحياناً: يُشترَك في طابور انتظاره نفسِه
+       فتُعاد الصحيفةُ رسماً بقوائمَ مملوءة — لا بتخمين وقت. */
+    R.useEffect(function () {
+      if (surahs.length) return;
+      let alive = true;
+      const take = function () {
+        if (!alive) return;
+        if (typeof QSURAHS !== "undefined" && QSURAHS && QSURAHS.length) setSurahs(QSURAHS);
+      };
+      try {
+        if (typeof QSURAHS_WAIT !== "undefined" && QSURAHS_WAIT) QSURAHS_WAIT.push(take);
+      } catch (e) {}
+      const ids = [300, 900, 1800].map(function (ms) { return setTimeout(take, ms); });
+      return function () { alive = false; ids.forEach(clearTimeout); };
+    }, [surahs.length]);
+
+    /* بعد كلّ رسمٍ: حدودُ خانات الآيات من الكود القائم — هو صاحبُها */
+    R.useEffect(function () {
+      try { window.ayahCapAll(document.getElementById("modalRoot") || document); } catch (e) {}
+      try {
+        const tAm = document.getElementById("tsd_tA");
+        if (a.edited && Number(a.toS) > 0 && tAm && tAm.dataset &&
+            tAm.dataset.manual !== "1") tAm.dataset.manual = "1";
+      } catch (e) {}
+      try { if (typeof window.tsdQtyRange === "function") window.tsdQtyRange(); } catch (e) {}
+    });
+
+    const touch = function () {
+      try { if (typeof window.tsdTouch === "function") window.tsdTouch(); } catch (e) {}
+    };
+
+    const sOpts = function (sel) {
+      if (surahs.length) {
+        return surahs.map(function (x) {
+          return h("option", { key: x.i, value: x.i }, x.i + ". " + x.n);
+        });
+      }
+      return [h("option", { key: "one", value: Number(sel) || 1 },
+                surahName(sel) || "—")];
+    };
+
+    /* خانةُ الآية: قائمةٌ بلا خياراتٍ من React — ayahCap تملؤها بحدودها،
+       وهي التي تعرف عدَّ كلّ سورةٍ وحدَّ «إلى» بعد «من». */
+    const stepBox = function (o) {
+      return h("span", { className: "rcv-step" },
+        h("button", { type: "button", className: "rcv-pm", "aria-label": "زيادة " + o.label,
+                      onClick: function () { window.numStep(o.id, 1); } }, "+"),
+        h("select", {
+          id: o.id, className: "tsd-in tsd-ayah-n rcv-num rcv-pick",
+          "aria-label": o.label, defaultValue: String(o.value),
+          "data-sura": o.sura, "data-shown": "1",
+          "data-sync": o.sync || undefined,
+          "data-after": o.after || undefined,
+          "data-after-sura": o.afterSura || undefined,
+          onChange: function () {
+            touch();
+            window.ayahCap(o.id);
+            if (o.sync) window.ayahCap(o.sync);
+            if (o.qty) window.tsdQtyRange(1);
+            if (o.manual) window.tsdToManual();
+          }
+        }, h("option", { value: String(o.value) }, toArabicDigits(Number(o.value) || 1))),
+        h("button", { type: "button", className: "rcv-pm", "aria-label": "إنقاص " + o.label,
+                      onClick: function () { window.numStep(o.id, -1); } }, "−"));
+    };
+
+    const row = function (k, body, cls) {
+      return h("div", { className: "tsd-row" + (cls ? " " + cls : "") },
+        h("span", { className: "tsd-k" }, k),
+        h("span", { className: "tsd-v" }, body));
+    };
+
+    const rows = [];
+
+    rows.push(h("div", { className: "tsd-row", key: "kind" },
+      h("span", { className: "tsd-k" }, "نوع الواجب"),
+      h("span", { className: "tsd-v" }, h("b", null, a.kindName || cfg.typeName || "—"))));
+
+    /* من */
+    rows.push(h("div", {
+      className: "tsd-row" + (cfg.canFrom && !cfg.locked ? " tsd-res-row" : ""), key: "from" },
+      h("span", { className: "tsd-k" }, "من"),
+      h("span", { className: "tsd-v" }, cfg.canFrom && !cfg.locked
+        ? h("span", { className: "tsd-pair tsd-pair-w" },
+            h("select", {
+              id: "tsd_fS", className: "tsd-in tsd-sura", defaultValue: String(a.fromS || 1),
+              onChange: function () {
+                touch();
+                window.ayahCap("tsd_fA", "tsd_fS");
+                window.ayahCap("tsd_tA");
+                window.tsdQtyRange(1);
+              }
+            }, sOpts(a.fromS || 1)),
+            stepBox({ id: "tsd_fA", label: "من آية", value: ayahShow(a.fromS, cfg.fA0),
+                      sura: "tsd_fS", sync: "tsd_tA", qty: true }))
+        : ((a.fromS ? surahName(a.fromS) : "—") +
+           (a.fromA ? " · الآية " + toArabicDigits(ayahShow(a.fromS, cfg.fA0)) : "")))));
+
+    /* إلى */
+    rows.push(h("div", {
+      className: "tsd-row" + (cfg.canEnd && !cfg.locked ? " tsd-res-row" : ""), key: "to" },
+      h("span", { className: "tsd-k" }, "إلى"),
+      h("span", { className: "tsd-v" }, cfg.canEnd && !cfg.locked
+        ? h("span", { className: "tsd-pair tsd-pair-w" },
+            h("select", {
+              id: "tsd_tS", className: "tsd-in tsd-sura",
+              defaultValue: String(a.toS || a.fromS || 1),
+              onChange: function () {
+                touch();
+                window.ayahCap("tsd_tA", "tsd_tS");
+                window.tsdToManual();
+              }
+            }, sOpts(a.toS || a.fromS || 1)),
+            stepBox({ id: "tsd_tA", label: "إلى آية",
+                      value: ayahShow(a.toS || a.fromS, a.toA || 1),
+                      sura: "tsd_tS", after: "tsd_fA", afterSura: "tsd_fS", manual: true }))
+        : ((a.toS ? surahName(a.toS) : (a.fromS ? surahName(a.fromS) : "—")) +
+           (a.toA ? " · الآية " + toArabicDigits(ayahShow(a.toS || a.fromS, a.toA)) : "")))));
+
+    /* اتجاهُ المراجعة — وهنا تظهر فائدةُ الحالة: الزرُّ يُعلَم من dir لا
+       بإضافة صنفٍ بيدٍ على عنصرٍ في الصفحة. */
+    if (cfg.revDirRow) {
+      const dirBtn = function (val, head, tail, on) {
+        return h("button", {
+          type: "button", className: "tsd-dirb" + (on ? " on" : ""),
+          onClick: function (e) {
+            window.tsdDirSet(e.currentTarget, val);
+            const inp = document.getElementById("tsd_dir");
+            setDir(inp && inp.value ? dirOf(inp.value) : dir);
+          }
+        }, head, h("small", null, tail));
+      };
+      rows.push(h("div", { className: "tsd-row", key: "dir" },
+        h("span", { className: "tsd-k" }, "اتجاه المراجعة"),
+        h("span", { className: "tsd-v" },
+          h("span", { className: "tsd-dirseg", id: "tsd_dirseg" },
+            dirBtn("من الفاتحة", "من الفاتحة", "إلى الناس", dir !== "backward"),
+            dirBtn("من الناس", "من الناس", "إلى الفاتحة", dir === "backward")))));
+    } else if (cfg.isRev) {
+      rows.push(h("div", { className: "tsd-row", key: "dirv" },
+        h("span", { className: "tsd-k" }, "اتجاه المراجعة"),
+        h("span", { className: "tsd-v" },
+          dir === "backward" ? "من الناس إلى الفاتحة" : "من الفاتحة إلى الناس")));
+    }
+
+    /* الحقولُ المخفيّةُ باقيةٌ كما هي: منها يقرأ حاسبُ المدى والحافظ */
+    if (!cfg.locked && cfg.canEdit) {
+      rows.push(h("span", { className: "tsd-state", hidden: true, key: "state" },
+        h("input", { type: "hidden", id: "tsd_qty", defaultValue: String(Number(a.qty) || 0) }),
+        h("input", { type: "hidden", id: "tsd_unit", defaultValue: a.unit || "وجه" }),
+        h("input", { type: "hidden", id: "tsd_dir", value: dir, readOnly: true })));
+    }
+
+    if (a.note) {
+      rows.push(h("div", { className: "tsd-row", key: "note" },
+        h("span", { className: "tsd-k" }, "ملاحظة"),
+        h("span", { className: "tsd-v" }, a.note)));
+    }
+
+    return h("div", { className: "tsd-sheet", "data-dir": dir }, rows);
+  };
+}
+
+/* تولّي الصحيفة بعد رسمها بالكود القائم — بلا وميضٍ ولا انتظار */
+function tsdReactTake(a, cfg) {
+  tsdReactLoad().then(function () {
+    const host = document.getElementById("tsdRxHost");
+    if (!host) return;                      /* أُغلقت النافذةُ قبل الوصول */
+    /* القيمُ الحاضرةُ على الشاشة تُؤخذ كما هي: من بدّل شيئاً أثناء
+       التحميل لا يُمحى تبديلُه عند التولّي. */
+    const g = function (id) { const e = document.getElementById(id); return e ? e.value : ""; };
+    const live = Object.assign({}, a, {
+      fromS: Number(g("tsd_fS")) || a.fromS,
+      toS:   Number(g("tsd_tS")) || a.toS,
+      direction: g("tsd_dir") || a.direction
+    });
+    const fAv = Number(g("tsd_fA")) || 0;
+    const tAv = Number(g("tsd_tA")) || 0;
+    const cfg2 = Object.assign({}, cfg, { a: live });
+    if (fAv) cfg2.fA0 = (typeof ayahStore === "function") ? ayahStore(live.fromS, fAv) : fAv;
+    if (tAv) live.toA = (typeof ayahStore === "function") ? ayahStore(live.toS, tAv) : tAv;
+
+    const old = host.querySelector(".tsd-sheet");
+    const touched = !!(old && old.dataset && old.dataset.touched === "1");
+    host.innerHTML = "";
+    const root = window.ReactDOM.createRoot(host);
+    TSD_RX.root = root; TSD_RX.host = host;
+    root.render(window.React.createElement(tsdReactSheet(cfg2)));
+    /* وسمُ يدِ المعلّم لا يضيع بالتولّي */
+    if (touched) setTimeout(function () {
+      const s = document.querySelector(".tsd-sheet");
+      if (s && s.dataset) s.dataset.touched = "1";
+    }, 0);
+    try { host.dataset.rx = "1"; } catch (e) {}
+  }).catch(function () { /* الصحيفةُ الأولى قائمةٌ وعاملة — لا شيء يُفعل */ });
+}
+
 window.tstuDuty = function (id) {
   /* العرضُ من مصدر القائمة نفسِه — والكتابةُ في tstuDutySave على السجلّ */
   const a = tstuAsgShown(id);
@@ -30560,7 +30835,7 @@ window.tstuDuty = function (id) {
     ${!locked && notYet ? `<div class="tsd-lock tsd-soon">${ic("clock", 14)} واجبُ ${
       esc(dayNameOf(a.date) || "")} ${esc(hijriOf(a.date) || toArabicDigits(a.date))
       } — يُطَّلع عليه، ويُقيَّم في يومه</div>` : ""}
-    <div class="tsd-sheet" data-dir="${esc(dirOf(a.direction))}">
+    <div id="tsdRxHost"><div class="tsd-sheet" data-dir="${esc(dirOf(a.direction))}">
       <div class="tsd-row">
         <span class="tsd-k">نوع الواجب</span>
         <span class="tsd-v"><b>${esc(a.kindName || t.h || "—")}</b></span>
@@ -30637,7 +30912,7 @@ window.tstuDuty = function (id) {
       ${a.note ? `<div class="tsd-row">
         <span class="tsd-k">ملاحظة</span>
         <span class="tsd-v">${esc(a.note)}</span></div>` : ""}
-    </div>
+    </div></div>
 
     ${a.fromS ? `<button type="button" class="tsd-ayah"
       onclick="window.tstuMushaf('${jsAttr(a.id)}')">
@@ -30742,6 +31017,17 @@ window.tstuDuty = function (id) {
   if ((typeof QSURAHS === "undefined" || !QSURAHS) &&
       typeof QSURAHS_WAIT !== "undefined" && QSURAHS_WAIT) {
     QSURAHS_WAIT.push(tsdFill);
+  }
+
+  /* ثمّ تتولّى React رسمَ الصحيفة إن وصلت مكتبتُها — وإن تعذّرت بقيت هذه
+     عاملةً كما هي. وشرطُ التولّي أن تكون الحقولُ قابلةً للتحرير: الصحيفةُ
+     المقفلةُ عرضٌ محضٌ لا حالةَ فيه تتغيّر. */
+  if (canEdit) {
+    try {
+      tsdReactTake(a, { canFrom: canFrom, canEnd: canEnd, locked: locked,
+                        canEdit: canEdit, isRev: isRev, revDirRow: revDirRow,
+                        fA0: fA0, typeName: t.h || "" });
+    } catch (e) { console.warn("tsdReactTake:", e); }
   }
   /* وحارسٌ زمنيٌّ معه: فهرسٌ وصل قبل فتح النافذة لا طابورَ له */
   [300, 900, 1800].forEach(function (ms) { setTimeout(tsdFill, ms); });
@@ -51071,7 +51357,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-2010";
+  var APP_BUILD = "20261015-2155";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
