@@ -18346,7 +18346,10 @@ function rollForward(studentId, fromDate, toDate) {
              فلا يقبل جلسةً جديدة ويبدو مكتملاً وهو لم يُسمَّع. */
           parts: [],
           makeupOf: a.id, settled: false,
-          kindName: a.kindName + " (فارق)",
+          /* «شيل كلمة فارق»: الاسمُ يبقى اسمَ الركن بلا لاحقة. والتمييزُ
+             لم يَضِع — النوعُ hifz_makeup، و makeupOf يشير إلى أصله،
+             والملاحظةُ أدناه تقول «فارقُ <تاريخ الأصل>». */
+          kindName: String(a.kindName || "").replace(/\s*\(فارق\)\s*$/, ""),
           note: "فارقُ " + a.date,
           ts: Date.now()
         });
@@ -48682,6 +48685,20 @@ async function loadDataFast(onData) {
     if (stuck.length) console.log("طُبّق في الذاكرة " + stuck.length + " واجباً كان عالقاً في الاعتماد");
   } catch (e) { console.warn("stuck duties:", e); }
 
+  /* «شيل كلمة فارق» — واللاحقةُ مكتوبةٌ في سجلّات قديمةٍ كثيرة.
+     تُنزع عند العرض في الذاكرة فتختفي من الشاشات كلِّها بموضعٍ واحد،
+     ولا تُكتب: تعديلٌ جماعيٌّ على بيانات الإنتاج ممنوع. وتستقرّ في
+     السجلّ أوّلَ مرّةٍ يحفظه فيها مخوَّلٌ بنفسه. */
+  try {
+    let fixed = 0;
+    (Array.isArray(DB.assignments) ? DB.assignments : []).forEach(x => {
+      if (!x || !x.kindName) return;
+      const clean = String(x.kindName).replace(/\s*\(فارق\)\s*$/, "");
+      if (clean !== x.kindName) { x.kindName = clean; fixed++; }
+    });
+    if (fixed) console.log("نُزعت لاحقةُ (فارق) من " + fixed + " واجباً في العرض");
+  } catch (e) { console.warn("kindName (فارق):", e); }
+
   /* استدراك الحسابات القديمة: معلّمون في users بلا سجل في teachers.
      للإداريين وحدهم لأنهم من يملك صلاحية الكتابة. */
   try {
@@ -51581,7 +51598,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-0340";
+  var APP_BUILD = "20261016-0505";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
