@@ -30645,7 +30645,10 @@ function tsdReactSheet(cfg) {
         /* الأرقامُ عربيةٌ كعُرف المشروع — والقيمةُ في <select> لاتينيةٌ كما
            يقرؤها الحفظ، فلا يتأثّر بها شيء. */
         const rec = surahs.find(function (x) { return Number(x.i) === n; });
-        return rec ? (toArabicDigits(rec.i) + ". " + rec.n) : (surahName(n) || "—");
+        /* «عايز اسم السورة وليس ترتيب السورة — لو هي الأنفال تبان برّا»:
+           الزرُّ الظاهرُ يحمل الاسمَ وحدَه. والرقمُ باقٍ داخلَ اللوحة أمام
+           كلّ سورةٍ ليُبحَث به، وباقٍ في قيمة <select> كما يقرؤها الحفظ. */
+        return rec ? rec.n : (surahName(n) || "—");
       };
 
       const hits = function () {
@@ -30947,9 +30950,11 @@ window.tstuDuty = function (id) {
   const isRev = kBase === "rev" || kBase === "tilawah";
   const revDirRow = isRev && canEdit;
   const aDir = dirOf(a.direction);
+  /* الاسمُ وحدَه في الخيارات كذلك — فالصحيفةُ الساقطةُ (بلا React) تقول
+     ما تقوله صحيفةُ React سواءً بسواء. والقيمةُ رقمُ السورة كما كانت. */
   const sOpts = (sel) => (typeof QSURAHS !== "undefined" && QSURAHS)
     ? QSURAHS.map(x => `<option value="${x.i}"${Number(sel) === x.i ? " selected" : ""}>${
-        x.i}. ${esc(x.n)}</option>`).join("")
+        esc(x.n)}</option>`).join("")
     : `<option value="${Number(sel) || 1}" selected>${esc(surahName(sel) || "—")}</option>`;
   const unitOpts = (sel) => (typeof HW_UNITS !== "undefined" ? HW_UNITS : [{ k: "وجه", h: "وجه" }])
     .map(u => `<option value="${esc(u.k)}"${String(sel || "وجه") === u.k ? " selected" : ""}>${
@@ -51598,7 +51603,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-0505";
+  var APP_BUILD = "20261016-0620";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
