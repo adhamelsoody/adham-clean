@@ -502,13 +502,19 @@ function facStats(item, coll) {
      facilityTeachers — فيقول ظاهرُ البطاقة رقماً وباطنُها رقماً آخر.
      وكانت تعدّ المدراء مع المعلّمين بعد أن فُصلوا عنهم بحقل staffRole.
      تُقرأ الآن من الدوالّ نفسِها، فما على البطاقة هو ما في الداخل. */
-  if (!item) return { students: 0, teachers: 0, circles: 0 };
+  if (!item) return { students: 0, teachers: 0, circles: 0, mosques: 0 };
   var kind = coll === "mosques" ? "mosque" : "complex";
   var alive = function (r) { return r && r.status !== "متوقف"; };
+  /* «في هذه البطاقات عايز يظهر لي كم مسجد تابع للمجمّع»: عددُ مساجده من
+     facChildren — وهي المصدرُ الذي تعدّ منه صفحةُ المجمّع نفسُها، فلا
+     يختلف ظاهرُ البطاقة عن باطنها. والمسجدُ لا مساجدَ له فيبقى صفراً. */
   return {
     students: facStudents(item, coll).filter(alive).length,
     teachers: facilityTeachers(kind, item.id).filter(alive).length,
-    circles:  facCircleCount(item, coll)
+    circles:  facCircleCount(item, coll),
+    mosques:  coll === "mosques" ? 0
+      : (typeof facChildren === "function"
+          ? facChildren(item, coll).filter(alive).length : 0)
   };
 }
 
@@ -568,10 +574,12 @@ function facCard(item, coll) {
       <div class="fac-logo">${logo}</div>
       <div class="fac-title">${esc(item.name)}<span class="fac-type">${single === "mosque" ? "مسجد" : "مجمع"}</span></div>
     </div>
-    <div class="fac-stats">
+    <div class="fac-stats${single === "complex" ? " fac-stats-4" : ""}">
       <div class="fac-stat"><b>${st.students}</b><span>طالب/ة</span></div>
       <div class="fac-stat"><b>${st.teachers}</b><span>معلم</span></div>
       <div class="fac-stat"><b>${st.circles}</b><span>حلقة</span></div>
+      ${single === "complex"
+        ? `<div class="fac-stat"><b>${st.mosques}</b><span>مسجد</span></div>` : ""}
     </div>
     ${facRows(item, coll)}
     <div class="fac-row"><span class="fac-lbl">الحالة</span><span class="fac-badge ${active ? "on" : "off"}">${active ? "فعال" : "متوقف"}</span></div>
@@ -50698,7 +50706,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-1015";
+  var APP_BUILD = "20261015-1100";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

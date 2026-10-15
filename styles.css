@@ -13074,3 +13074,18 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
 
 /* زرُّ المقرأة مع زرّي التحضير في شاشة الحلقة — سطرٌ ثالثٌ بعرض الشاشة */
 .tcl-act .maq-btn { flex: 1 1 100%; justify-content: center; }
+
+/* =========================================================================
+   بطاقةُ المجمّع: أربعُ إحصائيّاتٍ لا ثلاث — أُضيف «مسجد»
+   -------------------------------------------------------------------------
+   «في هذه البطاقات عايز يظهر لي كم مسجد تابع للمجمّع».
+   وشبكةُ الإحصائيّات ثلاثةُ أعمدةٍ ثابتة، فالرابعُ كان ينزل سطراً وحدَه.
+   فللمجمّع وحدَه أربعةُ أعمدةٍ أضيقُ قليلاً — وبطاقةُ المسجد لم تُمسّ.
+   ========================================================================= */
+.fac-stats.fac-stats-4 { grid-template-columns: repeat(4, 1fr); gap: 2px; }
+.fac-card .fac-stats-4 .fac-stat b { min-width: 38px; padding: 0 10px; font-size: 16px; }
+.fac-card .fac-stats-4 .fac-stat span { font-size: 11.5px; }
+@media (max-width: 420px) {
+  .fac-card .fac-stats-4 .fac-stat b { min-width: 32px; padding: 0 6px; font-size: 15px; }
+  .fac-card .fac-stats-4 .fac-stat span { font-size: 10.5px; }
+}
