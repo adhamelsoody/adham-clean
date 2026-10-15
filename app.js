@@ -17530,6 +17530,18 @@ function nextHifzFrom(plan, forDate) {
                  !(typeof asgEditStale === "function" && asgEditStale(a)))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
                     (Number(b.editedTs) || 0) - (Number(a.editedTs) || 0))[0];
+  /* موضعُ الخطة إن كان أحدثَ من كلّ قولٍ قبله — تعديلِ معلّمٍ أو تسميع */
+  const _posTs = Number(plan.hifzPosTs) || 0;
+  if (_posTs && Number(plan.hifzFromS) > 0) {
+    const _dTs = done ? (Number(done.closedAt) || Number(done.ts) || 0) : 0;
+    const _eTs = edPend ? (Number(edPend.editedTs) || 0) : 0;
+    if (_posTs > _dTs && _posTs > _eTs) {
+      return { s: Number(plan.hifzFromS),
+               a: skipBasmala(Number(plan.hifzFromS), Number(plan.hifzFromA) || 1),
+               after: false, byPlan: true, dir: dirOf(plan.direction) };
+    }
+  }
+
   if (edPend) {
     /* ولا يعلو على تسميعٍ جاء بعده: الأحدثُ منهما هو القول */
     const newer = !done ||
@@ -17892,7 +17904,16 @@ function generateAssignments(studentId, dateISO) {
       const last = lastOf(asgTermOf(studentId)) ||
                    (typeof asgOf === "function" ? lastOf(asgOf(studentId)) : null);
 
-      if (last) {
+      /* وموضعُ الخطة للمراجعة كالحفظ: الأحدثُ هو القول */
+      const _rPos = Number(plan.revPosTs) || 0;
+      const _rNew = (t.k === "rev" || t.k === "tilawah") && _rPos &&
+        Number(plan.revFromS) > 0 &&
+        _rPos > (last ? (Number(last.closedAt) || Number(last.ts) || 0) : 0);
+
+      if (_rNew) {
+        rec.fromS = Number(plan.revFromS);
+        rec.fromA = Math.max(1, Number(plan.revFromA) || 1);
+      } else if (last) {
         const nx = stepFrom(last.toS, last.toA, rec.direction);
         rec.fromS = nx.s; rec.fromA = nx.a;
       } else {
@@ -28403,7 +28424,12 @@ function asgProjectStarts(list, sid, dateISO, saved) {
     let baseS = 0, baseA = 0, n = 0, tag = "";
     const dir = dirOf(a.direction);
 
-    if (ref) {
+    /* ومرجعٌ أقدمُ من موضعِ خطةٍ كُتب بعده لا يُقاس عليه */
+    const _pTs = Number((plan || {})[k === "hifz" ? "hifzPosTs" : "revPosTs"]) || 0;
+    const _refTs = ref ? (Number(ref.closedAt) || Number(ref.ts) || 0) : 0;
+    const useRef = ref && !(_pTs && _pTs > _refTs);
+
+    if (useRef) {
       const st1 = stepFrom(Number(ref.toS), Number(ref.toA), dir);
       if (!st1 || !(Number(st1.s) > 0) || !(Number(st1.a) > 0)) return;
       baseS = Number(st1.s); baseA = Number(st1.a);
@@ -44867,10 +44893,35 @@ function spSyncEnginePlan(st) {
   if (p.hifzDir) { rec.direction = spDirKey(p.hifzDir); rec.dirSet = true; }
   if (p.revDir)  { rec.revDirection = spDirKey(p.revDir); }
 
+  /* =======================================================================
+     «أريد أن تُطبَّق الخطةُ على الطالب كما هي في الخطة بالضبط»
+     -----------------------------------------------------------------------
+     المحرّكُ كان يقدّم ما سُمِّع على موضع الخطة دائماً — وهو حقٌّ في سياقٍ
+     ماضٍ، لكنّه يجعل تعديلَ الإدارة للموضع بلا أثر: تكتب «البقرة ١» فيبقى
+     الطالبُ حيث انتهى.
+
+     فيُوسَم وقتُ تغيير الموضع. والقاعدةُ: **الأحدثُ هو القول** — كما هي
+     قاعدةُ تعديل المعلّم مع التسميع سواءً بسواء. فإن كتبتَ موضعاً بعد آخر
+     تسميعٍ ابتدأ منه، وإن سمّع بعد كتابتك مضى من حيث انتهى.
+
+     والوسمُ لا يقع إلّا إن تغيّر الموضعُ فعلاً: حفظُ الخطة لتبديل مقدارٍ
+     أو يومٍ لا يُرجِع الطالبَ إلى الوراء. */
   const hs = spSurahIdx(p.hifzSura);
-  if (hs) { rec.hifzFromS = hs; rec.hifzFromA = Math.max(1, Number(p.hifzAyah) || 1); }
+  if (hs) {
+    const _hA = Math.max(1, Number(p.hifzAyah) || 1);
+    if (Number(rec.hifzFromS) !== hs || Number(rec.hifzFromA) !== _hA) {
+      rec.hifzPosTs = Date.now();
+    }
+    rec.hifzFromS = hs; rec.hifzFromA = _hA;
+  }
   const rs = spSurahIdx(p.revSura);
-  if (rs) { rec.revFromS = rs; rec.revFromA = Math.max(1, Number(p.revAyah) || 1); }
+  if (rs) {
+    const _rA = Math.max(1, Number(p.revAyah) || 1);
+    if (Number(rec.revFromS) !== rs || Number(rec.revFromA) !== _rA) {
+      rec.revPosTs = Date.now();
+    }
+    rec.revFromS = rs; rec.revFromA = _rA;
+  }
 
   /* =======================================================================
      المقدارُ يُترجَم كذلك — «أريد الخطة أن تكون متوافقة في موقع الإدارة
@@ -51803,7 +51854,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-1605";
+  var APP_BUILD = "20261016-1800";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
