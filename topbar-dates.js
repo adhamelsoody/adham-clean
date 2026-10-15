@@ -280,7 +280,44 @@
      trmViewOptions)، ويعرض اختيارُها النظامَ كلَّه على تلك الفترة. وبلا
      فترات تبقى القائمة الثابتة كما كانت. */
   let periodDD = null, periodSig = "";
+
+  /* =======================================================================
+     «نلغي خانة الفترات من الشريط العلويّ عند مدير النظام فقط»
+     -----------------------------------------------------------------------
+     الخانةُ باقيةٌ في النظام ولسائر الأدوار كما هي — إنّما تُخفى عمّن دورُه
+     «مدير النظام» (admin). ولا تُحذف دالّةٌ ولا قائمة: trmViewOptions و
+     trmViewSet وشاشةُ الفترات في الإعدادات كلُّها على حالها، ومن أراد
+     ردَّها ردَّ هذا الشرطَ وحدَه.
+
+     ويُرَدُّ معها العرضُ إلى فترة العمل: لو بقي عنده اختيارٌ قديمٌ لفترةٍ
+     أخرى (وهو محفوظٌ في المتصفّح) لظلّ يراها وقد رُفع الزرُّ الذي يردّه
+     منها — فيُقفل النظامُ عليه للقراءة بلا مخرج. والمسحُ صامتٌ: لا رسالةَ
+     ولا إعادةَ رسم، ولا يُمسّ سجلٌّ في قاعدة البيانات.
+     ======================================================================= */
+  function periodHiddenFor() {
+    var role = "";
+    try { role = ((window.STATE || {}).user || {}).role || ""; } catch (e) {}
+    return String(role) === "admin";
+  }
+
+  function periodApplyRole() {
+    if (!periodDD) return false;
+    var hide = periodHiddenFor();
+    periodDD.style.display = hide ? "none" : "";
+    if (hide) {
+      /* مرّةً واحدةً: trmViewSet تُصيّرها "" فلا يُعاد النداءُ بعدها */
+      try {
+        var st = window.STATE || {};
+        if (st.viewTerm !== "" && typeof window.trmViewSet === "function") {
+          window.trmViewSet("", true);
+        }
+      } catch (e) {}
+    }
+    return hide;
+  }
+
   window.tbPeriodSync = function () {
+    if (periodApplyRole()) return;
     if (!periodDD || typeof window.trmViewOptions !== "function") return;
     let o = null;
     try { o = window.trmViewOptions(); } catch (e) { return; }
@@ -318,6 +355,8 @@
     periodDD = buildDropdown("الفترة",  PERIODS, { onPick: function (v) { syncHidden(selPeriod, v); } });
     bar.appendChild(periodDD);
     periodSig = "";
+    /* وتُخفى عند البناء كذلك إن كان الدورُ معروفاً، فلا تَلمع ثمّ تختفي */
+    periodApplyRole();
     if (typeof window.tbPeriodSync === "function") window.tbPeriodSync();
     bar.appendChild(buildDropdown("السنوات", YEARS,   { selected: "العام " + CUR_YEAR + "هـ", onPick: function (v) { syncHidden(selYear, v); } }));
   }
