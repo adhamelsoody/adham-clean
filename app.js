@@ -4224,12 +4224,34 @@ window.ptAct = function (kind) {
     if (!uid0) { showToast("لم يُعرف معرّفُ حساب الدخول", "warn"); return; }
     window.__ptPwdUid  = uid0;
     window.__ptPwdName = String(acc.name || "");
+    /* بريدٌ حقيقيٌّ أم بريدُ هويةٍ اصطناعيّ؟ الفارقُ عمليٌّ لا شكليّ:
+       {الهوية}@mirath.id لا تصله رسالةٌ أبداً، فلا رابطَ تعيينٍ يُرسل إليه.
+       وإرسالُ الرابطِ يعمل على الخطّة المجّانيّة، وتعيينُ الكلمةِ بيد
+       الإدارةِ لا يعمل إلا بنشر الدوالّ (Admin SDK) — فيُعرض الطريقان
+       ويُقال لكلٍّ شرطُه، ولا يُترك المديرُ يضغط زرّاً لا يعمل بلا بيان. */
+    const mail0 = String(acc.loginEmail || acc.email || "").trim();
+    const realMail = mail0 && mail0.indexOf("@mirath.id") < 0 ? mail0 : "";
+    window.__ptPwdEmail = realMail;
     const gen = (typeof randomPassword === "function") ? randomPassword(14) : "";
-    openModal("تعيين كلمة مرور", esc(acc.name || ""),
+    openModal("كلمة مرور الحساب", esc(acc.name || ""),
       noteCard("كلمةُ المرور الحاليّة <strong>لا تُعرض</strong>: فايربيس يحفظها " +
                "مُلبَّدةً ولا يُرجعها لأحد، والمشروعُ لا يخزّنها. " +
-               "اكتب كلمةً جديدةً أو خُذ المولَّدة، ثمّ سلّمها لصاحبها — " +
-               "<strong>لن تظهر مرّةً أخرى</strong>. وستُقطع جلساتُه القائمة.") +
+               "فالسبيلُ إمّا رابطُ تعيينٍ يفتحه صاحبُ الحساب، " +
+               "وإمّا كلمةٌ تعيّنها الإدارةُ وتُسلّمها بيدها.") +
+      (realMail
+        ? noteCard("<strong>١· رابطُ تعيينٍ إلى بريده</strong> — يُرسل إلى " +
+                   "<b>" + esc(realMail) + "</b>، ويعمل الآن بلا شرط.") +
+          `<div style="margin:8px 0 14px">
+             <button type="button" class="btn btn-primary"
+               data-action="pt-pwd-link">إرسال الرابط إليه</button></div>`
+        : noteCard("<strong>لا رابطَ يُرسل:</strong> هذا الحساب يدخل برقم الهوية " +
+                   "(<span dir=\"ltr\">" + esc(mail0 || "—") + "</span>) " +
+                   "وبريدُ الهوية الاصطناعيُّ لا تصله رسائل.")) +
+      noteCard((realMail ? "<strong>٢· " : "<strong>") +
+               "كلمةٌ تعيّنها الإدارةُ الآن</strong> — تُعرض مرّةً واحدةً " +
+               "لتسلّمها لصاحبها، وتُقطع جلساتُه القائمة. " +
+               "وهذه <strong>تحتاج نشرَ الدوالّ على الخادم</strong> " +
+               "(خطة Blaze) — فتغييرُ كلمةِ مرورِ غيرِك لا يقدر عليه المتصفّح.") +
       `<div class="form-grid" style="margin-top:12px">
         <div class="field full"><label>كلمة المرور الجديدة <span class="req">*</span></label>
           <input id="ptPwdVal" dir="ltr" value="${esc(gen)}" onclick="this.select()"></div>
@@ -4239,7 +4261,7 @@ window.ptAct = function (kind) {
               if(e){e.value=window.randomPassword?window.randomPassword(14):e.value;e.select();}})()"
             >توليد كلمة أخرى</button></div>
       </div>`,
-      `<button class="btn btn-primary" data-action="pt-set-pwd">تعيين</button>
+      `<button class="btn btn-primary" data-action="pt-set-pwd">تعيين الآن</button>
        <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
     return;
   }
@@ -4259,6 +4281,30 @@ window.ptAct = function (kind) {
        <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`
     );
   }
+};
+
+/* إرسالُ رابطِ تعيينٍ إلى بريد صاحب الحساب — يعمل على الخطّة المجّانيّة:
+   الإرسالُ عمليةٌ على مستوى المشروع لا على مستوى الجلسة، فلا يُخرج المديرَ
+   من حسابه ولا يحتاج خادماً. ومن لا بريدَ حقيقيَّ له لا يُعرض له هذا. */
+window.ptPwdLink = function () {
+  const em = String(window.__ptPwdEmail || "");
+  if (!em) { showToast("لا بريدَ حقيقيّاً لهذا الحساب — لا رابطَ يُرسل", "warn"); return; }
+  const a = window.__auth ||
+            ((typeof firebase !== "undefined" && firebase.auth) ? firebase.auth() : null);
+  if (!a || typeof a.sendPasswordResetEmail !== "function") {
+    showToast("خدمةُ البريد غير متاحة الآن", "warn"); return;
+  }
+  const btn = document.querySelector('[data-action="pt-pwd-link"]');
+  if (btn) { btn.disabled = true; btn.textContent = "جارٍ الإرسال.."; }
+  a.sendPasswordResetEmail(em)
+    .then(function () {
+      try { closeModal(); } catch (e) {}
+      showToast("أُرسل رابطُ التعيين إلى " + em, "success");
+    })
+    .catch(function (e) {
+      if (btn) { btn.disabled = false; btn.textContent = "إرسال الرابط إليه"; }
+      showToast("تعذّر الإرسال: " + ((e && e.message) || ""), "warn");
+    });
 };
 
 /* تنفيذُ تعيين كلمة المرور — عبر الدالة السحابية updateUserLogin:
@@ -44406,7 +44452,8 @@ function spCallFn(name, data) {
       .catch(function (e) {
         const c = (e && e.code) || "";
         if (c === "functions/not-found" || c === "not-found") {
-          throw new Error("الدالة غير منشورة — نفّذ: firebase deploy --only functions");
+          throw new Error("الدالّةُ غير منشورة — النشرُ يحتاج خطة Blaze، " +
+                          "ثمّ: firebase deploy --only functions");
         }
         throw e;
       });
@@ -47020,6 +47067,7 @@ document.addEventListener("click", (e) => {
     case "pt-send-bell": window.ptSend("bell"); break;
     case "pt-delete":    window.ptDelete();     break;
     case "pt-set-pwd":   window.ptPwdSave();    break;
+    case "pt-pwd-link":  window.ptPwdLink();    break;
 
     /* ---- المجمعات ---- */
     case "panel-complex": panelComplex(t.dataset.id); break;
@@ -50976,7 +51024,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-1545";
+  var APP_BUILD = "20261015-1710";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
