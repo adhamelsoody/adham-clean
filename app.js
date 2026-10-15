@@ -29725,9 +29725,15 @@ function tstuAsgOf(st, d) {
       tstuPreEnds(gen);
     } catch (e) { gen = []; }
   }
-  return (typeof asgMergeByKind === "function")
+  const out = (typeof asgMergeByKind === "function")
     ? asgMergeByKind(stored, gen)
     : (stored.length ? stored : gen);
+  /* ورصفُ الأيّام القادمة هنا أيضاً: هذه الشاشةُ لا تمرّ بـ dutiesOfDay،
+     فكان الرصفُ لا يُنادى فيها ألبتّة — وهي الشاشةُ التي يُنظر فيها إلى
+     التقويم. والمخزونُ لا يُمَسّ، ولا كتابةَ في السجلّ. */
+  try { asgProjectStarts(out, st.id, d, stored); } catch (e) { console.warn("asgProjectStarts:", e); }
+  try { tstuPreEnds(out); } catch (e) {}
+  return out;
 }
 
 /* =========================================================================
@@ -51756,7 +51762,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-1205";
+  var APP_BUILD = "20261016-1320";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
