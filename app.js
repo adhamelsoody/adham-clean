@@ -31893,7 +31893,17 @@ function recvNotifyAdmin(a, score) {
   const st = (cur("students") || []).find(x =>
     String(x.id) === String(a.studentId)) || {};
   const who = st.name || a.student || "طالب";
-  const nm = s => (typeof surahName === "function" && surahName(s)) || ("سورة " + s);
+  /* «اسمُ السورة يظهر في البيانات الخارجيّة»: كان السطرُ يقول «سورة 8».
+     وفهرسُ المصحف يُجلب عند أوّل حاجةٍ إليه، ولم يكن أحدٌ يطلبه في هذه
+     الشاشة — فيبقى الاسمُ رقماً أبداً. فيُطلب هنا (الطلبُ لا يتكرّر:
+     reciteLoadSurahs تعود فوراً إن كان محمَّلاً أو قيد التحميل)، وهي
+     تُنادي mount() حين يصل فيُعاد الرسمُ بالاسم. */
+  const nm = s => {
+    const n = (typeof surahName === "function" && surahName(s)) || "";
+    if (n) return n;
+    try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {}
+    return "سورة " + toArabicDigits(s);
+  };
   const one = (s, y) => nm(s) + " (" + toArabicDigits(Number(y) || 1) + ")";
   const rng = o => (Number(o.fromS) > 0)
     ? ("من " + one(o.fromS, o.fromA) +
@@ -39034,7 +39044,17 @@ window.stuOpenDuty = function (id) {
    الطالب. وتبقى tstuRange على صيغتها لشاشات المعلّم التي تستعملها. */
 function stuRangeText(a) {
   if (!a || !a.fromS) return "";
-  const nm = s => (typeof surahName === "function" && surahName(s)) || ("سورة " + s);
+  /* «اسمُ السورة يظهر في البيانات الخارجيّة»: كان السطرُ يقول «سورة 8».
+     وفهرسُ المصحف يُجلب عند أوّل حاجةٍ إليه، ولم يكن أحدٌ يطلبه في هذه
+     الشاشة — فيبقى الاسمُ رقماً أبداً. فيُطلب هنا (الطلبُ لا يتكرّر:
+     reciteLoadSurahs تعود فوراً إن كان محمَّلاً أو قيد التحميل)، وهي
+     تُنادي mount() حين يصل فيُعاد الرسمُ بالاسم. */
+  const nm = s => {
+    const n = (typeof surahName === "function" && surahName(s)) || "";
+    if (n) return n;
+    try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {}
+    return "سورة " + toArabicDigits(s);
+  };
   /* بالعدّ المعروضِ نفسِه الذي يحدّده المعلّمُ في صحيفة الواجب */
   const one = (s, y, st) => nm(s) + " (" +
     toArabicDigits(asgAyahShown(s, y || 1, !!st)) + ")";
@@ -51603,7 +51623,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-0620";
+  var APP_BUILD = "20261016-0735";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
