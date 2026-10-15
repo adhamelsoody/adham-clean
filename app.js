@@ -625,14 +625,40 @@ window.mqFilterOpen = function () {
 
 function facToolbar(coll, presetCount, opt) {
   opt = opt || {};
-  const list = coll === "mosques" ? DB.mosques : DB.complexes;
+  /* =========================================================================
+     أعدادُ الفرز من القائمة المعروضة نفسِها
+     -------------------------------------------------------------------------
+     «يظهر أنّ هناك حسابين موقوفين، أضغط عليه فلا يوجد أحد — ويوسف فقط،
+     وكذلك في الكل».
+
+     وهذا الشريطُ يخدم شاشتين: بطاقاتِ المنشآت وجداولَ الأشخاص. وكان يعدّ
+     من DB.complexes دائماً إلّا في المساجد — فصفحةُ المدراء تقرأ أعدادَها
+     من **المجمّعات**: «الكل (٣)» عددُ المجمّعات، و«متوقف (٢)» الفرقُ
+     بينها وبين الفعّال. فيقول الشريطُ ما لا علاقة له بالجدول تحته.
+
+     فصارت الأعدادُ من القائمة التي تُعرض فعلاً متى مُرِّرت (opt.list)،
+     وبمقياس الحالة نفسِه الذي يُرسم به الصفّ. وبطاقاتُ المنشآت على حالها.
+     ========================================================================= */
+  const list = opt.list ? opt.list
+    : (coll === "mosques" ? DB.mosques : DB.complexes);
   /* كان الزر مثبّتاً على «إضافة مجمع» مهما كانت الصفحة، فصفحة المدراء
      — وهي تستعمل هذا الشريط — كانت تفتح نافذة المجمع بدل نافذة المدير. */
   const addAction = opt.addAction ||
     (coll === "mosques" ? "modal-mosque" : coll === "teachers" ? "modal-teacher" : "modal-complex");
   const addTitle = opt.addLabel ||
     (coll === "mosques" ? "إضافة مسجد" : coll === "teachers" ? "إضافة مدير" : "إضافة مجمع");
-  const activeCount = presetCount != null ? presetCount : list.filter(x => x.status === "نشط").length;
+  const onTest = opt.list
+    ? (x => x && x.active !== false && x.status !== "متوقف")
+    : (x => x && x.status === "نشط");
+  const activeCount = presetCount != null ? presetCount : list.filter(onTest).length;
+  /* ========================================================================
+     وزرُّ الفرز يُنادي الفارزَ الذي يفهم ما تحته
+     ------------------------------------------------------------------------
+     facFilter تُخفي بطاقاتِ #facGrid وحدَها. وصفحةُ المدراء جدولٌ صفوفُه
+     في #ptBody، فكانت النقرةُ تُضيء الزرَّ ولا تُحرّك صفّاً — فيُقال
+     «ضغطتُ فلا يوجد أحد». فلها فارزُها ptFilter، وللبطاقات فارزُها.
+     ======================================================================== */
+  const fx = opt.list ? "ptFilter" : "facFilter";
   /* الأيقونات مطابقة للنموذج المرجعي: دائرة محيطة بكل رمز */
   const A = '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8.2v7.6M8.2 12h7.6"/></svg>';
   const D = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9.4 3h5.2c.5 0 .9.4.9.9V5h4.1c.5 0 .9.4.9.9s-.4.9-.9.9h-.9v12.4c0 1-.8 1.8-1.8 1.8H7.1c-1 0-1.8-.8-1.8-1.8V6.8h-.9c-.5 0-.9-.4-.9-.9S3.9 5 4.4 5h4.1V3.9c0-.5.4-.9.9-.9zm.9 2h3.4v-.2h-3.4V5zM9.6 9.1c-.4 0-.7.3-.7.7v7.4c0 .4.3.7.7.7s.7-.3.7-.7V9.8c0-.4-.3-.7-.7-.7zm4.8 0c-.4 0-.7.3-.7.7v7.4c0 .4.3.7.7.7s.7-.3.7-.7V9.8c0-.4-.3-.7-.7-.7z"/></svg>';
@@ -646,11 +672,11 @@ function facToolbar(coll, presetCount, opt) {
          شكلُ الفرز بين شاشةٍ وأخرى. -->
     <div class="pt-tabs">
       <button type="button" class="pt-tab on" data-ptfilter="on"
-        onclick="window.facFilter('on')">فعال <b>(${activeCount})</b></button>
+        onclick="window.${fx}('on')">فعال <b>(${activeCount})</b></button>
       <button type="button" class="pt-tab" data-ptfilter="off"
-        onclick="window.facFilter('off')">متوقف مؤقتاً <b>(${Math.max(0, (list || []).length - activeCount)})</b></button>
+        onclick="window.${fx}('off')">متوقف مؤقتاً <b>(${Math.max(0, (list || []).length - activeCount)})</b></button>
       <button type="button" class="pt-tab" data-ptfilter="all"
-        onclick="window.facFilter('all')">الكل <b>(${(list || []).length})</b></button>
+        onclick="window.${fx}('all')">الكل <b>(${(list || []).length})</b></button>
     </div>
     ${coll === "mosques" && !facCtxComplexId() ? mqAffiliationFilter(CH) : ""}
     ${opt.search === false ? "" : `<div class="fac-searchbox">${SR}<input placeholder="ابحث.." oninput="window.facSearch(this.value)"></div>`}
@@ -3976,7 +4002,8 @@ function personTable(opt) {
     ${pageHead(opt.title + (opt.showCount ? ` (${list.length})` : ""), "", backArrow())}
     ${opt.overview || ""}
     ${opt.toolbar === "add" ? personToolbarAdd(opt, activeCount)
-      : facToolbar("teachers", activeCount, { search: false, addAction: opt.addAction, addLabel: opt.addLabel })}
+      : facToolbar("teachers", activeCount, { search: false, list: list,
+          addAction: opt.addAction, addLabel: opt.addLabel })}
     <div class="pt-holder">
       ${opt.actionsPanel ? personActionsPanel() : ""}
       <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
@@ -50727,7 +50754,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-1150";
+  var APP_BUILD = "20261015-1230";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
