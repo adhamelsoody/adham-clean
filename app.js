@@ -40620,8 +40620,15 @@ function circleTypeOptions(mosqueId, complexId) {
 function pubMosqueIndexBuild() {
   const items = (Array.isArray(DB.mosques) ? DB.mosques : [])
     .filter(m => m && m.status !== "متوقف" && String(m.name || "").trim())
-    .map(m => ({ id: String(m.id), name: String(m.name),
-                 cx: String(m.complexId || "") }))
+    .map(m => {
+      /* اسمُ المجمّع معه: مسجدان باسمٍ واحدٍ في مجمّعين يلتبسان على
+         المسجِّل بلا هذا. واسمُ المجمّع علنيٌّ كاسم المسجد — لا سرَّ فيه. */
+      const cx = (Array.isArray(DB.complexes) ? DB.complexes : [])
+        .find(c => c && String(c.id) === String(m.complexId || ""));
+      return { id: String(m.id), name: String(m.name),
+               cx: String(m.complexId || ""),
+               cxName: String((cx && cx.name) || "") };
+    })
     .sort((a, b) => String(a.name).localeCompare(String(b.name), "ar"));
   return { id: "mosques", items: items, ts: Date.now() };
 }
@@ -48177,6 +48184,33 @@ async function loadDataFast(onData) {
     }
   } catch (e) { console.warn("syncAllTeachers:", e); }
 
+  /* فهرسُ المساجد العلنيُّ يُبنى من نفسه عقب كلّ تحميلٍ لمخوَّلٍ بالكتابة.
+     كان يحتاج أمراً يُكتب في الطرفيّة مرّةً واحدة، فإن لم يُكتب بقيت
+     خانةُ المسجد في صفحة التسجيل تقول «لا مساجد متاحة» وإن كان في
+     النظام مساجد — وهو ما وقع. والكتابةُ لا تقع إلّا إن اختلف الفهرسُ
+     عمّا في النظام، فلا كتابةَ مع كلّ فتحةٍ للموقع. */
+  try {
+    const role2 = ((STATE && STATE.user) || {}).role;
+    if ((role2 === "admin" || isMgrRole(role2)) &&
+        typeof pubMosqueIndexBuild === "function" &&
+        (Array.isArray(DB.mosques) ? DB.mosques.length : 0) > 0) {
+      const db2 = typeof FDB === "function" ? FDB() : null;
+      if (db2) {
+        const want = pubMosqueIndexBuild();
+        const key  = JSON.stringify(want.items);
+        db2.collection("publicIndex").doc("mosques").get().then(function (sn) {
+          const got = (sn && sn.exists ? (sn.data() || {}) : {});
+          const had = JSON.stringify(Array.isArray(got.items) ? got.items : null);
+          if (had === key) return;                 /* الفهرسُ مطابقٌ — لا كتابة */
+          return db2.collection("publicIndex").doc("mosques").set(want)
+            .then(function () {
+              console.log("حُدّث فهرسُ المساجد العلنيّ (" + want.items.length + " مسجداً)");
+            });
+        }).catch(function (e) { console.warn("pubMosqueIndex:", e && e.code); });
+      }
+    }
+  } catch (e) { console.warn("pubMosqueIndex:", e); }
+
   if (onData) { try { onData(false); } catch (e) { console.warn(e); } }
   return painted;
 }
@@ -51037,7 +51071,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-1835";
+  var APP_BUILD = "20261015-2010";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

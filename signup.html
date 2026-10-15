@@ -46,6 +46,19 @@
   .f input.bad{border-color:#c62f2f;background:#fdf4f4}
   .hint{font-size:11.5px;color:#909fa0;margin-top:5px}
 
+  /* قائمةُ المساجد: بحثٌ وقائمةٌ تُعاد رسمُها من الحالة مع كلّ حرف.
+     ارتفاعٌ محدودٌ بالتمرير — المساجدُ قد تبلغ مئاتٍ فلا تُغرِق الصفحة. */
+  .mq-list{margin-top:6px;max-height:210px;overflow-y:auto;border:1px solid #dde5e5;
+           border-radius:11px;background:#fff}
+  .mq-opt{display:block;width:100%;text-align:right;padding:10px 13px;border:0;
+          background:none;font:inherit;font-size:13.5px;color:#1f3b3d;cursor:pointer;
+          border-bottom:1px solid #eef3f3}
+  .mq-opt:last-child{border-bottom:0}
+  .mq-opt:hover,.mq-opt:focus{background:#f2fbfb;outline:0}
+  .mq-opt.on{background:#e3f7f8;font-weight:700}
+  .mq-opt small{display:block;font-size:11px;color:#8ba0a1;font-weight:400;margin-top:2px}
+  .mq-empty{padding:12px 13px;font-size:12.5px;color:#909fa0}
+
   .btn{width:100%;padding:14px;font-size:15px;font-weight:700;color:#fff;background:#4bdee4;border:0;
        border-radius:11px;cursor:pointer;margin-top:18px;font-family:inherit;
        box-shadow:0 4px 14px rgba(11, 127, 131, 50,.3);transition:.18s}
@@ -182,10 +195,13 @@
            لا رابطَ مقرأةٍ ولا رقمَ مشرف.
            ================================================================= -->
       <div class="f" id="mosqueBox" style="grid-column:1/-1">
-        <label for="mosque">المسجد الذي تنضمّ إليه <i>*</i></label>
-        <select id="mosque">
-          <option value="">— جارٍ تحميل المساجد… —</option>
-        </select>
+        <label for="mosqueSearch">المسجد الذي تنضمّ إليه <i>*</i></label>
+        <!-- القيمةُ معرّفُ المسجد، تبقى في حقلٍ خفيٍّ اسمُه mosque كما كان،
+             فلا يتغيّر ما يقرؤه الإرسال. والظاهرُ بحثٌ وقائمةٌ تُرسم من
+             الحالة مع كلّ حرف: القائمةُ المنسدلةُ لا تُبحث وقد تبلغ مئاتٍ. -->
+        <input type="hidden" id="mosque" value="">
+        <input id="mosqueSearch" autocomplete="off" placeholder="جارٍ تحميل المساجد…" disabled>
+        <div id="mosqueList" class="mq-list" hidden></div>
         <div class="hint" id="mosqueHint">يصل طلبُك إلى مدير هذا المسجد</div>
       </div>
 
@@ -218,7 +234,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="firebase-config.js?v=202610151835"></script>
+<script src="firebase-config.js?v=202610152010"></script>
 <script>
 (function () {
   "use strict";
@@ -252,20 +268,110 @@
   var mosqueHint = document.getElementById("mosqueHint");
   var mosquesOk  = false;
 
+  /* ====================================================================
+     منتقي المساجد — حالةٌ واحدةٌ ورسمٌ منها
+     --------------------------------------------------------------------
+     MQ هي كلُّ ما تعرفه الشاشة: المساجدُ وكلمةُ البحث والمختارُ منها.
+     وكلُّ تغييرٍ يمرّ بـ mqSet فتُعاد الرسمُ من الحالة لا من الـ DOM —
+     فلا يفترق ما يُرى عمّا هو مخزون. والقيمةُ تُكتب في الحقل الخفيّ
+     mosque، وهو ما يقرؤه الإرسال كما كان قبل هذا المنتقي.
+     ==================================================================== */
+  var mqSearch = document.getElementById("mosqueSearch");
+  var mqListEl = document.getElementById("mosqueList");
+  var MQ = { items: [], q: "", picked: "", state: "loading" };
+
+  function mqEsc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  /* المرشَّحون: بحثٌ في اسم المسجد واسم مجمّعه، بلا حساسيةٍ للمسافات */
+  function mqMatch() {
+    var q = MQ.q.trim().replace(/\s+/g, " ");
+    if (!q) return MQ.items;
+    return MQ.items.filter(function (it) {
+      return (String(it.name || "") + " " + String(it.cxName || "")).indexOf(q) > -1;
+    });
+  }
+
+  function mqRender() {
+    if (MQ.state === "loading") {
+      mqSearch.disabled = true;
+      mqSearch.placeholder = "جارٍ تحميل المساجد…";
+      mqListEl.hidden = true;
+      return;
+    }
+    if (MQ.state === "denied") {
+      mqSearch.disabled = true;
+      mqSearch.placeholder = "الاختيار غير متاح الآن";
+      mqListEl.hidden = true;
+      mosqueHint.textContent = "تعذّر تحميلُ المساجد — أرسِل طلبَك وستُسنِدك الإدارة.";
+      return;
+    }
+    if (!MQ.items.length) {
+      mqSearch.disabled = true;
+      mqSearch.placeholder = "لا مساجد متاحة";
+      mqListEl.hidden = true;
+      mosqueHint.textContent = "لا مساجد متاحةً الآن — سيُسنِدك المشرفُ بعد الاعتماد.";
+      return;
+    }
+
+    mqSearch.disabled = false;
+    mqSearch.placeholder = "اكتب اسم المسجد للبحث…";
+    var list = mqMatch();
+    mqListEl.hidden = false;
+
+    if (!list.length) {
+      mqListEl.innerHTML = '<div class="mq-empty">لا مسجد بهذا الاسم</div>';
+    } else {
+      var h = "";
+      for (var i = 0; i < list.length; i++) {
+        var it = list[i];
+        h += '<button type="button" class="mq-opt' +
+             (String(it.id) === MQ.picked ? " on" : "") +
+             '" data-mq="' + mqEsc(it.id) + '">' + mqEsc(it.name) +
+             (it.cxName ? "<small>" + mqEsc(it.cxName) + "</small>" : "") +
+             "</button>";
+      }
+      mqListEl.innerHTML = h;
+    }
+
+    var sel = null;
+    for (var j = 0; j < MQ.items.length; j++) {
+      if (String(MQ.items[j].id) === MQ.picked) { sel = MQ.items[j]; break; }
+    }
+    mosqueHint.textContent = sel
+      ? ("اخترتَ: " + sel.name + " — يصل طلبُك إلى مديره")
+      : ("اختر مسجداً من القائمة (" + list.length + " من " + MQ.items.length + ")");
+  }
+
+  /* البوّابةُ الوحيدةُ لتغيير الحالة: تكتب القيمةَ ثمّ تُعيد الرسم */
+  function mqSet(patch) {
+    for (var k in patch) if (Object.prototype.hasOwnProperty.call(patch, k)) MQ[k] = patch[k];
+    mosqueSel.value = MQ.picked || "";
+    mosquesOk = MQ.items.length > 0;
+    bad("mosqueSearch", false);
+    mqRender();
+  }
+
+  mqSearch.addEventListener("input", function () { mqSet({ q: this.value }); });
+  mqListEl.addEventListener("click", function (e) {
+    var b = e.target && e.target.closest ? e.target.closest(".mq-opt") : null;
+    if (!b) return;
+    var id = b.getAttribute("data-mq") || "";
+    mqSet({ picked: MQ.picked === id ? "" : id });
+  });
+
   function fillMosques(items) {
-    var html = '<option value="">— اختر المسجد —</option>';
+    var clean = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i] || {};
       if (!it.id || !it.name) continue;
-      html += '<option value="' + String(it.id).replace(/"/g, "&quot;") + '">' +
-              String(it.name).replace(/[<>&]/g, "") + "</option>";
+      clean.push({ id: String(it.id), name: String(it.name),
+                   cx: String(it.cx || ""), cxName: String(it.cxName || "") });
     }
-    mosqueSel.innerHTML = html;
-    mosquesOk = items.length > 0;
-    if (!mosquesOk) {
-      mosqueSel.innerHTML = '<option value="">— لا مساجد متاحة —</option>';
-      mosqueHint.textContent = "لا مساجد متاحةً الآن — سيُسنِدك المشرفُ بعد الاعتماد.";
-    }
+    mqSet({ items: clean, state: "ready", q: "", picked: "" });
   }
 
   (function loadMosques() {
@@ -273,13 +379,8 @@
       db.collection("publicIndex").doc("mosques").get().then(function (snap) {
         var d = snap && snap.exists ? (snap.data() || {}) : {};
         fillMosques(Array.isArray(d.items) ? d.items : []);
-      }).catch(function () {
-        mosqueSel.innerHTML = '<option value="">— الاختيار غير متاح الآن —</option>';
-        mosqueHint.textContent = "تعذّر تحميلُ المساجد — أرسِل طلبَك وستُسنِدك الإدارة.";
-      });
-    } catch (e) {
-      mosqueSel.innerHTML = '<option value="">— الاختيار غير متاح الآن —</option>';
-    }
+      }).catch(function () { mqSet({ state: "denied" }); });
+    } catch (e) { mqSet({ state: "denied" }); }
   })();
 
   /* ====================================================================
@@ -376,6 +477,14 @@
           return "رقم هوية «" + kids[k].name + "» يجب أن يكون عشرة أرقام، أو اتركه فارغاً.";
         }
       }
+    }
+
+    /* المسجدُ مطلوبٌ متى كانت القائمةُ متاحةً فعلاً — ومن لا قائمةَ عنده
+       يُرسل طلبَه وتُسنِده الإدارة، فلا يُحبَس خلف حقلٍ لا يملك ملأه. */
+    if ((role === "student" || role === "parent") && mosquesOk && !v("mosque")) {
+      bad("mosqueSearch", 1);
+      try { mqSearch.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+      return "اختر المسجد الذي تنضمّ إليه من القائمة.";
     }
 
     var p1 = v("pass"), p2 = v("pass2");
