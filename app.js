@@ -30741,7 +30741,9 @@ window.tstuDuty = function (id) {
      ما تزال تحرس كتابةَ المقدار في tstuDutySave و tstuQtySave وتعديلَه
      في بطاقة الطالب والخطة. */
   const canQty   = teacherCan("planQty");
-  /* وتقسيمُ الجلسات تقييمٌ كذلك: يُمنع على واجبٍ لم يأتِ يومُه */
+  /* وتقسيمُ الجلسات تقييمٌ كذلك: يُمنع على واجبٍ لم يأتِ يومُه.
+     والصلاحيةُ باقيةٌ تُحسب ولم تُلغَ: صندوقُ التقسيم رُفع من هذه الصحيفة
+     («شيل دول»)، وهي ما تزال تحرس tsplSave و asgPart ونافذةَ الجلسات. */
   const canSplit = teacherCan("splitDuty") &&
     !(typeof asgNotYet === "function" && asgNotYet(a)) &&
     (typeof asgSplittable === "function" ? asgSplittable(a) : false);
@@ -30924,16 +30926,29 @@ window.tstuDuty = function (id) {
       <span class="tsd-ayah-go">${ic("book", 15)} افتح في المصحف</span>
     </button>` : ""}
 
-    ${canSplit ? tsplBox(a)
-      : (typeof asgSplittable === "function" && asgSplittable(a)
-        ? noteCard("صلاحيةُ تقسيم الواجب غيرُ مفعَّلةٍ لحسابك.") : "")}`,
+    <!-- ===================================================================
+         «شيل دول» — صندوقُ تقسيم الجلسات رُفع من صحيفة الواجب
+         -------------------------------------------------------------------
+         رُفع ما كان هنا: سطرُ (المقدار الأصليّ · سُمّع · الباقي)، وخانةُ
+         «التقييم النهائي»، وصفوفُ (من آية · إلى آية · المقدار)، وزرُّ
+         «+ تقسيم» — ومعها زرُّ «حفظ الجلسات» من ذيل النافذة، إذ لم يبقَ
+         له ما يحفظه هنا.
+
+         ولم يُحذف شيءٌ من النظام:
+           · tsplBox و tsplRow و tsplAdd و tsplSave باقياتٌ كما هنّ لمن
+             ينادهنّ، وصلاحيةُ splitDuty تُحسب وتحرسهنّ.
+           · وتسجيلُ الجلسات الجزئيّة موضعُه نافذتُه المبنيّةُ أصلاً:
+             زرُّ الجلسة على بطاقة الواجب (window.asgPart) — وفيها
+             المطلوبُ وما سُمّع والباقي وسجلُّ الجلسات وحذفُ جلسة.
+           · والجلساتُ المسجَّلةُ قبلُ لم تُمسّ: عددُها يظهر على بطاقة
+             الواجب («N جلسة»)، وتفصيلُها في تلك النافذة.
+         =================================================================== -->`,
     /* زرُّ الاعتماد في الذيل بجانب «حفظ التعديلات» باسم «تم التسميع» —
        وهو يفتح تقييمَ الأداء (recvOpen) عبر tstuDutyResult كما كان. */
     `${canRecite ? `<button class="btn btn-primary" onclick="window.tstuDutyResult('${
           jsAttr(a.id)}','done')">${ic("check", 16)} تم التسميع</button>` : ""}
      ${canEdit ? `<button class="btn btn-soft" onclick="window.tstuDutySave('${jsAttr(a.id)}')">${
           ic("check", 15)} حفظ التعديلات</button>` : ""}
-     ${canSplit ? `<button class="btn btn-soft" onclick="window.tsplSave()">حفظ الجلسات</button>` : ""}
      <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
 
   /* يدُ المعلّم تُوسَم على الصحيفة: حدثا change وinput لا يصدران إلا عن
@@ -51357,7 +51372,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261015-2155";
+  var APP_BUILD = "20261015-2310";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
