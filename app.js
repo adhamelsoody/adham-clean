@@ -30598,6 +30598,8 @@ function tsdReactSheet(cfg) {
             tAm.dataset.manual !== "1") tAm.dataset.manual = "1";
       } catch (e) {}
       try { if (typeof window.tsdQtyRange === "function") window.tsdQtyRange(); } catch (e) {}
+      /* وبعد كلّ رسمٍ: المنتهى لا يقف عند الابتداء */
+      try { if (typeof window.tsdEndMin === "function") window.tsdEndMin(); } catch (e) {}
     });
 
     /* وسمُ يدِ المعلّم: لا يُوسَم ما أطلقه النظامُ نفسُه — tsdQtyRange
@@ -30758,6 +30760,8 @@ function tsdReactSheet(cfg) {
                 window.ayahCap("tsd_fA", "tsd_fS");
                 window.ayahCap("tsd_tA");
                 window.tsdQtyRange(1);
+                /* وإن سكت الحاسبُ (مدًى يدويّ) يبقى الحدُّ مضموناً */
+                try { window.tsdEndMin(); } catch (e2) {}
               }
             }),
             stepBox({ id: "tsd_fA", label: "من آية", value: ayahShow(a.fromS, cfg.fA0),
@@ -30981,7 +30985,7 @@ window.tstuDuty = function (id) {
         <span class="tsd-v">${canFrom && !locked
           ? `<span class="tsd-pair tsd-pair-w">
                <select id="tsd_fS" class="tsd-in tsd-sura"
-                 onchange="window.ayahCap('tsd_fA','tsd_fS');window.ayahCap('tsd_tA');window.tsdQtyRange(1)"
+                 onchange="window.ayahCap('tsd_fA','tsd_fS');window.ayahCap('tsd_tA');window.tsdQtyRange(1);window.tsdEndMin()"
                  >${sOpts(a.fromS || 1)}</select>
                ${numStepBox("tsd_fA", "tsd-ayah-n", ayahShow(a.fromS, fA0), "من آية", 1,
                    "tsd_fS", true, "tsd_tA", "", "", true)}
@@ -31160,6 +31164,8 @@ window.tstuDuty = function (id) {
           tAm.dataset.manual !== "1") tAm.dataset.manual = "1";
     } catch (e) {}
     try { if (typeof window.tsdQtyRange === "function") window.tsdQtyRange(); } catch (e) {}
+    /* وعند الفتح كذلك: مدًى قديمٌ محفوظٌ «من ٧٥ إلى ٧٥» يُصحَّح للعرض */
+    try { if (typeof window.tsdEndMin === "function") window.tsdEndMin(); } catch (e) {}
   };
   tsdFill();
   if ((typeof QSURAHS === "undefined" || !QSURAHS) &&
@@ -44464,6 +44470,8 @@ window.tsdQtyRange = function (force) {
     tAEl.value = String(want);
     window.ayahCap("tsd_tA");
     if (tAEl.dataset) tAEl.dataset.manual = "";
+    /* ومهما حسب المقدارُ: المنتهى لا يقف عند الابتداء — يعبر السورة */
+    try { window.tsdEndMin(); } catch (e) {}
   }).catch(function () {});
 };
 
@@ -44488,6 +44496,74 @@ window.tsdDirSet = function (btn, val) {
   const sheet = box.closest(".tsd-sheet");
   if (sheet && sheet.dataset) sheet.dataset.dir = inp.value;
   if (typeof window.tsdQtyRange === "function") window.tsdQtyRange(1);
+};
+
+/* =========================================================================
+   «إلى» لا تقف عند «من» — تعبر السورة
+   -------------------------------------------------------------------------
+   «إذا بدأت من آية ٧٥ يبدأ في الخانة التي تحت ما بعد الآية ٧٥، يعني من
+   آية ٧٦ وهكذا».
+
+   وحدُّ ayahCap الأدنى لخانة «إلى» هو آيةُ الابتداء زائداً واحدة ما دامت
+   السورةُ واحدة — فإن كان الابتداءُ آخرَ آيةٍ في سورتها (الأنفال ٧٥)
+   انكمش الحدُّ إلى الآية نفسِها، فيُقرأ المدى «من الأنفال ٧٥ إلى الأنفال
+   ٧٥»: واجبٌ بآيةٍ واحدةٍ لا معنى له.
+
+   فيُدفع المنتهى إلى الموضع الذي يلي الابتداءَ فعلاً بـ stepFrom — وهي
+   تعبر السورةَ (الأنفال ٧٥ ← التوبة ١) وتحترم الاتجاه. ولا تُنادى إلّا
+   إن كان المنتهى عند الابتداء أو قبله: فمدًى صحيحٌ لا يُمَسّ.
+
+   والكتابةُ هنا كتابةُ نظامٍ لا يدِ معلّمٍ، فتُحاط بـ __tsdSys لئلّا
+   تُوسَم تعديلاً. ولا تُكتب في السجلّ: الحفظُ بزرّه كما كان.
+   ========================================================================= */
+window.tsdEndMin = function () {
+  const fS = document.getElementById("tsd_fS");
+  const fA = document.getElementById("tsd_fA");
+  const tS = document.getElementById("tsd_tS");
+  const tA = document.getElementById("tsd_tA");
+  if (!fS || !fA || !tS || !tA) return;
+
+  const fs = Number(fS.value) || 0, fav = Number(fA.value) || 0;
+  const ts = Number(tS.value) || 0, tav = Number(tA.value) || 0;
+  if (!fs || !fav || !ts) return;
+
+  /* المقارنةُ بعدّ المصحف لا بعدّ العرض: الفاتحةُ تفترق بينهما */
+  const st = (typeof ayahStore === "function") ? ayahStore : function (s, x) { return x; };
+  const sh = (typeof ayahShow === "function") ? ayahShow : function (s, x) { return x; };
+  const faS = st(fs, fav), taS = st(ts, tav);
+
+  const dEl = document.getElementById("tsd_dir");
+  const dir = (typeof dirOf === "function")
+    ? dirOf(dEl && dEl.value ? dEl.value : "forward") : "forward";
+
+  /* التنازليُّ خارجَ هذه الدالّة عمداً: حدُّ ayahCap الأدنى لخانة «إلى»
+     مبنيٌّ على التصاعد (آيةُ الابتداء زائداً واحدة) — وهو يبني خياراتِ
+     القائمة بين ذلك الحدّ وآخر السورة. فدفعُ المنتهى إلى ما قبل الابتداء
+     يصطدم بخياراتٍ لا تحويه، فتُردّ القيمةُ إلى الحدّ. وإصلاحُ ذلك يمسّ
+     ayahCap وكلَّ ما يستعملها — ولم يُطلب. فيبقى التنازليُّ على ما كان
+     يفعله محرّكُ المدى، ولا تُغيَّر له حسبة. */
+  if (dir === "backward") return;
+
+  /* أمامَ الابتداء فعلاً؟ */
+  if (ts > fs || (ts === fs && taS > faS)) return;
+
+  if (typeof stepFrom !== "function") return;
+  const nx = stepFrom(fs, faS, dir);
+  if (!nx || !(Number(nx.s) > 0) || !(Number(nx.a) > 0)) return;
+  /* بلغ طرفَ المصحف فلا موضعَ بعده: يُترك كما هو ولا يُفتعل */
+  if (Number(nx.s) === fs && Number(nx.a) === faS) return;
+
+  window.__tsdSys = 1;
+  try {
+    if (String(tS.value) !== String(nx.s)) {
+      tS.value = String(nx.s);
+      tS.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    window.ayahCap("tsd_tA");
+    tA.value = String(sh(Number(nx.s), Number(nx.a)) || 1);
+    window.ayahCap("tsd_tA");
+    tA.dispatchEvent(new Event("change", { bubbles: true }));
+  } finally { window.__tsdSys = 0; }
 };
 
 /* تحريرٌ يدويٌّ لـ«إلى» يُوسَم فيُحترم حتى تتبدّل مدخلاتُ الحساب */
@@ -51505,7 +51581,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-0215";
+  var APP_BUILD = "20261016-0340";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
