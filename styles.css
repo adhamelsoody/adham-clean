@@ -13224,3 +13224,45 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
 :root[data-theme="dark"] .trm-clash {
   border-color: #6b5420; background: #2f2612; color: #f0c475;
 }
+
+/* =========================================================================
+   صفحةُ الفترات: زرُّ الفلتر بجوار زرّ الإضافة · صفوفُ خيارات الترحيل
+   -------------------------------------------------------------------------
+   زرُّ الفلتر يأخذ شكلَ زرِّ الإضافة ولونَه الهادئ ليُعرف أنّه أداةٌ لا
+   إجراء. وشريطُ الفرز يُطوى ويُنشر، والفرزُ يجري على الصفوف في مكانها.
+   ========================================================================= */
+.tm-top .tm-flt-btn {
+  order: 1; background: transparent; color: #385657;
+  border: 1px solid #b9d4d5; display: inline-flex; align-items: center; gap: 6px;
+}
+.tm-top .tm-flt-btn:hover { background: #eaf4f4; }
+
+.tm-flt {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-bottom: 14px; padding: 12px 14px;
+  border: 1px solid var(--line, #e3e7ec); border-radius: 12px;
+}
+.tm-flt input[type="search"] {
+  flex: 1 1 200px; min-width: 160px; padding: 8px 12px;
+  border: 1px solid var(--line, #dfe3e8); border-radius: 10px; font: inherit;
+}
+.tm-flt-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tm-flt-chips .chip { border: 1px solid var(--line, #dfe3e8); cursor: pointer; }
+.tm-flt-n { font-size: 12px; }
+
+.mig-row {
+  display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap;
+}
+.mig-row > label { flex: 0 0 90px; font-size: 13px; }
+.mig-row > select { flex: 1 1 160px; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tm-top .tm-flt-btn {
+    color: #cfe3e4; border-color: #3b5556;
+  }
+  :root:not([data-theme="light"]) .tm-top .tm-flt-btn:hover { background: #23383a; }
+}
+:root[data-theme="dark"] .tm-top .tm-flt-btn {
+  color: #cfe3e4; border-color: #3b5556;
+}
+:root[data-theme="dark"] .tm-top .tm-flt-btn:hover { background: #23383a; }

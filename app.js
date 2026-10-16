@@ -23754,6 +23754,54 @@ const trmRows = () => cur("terms").slice().sort((a, b) => String(a.from).localeC
 
 /* من يحذف فترةً مؤرشفة: مديرُ النظام ومديرُ المنشأة — طلبته الإدارة
    لمدير المسجد. والمعلّمُ وغيرُه لا يَرَون الزرَّ أصلاً. */
+/* =========================================================================
+   فلترُ جدول الفترات — فرزٌ في مكانه لا إعادةَ رسم
+   -------------------------------------------------------------------------
+   mount() عند كلّ حرفٍ يُفقِد حقلَ البحث تركيزَه ويقطع الكتابة. فالفرزُ
+   يُخفي الصفوفَ ويُظهرها في الـ DOM، والاختيارُ محفوظٌ في TRM ليبقى
+   الزرُّ على حاله إن أُعيد رسمُ الصفحة لسببٍ آخر.
+   ========================================================================= */
+window.trmFltTog = function () {
+  TRM.fltOpen = !TRM.fltOpen;
+  const b = document.getElementById("tmFlt");
+  if (b) b.style.display = TRM.fltOpen ? "" : "none";
+  if (TRM.fltOpen) { const q = document.getElementById("tmQ"); if (q) q.focus(); }
+  else {
+    /* الطيُّ يردُّ الصفوفَ كلَّها — ويُفرَّغ حقلُ البحث أوّلاً، وإلّا قرأه
+       trmFltApply من الـ DOM فبقي الفرزُ قائماً وصاحبُه لا يراه */
+    TRM.flt = { state: "", q: "" };
+    const q2 = document.getElementById("tmQ");
+    if (q2) q2.value = "";
+    window.trmFltState("");
+  }
+};
+window.trmFltState = function (v) {
+  TRM.flt = TRM.flt || {};
+  TRM.flt.state = String(v || "");
+  Array.prototype.forEach.call(document.querySelectorAll("#tmFlt .chip"), function (c) {
+    c.classList.toggle("day-on", String(c.dataset.st || "") === TRM.flt.state);
+  });
+  window.trmFltApply();
+};
+window.trmFltApply = function () {
+  const qEl = document.getElementById("tmQ");
+  const q = String((qEl && qEl.value) || "").trim();
+  const st = String((TRM.flt && TRM.flt.state) || "");
+  if (TRM.flt) TRM.flt.q = q;
+  let shown = 0, all = 0;
+  Array.prototype.forEach.call(document.querySelectorAll("#tmBody tr[data-id]"), function (tr) {
+    all++;
+    const okQ = !q || String(tr.dataset.name || "").indexOf(q) > -1;
+    const okS = !st || String(tr.dataset.st || "") === st;
+    const on = okQ && okS;
+    tr.style.display = on ? "" : "none";
+    if (on) shown++;
+  });
+  const n = document.getElementById("tmFltN");
+  if (n) n.textContent = (q || st)
+    ? toArabicDigits(shown) + " من " + toArabicDigits(all) : "";
+};
+
 function trmCanDelete() {
   if (typeof isTopAdmin === "function" && isTopAdmin()) return true;
   const r = typeof myRoleNow === "function" ? myRoleNow() : "";
@@ -23833,6 +23881,8 @@ window.trmForm = function (id) {
 
       <div class="field full"><label>أيّام العمل <span class="req">*</span></label>
         ${trmDaysPicker(trmWorkDays(r))}</div>
+
+      ${r ? "" : trmMigBox()}
      </div>`,
     `<button class="btn btn-primary" data-action="trm-save">${r ? "حفظ" : "إضافة"}</button>
      ${/* الحذفُ لا يُعرض إلّا للمؤرشفة — ومنعُه مفروضٌ في trmDelete
@@ -23844,6 +23894,58 @@ window.trmForm = function (id) {
 };
 
 /* إظهارُ صندوق التزامنٍ وإخفاؤه مع تغيّر النوع */
+/* =========================================================================
+   «نقل البيانات من فترة أخرى؟» — في صفحة إنشاء الفترة نفسِها
+   -------------------------------------------------------------------------
+   كان السؤالُ يأتي في نافذةٍ بعد الحفظ، فيمرّ عليه صاحبُه مرورَ العابر.
+   وقد طُلب أن يكون هنا: خطوةٌ واضحةٌ في نموذج الإنشاء، بخيارَي الترحيل
+   وعدمِه، وللفئات الثلاث قرارُها قبل أن تُنشأ الفترة.
+
+   ولا يُنفَّذ ترحيلٌ من هذا النموذج ألبتّة: الاختيارُ يُحمل إلى المعالج
+   القائم، فيُعرض الملخَّصُ ويُطلب التأكيدُ النهائيُّ كما هو. و«تخصيص
+   الاختيار» يفتح قائمةَ الأفراد هناك — فلا يُثقَل نموذجُ الإنشاء بثلاث
+   قوائمَ طويلة.
+   ========================================================================= */
+function trmMigBox() {
+  const others = trmRows().filter(t => t && trmOwn(t) && t.archived !== true);
+  if (!others.length) return "";
+  const mode = (id, lbl) => `<div class="mig-row">
+      <label for="${id}">${esc(lbl)}</label>
+      <select id="${id}">
+        <option value="all" selected>ترحيل الجميع</option>
+        <option value="custom">تخصيص الاختيار</option>
+        <option value="none">لا ترحيل</option>
+      </select></div>`;
+  return `<div class="field full">
+    <label>نقل البيانات من فترة أخرى؟ <span class="req">*</span></label>
+    <div class="trm-kind">
+      <label class="manu-same"><input type="radio" name="tmMig" value="no" checked
+        onchange="window.trmMigShow()"><span>عدم الترحيل</span>
+        <small>تبدأ الفترةُ خالية: لا طالبَ ولا معلّمَ ولا مشرف —
+          وتبقى البرامجُ والمستوياتُ وإعداداتُ الواجبات كما هي</small></label>
+      <label class="manu-same"><input type="radio" name="tmMig" value="yes"
+        onchange="window.trmMigShow()"><span>الترحيل</span>
+        <small>تختار الفئاتِ والأفراد، ولا يُنفَّذ شيءٌ إلّا بعد ملخَّصٍ وتأكيدٍ نهائيّ</small></label>
+    </div>
+    <div id="tmMigOpts" style="display:none;margin-top:10px">
+      <div class="mig-row"><label for="tmMigFrom">من فترة</label>
+        <select id="tmMigFrom">${others.map(t =>
+          `<option value="${esc(t.id)}">${esc(t.name || "—")} · ${
+            esc(TRM_STATE_AR[trmState(t)] || "")}</option>`).join("")}</select></div>
+      ${mode("tmMigT", "المعلّمون")}
+      ${mode("tmMigS", "المشرفون")}
+      ${mode("tmMigU", "الطلاب")}
+      <small class="muted">ولا يُنقل أحدٌ لأنّ غيرَه نُقل: لكلّ فئةٍ قرارُها.</small>
+    </div>
+  </div>`;
+}
+window.trmMigShow = function () {
+  const box = document.getElementById("tmMigOpts");
+  if (!box) return;
+  const el = document.querySelector('input[name="tmMig"]:checked');
+  box.style.display = (el && el.value === "yes") ? "" : "none";
+};
+
 window.trmKindShow = function () {
   const box = document.getElementById("tmSyncBox");
   if (!box) return;
@@ -23903,6 +24005,17 @@ window.trmSave = function () {
     if (d2.length) days = d2;
   }
   if (!days.length) { showToast("اختر يوماً واحداً على الأقلّ من أيّام العمل", "warn"); return; }
+
+  /* اختيارُ الترحيل يُقرأ من النموذج قبل إغلاقه — بعد الإغلاق لا DOM يُقرأ منه */
+  const migBoxWas = !!document.querySelector('input[name="tmMig"]');
+  const migEl = document.querySelector('input[name="tmMig"]:checked');
+  const migYes = !!(migEl && migEl.value === "yes");
+  const migFrom = String(val("#tmMigFrom") || "");
+  const migModes = {
+    teachers: String(val("#tmMigT") || "all"),
+    sups:     String(val("#tmMigS") || "all"),
+    students: String(val("#tmMigU") || "all")
+  };
 
   /* =======================================================================
      تعارضُ الفترة المستقلّة — والاختيارُ لصاحبه لا للنظام
@@ -23977,6 +24090,25 @@ window.trmSave = function () {
 
   /* المواصفات: «عند إنشاء دورة جديدة يتيح النظام خيار استيراد البيانات من
      دورة سابقة». الموازيةُ لا تُرحَّل إليها — تعمل بجوار النشطة. */
+  /* ما اختاره في النموذج يُحمل إلى المعالج: الفئاتُ مضبوطةٌ سلفاً، ويُعرض
+     الملخَّصُ مباشرةً إن لم يطلب تخصيصاً — ولا تنفيذَ إلّا بتأكيدٍ منه. */
+  if (migYes && migFrom && String(migFrom) !== String(r.id)) {
+    try {
+      window.trmMigrate(r.id);
+      MIG.from = String(migFrom);
+      window.trmMigMode("teachers", migModes.teachers);
+      window.trmMigMode("sups", migModes.sups);
+      window.trmMigMode("students", migModes.students);
+      if (migModes.teachers === "custom" || migModes.sups === "custom" ||
+          migModes.students === "custom") trmMigrateRender();
+      else window.trmMigSummary();
+    } catch (e) { console.warn("trmMig inline:", e); mount(); }
+    return;
+  }
+  /* ومن أجاب «عدم الترحيل» في النموذج لا يُسأل مرّةً أخرى. والنافذةُ
+     القديمة تبقى لمن لم يُعرض له الصندوقُ أصلاً (لا فترةَ أخرى تُنقل منها). */
+  if (migBoxWas) { mount(); return; }
+
   const act = (wasAct && String(wasAct.id) !== String(r.id)) ? wasAct : activeTerm();
   if (!parallel && act && String(act.id) !== String(r.id)) {
     openModal("نقل البيانات من فترة أخرى؟", r.name,
@@ -25358,7 +25490,25 @@ function setPanelTerms() {
   return `<div class="tm-wrap">
     <div class="tm-top">
       <button type="button" class="lv-add" onclick="window.trmForm()">إضافة فترة دراسية</button>
+      ${/* زرُّ الفلتر بجوار زرّ الإضافة — طُلب هنا بعينه.
+           والفرزُ يجري على الصفوف في مكانها بلا إعادة رسمٍ للصفحة، فلا
+           يفلت منك حقلُ البحث عند أوّل حرف. */ ""}
+      <button type="button" class="lv-add tm-flt-btn" onclick="window.trmFltTog()"
+        title="فرز الفترات">${ic("filter", 15)} فلتر</button>
       <strong class="tm-title">الفترات الدراسية</strong>
+    </div>
+
+    <div class="tm-flt" id="tmFlt" style="display:${TRM.fltOpen ? "" : "none"}">
+      <input id="tmQ" type="search" placeholder="إبحث باسم الفترة"
+        oninput="window.trmFltApply()" value="">
+      <div class="tm-flt-chips">
+        ${[["", "الكل"], ["active", "فعّالة"], ["paused", "موقوفة مؤقتاً"],
+           ["archived", "مؤرشفة"], ["idle", "غير مفعَّلة"]].map(o =>
+          `<button type="button" class="chip${(TRM.flt && TRM.flt.state) === o[0] ? " day-on" : ""}"
+            data-st="${esc(o[0])}" onclick="window.trmFltState('${jsAttr(o[0])}')"
+            >${esc(o[1])}</button>`).join("")}
+      </div>
+      <span class="muted tm-flt-n" id="tmFltN"></span>
     </div>
 
     <div class="tm-info">${INFO}
@@ -25370,7 +25520,8 @@ function setPanelTerms() {
       <thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th>الأيام</th><th>المالك</th><th>الحالة</th><th>الترحيل</th></tr></thead>
       <tbody id="tmBody">${rows.length ? rows.map(r => {
         const own = trmOwn(r), now = trmIsNow(r);
-        return `<tr data-id="${r.id}"${own ? ' class="tm-own"' : ""}>
+        return `<tr data-id="${r.id}" data-name="${esc(r.name || "")}"
+          data-st="${esc(trmState(r))}"${own ? ' class="tm-own"' : ""}>
           <td class="pt-name">${own
             ? `<button type="button" class="tm-name" onclick="window.trmForm('${jsAttr(r.id)}')" title="تعديل">${esc(r.name || "—")}</button>`
             : esc(r.name || "—")}</td>
@@ -52549,7 +52700,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-2320";
+  var APP_BUILD = "20261017-0120";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
