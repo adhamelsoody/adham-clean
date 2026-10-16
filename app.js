@@ -25253,39 +25253,31 @@ function trmActivePanel() {
           `لا فترة نشطة. السجلات الجديدة تُوسَم بالفترة التي يقع تاريخها في نطاقها،
            وإن لم توجد بقيت بلا فترة فلا تظهر في فرزها.`)}</div>`}
 
-    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
-      <thead><tr><th>الفترة</th><th>النطاق</th><th>أيّام العمل</th><th>الحالة</th><th></th></tr></thead>
-      <tbody>${terms.map(t => {
-        const st = trmState(t);
-        const live = st === "active";
-        const viewing = String(viewTermId()) === String(t.id);
-        const par = t.syncWith ? trmById(t.syncWith) : null;
-        const wd = trmWorkDays(t);
-        const can = trmOwn(t) && trmCanManage();
-        return `<tr>
-          <td><strong>${esc(t.name || "—")}</strong>${t.parallel
-              ? ` <span class="pt-badge">${par
-                  ? "متزامنة مع «" + esc(par.name || "") + "»" : "موازية"}</span>` : ""}${
-              t.parallel && t.syncScope
-                ? ` <small class="muted">${t.syncScope === "link"
-                    ? "ارتباطٌ تنظيميّ" : "المواعيد وأيّام العمل"}</small>` : ""}</td>
-          <td class="pt-num" dir="ltr">${esc(t.from || "—")} → ${esc(t.to || "—")}</td>
-          <td class="muted">${wd.length ? esc(wd.join(" · ")) : "—"}</td>
-          <td>${live ? '<span class="pt-badge on">فعّالة</span>'
-                   : st === "archived" ? '<span class="pt-badge off">مؤرشفة</span>'
-                   : st === "paused" ? '<span class="pt-badge warn">موقوفة مؤقتاً</span>'
-                   : '<span class="muted">غير مفعَّلة</span>'}${
-             viewing ? ' <span class="pt-badge">معروضة</span>' : ""}</td>
-          <td class="pt-actions">
-            ${viewing ? "" : `<button class="btn btn-ghost btn-sm" onclick="window.trmViewSet('${jsAttr(t.id)}')">عرض</button>`}
-            ${(!live && st !== "archived" && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmActivate('${jsAttr(t.id)}')">تفعيل</button>` : ""}
-            ${(live && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmPause('${jsAttr(t.id)}',true)">إيقاف مؤقّت</button>` : ""}
-            ${(st === "paused" && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmPause('${jsAttr(t.id)}',false)">استئناف</button>` : ""}
-            ${(st !== "archived" && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmEnd('${jsAttr(t.id)}')">أرشفة</button>` : ""}
-            ${(st === "archived" && can && trmCanDelete()) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmDelete('${jsAttr(t.id)}')">حذف نهائيّ</button>` : ""}</td>
-        </tr>`;
-      }).join("")}</tbody></table></div></div>
+    ${/* =====================================================================
+          «شيل دا» — جدولُ الفترات في هذه اللوحة
+          ---------------------------------------------------------------------
+          كان في الصفحة جدولان للفترات: هذا وجدولُ «الفترات الدراسية» أعلاه.
+          فرُفع هذا بطلبٍ صريح، **ولم تُحذف ميزةٌ واحدة**: أزرارُ العرض
+          والتفعيل والإيقاف والاستئناف والأرشفة والحذف، وشارةُ «معروضة»،
+          وبيانُ التزامن — كلُّها نُقلت إلى الجدول الأعلى في setPanelTerms.
+          وتبقى هنا بطاقةُ الفترة النشطة وزرُّ معالج الترحيل.
+          ===================================================================== */ ""}
   </div>`;
+}
+
+/* =========================================================================
+   أزرارُ الفترة — كانت في جدول لوحة «الفترة النشطة» قبل أن يُرفع
+   ------------------------------------------------------------------------- */
+function trmRowActions(t) {
+  const st = trmState(t);
+  const live = st === "active";
+  const viewing = String(viewTermId()) === String(t.id);
+  const can = trmOwn(t) && trmCanManage();
+  return `${viewing ? "" : `<button class="btn btn-ghost btn-sm" onclick="window.trmViewSet('${jsAttr(t.id)}')">عرض</button>`}
+    ${(!live && st !== "archived" && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmActivate('${jsAttr(t.id)}')">تفعيل</button>` : ""}
+    ${(live && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmPause('${jsAttr(t.id)}',true)">إيقاف مؤقّت</button>` : ""}
+    ${(st === "paused" && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmPause('${jsAttr(t.id)}',false)">استئناف</button>` : ""}
+    ${(st !== "archived" && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmEnd('${jsAttr(t.id)}')">أرشفة</button>` : ""}`;
 }
 
 /* =========================================================================
@@ -25517,14 +25509,21 @@ function setPanelTerms() {
     </div>
 
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable tm-table">
-      <thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th>الأيام</th><th>المالك</th><th>الحالة</th><th>الترحيل</th></tr></thead>
+      <thead><tr><th>الاسم</th><th>من</th><th>إلى</th><th>الأيام</th><th>المالك</th><th>الحالة</th><th>إجراءات</th></tr></thead>
       <tbody id="tmBody">${rows.length ? rows.map(r => {
         const own = trmOwn(r), now = trmIsNow(r);
         return `<tr data-id="${r.id}" data-name="${esc(r.name || "")}"
           data-st="${esc(trmState(r))}"${own ? ' class="tm-own"' : ""}>
           <td class="pt-name">${own
             ? `<button type="button" class="tm-name" onclick="window.trmForm('${jsAttr(r.id)}')" title="تعديل">${esc(r.name || "—")}</button>`
-            : esc(r.name || "—")}</td>
+            : esc(r.name || "—")}${/* بيانُ التزامن — نُقل من جدول لوحة
+               «الفترة النشطة» حين رُفع، ولم يُحذف */ ""}${
+            r.parallel ? ` <span class="pt-badge">${r.syncWith && trmById(r.syncWith)
+                ? "متزامنة مع «" + esc((trmById(r.syncWith) || {}).name || "") + "»"
+                : "موازية"}</span>` : ""}${
+            (r.parallel && r.syncScope)
+              ? ` <small class="muted">${r.syncScope === "link"
+                  ? "ارتباطٌ تنظيميّ" : "المواعيد وأيّام العمل"}</small>` : ""}</td>
           <td class="pt-num">${esc(r.from || "—")}</td>
           <td class="pt-num">${esc(r.to || "—")}</td>
           <td class="pt-num">${(function () {
@@ -25537,10 +25536,12 @@ function setPanelTerms() {
                    مؤشّراً مساعداً: «الحالية» أي أنّ اليومَ في نطاقها. */ ""}
             <span class="tm-now${trmState(r) === "active" ? "" : " tm-dash"}"
               >${esc(TRM_STATE_AR[trmState(r)] || "—")}</span>${
+            String(viewTermId()) === String(r.id)
+              ? ' <span class="pt-badge">معروضة</span>' : ""}${
             now ? ' <small class="muted">اليومُ في نطاقها</small>' : ""}</td>
-          <td>${/* زرُّ ترحيلٍ لكلّ فترة: من أنشأ فترةً واختار «لاحقاً» كان
-                   يفقد المعالجَ ولا سبيل إليه، فتبقى الفترة فارغةً بلا
-                   طلابٍ ولا معلّمين ولا حلقات. */ ""}${own
+          <td class="pt-actions">${/* أزرارُ الفترة — كانت في جدول لوحة
+                   «الفترة النشطة» قبل أن يُرفع بطلبٍ صريح، فنُقلت هنا
+                   ولم تُفقد منها واحدة. */ ""}${own ? trmRowActions(r) : ""}${own
             ? `<button type="button" class="btn btn-ghost btn-sm"
                 onclick="window.trmMigrate('${jsAttr(r.id)}')"
                 title="اختر من يُرحَّل إلى «${esc(r.name || "")}»"
@@ -52700,7 +52701,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-0120";
+  var APP_BUILD = "20261017-0245";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
