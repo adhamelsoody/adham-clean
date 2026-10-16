@@ -9038,6 +9038,22 @@ function spDirText(v) {
 
 const BPL = { edit: {}, cols: { hifz: 1, review: 1, tathbit: 1 } };
 
+/* =========================================================================
+   مفتاحُ «تلاوة الدرس الجديد» — جنبَ التثبيت في الأركان المتفرّعة من الحفظ
+   -------------------------------------------------------------------------
+   «تلاوةُ الجديد تسبق الحفظ: إن كان حفظُه وجهاً فتلاوةُ الجديد تسبق الحفظ
+   بوجه». فهي ركنٌ تابعٌ للحفظ لا مقدارَ له ولا موضعَ: مقدارُه مقدارُ
+   الحفظ، وموضعُه ما بعد حفظ اليوم — أي درسُ الغد يُتلى اليوم.
+   والمفتاحُ نفسُه في بطاقة الإدارة وبطاقة المعلّم، يكتب st.plan.tilOn.
+   ========================================================================= */
+function spTilToggle(on) {
+  return `<button type="button" class="bpl-tog${on ? " on" : ""}"
+      onclick="window.spTog(this,'spTilOn')" title="تلاوة الدرس الجديد تسبق الحفظ بمقداره"
+      ><span class="bpl-knob"></span><b>تلاوة الدرس الجديد</b></button>
+    <input type="hidden" id="spTilOn" value="${on ? 1 : 0}">
+    <span class="muted" style="font-size:12px">تسبق الحفظ بمقداره</span>`;
+}
+
 function bplOf(st) {
   const p = st.plan || {};
   return {
@@ -9050,7 +9066,9 @@ function bplOf(st) {
     revQty:   p.revQty   || "وجه",
     revDir:   spDirText(p.revDir || PLAN_DIR[0]),
     tatOn:    !!p.tatOn,
-    tatCount: Number(p.tatCount) || 0
+    tatCount: Number(p.tatCount) || 0,
+    /* تلاوةُ الدرس الجديد: ركنٌ متفرّعٌ من الحفظ يسبقه بمقداره */
+    tilOn:    !!p.tilOn
   };
 }
 
@@ -17078,7 +17096,8 @@ function asgCapToSurahStrict(a, end) {
    ========================================================================= */
 window.fillAsgRanges = function (list) {
   const need = (list || []).filter(a =>
-    a && a.fromS && !a.toS && Number(a.qty) > 0 && a.kind !== "fix");
+    a && a.fromS && !a.toS && Number(a.qty) > 0 && a.kind !== "fix" &&
+    !a.aheadKind);                 /* تلاوةُ الجديد يُحسب مداها من حفظها */
   if (!need.length) return Promise.resolve(0);
 
   return Promise.all(need.map(a =>
@@ -18258,7 +18277,108 @@ function generateAssignments(studentId, dateISO) {
     out.push(exists ? asgPlanMerge(exists, rec) : rec);
   });
 
+  /* تلاوةُ الدرس الجديد — تتبع حفظَ هذا اليوم وتسبقه بمقداره */
+  try { asgTilNew(out, plan, st, studentId, dateISO); } catch (e) { console.warn("asgTilNew:", e); }
+
   return out;
+}
+
+/* =========================================================================
+   تلاوةُ الدرس الجديد — تسبق الحفظ بمقداره
+   -------------------------------------------------------------------------
+   «تلاوةُ الجديد تكون سابقةَ الحفظ: إذا كان حفظُه وجهاً تكون تلاوةُ الجديد
+   تسبق الحفظ بوجه. وإذا تخلّف الطالبُ عن تسميع اليوم يكون الواجبُ نفسُه
+   غداً لا يتغيّر.»
+
+   فلا موضعَ لها ولا مقدارَ في الخطة: تُشتقّ من واجب الحفظ في يومها —
+   مقدارُها مقدارُه، واتجاهُها اتجاهُه، ومبتدؤها الآيةُ التي بعد منتهاه.
+   فهي درسُ الغد يُتلى اليوم. ولأنها تتبع الحفظ، فإن لم يُسمِّع الطالبُ
+   بقي حفظُ الغد هو حفظُ اليوم (rollForward) وبقيت تلاوتُه هي هي.
+
+   ومنتهى الحفظ يُحسب من جدول المصحف (rangeEnd) — وهو غير متزامن، فيُحفظ
+   في ذاكرةٍ مؤقّتةٍ للعرض ويُعاد الرسمُ حين يصل، كما تفعل
+   asgProjectStarts. ولا تُكتب الخطةُ ولا يُمَسُّ موضعُ الحفظ.
+   ========================================================================= */
+const TIL_AHEAD = {};
+
+function tilAheadRange(h) {
+  if (!h || !(Number(h.fromS) > 0) || !(Number(h.fromA) > 0) || !(Number(h.qty) > 0)) return null;
+  if (typeof rangeEnd !== "function" || typeof stepFrom !== "function") return null;
+  const dir = dirOf(h.direction);
+  const key = [h.fromS, h.fromA, h.qty, h.unit || "", dir].join("|");
+  if (Object.prototype.hasOwnProperty.call(TIL_AHEAD, key)) return TIL_AHEAD[key] || null;
+  TIL_AHEAD[key] = null;                              /* قيدَ الحساب */
+  const qAy = function (nx) {
+    if (Number(nx.a) > 0) return Promise.resolve(nx);
+    if (typeof Quran === "undefined" || !Quran.ayahCount) return Promise.resolve(null);
+    return Promise.resolve(Quran.ayahCount(Number(nx.s))).then(function (c) {
+      return Number(c) > 0 ? { s: Number(nx.s), a: Number(c) } : null; });
+  };
+  Promise.resolve(rangeEnd(Number(h.fromS), Number(h.fromA), Number(h.qty), h.unit, dir))
+    .then(function (e) {
+      if (!e || !(Number(e.surah) > 0)) return null;
+      const nx = stepFrom(Number(e.surah), Number(e.ayah), dir);
+      return nx && Number(nx.s) > 0 ? qAy(nx) : null;
+    })
+    .then(function (st0) {
+      if (!st0) { TIL_AHEAD[key] = 0; return null; }
+      return Promise.resolve(rangeEnd(st0.s, st0.a, Number(h.qty), h.unit, dir)).then(function (e2) {
+        TIL_AHEAD[key] = [st0.s, st0.a,
+          e2 && Number(e2.surah) > 0 ? Number(e2.surah) : 0,
+          e2 && Number(e2.surah) > 0 ? Number(e2.ayah) : 0];
+        if (typeof mount === "function") mount();
+      });
+    })
+    .catch(function () { TIL_AHEAD[key] = 0; });
+  return null;
+}
+
+/* تُطابَق التلاوةُ على حفظ قائمتها — بعد التوليد وبعد رصف الأيّام القادمة */
+function asgTilFollow(list) {
+  if (!Array.isArray(list)) return;
+  const h = list.find(x => x && String(x.kind || "") === "hifz");
+  list.forEach(function (a) {
+    if (!a || a.aheadKind !== "hifz") return;
+    if (a.status && a.status !== "pending") return;   /* ما سُمِّع لا يُمَسّ */
+    if (a.edited) return;                              /* ولا ما عدّله المعلّم */
+    if (!h) return;
+    const r = tilAheadRange(h);
+    a.qty = Number(h.qty) || a.qty; a.unit = h.unit || a.unit; a.direction = h.direction || a.direction;
+    if (r) { a.fromS = r[0]; a.fromA = r[1]; if (r[2]) { a.toS = r[2]; a.toA = r[3]; } delete a.pendingAhead; }
+  });
+}
+
+function asgTilNew(out, plan, st, studentId, dateISO) {
+  if (!plan || plan.tilNew !== true) return;
+  const h = out.find(x => x && String(x.kind || "") === "hifz");
+  const id = asgId(dateISO, studentId, "tilawah");
+  const exists = asgFind(dateISO, studentId, "tilawah");
+  /* تلاوةٌ أنتجها مسارُ الأنواع العامّ تُرفع: هذه هي تلاوةُ الطالب */
+  for (let i = out.length - 1; i >= 0; i--) {
+    if (out[i] && String(out[i].kind || "") === "tilawah") out.splice(i, 1);
+  }
+  if (exists && !asgFollowsPlan(exists)) { out.push(exists); return; }
+  if (!h) { if (exists) out.push(exists); return; }   /* لا حفظَ اليوم: لا تلاوةَ له */
+
+  const rec = {
+    id, date: dateISO,
+    studentId: String(studentId), student: st.name || "",
+    circleId: st.circleId || "", planId: plan.id || "",
+    kind: "tilawah", kindName: "تلاوة الدرس الجديد",
+    aheadKind: "hifz",
+    unit: h.unit, qty: Number(h.qty) || 0, direction: h.direction,
+    levelId: plan.levelId || "",
+    fromS: h.fromS, fromA: h.fromA,
+    status: "pending", score: null,
+    termId: typeof activeTermId === "function" ? (activeTermId() || "") : "",
+    ts: Date.now()
+  };
+  const one = [h, rec];
+  asgTilFollow(one);
+  /* ولا يُعرض مبتدأٌ لم يُحسب بعد على أنه مبتدأ: إلى أن يصل منتهى الحفظ
+     يُترك المدى فارغاً فلا يُقرأ «من حيث يبدأ الحفظ» */
+  if (rec.fromS === h.fromS && rec.fromA === h.fromA) { rec.pendingAhead = true; rec.toS = 0; rec.toA = 0; }
+  out.push(exists ? asgPlanMerge(exists, rec) : rec);
 }
 
 /* =========================================================================
@@ -18468,6 +18588,8 @@ function todayAssignments(studentId, dateISO, persist) {
   if (persist) {
     if (!Array.isArray(DB.assignments)) DB.assignments = [];
     list.forEach(a => {
+      /* تلاوةٌ لم يُحسب مبتدؤها بعد لا تُثبَّت: تُثبَّت في الرسم التالي بمداها */
+      if (a && a.pendingAhead) return;
       const old = (cur("assignments") || []).find(x => String(x.id) === String(a.id));
       if (!old) {
         DB.assignments.push(a);
@@ -29466,6 +29588,7 @@ function dutiesOfDay(sid, d) {
   /* ورصفُ الأيّام القادمة: ما لم يُخزَّن يُقاس من مرجعه مضافاً إليه ما
      بينهما من أيّام ركنه — للعرض وحدَه، بلا كتابةٍ في السجلّ. */
   try { asgProjectStarts(out, sid, day, saved); } catch (e) { console.warn("asgProjectStarts:", e); }
+  try { asgTilFollow(out); } catch (e) {}
   return out;
 }
 
@@ -29519,6 +29642,7 @@ function asgProjectStarts(list, sid, dateISO, saved) {
 
   list.forEach(function (a) {
     if (!a || !a.fromS || !(Number(a.qty) > 0)) return;
+    if (a.aheadKind) return;                 /* تلاوةُ الجديد تتبع حفظَها بعد الرصف */
     if (savedIds.indexOf(String(a.id)) > -1) return;   /* مخزونٌ: لا يُقدَّر */
     const k = String(a.kind || "").replace("_makeup", "");
     if (k !== "hifz" && k !== "rev" && k !== "tilawah") return;
@@ -30500,6 +30624,7 @@ function tstuPlanBox(st) {
             <button type="button" onclick="window.spNum('spTatCount', -1)">−</button>
           </div></div>
       </div>
+      <div class="sp-kidrow" style="margin-top:10px">${spTilToggle(pl.tilOn)}</div>
     </section>
 
     <section class="sp-card sp-rev${pl.revOn ? "" : " sp-off"}">
@@ -30679,7 +30804,7 @@ window.tstuPlanSave = function () {
     revSura:  g("spRevSura"), revAyah: Number(g("spRevAyah")) || 1,
     tatOn:    g("spTatOn") === "1",
     tatCount: Number(g("spTatCount")) || 0
-  });
+  }, document.getElementById("spTilOn") ? { tilOn: g("spTilOn") === "1" } : {});
   persistSet("students", st);
   try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(st); } catch (e) {
     console.warn("tstuPlanSave sync:", e);
@@ -30981,6 +31106,7 @@ function tstuAsgOf(st, d) {
      فكان الرصفُ لا يُنادى فيها ألبتّة — وهي الشاشةُ التي يُنظر فيها إلى
      التقويم. والمخزونُ لا يُمَسّ، ولا كتابةَ في السجلّ. */
   try { asgProjectStarts(out, st.id, d, stored); } catch (e) { console.warn("asgProjectStarts:", e); }
+  try { asgTilFollow(out); } catch (e) {}
   try { tstuPreEnds(out); } catch (e) {}
   return out;
 }
@@ -44713,6 +44839,8 @@ function stuCollect() {
       revSura:  g("#spRevSura"), revAyah: Number(g("#spRevAyah")) || 1,
       tatOn:    g("#spTatOn") === "1",
       tatCount: Number(g("#spTatCount")) || 0,
+      /* تلاوةُ الدرس الجديد — تُقرأ إن كان مفتاحُها في النافذة */
+      ...(g("#spTilOn") != null ? { tilOn: g("#spTilOn") === "1" } : {}),
       /* تقييمُ الأداء يُحفظ مع الخطة: هو حكمٌ عليها لا على الطالب وحده */
       scoreHifz: Math.min(10, Number(g("#spScoreHifz")) || 0),
       scoreRev:  Math.min(10, Number(g("#spScoreRev"))  || 0)
@@ -45543,6 +45671,7 @@ function panelStudent(id, keepDraft) {
           <button type="button" onclick="window.spNum('spTatCount', -1)">−</button>
         </div>
         <span class="muted" style="font-size:12.5px">دروس</span>
+        ${spTilToggle(pl.tilOn)}
       </div>
     </section>
 
@@ -46143,6 +46272,9 @@ function spSyncEnginePlan(st) {
     }
     rec.hifzFromS = hs; rec.hifzFromA = _hA;
   }
+  /* تلاوةُ الدرس الجديد: وسمٌ على الخطة يقرؤه المولّد */
+  if (p.tilOn !== undefined) rec.tilNew = p.tilOn === true;
+
   const rs = spSurahIdx(p.revSura);
   if (rs) {
     const _rA = Math.max(1, Number(p.revAyah) || 1);
@@ -53083,7 +53215,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-1530";
+  var APP_BUILD = "20261017-1650";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
