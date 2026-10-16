@@ -26620,7 +26620,8 @@ function adminStatsAll(cfg) {
 function adminStatistics() {
   const view = subParam("s") || "all";
   if (view === "facilities")
-    return adminStatsAll({ title: "إحصائيات المنشآت", docTitle: "تقرير إحصائيات المنشآت", defs: STAT_FAC_DEFS });
+    return adminStatsAll({ title: "إحصائيات " + facWordAl(),
+                           docTitle: "تقرير إحصائيات " + facWordAl(), defs: STAT_FAC_DEFS });
   if (view === "circles")
     return adminStatsAll({ title: "إحصائية الحلقات", docTitle: "تقرير إحصائية الحلقات", defs: STAT_CIR_DEFS });
   return adminStatsAll();
@@ -27509,8 +27510,28 @@ function adminRepRecitation() {
   });
 }
 
+/* =========================================================================
+   تسميةُ المنشآت في عين الناظر
+   -------------------------------------------------------------------------
+   «غيّر اسم تقارير المنشآت إلى تقارير المساجد وإحصائيات المنشآت إلى
+   إحصائيات المساجد — واحرص أن يكون ذلك في مدير المجمّعات فقط.»
+
+   فمديرُ المجمّع لا يرى «منشآت» وإنّما مساجدَ مجمّعِه، ومديرُ النظام يرى
+   المنشآتِ كلَّها على اختلافها. والشاشةُ واحدةٌ والبياناتُ واحدة: الاسمُ
+   وحدَه يتبع الدور، ولا يتغيّر عند غيره.
+   ========================================================================= */
+function facWordAl() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  return (typeof isComplexMgr === "function" && isComplexMgr(r)) ? "المساجد" : "المنشآت";
+}
+function facWordOne() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  return (typeof isComplexMgr === "function" && isComplexMgr(r)) ? "مسجد" : "منشأة";
+}
+
 function adminRepFacilities() {
-  return repRender({ title: "تقرير المنشآت", unit: "منشأة", cols: REP_FAC_COLS, rows: repFacRows });
+  return repRender({ title: "تقرير " + facWordAl(), unit: facWordOne(),
+                     cols: REP_FAC_COLS, rows: repFacRows });
 }
 
 function adminReports() {
@@ -27520,7 +27541,7 @@ function adminReports() {
   if (R === "students")   return adminRepStudents();
   if (R === "circles")    return adminRepCircles();
   if (R === "recitation") return adminRepRecitation();
-  const R_TITLE = { facilities: "تقارير المنشآت", students: "تقارير الطلاب / ات",
+  const R_TITLE = { facilities: "تقارير " + facWordAl(), students: "تقارير الطلاب / ات",
                     circles: "تقارير الحلقات", recitation: "سجل التسميع" };
   const R_KEEP = { facilities: ["المنشآت","المجمع","الحلقات"], students: ["الطلاب","الطالب"],
                    circles: ["الحلقات","الحلقة"], recitation: ["التسميع","الحفظ","المتأخرين"] };
@@ -52885,7 +52906,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-0545";
+  var APP_BUILD = "20261017-0720";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

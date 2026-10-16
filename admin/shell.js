@@ -346,13 +346,24 @@ window.SHELL_MODE = true;
          يقع في الإعدادات ← «البرامج والخطط», فبندان يقودان إلى موضعٍ واحد.
          وتعريفُه في NAV_ADMIN وصفحتُه programs.html باقيان، وإعادتُه إلى
          القائمة كلمةٌ واحدة: "programs" في هذا السطر. */
-      top: ["dashboard", "mosques", "supervisors", "admissions", "settings"],
+      /* ثلاثُ نوافذَ رُفعت عن مدير المجمّع بطلبٍ صريح، ولم تُحذف من
+         النظام: «القبول والتسجيل» من هذا السطر، و«إعادة التنقل والتسجيل»
+         (move) و«إدارة العمليات الجماعية» (bulk) من groups أدناه.
+         تعريفاتُها في NAV_ADMIN وصفحاتُها باقيةٌ كما هي، وغيرُه من
+         الأدوار يراها — وردُّها إلى مدير المجمّع كلمةٌ في مكانها. */
+      top: ["dashboard", "mosques", "supervisors", "settings"],
       /* اسمُ الصفحة يختلف باختلاف من ينظر إليها: صفحةُ المشرفين نفسُها
          هي «مدراء المساجد» في عين مدير المجمّع. */
       labels: { supervisors: "مدراء المساجد" },
+      /* وكذلك أبناءُ المجموعات: مديرُ المجمّع لا يرى «منشآت» بل مساجدَ
+         مجمّعِه — فهي تسميتُه هو، ولا تتغيّر عند غيره. */
+      childLabels: {
+        "reports-facilities":    "تقارير المساجد",
+        "statistics-facilities": "إحصائيات المساجد"
+      },
       groups: {
         reports: "*", stats: "*", exams: "*",
-        move:    "*", bulk: "*", duty: "*", finance: "*"
+        duty: "*", finance: "*"
       }
     },
     /* المشرف: عملُه على الطلاب والحلقات والمعلّمين في مسجده — إجراءاتٌ
@@ -415,11 +426,23 @@ window.SHELL_MODE = true;
       if (it.children) {
         var allow = conf.groups[it.group];
         if (!allow) return;
-        if (allow === "*") { out.push(it); return; }
-        var kids = it.children.filter(function (c) {
+        var kids = allow === "*" ? it.children : it.children.filter(function (c) {
           return allow.indexOf(childKey(c.file)) > -1;
         });
         if (kids.length) {
+          /* أسماءُ الأبناء الخاصّةُ بالدور — نسخةٌ جديدةٌ لكلّ ابنٍ يُعاد
+             تسميتُه، وإلّا تسرّب الاسمُ إلى بقيّة الأدوار عند إعادة البناء */
+          var cl = conf.childLabels;
+          if (cl) {
+            kids = kids.map(function (c) {
+              var nm = cl[childKey(c.file)];
+              if (!nm) return c;
+              var c3 = {};
+              Object.keys(c).forEach(function (k) { c3[k] = c[k]; });
+              c3.label = nm;
+              return c3;
+            });
+          } else if (allow === "*") { out.push(it); return; }
           /* نسخةٌ جديدة: تعديلُ الأصل يُفسد القائمة عند إعادة البناء */
           var copy = {};
           Object.keys(it).forEach(function (k) { copy[k] = it[k]; });
