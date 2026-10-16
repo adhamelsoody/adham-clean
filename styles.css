@@ -13266,3 +13266,28 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
   color: #cfe3e4; border-color: #3b5556;
 }
 :root[data-theme="dark"] .tm-top .tm-flt-btn:hover { background: #23383a; }
+
+/* =========================================================================
+   ذيلُ نافذة الفترة — مجموعتان: الحفظُ والإلغاء · الأرشفةُ والحذف
+   -------------------------------------------------------------------------
+   فُصلت الإجراءاتُ على الفترة عن إجراءات النموذج، فلا تقع اليدُ على «حذف»
+   وهي تقصد «حفظ». وفي الشاشات الضيّقة تنزل المجموعةُ الثانية سطراً.
+   ========================================================================= */
+.tm-foot {
+  display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap; width: 100%;
+}
+.tm-foot-main, .tm-foot-ops { display: flex; align-items: center; gap: 10px; }
+.tm-foot-ops { margin-inline-start: auto; }
+.tm-foot .btn {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+}
+.tm-foot .btn svg { flex: none; opacity: .9; }
+.tm-foot .btn[disabled] { opacity: .45; cursor: not-allowed; }
+.tm-foot .btn[disabled]:hover { filter: none; }
+
+@media (max-width: 560px) {
+  .tm-foot-main, .tm-foot-ops { width: 100%; }
+  .tm-foot-ops { margin-inline-start: 0; }
+  .tm-foot .btn { flex: 1 1 auto; justify-content: center; }
+}

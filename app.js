@@ -23884,13 +23884,40 @@ window.trmForm = function (id) {
 
       ${r ? "" : trmMigBox()}
      </div>`,
-    `<button class="btn btn-primary" data-action="trm-save">${r ? "حفظ" : "إضافة"}</button>
-     ${/* الحذفُ لا يُعرض إلّا للمؤرشفة — ومنعُه مفروضٌ في trmDelete
-          وفي قواعد الخادم كذلك، لا بإخفاء الزرّ وحدَه. */
-       (r && r.archived === true && trmCanDelete())
-         ? `<button class="btn btn-danger" data-action="trm-del" data-id="${esc(r.id)}">حذف</button>`
-         : ""}
-     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+    /* =====================================================================
+       ذيلُ النافذة: الحفظُ والإلغاء في جهة، والأرشفةُ والحذفُ في الأخرى
+       ---------------------------------------------------------------------
+       طُلب زرَّا الأرشفة والحذف هنا. وهما إجراءان على الفترة نفسِها لا
+       على ما تكتبه في النموذج، فيُفصلان عن الحفظ والإلغاء بمجموعةٍ ثانيةٍ
+       في الطرف المقابل — فلا تقع اليدُ على «حذف» وهي تقصد «حفظ».
+
+       وزرُّ الحذف يظهر للفترة غير المؤرشفة **معطَّلاً** مع سبب تعطيله،
+       بدل أن يختفي: القاعدةُ تُعلَّم ولا تُخفى. والمنعُ قائمٌ كما كان في
+       trmDelete وفي قواعد الخادم — لا على هذا التعطيل وحدَه.
+       ===================================================================== */
+    `<div class="tm-foot">
+       <div class="tm-foot-main">
+         <button class="btn btn-primary" data-action="trm-save"
+           >${ic("check", 15)} ${r ? "حفظ التعديلات" : "إضافة الفترة"}</button>
+         <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>
+       </div>
+       ${(r && trmOwn(r) && trmCanManage()) ? `<div class="tm-foot-ops">
+         ${r.archived === true
+           ? `<button type="button" class="btn btn-soft" disabled
+                title="الفترةُ مؤرشفةٌ بالفعل">${ic("lock", 15)} مؤرشفة</button>`
+           : `<button type="button" class="btn btn-soft"
+                onclick="window.trmEnd('${jsAttr(r.id)}')"
+                title="تُصبح للقراءة فقط، ولا يُحذف منها شيء"
+                >${ic("lock", 15)} أرشفة</button>`}
+         ${(r.archived === true && trmCanDelete())
+           ? `<button type="button" class="btn btn-danger" data-action="trm-del"
+                data-id="${esc(r.id)}" title="حذفٌ لا يُستردّ"
+                >${ic("trash", 15)} حذف نهائيّ</button>`
+           : `<button type="button" class="btn btn-danger" disabled
+                title="لا تُحذف فترةٌ إلّا بعد أرشفتها"
+                >${ic("trash", 15)} حذف نهائيّ</button>`}
+       </div>` : ""}
+     </div>`);
 };
 
 /* إظهارُ صندوق التزامنٍ وإخفاؤه مع تغيّر النوع */
@@ -52701,7 +52728,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-0245";
+  var APP_BUILD = "20261017-0410";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
