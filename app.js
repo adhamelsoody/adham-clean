@@ -9494,8 +9494,21 @@ window.bplApply = function () {
   mount();
 };
 
+/* الخطةُ المنسوبةُ إلى الطالب — قراءةٌ محضة من سجلّ خطته (planOfStudent) */
+function bplPlanCell(st) {
+  if (st && st.enrollType === "attend") return `<span class="bpl-pl none">تحضير فقط</span>`;
+  const p = typeof planOfStudent === "function" ? planOfStudent(st) : null;
+  if (!p) return `<span class="bpl-pl none">بلا خطة</span>`;
+  const ok = v => v && v !== "—";
+  const nm = p.templateName || [p.program, p.level].filter(ok).join(" — ") || "خطة";
+  const off = p.status && p.status !== "نشطة";
+  return `<span class="bpl-pl${off ? " off" : ""}" title="${esc(nm)}">${esc(nm)}${off ? ` <small>(${esc(p.status)})</small>` : ""}</span>`;
+}
+
 function adminBulkPlans() {
   const studs = cur("students");
+  /* مديرُ المسجد يسمّيها «تعديل الخطة الافتراضية» — وغيرُه كما كان */
+  const bplTitle = (((STATE && STATE.user) || {}).role === "mosqueManager") ? "تعديل الخطة الافتراضية" : "تعديل خطط التسميع";
   const C = BPL.cols;
 
   const sel = (id, key, value, opts) =>
@@ -9515,6 +9528,7 @@ function adminBulkPlans() {
       <td class="pt-name">${esc(st.name || "—")}</td>
       <td class="${st.circle && st.circle !== "—" ? "" : "pt-muted"}">${esc(st.circle || "بلا حلقة")}</td>
       <td class="${st.level ? "" : "pt-muted"}">${esc(st.level || "بلا مستوى")}</td>
+      <td class="bpl-plc">${bplPlanCell(st)}</td>
       ${C.hifz ? `
         <td class="bpl-sw">${tog(st.id, "hifzOn", e.hifzOn, "الحفظ")}</td>
         <td>${sel(st.id, "hifzType", e.hifzType, PLAN_QTY_TYPE)}</td>
@@ -9533,7 +9547,7 @@ function adminBulkPlans() {
           <button type="button" onclick="window.bplStep('${jsAttr(st.id)}', -1)">−</button>
         </td>` : ""}
     </tr>`;
-  }).join("") : `<tr><td colspan="14" class="pt-muted" style="text-align:center;padding:22px">لا طلاب في نطاقك.</td></tr>`;
+  }).join("") : `<tr><td colspan="15" class="pt-muted" style="text-align:center;padding:22px">لا طلاب في نطاقك.</td></tr>`;
 
   const colBox = (key, label) =>
     `<label class="bpl-chk"><input type="checkbox" ${C[key] ? "checked" : ""}
@@ -9542,7 +9556,7 @@ function adminBulkPlans() {
   const n = Object.keys(BPL.edit).length;
 
   return `<div class="page">
-    ${pageHead("تعديل خطط التسميع", "", backArrow())}
+    ${pageHead(bplTitle, "", backArrow())}
     <div class="blk-note">${ic("info", 15)} يمكن تعديل حتى ١٠٠ طالب في المرة الواحدة</div>
 
     <div class="bpl-cols">
@@ -9564,6 +9578,7 @@ function adminBulkPlans() {
         <th>اسم الطالب (${studs.length})</th>
         <th>اسم الحلقة</th>
         <th>اسم المستوى</th>
+        <th>الخطة المنسوبة</th>
         ${C.hifz ? `<th class="bpl-h">الحفظ</th><th class="bpl-h">نوع كمية الحفظ</th>
           <th class="bpl-h">كمية الحفظ</th><th class="bpl-h">اتجاه الحفظ</th>` : ""}
         ${C.review ? `<th class="bpl-r">المراجعة</th><th class="bpl-r">نوع كمية المراجعة</th>
@@ -54161,7 +54176,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-2110";
+  var APP_BUILD = "20261017-2215";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
