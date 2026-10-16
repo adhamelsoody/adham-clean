@@ -13661,3 +13661,29 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
 }
 :root[data-theme="dark"] .bpl-pl { background: #173a3e; color: #bfe6e8; }
 .bpl-plc { min-width: 150px; } .bpl-pl { white-space: nowrap; }
+
+/* =========================================================================
+   تعديلُ الخطط الجماعيّ — رأسُ الجدول يعمل على الجميع، وعمودا الابتداء
+   -------------------------------------------------------------------------
+   قوائمُ الرأس بإطارٍ أبيضَ شفيفٍ على لون المجموعة كما في الصورة المرجعيّة،
+   ومفاتيحُه بيضاءُ الكتابة. وخانةُ الابتداء: سورةٌ وآيةٌ متجاورتان.
+   ========================================================================= */
+.bpl-table th .bpl-hsel {
+  background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.55);
+  border-radius: 10px; height: 40px; min-width: 130px; font-weight: 700; cursor: pointer;
+}
+.bpl-table th .bpl-hsel option { color: var(--text-main, #1d2b2c); background: var(--surface, #fff); }
+.bpl-table th .bpl-hsel:hover { border-color: #fff; background: rgba(255,255,255,.08); }
+.bpl-table th .bpl-htog b { color: #fff; }
+.bpl-table th .bpl-htog { background: transparent; }
+.bpl-start { display: flex; align-items: center; gap: 6px; }
+.bpl-start .bpl-sura { min-width: 120px; }
+.bpl-ayah {
+  width: 64px; height: 38px; border: 1px solid var(--border-soft, #e2e8e8); border-radius: 8px;
+  padding: 0 8px; font: inherit; text-align: center; background: var(--surface); color: inherit;
+}
+.bpl-table th .bpl-hayah {
+  background: transparent; color: #fff; border-color: rgba(255,255,255,.55); width: 72px;
+}
+.bpl-table th .bpl-hayah::placeholder { color: rgba(255,255,255,.8); }
+.bpl-table th input[placeholder="عدد دروس التثبيت"] { width: 140px; }
