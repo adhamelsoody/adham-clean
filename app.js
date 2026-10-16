@@ -5969,9 +5969,56 @@ function adminUsers() {
   });
 }
 
+/* =========================================================================
+   مدراءُ المساجد في عين مدير المجمّع: مساجدُ مجمّعِه وحدَها
+   -------------------------------------------------------------------------
+   «أكِّد أنّ مدراء المساجد الذين عنده يكونون التابعين للمجمّع الذي هو
+   مديرُه فقط.»
+
+   والقراءةُ المصفّاة (cur) كانت تُبقي في القائمة كلَّ دورٍ إداريٍّ في
+   نطاقه: نفسَه، ومديرَ مجمّعٍ آخرَ يشاركه المجمّع، ومن أُسنِد إلى المجمّع
+   كلِّه لا إلى مسجدٍ منه. فيُحصر هنا صراحةً — لا على النطاق وحده:
+     • الدورُ مديرُ مسجد (أو «مشرف» القديم الذي يُقرأ مديرَ مسجد)
+     • ومسجدُه من مساجد مجمّعِ مدير المجمّع
+   ولا يُمَسّ حسابٌ ولا نطاق: هذا عرضٌ لا كتابة.
+   ========================================================================= */
+function cxMgrMosqueIds() {
+  const me = (STATE && STATE.user) || {};
+  const cxs = [];
+  (typeof userScopeIds === "function" ? userScopeIds(me) : []).forEach(k => {
+    const p = String(k).split(":");
+    if (p[0] === "complex" && p[1]) cxs.push(String(p[1]));
+  });
+  if (me.complexId && cxs.indexOf(String(me.complexId)) < 0) cxs.push(String(me.complexId));
+  if (Array.isArray(me.complexIds)) me.complexIds.forEach(c => {
+    if (c && cxs.indexOf(String(c)) < 0) cxs.push(String(c)); });
+  return (Array.isArray(DB.mosques) ? DB.mosques : [])
+    .filter(m => m && cxs.indexOf(String(m.complexId || "")) > -1)
+    .map(m => String(m.id));
+}
+function cxMgrOwnsMosqueMgr(u) {
+  if (!u || !isMosqueMgr(u.role)) return false;
+  const me = (STATE && STATE.user) || {};
+  const myId = String(me.id || me.uid || "");
+  if (myId && (String(u.id) === myId || String(u.uid || "") === myId)) return false;
+  const mine = cxMgrMosqueIds();
+  if (!mine.length) return false;
+  const theirs = [];
+  if (u.mosqueId) theirs.push(String(u.mosqueId));
+  (Array.isArray(u.mosqueIds) ? u.mosqueIds : []).forEach(x => theirs.push(String(x)));
+  (typeof userScopeIds === "function" ? userScopeIds(u) : []).forEach(k => {
+    const p = String(k).split(":");
+    if (p[0] === "mosque" && p[1]) theirs.push(String(p[1]));
+  });
+  return theirs.some(x => mine.indexOf(x) > -1);
+}
+
 function adminSupervisors() {
   /* الفترةُ المعروضةُ تحصر القائمة إن كانت فترةً تبدأ خالية */
-  const list = trmSupsIn(cur("users").filter(u => isMgrRole(u.role)));
+  let list = trmSupsIn(cur("users").filter(u => isMgrRole(u.role)));
+  /* ومديرُ المجمّع لا يرى إلّا مدراءَ مساجد مجمّعِه */
+  const _r = ((STATE && STATE.user) || {}).role || "";
+  if (isComplexMgr(_r)) list = list.filter(cxMgrOwnsMosqueMgr);
   return personTable({
     list, title: "المشرفين / ات", showCount: true,
     toolbar: "add", addLabel: "إضافة مشرف", addAction: "modal-user",
@@ -52920,7 +52967,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-1215";
+  var APP_BUILD = "20261017-1325";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
