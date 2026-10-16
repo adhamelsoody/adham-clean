@@ -6538,6 +6538,7 @@ const SOON_TITLES = {
   "reg-excel": "تسجيل الطلاب من ملف اكسل",
   "reg-links": "روابط تسجيل الطلاب",
   "duty-home": "إدارة الدوام — لوحة التحكم",
+  "duty-settings": "إعدادات الدوام",
   "duty-report": "تقرير الدوام",
   "duty-staff": "تقرير الموظفين",
   "duty-staff-one": "تقرير الموظف"
@@ -10584,7 +10585,8 @@ function adminDutyHome() {
 
   /* دوامُ الموظفين مستثنى من التحويل الهجريّ بطلب الإدارة */
   return `<div class="page" data-greg="1">
-    ${pageHead("لوحة تحكم إدارة الدوام", "", backArrow())}
+    ${pageHead("لوحة تحكم إدارة الدوام", "",
+      `<button type="button" class="btn btn-primary dty-set-btn" onclick="location.href='/admin/soon.html?p=duty-settings'">${ic("settings", 16)} الإعدادات</button>` + backArrow())}
 
     <div class="card dty-head">
       <div class="lg-pick">
@@ -10631,6 +10633,357 @@ function adminDutyHome() {
   </div>`;
 }
 
+
+/* =========================================================================
+   إعداداتُ الدوام على نطاق المسجد
+   -------------------------------------------------------------------------
+   «زرُّ الإعدادات في الصفحة الرئيسية لإدارة الدوام: نطاقُ المسجد فلا يحضّر
+   المعلّمُ نفسَه إلّا داخله · بصمةٌ لئلّا يحضّره غيرُه · التحضيرُ في أيّامه
+   المحدَّدة فقط · التأخيرُ بعد ١٠ دقائق · وكم يُخصم من راتبه عليه».
+
+   أين تُحفظ:
+     • إعداداتُ المسجد في سجلّه: mosques/{id}.dutyCfg — يكتبها مديرُه عبر
+       persistSet كما يكتب بقيّةَ سجلّ مسجده، ويقرؤها المعلّمُ مع مسجده.
+     • أيّامُ دوام المعلّم وبصمتُه المعتمدة في سجلّه: teachers/{id}.dutyDays
+       و teachers/{id}.bioCred — يكتبهما المدير، ولا يكتبهما المعلّم.
+     • وما يكتبه المعلّمُ سجلُّ حضوره وحده (attendance) كما كان، ومعه
+       موقعُه ونتيجةُ البصمة والتأخيرُ والخصم.
+
+   البصمة: WebAuthn — قفلُ الجهاز البيومتريّ (الوجه أو الإصبع) بطلب
+   userVerification: "required". أوّلُ تحضيرٍ يُنشئ مفتاحَ الجهاز ويُرسله
+   مع السجلّ، ولا يُعتمد حتى يعتمده المدير من هذه الشاشة؛ ثمّ لا يُقبل
+   تحضيرٌ إلّا من ذلك الجهاز بعد التحقّق الحيويّ.
+   ========================================================================= */
+const DCFG_DEF = { geoOn: false, lat: "", lng: "", radius: 100,
+                   faceOn: false, daysOn: false, lateAfter: 10,
+                   dedAmount: 0, dedMode: "perLate" };
+const DCFG_MODES = [["perLate", "عن كلّ مرّة تأخير"], ["perMin", "عن كلّ دقيقة تأخير بعد السماح"]];
+
+function dcfgOf(m) { return Object.assign({}, DCFG_DEF, (m && m.dutyCfg) || {}); }
+function dcfgMosques() { return (cur("mosques") || []).filter(m => m && m.status !== "متوقف"); }
+function dcfgMosqueId() {
+  const ms = dcfgMosques();
+  const pick = String(STATE.dcfgMosque || "");
+  if (pick && ms.some(m => String(m.id) === pick)) return pick;
+  const own = String(((STATE && STATE.user) || {}).mosqueId || "");
+  if (own && ms.some(m => String(m.id) === own)) return own;
+  return ms[0] ? String(ms[0].id) : "";
+}
+function dcfgTeachers(mqId) {
+  return (cur("teachers") || []).filter(t => t && t.active !== false && t.status !== "متوقف" &&
+    !(typeof isStaffManager === "function" && isStaffManager(t)) &&
+    (!mqId || String(t.mosqueId || "") === String(mqId) ||
+     (cur("circles") || []).some(c => c && String(c.mosqueId || "") === String(mqId) &&
+       String(c.teacherId || "") === String(t.id))));
+}
+/* أيّامُ المعلّم: ما حُدّد له، وإلّا أيّامُ حلقاته */
+function dcfgTeacherDays(t) {
+  if (t && Array.isArray(t.dutyDays) && t.dutyDays.length) return daysToArray(t.dutyDays);
+  const set = new Set();
+  (cur("circles") || []).forEach(c => {
+    if (c && t && String(c.teacherId || "") === String(t.id)) daysToArray(c.days).forEach(d => set.add(d));
+  });
+  return WEEK_DAYS.filter(d => set.has(d));
+}
+/* آخرُ بصمةٍ أرسلها جهازُ المعلّم ولم تُعتمد بعد */
+function dcfgPendingBio(t) {
+  const recs = (DB.attendance || []).filter(a => a && a.staffId && String(a.staffId) === String(t.id) && a.bioCredNew)
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const r = recs[0];
+  if (!r) return null;
+  if (t.bioCred && String(t.bioCred.id) === String(r.bioCredNew)) return null;
+  return r;
+}
+
+function adminDutySettings() {
+  const ms = dcfgMosques();
+  const mqId = dcfgMosqueId();
+  const m = ms.find(x => String(x.id) === mqId);
+  if (!m) return `<div class="page">${pageHead("إعدادات الدوام", "", backArrow())}
+    <div class="card">${emptyState("لا مسجد", "لا مسجدَ في نطاقك لضبط دوامه.")}</div></div>`;
+  const c = dcfgOf(m);
+  const ts = dcfgTeachers(mqId);
+  const sw = (id, on) => `<label class="switch"><input type="checkbox" id="${id}" ${on ? "checked" : ""}
+      onchange="window.dcfgPaint()"><span class="slider"></span></label>`;
+  const bioRow = t => {
+    const p = dcfgPendingBio(t);
+    const st = t.bioCred ? `<span class="dcfg-tag ok">${ic("checkCircle", 14)} معتمدة</span>`
+      : p ? `<span class="dcfg-tag wait">${ic("clock", 14)} بانتظار اعتمادك</span>`
+      : `<span class="dcfg-tag none">لم تُسجَّل بعد</span>`;
+    const act = p ? `<button type="button" class="btn btn-primary btn-sm" onclick="window.dcfgBioOk('${jsAttr(t.id)}')">اعتماد</button>` : "";
+    const rst = (t.bioCred || p) ? `<button type="button" class="btn btn-ghost btn-sm" onclick="window.dcfgBioReset('${jsAttr(t.id)}')">إعادة التسجيل</button>` : "";
+    return `<div class="dcfg-bio"><b>${esc(t.name || "—")}</b>${st}<span class="dcfg-bio-a">${act}${rst}</span></div>`;
+  };
+  const dayRow = t => {
+    const on = dcfgTeacherDays(t);
+    return `<div class="dcfg-dayrow" data-tid="${esc(String(t.id))}"><b>${esc(t.name || "—")}</b>
+      <div class="dcfg-days">${WEEK_DAYS.map(d => `<button type="button" class="chip${on.indexOf(d) > -1 ? " day-on" : ""}"
+        data-day="${esc(d)}" onclick="this.classList.toggle('day-on')">${esc(d)}</button>`).join("")}</div></div>`;
+  };
+  const map = (c.lat && c.lng) ? `<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener"
+      href="https://www.google.com/maps?q=${esc(String(c.lat))},${esc(String(c.lng))}">${ic("eye", 15)} عرض على الخريطة</a>` : "";
+  return `<div class="page dcfg" data-greg="1">
+    ${pageHead("إعدادات الدوام", "تُطبَّق على تحضير المعلّمين لأنفسهم في هذا المسجد", backArrow())}
+    ${ms.length > 1 ? `<div class="reg-mq"><label>المسجد</label><select onchange="STATE.dcfgMosque=this.value; mount();">
+      ${ms.map(x => `<option value="${esc(String(x.id))}" ${String(x.id) === mqId ? "selected" : ""}>${esc(x.name || "—")}</option>`).join("")}</select></div>` : ""}
+
+    <section class="card dcfg-sec">
+      <div class="dcfg-h"><span class="dcfg-ico">${ic("target", 20)}</span>
+        <div><h3>نطاق المسجد</h3><p>لا يُقبل تحضيرُ المعلّم لنفسه إلّا وهو داخل هذا النطاق</p></div>${sw("dcGeo", c.geoOn)}</div>
+      <div class="dcfg-body${c.geoOn ? " on" : ""}" data-for="dcGeo">
+        <div class="dcfg-grid">
+          <div class="field"><label>خطّ العرض</label><input id="dcLat" dir="ltr" inputmode="decimal" value="${esc(String(c.lat || ""))}" placeholder="24.7136"></div>
+          <div class="field"><label>خطّ الطول</label><input id="dcLng" dir="ltr" inputmode="decimal" value="${esc(String(c.lng || ""))}" placeholder="46.6753"></div>
+          <div class="field"><label>نصفُ قطر النطاق (متر)</label><input id="dcRad" type="number" min="20" max="5000" dir="ltr" value="${esc(String(c.radius || 100))}"></div>
+        </div>
+        <div class="dcfg-acts">
+          <button type="button" class="btn btn-primary btn-sm" onclick="window.dcfgHere()">${ic("target", 15)} موقعي الحالي هو موقع المسجد</button>
+          ${map}
+          <span class="muted" id="dcGeoMsg">افتح هذه الشاشة وأنت في المسجد ثمّ اضغط الزرّ</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card dcfg-sec">
+      <div class="dcfg-h"><span class="dcfg-ico">${ic("shield", 20)}</span>
+        <div><h3>بصمة المعلّم</h3><p>يتحقّق الجهازُ من وجه المعلّم أو إصبعه قبل التحضير، فلا يحضّره غيرُه</p></div>${sw("dcFace", c.faceOn)}</div>
+      <div class="dcfg-body${c.faceOn ? " on" : ""}" data-for="dcFace">
+        ${noteCard("أوّلُ تحضيرٍ للمعلّم يسجّل بصمةَ جهازه وتظهر هنا «بانتظار اعتمادك». بعد الاعتماد لا يُقبل تحضيرُه إلّا من ذلك الجهاز وبعد التحقّق من وجهه أو إصبعه. إن غيّر جهازَه فاضغط «إعادة التسجيل».")}
+        <div class="dcfg-bios">${ts.length ? ts.map(bioRow).join("") : `<div class="muted">لا معلّمين في هذا المسجد</div>`}</div>
+      </div>
+    </section>
+
+    <section class="card dcfg-sec">
+      <div class="dcfg-h"><span class="dcfg-ico">${ic("calendar", 20)}</span>
+        <div><h3>أيّام الدوام</h3><p>لا يُقبل التحضيرُ إلّا في الأيّام المحدَّدة لكلّ معلّم</p></div>${sw("dcDays", c.daysOn)}</div>
+      <div class="dcfg-body${c.daysOn ? " on" : ""}" data-for="dcDays">
+        <div class="muted" style="margin-bottom:8px">المضاءُ أوّلاً أيّامُ حلقاته — عدّلها لكلّ معلّم</div>
+        ${ts.length ? ts.map(dayRow).join("") : `<div class="muted">لا معلّمين في هذا المسجد</div>`}
+      </div>
+    </section>
+
+    <section class="card dcfg-sec">
+      <div class="dcfg-h"><span class="dcfg-ico">${ic("clock", 20)}</span>
+        <div><h3>التأخير والخصم</h3><p>يُحسب التأخيرُ من وقت بداية حلقته</p></div></div>
+      <div class="dcfg-body on">
+        <div class="dcfg-grid">
+          <div class="field"><label>يُحسب متأخّراً بعد (دقيقة)</label>
+            <input id="dcLate" type="number" min="0" max="120" dir="ltr" value="${esc(String(c.lateAfter))}"></div>
+          <div class="field"><label>قيمة الخصم من الراتب</label>
+            <input id="dcDed" type="number" min="0" step="0.5" dir="ltr" value="${esc(String(c.dedAmount || 0))}"></div>
+          <div class="field"><label>تُخصم</label><select id="dcMode">
+            ${DCFG_MODES.map(([v, t]) => `<option value="${v}" ${c.dedMode === v ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+        </div>
+        <div class="muted">صفرٌ يعني: لا خصمَ من هذه الشاشة، ويبقى حسابُ مسيّر الرواتب كما كان.</div>
+      </div>
+    </section>
+
+    <div class="reg-foot"><button type="button" class="btn btn-primary" id="dcSave" onclick="window.dcfgSave()">${ic("check", 16)} حفظ الإعدادات</button></div>
+  </div>`;
+}
+
+window.dcfgPaint = function () {
+  document.querySelectorAll(".dcfg-body[data-for]").forEach(b => {
+    const s = document.getElementById(b.dataset.for);
+    b.classList.toggle("on", !!(s && s.checked));
+  });
+};
+
+window.dcfgHere = function () {
+  const msg = document.getElementById("dcGeoMsg");
+  if (!navigator.geolocation) { showToast("المتصفّح لا يتيح الموقع", "warn"); return; }
+  if (msg) msg.textContent = "جارٍ تحديد الموقع…";
+  navigator.geolocation.getCurrentPosition(function (p) {
+    const la = document.getElementById("dcLat"), ln = document.getElementById("dcLng");
+    if (la) la.value = p.coords.latitude.toFixed(6);
+    if (ln) ln.value = p.coords.longitude.toFixed(6);
+    if (msg) msg.textContent = "حُدّد الموقع بدقّة " + toArabicDigits(Math.round(p.coords.accuracy)) + " متر — اضغط «حفظ الإعدادات»";
+  }, function (e) {
+    if (msg) msg.textContent = "تعذّر تحديد الموقع — اسمح للمتصفّح بالوصول إلى موقعك";
+    showToast("تعذّر تحديد الموقع", "warn");
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+};
+
+window.dcfgSave = function () {
+  const m = dcfgMosques().find(x => String(x.id) === dcfgMosqueId());
+  if (!m) return;
+  const g = id => (document.getElementById(id) || {}).value;
+  const on = id => !!(document.getElementById(id) || {}).checked;
+  const lat = String(g("dcLat") || "").trim(), lng = String(g("dcLng") || "").trim();
+  const cfg = {
+    geoOn: on("dcGeo"), lat, lng, radius: Math.max(20, Number(g("dcRad")) || 100),
+    faceOn: on("dcFace"), daysOn: on("dcDays"),
+    lateAfter: Math.max(0, Number(g("dcLate")) || 0),
+    dedAmount: Math.max(0, Number(g("dcDed")) || 0),
+    dedMode: g("dcMode") === "perMin" ? "perMin" : "perLate"
+  };
+  if (cfg.geoOn && !(isFinite(Number(lat)) && isFinite(Number(lng)) && lat && lng &&
+      Math.abs(Number(lat)) <= 90 && Math.abs(Number(lng)) <= 180)) {
+    showToast("حدّد موقع المسجد أوّلاً — اضغط «موقعي الحالي هو موقع المسجد»", "warn"); return;
+  }
+  const jobs = [];
+  m.dutyCfg = cfg;
+  jobs.push(Promise.resolve(persistSet("mosques", m)));
+  /* أيّامُ كلّ معلّمٍ تُكتب إن تغيّرت وحدَها */
+  document.querySelectorAll(".dcfg-dayrow").forEach(row => {
+    const t = (DB.teachers || []).find(x => String(x.id) === String(row.dataset.tid));
+    if (!t) return;
+    const days = [].map.call(row.querySelectorAll(".chip.day-on"), b => b.dataset.day);
+    const now = JSON.stringify(days);
+    const saved = Array.isArray(t.dutyDays) ? JSON.stringify(daysToArray(t.dutyDays)) : null;
+    if (saved === now) return;
+    /* لم يُحدَّد له شيءٌ ولم تتغيّر أيّامُ حلقاته المعروضة: لا كتابة */
+    if (saved === null && now === JSON.stringify(dcfgTeacherDays(t))) return;
+    t.dutyDays = days;
+    jobs.push(Promise.resolve(persistSet("teachers", t)));
+  });
+  const b = document.getElementById("dcSave");
+  if (b) { b.disabled = true; b.textContent = "جارٍ الحفظ…"; }
+  Promise.all(jobs).then(r => {
+    const bad = r.filter(x => x === false).length;
+    showToast(bad ? "لم يُحفظ " + toArabicDigits(bad) + " — تحقّق من الاتصال" : "حُفظت إعدادات الدوام", bad ? "warn" : "success");
+    mount();
+  });
+};
+
+window.dcfgBioOk = function (tid) {
+  const t = (DB.teachers || []).find(x => String(x.id) === String(tid));
+  const p = t && dcfgPendingBio(t);
+  if (!p) return;
+  const u = (STATE && STATE.user) || {};
+  t.bioCred = { id: String(p.bioCredNew), ts: Date.now(), by: u.name || "" };
+  Promise.resolve(persistSet("teachers", t)).then(() => { showToast("اعتُمدت بصمة " + (t.name || ""), "success"); mount(); });
+};
+window.dcfgBioReset = function (tid) {
+  const t = (DB.teachers || []).find(x => String(x.id) === String(tid));
+  if (!t) return;
+  openModal("إعادة تسجيل البصمة", t.name || "",
+    noteCard("تُلغى البصمةُ المعتمدة، وأوّلُ تحضيرٍ تالٍ للمعلّم يسجّل بصمةَ جهازه من جديد وينتظر اعتمادك."),
+    `<button class="btn btn-danger" id="dcfgRst">إلغاء البصمة</button>
+     <button class="btn btn-ghost" data-action="close-modal">رجوع</button>`);
+  const b = document.getElementById("dcfgRst");
+  if (b) b.onclick = function () {
+    delete t.bioCred;
+    t.bioReset = Date.now();
+    Promise.resolve(persistSet("teachers", t)).then(() => { closeModal(); showToast("أُلغيت البصمة", "success"); mount(); });
+  };
+};
+
+/* ---------- عند تحضير المعلّم نفسَه ---------- */
+function dcfgDist(a1, o1, a2, o2) {
+  const R = 6371000, r = x => x * Math.PI / 180;
+  const dA = r(a2 - a1), dO = r(o2 - o1);
+  const h = Math.sin(dA / 2) ** 2 + Math.cos(r(a1)) * Math.cos(r(a2)) * Math.sin(dO / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+function dcfgB64(buf) {
+  const a = new Uint8Array(buf); let s = "";
+  for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function dcfgUnB64(s) {
+  const t = String(s).replace(/-/g, "+").replace(/_/g, "/");
+  const b = atob(t + "===".slice((t.length + 3) % 4));
+  const a = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i);
+  return a;
+}
+function dcfgRand() { const a = new Uint8Array(32); crypto.getRandomValues(a); return a; }
+
+/* بصمةُ الجهاز: تحقّقٌ بمفتاحٍ معتمد، أو تسجيلُ مفتاحٍ جديدٍ ينتظر الاعتماد */
+function dcfgBio(t) {
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    return Promise.reject(new Error("جهازك أو متصفّحك لا يدعم البصمة — استعمل هاتفاً يدعم بصمة الوجه أو الإصبع"));
+  }
+  const rpId = location.hostname;
+  if (t.bioCred && t.bioCred.id) {
+    return navigator.credentials.get({ publicKey: {
+      challenge: dcfgRand(), rpId, timeout: 60000, userVerification: "required",
+      allowCredentials: [{ type: "public-key", id: dcfgUnB64(t.bioCred.id) }] } })
+      .then(cr => {
+        if (!cr || dcfgB64(cr.rawId) !== String(t.bioCred.id)) throw new Error("البصمة لا تطابق جهازك المعتمد");
+        const ad = new Uint8Array(cr.response.authenticatorData || new ArrayBuffer(0));
+        if (ad.length > 32 && !(ad[32] & 0x04)) throw new Error("لم يتحقّق الجهازُ من هويّتك");
+        return { bio: "verified" };
+      });
+  }
+  const te = new TextEncoder();
+  return navigator.credentials.create({ publicKey: {
+    challenge: dcfgRand(), rp: { name: "ذات القرآنية", id: rpId },
+    user: { id: te.encode(String(t.id)).slice(0, 64), name: String(t.name || t.id), displayName: String(t.name || "معلّم") },
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "discouraged" },
+    timeout: 60000, attestation: "none" } })
+    .then(cr => ({ bio: "enroll", bioCredNew: dcfgB64(cr.rawId) }));
+}
+
+function dcfgGeo(c) {
+  return new Promise(function (res, rej) {
+    if (!navigator.geolocation) { rej(new Error("المتصفّح لا يتيح تحديد موقعك")); return; }
+    navigator.geolocation.getCurrentPosition(function (p) {
+      const d = dcfgDist(Number(c.lat), Number(c.lng), p.coords.latitude, p.coords.longitude);
+      const geo = { lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6),
+                    acc: Math.round(p.coords.accuracy), dist: Math.round(d) };
+      if (d > Number(c.radius || 100)) {
+        rej(new Error("أنت خارج نطاق المسجد — تبعد " + toArabicDigits(Math.round(d)) + " متراً والنطاقُ " +
+          toArabicDigits(Number(c.radius || 100)) + " متراً"));
+        return;
+      }
+      res(geo);
+    }, function () { rej(new Error("تعذّر تحديد موقعك — اسمح للمتصفّح بالوصول إلى الموقع ثمّ أعد المحاولة")); },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  });
+}
+
+/* التأخيرُ والخصمُ من بداية الحلقة */
+function dcfgLate(c, circle, dateISO, hhmm) {
+  const start = typeof circleStartAt === "function" ? circleStartAt(circle, dateISO) : (circle && circle.start);
+  const s = hhmmToMin(start), n = hhmmToMin(hhmm);
+  if (s == null || n == null) return { lateMin: 0, late: false, deduction: 0, start: start || "" };
+  const lateMin = Math.max(0, n - s);
+  const late = lateMin > (Number(c.lateAfter) || 0);
+  let deduction = 0;
+  if (late && Number(c.dedAmount) > 0) {
+    deduction = c.dedMode === "perMin"
+      ? (lateMin - (Number(c.lateAfter) || 0)) * Number(c.dedAmount)
+      : Number(c.dedAmount);
+  }
+  return { lateMin: late ? lateMin : 0, late, deduction: Math.round(deduction * 100) / 100, start: start || "" };
+}
+
+/* الفحوصُ قبل الكتابة — تُرجع ما يُضاف إلى السجلّ، أو ترفض بسببٍ مقروء */
+function dcfgCheck(circle) {
+  const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
+  const mqId = String((circle && circle.mosqueId) || (t && t.mosqueId) || "");
+  const m = (DB.mosques || []).find(x => String(x.id) === mqId);
+  if (!m || !m.dutyCfg) return Promise.resolve(null);       /* لا إعدادات: كما كان */
+  const c = dcfgOf(m);
+  const today = todayISO();
+  if (c.daysOn && t) {
+    const days = dcfgTeacherDays(t);
+    const dn = typeof dayNameOf === "function" ? dayNameOf(today) : "";
+    if (days.length && dn && days.indexOf(dn) < 0) {
+      return Promise.reject(new Error("اليوم (" + dn + ") ليس من أيّام دوامك: " + days.join("، ")));
+    }
+  }
+  const extra = { dutyMosqueId: mqId };
+  let p = Promise.resolve();
+  if (c.geoOn && c.lat && c.lng) p = p.then(() => dcfgGeo(c)).then(g => { extra.geo = g; extra.kind = "geo"; });
+  if (c.faceOn) p = p.then(() => {
+    if (!t) throw new Error("حسابك غير مرتبط بسجلّ معلّم — راجع الإدارة");
+    return dcfgBio(t);
+  }).then(b => { Object.assign(extra, b); if (!extra.kind) extra.kind = "bio"; });
+  return p.then(() => {
+    const L = dcfgLate(c, circle, today, nowHHMM());
+    extra.inTime = nowHHMM();
+    extra.lateMin = L.lateMin;
+    extra.lateAfter = Number(c.lateAfter) || 0;
+    extra.circleStart = L.start;
+    extra.status = L.late ? "متأخر" : "حاضر";
+    if (Number(c.dedAmount) > 0) extra.dutyDeduct = L.deduction;
+    return extra;
+  });
+}
 
 /* =========================================================================
    تقرير الدوام — حضور الموظفين لكل منشأة عبر الأيام
@@ -21830,7 +22183,9 @@ function payRowOf(staff, from, to) {
         if (String(a.status) !== "متأخر") return;
         const m = Number(a.lateMin) || 0;
         lateMin += m;
-        cutLate += Math.max(0, m - c.grace) * r.minute;     /* السماحُ في كلّ حلقة */
+        /* خصمٌ قرّرته «إعدادات الدوام» لمسجده يُؤخذ كما سُجّل مع التحضير */
+        if (a.dutyDeduct != null && isFinite(Number(a.dutyDeduct))) cutLate += Number(a.dutyDeduct);
+        else cutLate += Math.max(0, m - c.grace) * r.minute;     /* السماحُ في كلّ حلقة */
       });
     }
 
@@ -27210,6 +27565,11 @@ function adminSoon() {
   if (key === "reg-excel")      return adminRegExcel();
   if (key === "reg-links")      return adminRegLinks();
   if (key === "duty-home")      return adminDutyHome();
+  if (key === "duty-settings") {
+    const rr = ((STATE && STATE.user) || {}).role || "";
+    if (!(rr === "admin" || rr === "owner" || isMgrRole(rr))) return financeDenied("إعدادات الدوام");
+    return adminDutySettings();
+  }
   if (key === "duty-report")    return adminDutyReport();
   if (key === "duty-staff")     return adminStaffReport();
   if (key === "duty-staff-one") return adminStaffOne();
@@ -30296,9 +30656,27 @@ window.tchCheckIn = function () {
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 };
 
+/* إعداداتُ دوام المسجد تُفحص أوّلاً (dcfgCheck): الأيّامُ والنطاقُ والبصمة،
+   ثمّ يُكتب السجلُّ كما كان ومعه ما رجعت به. وبلا إعداداتٍ لمسجده يمضي
+   التحضيرُ كما كان تماماً. */
 window.tchCheckInDo = function () {
   const cid = val("#ciCircle", "");
   if (!cid) { showToast("لا حلقةَ لتسجيل الحضور فيها", "warn"); return; }
+  const c = (cur("circles") || []).find(x => String(x.id) === String(cid));
+  const btn = document.querySelector('#modalRoot [onclick="window.tchCheckInDo()"]');
+  const lbl = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "جارٍ التحقّق…"; }
+  Promise.resolve(typeof dcfgCheck === "function" ? dcfgCheck(c) : null)
+    .then(extra => tchCheckInSave(cid, extra))
+    .catch(e => {
+      if (btn) { btn.disabled = false; btn.textContent = lbl; }
+      const msg = (e && e.name === "NotAllowedError") ? "أُلغي التحقّق بالبصمة — أعد المحاولة"
+        : ((e && e.message) || "تعذّر التحضير");
+      showToast(msg, "warn");
+    });
+};
+
+function tchCheckInSave(cid, extra) {
   const today = todayISO();
   const c = (cur("circles") || []).find(x => String(x.id) === String(cid));
   const old = tchMyAtt(today);
@@ -30310,6 +30688,17 @@ window.tchCheckInDo = function () {
   rec.status = document.getElementById("ciStatus")
     ? val("#ciStatus", "حاضر")
     : ((old && old.status) || "حاضر");
+  /* ما رجعت به إعداداتُ الدوام: الحالةُ والتأخيرُ يُثبَّتان عند أوّل تحضيرٍ
+     لليوم وحدَه — وإعادةُ التسجيل لا تُعيد حسابَهما */
+  if (extra) {
+    const first = !(old && old.inTime);
+    ["geo", "bio", "bioCredNew", "kind", "dutyMosqueId"].forEach(k => { if (extra[k] !== undefined) rec[k] = extra[k]; });
+    if (first) {
+      ["inTime", "lateMin", "lateAfter", "circleStart", "status", "dutyDeduct"].forEach(k => {
+        if (extra[k] !== undefined) rec[k] = extra[k];
+      });
+    }
+  }
   rec.note = (val("#ciNote") || "").trim();
   /* نطاقُ السجلّ من الحلقة: بدونه يسقط من cur() عند الحسابات المحصورة —
      فلا يرى المعلّمُ تحضيرَ نفسِه، فيُسأل «الدخول دون تحضير» وقد سجّله،
@@ -30323,9 +30712,12 @@ window.tchCheckInDo = function () {
   if (!old) DB.attendance.push(rec);
   persistSet("attendance", rec);
   closeModal();
-  showToast("سُجِّل حضورُك: " + rec.status, "success");
+  showToast("سُجِّل حضورُك: " + rec.status +
+    (rec.lateMin ? " — " + toArabicDigits(rec.lateMin) + " دقيقة" : "") +
+    (rec.bio === "enroll" ? " · سُجّلت بصمةُ جهازك وتنتظر اعتماد المدير" : ""),
+    rec.status === "متأخر" || rec.bio === "enroll" ? "warn" : "success");
   mount();
-};
+}
 
 /* =========================================================================
    تقرير المعلم — حضورُه هو وغيابُه وتأخّرُه
@@ -54279,7 +54671,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261018-0015";
+  var APP_BUILD = "20261018-0130";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

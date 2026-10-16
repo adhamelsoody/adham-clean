@@ -13687,3 +13687,44 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
 }
 .bpl-table th .bpl-hayah::placeholder { color: rgba(255,255,255,.8); }
 .bpl-table th input[placeholder="عدد دروس التثبيت"] { width: 140px; }
+
+/* =========================================================================
+   إعداداتُ الدوام على نطاق المسجد (.dcfg) — أقسامٌ بمفتاح، وجسمُ القسم
+   يظهر حين يُفعَّل. وزرُّ «الإعدادات» في رأس لوحة الدوام.
+   ========================================================================= */
+.dty-set-btn { margin-inline-end: 8px; }
+.dcfg .dcfg-sec { padding: 16px 18px; margin-bottom: 14px; }
+.dcfg-h { display: flex; align-items: center; gap: 12px; }
+.dcfg-h > div { flex: 1; }
+.dcfg-h h3 { margin: 0; font-size: 16px; }
+.dcfg-h p { margin: 2px 0 0; color: var(--text-muted, #7a8a8f); font-size: 13px; }
+.dcfg-ico {
+  width: 40px; height: 40px; border-radius: 12px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  background: #e3f1f1; color: var(--brand-main, #1a999d);
+}
+.dcfg-body { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-soft, #eef2f2); }
+.dcfg-body.on { display: block; }
+.dcfg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 10px; }
+.dcfg-grid input, .dcfg-grid select {
+  width: 100%; height: 42px; border: 1px solid var(--border-soft, #e2e8e8); border-radius: 10px;
+  padding: 0 12px; font: inherit; background: var(--surface); color: inherit;
+}
+.dcfg-acts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dcfg-bios { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.dcfg-bio {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border: 1px solid var(--border-soft, #e6ecec); border-radius: 10px;
+}
+.dcfg-bio-a { margin-inline-start: auto; display: flex; gap: 8px; }
+.dcfg-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 99px; font-size: 12.5px; font-weight: 700; }
+.dcfg-tag.ok { background: #e6f6ec; color: #1d8a4a; }
+.dcfg-tag.wait { background: #fdf3dd; color: #8a6510; }
+.dcfg-tag.none { background: var(--bg-soft, #f0f4f4); color: var(--text-muted, #7a8a8f); }
+.dcfg-dayrow { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-soft, #f0f3f3); flex-wrap: wrap; }
+.dcfg-dayrow > b { min-width: 150px; }
+.dcfg-days { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 760px) { .dcfg-grid { grid-template-columns: 1fr; } }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dcfg-ico { background: #173a3e; }
+}
+:root[data-theme="dark"] .dcfg-ico { background: #173a3e; }
