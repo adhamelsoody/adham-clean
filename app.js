@@ -29796,36 +29796,33 @@ window.tcrcAttOpen = function () {
     ((typeof isDutyDay === "function" ? isDutyDay(s, d) : true) ? onD : offD).push(s);
   });
 
+  /* =======================================================================
+     ومن ليس اليومُ يومَه لا يظهر في قائمة التحضير ألبتّة
+     -----------------------------------------------------------------------
+     «الطالبُ دوامُه كلَّ يومٍ ما عدا الجمعة: لا يُحضَّر يومَ الجمعة، ويُكتب
+     عليه "ليس يومه" — والطلابُ الذين لا دوامَ لهم في هذا اليوم لا يظهرون
+     في هذه القائمة.»
+
+     فكانت الصحيفةُ تعرضهم باهتين أو في قسمٍ أسفلها. والآن تُسرد قائمةُ
+     من دوامُه اليوم وحدَها، ومن ليس يومَه يبقى في قائمة الحلقة بشارة
+     «ليس يومه» كما هو — ولا يُكتب له حضورٌ ولا غياب.
+
+     ولا يُمحى ما سُجِّل له من قبل: الحفظُ يمرّ على TATT.sel وحدَها، ومن
+     لم يُعرض لم يدخلها، فسجلُّه القديمُ إن كان يبقى بحرفه.
+     ======================================================================= */
+  if (!onD.length) {
+    showToast("لا طلابَ دوامُهم اليوم (" + (dayNameOf(d) || "") + ") في هذه الحلقة", "info");
+    return;
+  }
+
   /* الافتراضُ «حاضر» كما نصّت الوثيقة، وما سُجِّل قبلُ يُحترم */
   onD.forEach(s => {
     const r = map[String(s.id)];
     TATT.sel[String(s.id)] = (r && r.status) || "حاضر";
   });
-  /* ولا افتراضَ لمن ليس اليومُ يومَه: سجلُّه القديمُ وحدَه إن كان */
-  offD.forEach(s => {
-    const r = map[String(s.id)];
-    if (r && r.status) TATT.sel[String(s.id)] = r.status;
-  });
 
-  const offLocked = offMode !== "split";
-  const offNote = offD.length
-    ? (offMode === "split"
-        ? `<div class="tat-sep">ليس اليومُ من أيام دوامهم
-             <small>تحضيرُهم استثناءٌ إن حضروا</small></div>`
-        : `<div class="tat-hint">${toArabicDigits(offD.length)} من طلابك ليس اليومُ
-             (${esc(dayNameOf(d) || "")}) من أيام دوامهم — يظهرون باهتين وخانتُهم مقفلة.</div>`)
-    : "";
-
-  const body = offD.length && offMode !== "split"
-    /* التمويهُ يُبقي الترتيبَ كما هو */
-    ? `${tcrcAttLegend()}${offNote}
-       <div class="tat-list">${studs.map(s =>
-         tcrcAttRow(s, offD.indexOf(s) > -1, offD.indexOf(s) > -1)).join("")}</div>`
-    : `${tcrcAttLegend()}
-       <div class="tat-list">${onD.map(s => tcrcAttRow(s, false, false)).join("")}</div>
-       ${offD.length ? offNote +
-         `<div class="tat-list tat-offlist">${offD.map(s =>
-            tcrcAttRow(s, true, false)).join("")}</div>` : ""}`;
+  const body = `${tcrcAttLegend()}
+       <div class="tat-list">${onD.map(s => tcrcAttRow(s, false, false)).join("")}</div>`;
 
   openModal("تسجيل الحضور والغياب", esc(c.name || ""), body,
     `<button class="btn btn-primary tat-go" onclick="window.tcrcAttSave()">${
@@ -52906,7 +52903,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-0720";
+  var APP_BUILD = "20261017-0950";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
