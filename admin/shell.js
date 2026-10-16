@@ -459,6 +459,10 @@ window.SHELL_MODE = true;
           var c2 = {};
           Object.keys(it).forEach(function (k) { c2[k] = it[k]; });
           c2.label = lbl;
+          /* بندٌ سمّاه الدورُ باسمه فهو مقصودٌ له: لا يطاله الإخفاءُ العامّ
+             في clean-boot.css (رابطُ supervisors.html مخفيٌّ عن الجميع) —
+             وإلّا كُتب «مدراء المساجد» في قائمة مدير المجمّع ولم يظهر. */
+          c2.keep = true;
           out.push(c2);
         } else out.push(it);
       }
@@ -560,7 +564,9 @@ window.SHELL_MODE = true;
       if ((FAC_HIDE[ctx.coll] || []).indexOf(it.id) > -1) return;
       var label = over[it.id] || (conf.labels && conf.labels[it.id]) || it.label;
       var active = it.id === PAGE ? " active" : "";
-      out.push('<a class="nav-item' + active + '" href="' + absFile(it.file) + '">' +
+      /* والمسمّى باسم المنشأة مقصودٌ كذلك — يُستثنى من الإخفاء العامّ */
+      var keep = (over[it.id] || (conf.labels && conf.labels[it.id])) ? " nav-keep" : "";
+      out.push('<a class="nav-item' + active + keep + '" href="' + absFile(it.file) + '">' +
                ic(it.icon, 19) + "<span>" + label + "</span>" + countOf(it) + "</a>");
     });
 
@@ -657,7 +663,7 @@ window.SHELL_MODE = true;
       }
       /* ---- عنصر عادي ---- */
       var active = it.id === PAGE ? "active" : "";
-      return '<a class="nav-item ' + active + '" href="' + absFile(it.file) + '">' + ic(it.icon, 19) +
+      return '<a class="nav-item ' + active + (it.keep ? " nav-keep" : "") + '" href="' + absFile(it.file) + '">' + ic(it.icon, 19) +
              '<span>' + it.label + '</span>' + countOf(it) + '</a>';
     }).join("");
 
