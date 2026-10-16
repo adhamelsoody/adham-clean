@@ -1750,7 +1750,11 @@ function perfChart(months) {
    شاشتها. ولا كتابةَ هنا ألبتّة. ومديرُ المسجد والمشرفُ ومديرُ النظام
    تبقى لوحاتُهم كما هي.
    ========================================================================= */
-function cxMgrDashboard() {
+/* ولوحةُ مدير المسجد بالشكل نفسه (mode="mosque"): «أريد مثل هذه في مدير
+   المسجد». ثلاثُ بطاقاتٍ بلا «المساجد»، وتحت المؤشّر «حلقات بدأت» و«حلقات
+   لم تبدأ» اليوم، والأوجهُ لكلّ معلّمٍ من معلّمي مسجده لا لكلّ مسجد. */
+function cxMgrDashboard(mode) {
+  const MQ = mode === "mosque";
   const d = typeof attDate === "function" ? attDate() : todayISO();
   const mosques  = cur("mosques")  || [];
   const teachers = (cur("teachers") || []).filter(x => !(typeof isStaffManager === "function" && isStaffManager(x)));
@@ -1776,11 +1780,12 @@ function cxMgrDashboard() {
 
   /* ---------- البطاقاتُ الأربع — كلٌّ زرٌّ إلى شاشته ---------- */
   const cards = [
+    MQ ? null :
     { tint: "t-green",  icon: "mosque",  num: mosques.length,  label: "المساجد",  go: "mosques" },
     { tint: "t-teal",   icon: "teacher", num: teachers.length, label: "المعلمين", go: "teachers" },
     { tint: "t-green",  icon: "grid",    num: circles.length,  label: "الحلقات",  go: "circles" },
     { tint: "t-purple", icon: "users",   num: total,           label: "الطلاب",   go: "students" }
-  ].map(f => `<button type="button" class="facility-card ${f.tint}" data-go="${f.go}"
+  ].filter(Boolean).map(f => `<button type="button" class="facility-card ${f.tint}" data-go="${f.go}"
       onclick="window.go('${f.go}')" title="فتح ${esc(f.label)}">
       <div class="fc-num">${n2(f.num)}</div>
       <div class="fc-body"><span class="fc-ico">${ic(f.icon, 22)}</span><span class="fc-label">${f.label}</span></div>
@@ -1799,15 +1804,42 @@ function cxMgrDashboard() {
     <div class="donut-label">مؤشر الإنجاز</div>
   </button>`;
 
-  /* ---------- أوجهُ الحفظ والمراجعة لكلّ مسجد (الفترة النشطة) ---------- */
+  /* ---------- مدير المسجد: حلقاتٌ بدأت اليوم وحلقاتٌ لم تبدأ ----------
+     «بدأت» = حلقةٌ فيها تحضيرُ طالبٍ في اليوم المختار؛ والباقي «لم تبدأ». */
+  let mqGauge = "";
+  if (MQ) {
+    const live = circles.filter(c => c && c.status !== "متوقف");
+    const att = (cur("attendance") || []).filter(a => a && !a.staffId && String(a.date) === d);
+    const started = live.filter(c => att.some(a => String(a.circleId) === String(c.id))).length;
+    const gRow = (ico, label, n, cls) => `<button type="button" class="mqd-crow ${cls}" data-go="attendance"
+        onclick="window.go('attendance')" title="${label}">
+        <span class="mqd-cico">${ic(ico, 16)}</span><span class="mqd-clabel">${label}</span>
+        <span class="mqd-cnum">${n2(n)}</span><span class="mqd-arrow">←</span></button>`;
+    mqGauge = `<div class="mqd-crows">
+        ${gRow("check", "حلقات بدأت", started, "mqd-started")}
+        ${gRow("clock", "حلقات لم تبدأ", live.length - started, "mqd-pending")}
+      </div>`;
+  }
+
+  /* ---------- أوجهُ الحفظ والمراجعة لكلّ مسجد (الفترة النشطة) ----------
+     وعند مدير المسجد: لكلّ معلّم — معلّمُ الطالب معلّمُ حلقته. */
   const byMq = {};
-  mosques.forEach(m => { byMq[String(m.id)] = { name: m.name || "—", hd: 0, ht: 0, rd: 0, rt: 0 }; });
+  if (MQ) {
+    teachers.forEach(t => { byMq[String(t.id)] = { name: "الشيخ / " + (t.name || "—"), hd: 0, ht: 0, rd: 0, rt: 0 }; });
+  } else {
+    mosques.forEach(m => { byMq[String(m.id)] = { name: m.name || "—", hd: 0, ht: 0, rd: 0, rt: 0 }; });
+  }
+  const cById = {};
+  circles.forEach(c => { if (c) cById[String(c.id)] = c; });
+  const keyOf = s => MQ
+    ? String(((cById[String(s.circleId || "")] || {}).teacherId) || s.teacherId || "")
+    : String(s.mosqueId || "");
   const tot = { hd: 0, ht: 0, rd: 0, rt: 0 };
   students.forEach(s => {
     let t = null;
     try { t = typeof planTally === "function" ? planTally({ studentId: s.id }) : null; } catch (e) { t = null; }
     if (!t) return;
-    const row = byMq[String(s.mosqueId || "")];
+    const row = byMq[keyOf(s)];
     [["hd", "hifzDone"], ["ht", "hifzTotal"], ["rd", "revDone"], ["rt", "revTotal"]].forEach(([k, f]) => {
       const v = Number(t[f]) || 0;
       tot[k] += v;
@@ -1822,19 +1854,21 @@ function cxMgrDashboard() {
   const facesCol = (title, dk, tk) => `<div class="cxd-col">
       <div class="cxd-head"><strong>${title}</strong>${bar(tot[dk], tot[tk])}
         <span class="cxd-sum">${n2(r1(tot[dk]))} / ${n2(r1(tot[tk]))}</span></div>
-      ${Object.keys(byMq).length ? Object.keys(byMq).map(id => {
+      ${Object.keys(byMq).length ? Object.keys(byMq)
+        .sort((a, b) => MQ ? (byMq[b][dk] - byMq[a][dk]) : 0).map(id => {
         const m = byMq[id];
-        return `<button type="button" class="cxd-row" data-go="mosques"
-            onclick="window.go('mosques')" title="${esc(m.name)}">
+        const g = MQ ? "teachers" : "mosques";
+        return `<button type="button" class="cxd-row" data-go="${g}"
+            onclick="window.go('${g}')" title="${esc(m.name)}">
           <span class="cxd-name">${esc(m.name)}</span>${bar(m[dk], m[tk])}
           <span class="cxd-num">${n2(r1(m[dk]))}</span></button>`;
-      }).join("") : `<div class="muted" style="padding:12px;text-align:center">لا مساجد في مجمّعك بعد</div>`}
+      }).join("") : `<div class="muted" style="padding:12px;text-align:center">${MQ ? "لا معلّمين في مسجدك بعد" : "لا مساجد في مجمّعك بعد"}</div>`}
     </div>`;
 
-  return `<div class="page cxd">
+  return `<div class="page cxd${MQ ? " mqd" : ""}">
     ${pageHead("لوحة التحكم", "")}
     <div class="dash-top">
-      <div class="card gauge-wrap">${donut}</div>
+      <div class="card gauge-wrap">${donut}${mqGauge}</div>
       <div class="card facility-wrap"><div class="facility-grid">${cards}</div></div>
       <button type="button" class="card att-summary-wrap cxd-att" data-go="attendance"
         onclick="window.go('attendance')" title="سجلّ الحضور"><div class="att-rows">${attRows}</div></button>
@@ -41124,6 +41158,8 @@ const PAGES = {
     const r = ((STATE && STATE.user) || {}).role || "";
     /* مديرُ المجمّع وحدَه له لوحتُه بالشكل المطلوب، وغيرُه كما كان */
     if (isComplexMgr(r)) return cxMgrDashboard();
+    /* ومديرُ المسجد بالشكل نفسه — والمشرفُ ومديرُ النظام كما كانا */
+    if (r === "mosqueManager") return cxMgrDashboard("mosque");
     return isMgrRole(r) ? supervisorDashboard() : adminDashboard();
   }, "admin/complexes": adminComplexes,
   "admin/mosques": adminMosques, "admin/circles": adminCircles,
@@ -53215,7 +53251,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-1650";
+  var APP_BUILD = "20261017-1745";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

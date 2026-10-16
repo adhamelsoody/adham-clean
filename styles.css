@@ -13403,3 +13403,39 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
   border: 1px solid var(--border-soft); border-radius: 12px; height: 100%;
   justify-content: center;
 }
+
+/* =========================================================================
+   لوحةُ مدير المسجد — شكلُ لوحة مدير المجمّع نفسُه (.cxd) مع .mqd
+   -------------------------------------------------------------------------
+   المؤشّرُ صندوقٌ أفقيٌّ: العنوانُ يميناً والدائرةُ يساراً، وتحته صفّا
+   «حلقات بدأت» و«حلقات لم تبدأ» رماديّان بسهمٍ — كما في الصورة المرجعيّة.
+   محصورٌ في .mqd فلا يمسّ لوحةَ مدير المجمّع.
+   ========================================================================= */
+.mqd .gauge-wrap { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 10px; }
+.mqd .gauge-wrap > * { width: 100%; max-width: none; }
+.mqd .cxd-donut {
+  display: flex; flex-direction: row-reverse; align-items: center; justify-content: space-between;
+  border: 1px solid var(--border-soft, #e6ecec); border-radius: 10px; padding: 10px 16px;
+}
+.mqd .cxd-donut .donut { width: 92px; height: 92px; }
+.mqd .cxd-donut .donut-label { font-size: 20px; font-weight: 700; }
+.mqd-crows { display: flex; flex-direction: column; gap: 10px; }
+.mqd-crow {
+  display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px;
+  width: 100%; padding: 13px 14px; border: 0; border-radius: 8px; cursor: pointer;
+  background: #eef1f3; font: inherit; color: var(--text-muted, #7a8a8f); text-align: start;
+}
+.mqd-crow:hover { filter: brightness(.97); }
+.mqd-crow:focus-visible { outline: 2px solid var(--brand-main, #1a999d); outline-offset: 2px; }
+.mqd-cico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+}
+.mqd-started .mqd-cico { background: #8a9499; color: #fff; }
+.mqd-clabel { font-size: 15px; font-weight: 600; }
+.mqd-cnum { font-weight: 700; font-size: 14px; color: var(--text-main); }
+.mqd-arrow { font-size: 18px; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .mqd-crow { background: #1b3033; }
+}
+:root[data-theme="dark"] .mqd-crow { background: #1b3033; }
