@@ -84,6 +84,10 @@ window.SHELL_MODE = true;
     moveCircles:  "نقل الحلقات",
     moveRequests: "طلبات إضافة مستخدم",
     dutyApprovals: "اعتماد الواجبات",
+    /* أبوابُ التسجيل الجديدة — تظهر في قائمة مدير المسجد وحدَه */
+    regMulti: "تسجيل الطلاب المتعدد",
+    regExcel: "تسجيل الطلاب من ملف اكسل",
+    regLinks: "روابط تسجيل الطلاب",
 
     duty:         "إدارة الدوام",
     dutyHome:     "لوحة التحكم",
@@ -182,8 +186,11 @@ window.SHELL_MODE = true;
     { group: "move", label: NAV_LABELS.move, icon: "swap", children: [
       { file: "soon.html?p=move-students", label: NAV_LABELS.moveStudents },
       { file: "soon.html?p=move-circles",  label: NAV_LABELS.moveCircles },
+      { file: "soon.html?p=reg-multi",     label: NAV_LABELS.regMulti },
+      { file: "soon.html?p=reg-excel",     label: NAV_LABELS.regExcel },
       { file: "soon.html?p=move-requests", label: NAV_LABELS.moveRequests },
-      { file: "soon.html?p=duty-approvals", label: NAV_LABELS.dutyApprovals }
+      { file: "soon.html?p=duty-approvals", label: NAV_LABELS.dutyApprovals },
+      { file: "soon.html?p=reg-links",     label: NAV_LABELS.regLinks }
     ]},
 
     /* إدارةُ العمليات الجماعية: تعديلُ عشراتِ الطلاب في شاشةٍ واحدةٍ بدل
@@ -387,10 +394,15 @@ window.SHELL_MODE = true;
          والخطط». وتعريفُه وصفحتُه باقيان، وإعادتُه كلمةٌ واحدة هنا. */
       top: ["dashboard", "students", "circles", "teachers", "settings"],
       labels: { teachers: "المعلمين والمشرفين" },
+      /* «إعادة التنقل والتسجيل» هي «القبول والتسجيل» في قائمته. رُفع منها
+         «نقل الطلاب» و«نقل الحلقات» و«اعتماد الواجبات» بطلبٍ صريح — صفحاتُها
+         باقيةٌ ولغيره كما هي — وحلّ محلّها ثلاثةُ أبوابٍ للتسجيل. */
+      groupLabels: { move: "القبول والتسجيل" },
       groups: {
         reports: ["reports-students", "reports-circles", "reports-recitation"],
         stats:   ["statistics-all", "statistics-circles"],
-        exams: "*", move: "*", bulk: "*", duty: "*", procs: "*", motivation: "*", finance: "*"
+        exams: "*", move: ["reg-multi", "reg-excel", "move-requests", "reg-links"],
+        bulk: "*", duty: "*", procs: "*", motivation: "*", finance: "*"
       }
     }
   };
@@ -447,6 +459,8 @@ window.SHELL_MODE = true;
           var copy = {};
           Object.keys(it).forEach(function (k) { copy[k] = it[k]; });
           copy.children = kids;
+          /* اسمُ المجموعة الخاصُّ بالدور — في النسخة لا في الأصل */
+          if (conf.groupLabels && conf.groupLabels[it.group]) copy.label = conf.groupLabels[it.group];
           out.push(copy);
         }
         return;

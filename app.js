@@ -6534,6 +6534,9 @@ const SOON_TITLES = {
   "move-students": "نقل الطلاب",
   "move-circles": "نقل الحلقات",
   "move-requests": "طلبات إضافة مستخدم",
+  "reg-multi": "تسجيل الطلاب المتعدد",
+  "reg-excel": "تسجيل الطلاب من ملف اكسل",
+  "reg-links": "روابط تسجيل الطلاب",
   "duty-home": "إدارة الدوام — لوحة التحكم",
   "duty-report": "تقرير الدوام",
   "duty-staff": "تقرير الموظفين",
@@ -26491,6 +26494,578 @@ function adminSettingsNew() {
   </div>`;
 }
 
+/* =========================================================================
+   القبولُ والتسجيل عند مدير المسجد — ثلاثةُ أبواب
+   -------------------------------------------------------------------------
+   «تسجيل الطلاب المتعدد · تسجيل الطلاب من ملف اكسل · روابط تسجيل الطلاب».
+
+   البابان الأوّلان يكتبان طلاباً في مسجد صاحبها: السجلُّ نفسُه الذي يكتبه
+   نموذجُ «إضافة طالب» (save-student) — المسجدُ والمجمّعُ والحلقةُ ومعلّمُها
+   بالمعرّفات، وأيّامُ الحلقة، ونوعُ التسجيل — عبر persistSet وحدَها.
+   والحلقةُ من حلقات نطاقه (cur)، ورقمُ الهويّة المكرَّرُ لا يُكتب مرّتين.
+   والثالثُ روابطُ إلى signup.html مُعبّأةٌ بالمسجد، فيصل الطلبُ إلى
+   «طلبات إضافة مستخدم» ويُعتمد من هناك كما يُعتمد غيرُه.
+   ========================================================================= */
+const REG_COLS = [
+  { k: "name",   h: "اسم الطالب",      req: true },
+  { k: "idNo",   h: "رقم الهوية" },
+  { k: "phone",  h: "جوال الطالب" },
+  { k: "parent", h: "جوال ولي الأمر" },
+  { k: "circle", h: "الحلقة",           req: true },
+  { k: "enroll", h: "نوع التسجيل",      req: true }
+];
+const REG_ENROLL = [["plan", "تُنسب لخطة"], ["attend", "تحضير فقط"]];
+
+function regMosques() { return (cur("mosques") || []).filter(m => m && m.status !== "متوقف"); }
+function regMosqueId() {
+  const ms = regMosques();
+  const pick = String(STATE.regMosque || "");
+  if (pick && ms.some(m => String(m.id) === pick)) return pick;
+  const own = String(((STATE && STATE.user) || {}).mosqueId || "");
+  if (own && ms.some(m => String(m.id) === own)) return own;
+  return ms[0] ? String(ms[0].id) : "";
+}
+function regCircles(mqId) {
+  return (cur("circles") || []).filter(c => c && c.status !== "متوقف" &&
+    (!mqId || String(c.mosqueId || "") === String(mqId)));
+}
+function regMosqueBar(onchange) {
+  const ms = regMosques();
+  if (ms.length < 2) return "";
+  const cur0 = regMosqueId();
+  return `<div class="reg-mq"><label>المسجد</label>
+    <select onchange="STATE.regMosque=this.value; ${onchange}">
+      ${ms.map(m => `<option value="${esc(String(m.id))}" ${String(m.id) === cur0 ? "selected" : ""}>${esc(m.name || "—")}</option>`).join("")}
+    </select></div>`;
+}
+
+/* مطابقةُ الحلقة باسمها أو معرّفها — من حلقات المسجد وحدَه */
+function regCircleOf(v, mqId) {
+  const t = String(v == null ? "" : v).trim();
+  if (!t) return null;
+  const cs = regCircles(mqId);
+  return cs.find(c => String(c.id) === t) ||
+    cs.find(c => nameKey(c.name) === nameKey(t)) || null;
+}
+function regEnrollOf(v) {
+  const t = String(v == null ? "" : v).trim();
+  if (t === "plan" || t === "attend") return t;
+  if (/تحضير/.test(t)) return "attend";
+  if (/خط/.test(t)) return "plan";
+  return "";
+}
+
+/* فحصُ صفٍّ واحد: ما يمنع كتابتَه، أو لا شيء */
+function regRowError(r, mqId, seenIds) {
+  if (String(r.name || "").trim().length < 2) return "الاسم مطلوب";
+  if (!regCircleOf(r.circle, mqId)) return r.circle ? "الحلقة «" + r.circle + "» ليست في هذا المسجد" : "اختر الحلقة";
+  if (!regEnrollOf(r.enroll)) return "نوع التسجيل: خطة أو تحضير فقط";
+  const id = String(r.idNo || "").replace(/\D+/g, "");
+  if (r.idNo && id.length !== 10) return "رقم الهوية عشرة أرقام";
+  if (id) {
+    if ((DB.students || []).some(s => s && String(s.idNo || "") === id)) return "رقم الهوية مسجَّلٌ لطالبٍ آخر";
+    if (seenIds && seenIds[id]) return "رقم الهوية مكرَّرٌ في القائمة";
+    if (seenIds) seenIds[id] = true;
+  }
+  return "";
+}
+
+/* سجلُّ الطالب — حقولُ save-student نفسُها */
+function regStudentRec(r, mqId, n) {
+  const m = regMosques().find(x => String(x.id) === String(mqId)) || {};
+  const c = regCircleOf(r.circle, mqId);
+  const prog = (typeof programsForPick === "function" ? programsForPick() : [])[0] || (DB.programs || [])[0] || {};
+  return {
+    id: Date.now() + (n || 0),
+    complexId: m.complexId || STATE.complexId || "",
+    name: String(r.name).trim().replace(/\s+/g, " "),
+    photo: "",
+    mosque: m.name || "—", mosqueId: String(mqId || ""),
+    circle: c.name, circleId: String(c.id),
+    teacher: c.teacher || "—", teacherId: c.teacherId ? String(c.teacherId) : "",
+    parent: String(r.parent || "").trim() || "—", parentCC: "",
+    attType: "دوام كامل",
+    days: (typeof circleDaysOf === "function" ? circleDaysOf(c.name) : "") || "يومياً",
+    birth: "", age: "—",
+    program: prog.name || "—", levelId: "", level: "",
+    enrollType: regEnrollOf(r.enroll),
+    progress: 0, delays: 0, status: "نشط",
+    idNo: String(r.idNo || "").replace(/\D+/g, ""), nationality: "",
+    school: "", grade: "",
+    phone: String(r.phone || "").replace(/[^\d+]/g, ""), parentRel: "الأب",
+    address: "", health: "",
+    joinedAt: Date.now()
+  };
+}
+
+/* الكتابة: صفٌّ صفٌّ عبر persistSet، وسعةُ الحلقة تُحترم عند كلّ صف */
+function regWrite(rows, mqId) {
+  const out = { ok: 0, skipped: [] };
+  const seen = {};
+  const jobs = [];
+  rows.forEach((r, i) => {
+    const err = regRowError(r, mqId, seen);
+    if (err) { out.skipped.push({ i, name: r.name || "", err }); return; }
+    const c = regCircleOf(r.circle, mqId);
+    if (typeof circleFull === "function" && circleFull(c)) {
+      out.skipped.push({ i, name: r.name, err: "حلقة «" + c.name + "» مكتملة" }); return;
+    }
+    const o = regStudentRec(r, mqId, i);
+    DB.students.push(o);
+    jobs.push(Promise.resolve(persistSet("students", o)).catch(() => false));
+    try {
+      if (c.teacherId) notifyUser(c.teacherId, "studentAdded",
+        "أُضيف الطالبُ «" + o.name + "» إلى حلقة «" + (c.name || "") + "».");
+    } catch (e) {}
+    out.ok++;
+  });
+  return Promise.all(jobs).then(res => { out.failed = res.filter(x => x === false).length; return out; });
+}
+
+function regResultHTML(r) {
+  if (!r) return "";
+  return `<div class="reg-result ${r.skipped.length ? "warn" : "ok"}">
+    <b>${ic("checkCircle", 18)} سُجِّل ${toArabicDigits(r.ok)} طالباً</b>
+    ${r.failed ? `<div>لم يُحفظ ${toArabicDigits(r.failed)} على الخادم — تحقّق من الاتصال</div>` : ""}
+    ${r.skipped.length ? `<div class="reg-skip"><b>لم يُسجَّل ${toArabicDigits(r.skipped.length)}:</b>
+      <ul>${r.skipped.map(x => `<li>صفّ ${toArabicDigits(x.i + 1)}${x.name ? " — " + esc(x.name) : ""}: ${esc(x.err)}</li>`).join("")}</ul></div>` : ""}
+  </div>`;
+}
+
+/* ---------- ١) تسجيل الطلاب المتعدد ---------- */
+function regRowHTML(i, mqId, r) {
+  r = r || {};
+  const cs = regCircles(mqId);
+  return `<tr class="reg-tr">
+    <td class="reg-n">${toArabicDigits(i + 1)}</td>
+    <td><input class="rg-name" placeholder="الاسم ثلاثياً" value="${esc(r.name || "")}"></td>
+    <td><input class="rg-idNo" dir="ltr" inputmode="numeric" maxlength="10" value="${esc(r.idNo || "")}"
+      oninput="this.value=this.value.replace(/[^0-9]/g,'')"></td>
+    <td><input class="rg-phone" dir="ltr" inputmode="tel" value="${esc(r.phone || "")}"></td>
+    <td><input class="rg-parent" dir="ltr" inputmode="tel" value="${esc(r.parent || "")}"></td>
+    <td><select class="rg-circle"><option value="">— اختر —</option>
+      ${cs.map(c => `<option value="${esc(String(c.id))}" ${String(r.circle || "") === String(c.id) ? "selected" : ""}>${esc(c.name || "—")}</option>`).join("")}</select></td>
+    <td><select class="rg-enroll"><option value="">— اختر —</option>
+      ${REG_ENROLL.map(([v, t]) => `<option value="${v}" ${r.enroll === v ? "selected" : ""}>${t}</option>`).join("")}</select></td>
+    <td><button type="button" class="reg-del" title="حذف الصفّ" onclick="window.regDelRow(this)">${ic("trash", 16)}</button></td>
+  </tr>`;
+}
+
+function regMultiRead() {
+  return [].map.call(document.querySelectorAll("#regBody .reg-tr"), tr => {
+    const g = c => ((tr.querySelector(".rg-" + c) || {}).value || "").trim();
+    return { name: g("name"), idNo: g("idNo"), phone: g("phone"), parent: g("parent"),
+             circle: g("circle"), enroll: g("enroll") };
+  });
+}
+function regRenumber() {
+  document.querySelectorAll("#regBody .reg-n").forEach((td, i) => { td.textContent = toArabicDigits(i + 1); });
+  const n = document.getElementById("regCount");
+  if (n) n.textContent = toArabicDigits(document.querySelectorAll("#regBody .reg-tr").length);
+}
+
+function adminRegMulti() {
+  const mqId = regMosqueId();
+  const cs = regCircles(mqId);
+  const rows = [0, 1, 2, 3, 4].map(i => regRowHTML(i, mqId)).join("");
+  return `<div class="page reg-page">
+    ${pageHead("تسجيل الطلاب المتعدد", "سجّل عدّة طلابٍ دفعةً واحدة في حلقات مسجدك")}
+    ${regMosqueBar("mount();")}
+    ${cs.length ? "" : noteCard("لا حلقاتَ في هذا المسجد بعد — أضف حلقةً أوّلاً ثمّ سجّل طلابها.")}
+    <div class="card reg-card">
+      <div class="reg-tools">
+        <div class="reg-fill">
+          <label>تعبئة الكلّ:</label>
+          <select id="regAllCircle"><option value="">الحلقة…</option>
+            ${cs.map(c => `<option value="${esc(String(c.id))}">${esc(c.name || "—")}</option>`).join("")}</select>
+          <select id="regAllEnroll"><option value="">نوع التسجيل…</option>
+            ${REG_ENROLL.map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.regFillAll()">تطبيق على الصفوف</button>
+        </div>
+        <span class="reg-cnt">الصفوف: <b id="regCount">${toArabicDigits(5)}</b></span>
+      </div>
+      <div class="reg-scroll"><table class="reg-table">
+        <thead><tr><th>#</th>${REG_COLS.map(c => `<th>${c.h}${c.req ? ' <span class="req">*</span>' : ""}</th>`).join("")}<th></th></tr></thead>
+        <tbody id="regBody">${rows}</tbody></table></div>
+      <div class="reg-add">
+        <button type="button" class="btn btn-ghost" onclick="window.regAddRows(1)">${ic("plus", 16)} صفّ</button>
+        <button type="button" class="btn btn-ghost" onclick="window.regAddRows(5)">${ic("plus", 16)} ٥ صفوف</button>
+      </div>
+      <div id="regOut"></div>
+      <div class="reg-foot">
+        <button type="button" class="btn btn-primary" id="regSave" onclick="window.regMultiSave()">${ic("check", 16)} تسجيل الطلاب</button>
+        <span class="muted">الصفوفُ الفارغةُ تُتجاهل</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+window.regAddRows = function (n) {
+  const body = document.getElementById("regBody");
+  if (!body) return;
+  const mqId = regMosqueId();
+  for (let k = 0; k < n; k++) body.insertAdjacentHTML("beforeend", regRowHTML(body.children.length, mqId));
+  regRenumber();
+};
+window.regDelRow = function (btn) {
+  const tr = btn.closest("tr");
+  if (tr) tr.remove();
+  if (!document.querySelector("#regBody .reg-tr")) window.regAddRows(1);
+  regRenumber();
+};
+window.regFillAll = function () {
+  const c = (document.getElementById("regAllCircle") || {}).value || "";
+  const e = (document.getElementById("regAllEnroll") || {}).value || "";
+  document.querySelectorAll("#regBody .reg-tr").forEach(tr => {
+    if (c) tr.querySelector(".rg-circle").value = c;
+    if (e) tr.querySelector(".rg-enroll").value = e;
+  });
+};
+window.regMultiSave = function () {
+  const mqId = regMosqueId();
+  const all = regMultiRead();
+  const rows = all.filter(r => r.name || r.idNo || r.phone || r.parent);
+  if (!rows.length) { showToast("اكتب اسمَ طالبٍ واحدٍ على الأقلّ", "warn"); return; }
+  /* لا يُكتب شيءٌ وفي القائمة خطأ: يُعلَّم الصفُّ ويُقال سببُه */
+  const seen = {};
+  let bad = 0;
+  const trs = [].slice.call(document.querySelectorAll("#regBody .reg-tr"));
+  trs.forEach((tr, i) => {
+    const r = all[i];
+    tr.classList.remove("reg-bad"); tr.removeAttribute("title");
+    if (!(r.name || r.idNo || r.phone || r.parent)) return;
+    const err = regRowError(r, mqId, seen);
+    if (err) { bad++; tr.classList.add("reg-bad"); tr.title = err;
+      const n = tr.querySelector(".reg-n"); if (n) n.setAttribute("data-err", err); }
+  });
+  if (bad) { showToast("صحّح " + toArabicDigits(bad) + " صفّاً معلَّماً بالأحمر — مرّر عليه لترى السبب", "warn"); return; }
+  const btn = document.getElementById("regSave");
+  if (btn) { btn.disabled = true; btn.textContent = "جارٍ التسجيل…"; }
+  regWrite(rows, mqId).then(res => {
+    showToast("سُجِّل " + toArabicDigits(res.ok) + " طالباً", res.skipped.length || res.failed ? "warn" : "success");
+    mount();
+    setTimeout(() => {
+      const o = document.getElementById("regOut");
+      if (o) o.innerHTML = regResultHTML(res);
+    }, 0);
+  });
+};
+
+/* ---------- ٢) تسجيل الطلاب من ملف اكسل ----------
+   يُقرأ ملفُّ xlsx في المتصفّح بلا مكتبة: هو أرشيفُ zip فيه XML، يُفكّ
+   بـ DecompressionStream ويُحلَّل بـ DOMParser. ويُقبل CSV كذلك. */
+let REG_X = { rows: [], file: "", enroll: "" };
+
+function regU16(b, o) { return b[o] | (b[o + 1] << 8); }
+function regU32(b, o) { return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0; }
+
+function regUnzip(buf) {
+  const b = new Uint8Array(buf);
+  let e = -1;
+  for (let i = b.length - 22; i >= Math.max(0, b.length - 65557); i--) {
+    if (regU32(b, i) === 0x06054b50) { e = i; break; }
+  }
+  if (e < 0) return Promise.reject(new Error("ليس ملفَّ Excel صالحاً"));
+  const count = regU16(b, e + 10);
+  let p = regU32(b, e + 16);
+  const files = {};
+  const td = new TextDecoder("utf-8");
+  for (let k = 0; k < count; k++) {
+    if (regU32(b, p) !== 0x02014b50) break;
+    const method = regU16(b, p + 10), csize = regU32(b, p + 20);
+    const nlen = regU16(b, p + 28), xlen = regU16(b, p + 30), clen = regU16(b, p + 32);
+    const loc = regU32(b, p + 42);
+    const name = td.decode(b.subarray(p + 46, p + 46 + nlen));
+    const start = loc + 30 + regU16(b, loc + 26) + regU16(b, loc + 28);
+    files[name] = { method, data: b.subarray(start, start + csize) };
+    p += 46 + nlen + xlen + clen;
+  }
+  return Promise.resolve(files);
+}
+function regInflate(f) {
+  if (!f) return Promise.resolve("");
+  if (f.method === 0) return Promise.resolve(new TextDecoder("utf-8").decode(f.data));
+  if (typeof DecompressionStream === "undefined") return Promise.reject(new Error("المتصفّح لا يدعم فكَّ الملف — حدّثه أو احفظ الملف CSV"));
+  const ds = new DecompressionStream("deflate-raw");
+  const stream = new Blob([f.data]).stream().pipeThrough(ds);
+  return new Response(stream).text();
+}
+function regColIdx(ref) {
+  const m = String(ref || "").match(/^[A-Z]+/);
+  if (!m) return -1;
+  let n = 0;
+  for (const ch of m[0]) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+function regXlsxTable(buf) {
+  return regUnzip(buf).then(files => {
+    const names = Object.keys(files).filter(n => /^xl\/worksheets\/sheet\d+\.xml$/.test(n))
+      .sort((a, b) => (parseInt(a.replace(/\D+/g, ""), 10) || 0) - (parseInt(b.replace(/\D+/g, ""), 10) || 0));
+    if (!names.length) throw new Error("لا ورقةَ في الملف");
+    return Promise.all([regInflate(files["xl/sharedStrings.xml"]), regInflate(files[names[0]])]);
+  }).then(([ss, sh]) => {
+    const dp = new DOMParser();
+    const strs = [];
+    if (ss) {
+      const sd = dp.parseFromString(ss, "application/xml");
+      [].forEach.call(sd.getElementsByTagName("si"), si => {
+        strs.push([].map.call(si.getElementsByTagName("t"), t => t.textContent).join(""));
+      });
+    }
+    const d = dp.parseFromString(sh, "application/xml");
+    const table = [];
+    [].forEach.call(d.getElementsByTagName("row"), row => {
+      const line = [];
+      [].forEach.call(row.getElementsByTagName("c"), c => {
+        const idx = regColIdx(c.getAttribute("r"));
+        const t = c.getAttribute("t") || "";
+        let v = "";
+        if (t === "inlineStr") v = [].map.call(c.getElementsByTagName("t"), x => x.textContent).join("");
+        else {
+          const vv = c.getElementsByTagName("v")[0];
+          v = vv ? vv.textContent : "";
+          if (t === "s") v = strs[Number(v)] || "";
+        }
+        line[idx < 0 ? line.length : idx] = String(v);
+      });
+      table.push(line.map(x => x == null ? "" : x));
+    });
+    return table;
+  });
+}
+function regCsvTable(text) {
+  const out = []; let row = [], cell = "", q = false;
+  const s = String(text || "").replace(/^﻿/, "");
+  const sep = (s.split("\n")[0].split(";").length > s.split("\n")[0].split(",").length) ? ";" : ",";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (q) {
+      if (ch === '"' && s[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') q = false;
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === sep) { row.push(cell); cell = ""; }
+    else if (ch === "\n") { row.push(cell.replace(/\r$/, "")); out.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell.replace(/\r$/, "")); out.push(row); }
+  return out;
+}
+
+/* العناوين تُطابَق بمعناها لا بحرفها: «الاسم» و«اسم الطالب» سواء */
+const REG_HEAD = {
+  name: /اسم|الاسم|name/i, idNo: /هوي|إقام|اقام|id/i, parent: /ولي|والد|parent/i,
+  phone: /جوال|هاتف|رقم الطالب|phone|mobile/i, circle: /حلق|circle/i, enroll: /نوع|تسجيل|enroll/i
+};
+function regMapRows(table) {
+  const rows = (table || []).filter(r => r && r.some(x => String(x || "").trim()));
+  if (!rows.length) return [];
+  const head = rows[0].map(x => String(x || "").trim());
+  const col = {};
+  /* ولي الأمر قبل الجوال: «جوال ولي الأمر» فيه «جوال» أيضاً */
+  ["parent", "idNo", "name", "phone", "circle", "enroll"].forEach(k => {
+    const i = head.findIndex((h, j) => h && REG_HEAD[k].test(h) && Object.values(col).indexOf(j) < 0);
+    if (i > -1) col[k] = i;
+  });
+  if (col.name == null) throw new Error("لم يُعثر على عمود «اسم الطالب» في الصفّ الأوّل");
+  return rows.slice(1).map(r => {
+    const g = k => col[k] == null ? "" : String(r[col[k]] == null ? "" : r[col[k]]).trim();
+    return { name: g("name"), idNo: g("idNo"), phone: g("phone"), parent: g("parent"),
+             circle: g("circle"), enroll: g("enroll") };
+  }).filter(r => r.name || r.idNo);
+}
+
+function regPreviewHTML() {
+  if (!REG_X.rows.length) return "";
+  const mqId = regMosqueId();
+  const seen = {};
+  let okN = 0;
+  const trs = REG_X.rows.map((r, i) => {
+    const rr = Object.assign({}, r, { enroll: r.enroll || REG_X.enroll });
+    const err = regRowError(rr, mqId, seen);
+    if (!err) okN++;
+    const c = regCircleOf(rr.circle, mqId);
+    return `<tr class="${err ? "reg-bad" : ""}">
+      <td>${toArabicDigits(i + 1)}</td><td>${esc(r.name)}</td><td dir="ltr">${esc(r.idNo)}</td>
+      <td dir="ltr">${esc(r.phone)}</td><td dir="ltr">${esc(r.parent)}</td>
+      <td>${esc(c ? c.name : r.circle)}</td>
+      <td>${esc(((REG_ENROLL.find(x => x[0] === regEnrollOf(rr.enroll)) || [])[1]) || rr.enroll || "—")}</td>
+      <td>${err ? `<span class="reg-st bad">${esc(err)}</span>` : `<span class="reg-st ok">${ic("check", 14)} جاهز</span>`}</td></tr>`;
+  }).join("");
+  return `<div class="reg-prev-head"><b>${esc(REG_X.file)}</b>
+      <span>${toArabicDigits(REG_X.rows.length)} صفّاً · <span class="ok">${toArabicDigits(okN)} جاهز</span>
+      ${REG_X.rows.length - okN ? ` · <span class="bad">${toArabicDigits(REG_X.rows.length - okN)} فيه خطأ</span>` : ""}</span></div>
+    <div class="reg-scroll"><table class="reg-table reg-prev">
+      <thead><tr><th>#</th>${REG_COLS.map(c => `<th>${c.h}</th>`).join("")}<th>الحالة</th></tr></thead>
+      <tbody>${trs}</tbody></table></div>
+    <div class="reg-foot">
+      <button type="button" class="btn btn-primary" id="regImport" ${okN ? "" : "disabled"} onclick="window.regImport()">
+        ${ic("download", 16)} استيراد ${toArabicDigits(okN)} طالباً</button>
+      <span class="muted">الصفوفُ التي فيها خطأٌ لا تُستورد — صحّحها في الملف وارفعه ثانيةً</span>
+    </div>`;
+}
+
+function adminRegExcel() {
+  const mqId = regMosqueId();
+  const cs = regCircles(mqId);
+  return `<div class="page reg-page">
+    ${pageHead("تسجيل الطلاب من ملف اكسل", "ارفع ملفّاً فيه أسماءُ الطلاب وحلقاتُهم فيُسجَّلون دفعةً واحدة")}
+    ${regMosqueBar("mount();")}
+    <div class="card reg-card">
+      <div class="reg-steps">
+        <div class="reg-step"><span>١</span><div><b>نزّل النموذج</b><small>أعمدةٌ جاهزة: ${REG_COLS.map(c => c.h).join(" · ")}</small>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.regTemplate()">${ic("download", 15)} نموذج Excel</button></div></div>
+        <div class="reg-step"><span>٢</span><div><b>املأه</b><small>الحلقة باسمها كما في النظام: ${cs.length ? cs.map(c => esc(c.name)).join("، ") : "لا حلقات بعد"}</small></div></div>
+        <div class="reg-step"><span>٣</span><div><b>ارفعه وراجِع ثمّ استورد</b><small>xlsx أو csv</small></div></div>
+      </div>
+      <label class="reg-drop" id="regDrop">
+        <input type="file" id="regFile" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+          onchange="window.regFilePick(this.files && this.files[0])">
+        ${ic("download", 30)}<b>اضغط لاختيار الملف أو اسحبه هنا</b><small>‎.xlsx · ‎.csv</small>
+      </label>
+      <div class="reg-fill"><label>نوع التسجيل لمن لم يُحدَّد له في الملف:</label>
+        <select onchange="REG_X.enroll=this.value; window.regPaintPrev();">
+          <option value="">— اختر —</option>
+          ${REG_ENROLL.map(([v, t]) => `<option value="${v}" ${REG_X.enroll === v ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+      <div id="regPrev">${regPreviewHTML()}</div>
+      <div id="regOut"></div>
+    </div>
+  </div>`;
+}
+
+window.regPaintPrev = function () { const b = document.getElementById("regPrev"); if (b) b.innerHTML = regPreviewHTML(); };
+window.regFilePick = function (f) {
+  if (!f) return;
+  const isCsv = /\.csv$/i.test(f.name) || f.type === "text/csv";
+  const rd = isCsv ? f.text() : f.arrayBuffer();
+  rd.then(x => isCsv ? regCsvTable(x) : regXlsxTable(x))
+    .then(t => {
+      REG_X.rows = regMapRows(t); REG_X.file = f.name;
+      if (!REG_X.rows.length) showToast("الملفُّ بلا صفوفِ طلاب", "warn");
+      window.regPaintPrev();
+      const o = document.getElementById("regOut"); if (o) o.innerHTML = "";
+    })
+    .catch(e => { REG_X.rows = []; window.regPaintPrev(); showToast((e && e.message) || "تعذّرت قراءةُ الملف", "warn"); });
+};
+window.regImport = function () {
+  const rows = REG_X.rows.map(r => Object.assign({}, r, { enroll: r.enroll || REG_X.enroll }));
+  const mqId = regMosqueId();
+  const seen = {};
+  const good = rows.filter(r => !regRowError(r, mqId, seen));
+  if (!good.length) return;
+  const btn = document.getElementById("regImport");
+  if (btn) { btn.disabled = true; btn.textContent = "جارٍ الاستيراد…"; }
+  regWrite(good, mqId).then(res => {
+    const left = rows.length - good.length;
+    REG_X.rows = [];
+    showToast("استُورد " + toArabicDigits(res.ok) + " طالباً", res.skipped.length || left ? "warn" : "success");
+    window.regPaintPrev();
+    const o = document.getElementById("regOut");
+    if (o) o.innerHTML = regResultHTML(res) +
+      (left ? `<div class="reg-result warn">لم يُستورد ${toArabicDigits(left)} صفّاً فيه خطأ — صحّحه في الملف وارفعه ثانيةً</div>` : "");
+  });
+};
+
+/* نموذجُ Excel: xlsx حقيقيٌّ يُكتب في المتصفّح — zip «مخزَّن» بلا ضغط */
+function regCrc32(u8) {
+  let c, crc = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) {
+    c = (crc ^ u8[i]) & 0xFF;
+    for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xEDB88320 : c >>> 1;
+    crc = (crc >>> 8) ^ c;
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function regZip(files) {
+  const te = new TextEncoder();
+  const parts = [], cen = [];
+  let off = 0;
+  const le = (n, w) => { const a = []; for (let i = 0; i < w; i++) a.push((n >>> (8 * i)) & 0xFF); return a; };
+  files.forEach(([name, text]) => {
+    const nb = te.encode(name), data = te.encode(text), crc = regCrc32(data);
+    const head = [].concat(le(0x04034b50, 4), le(20, 2), le(0x0800, 2), le(0, 2), le(0, 2), le(0x21, 2),
+      le(crc, 4), le(data.length, 4), le(data.length, 4), le(nb.length, 2), le(0, 2));
+    parts.push(new Uint8Array(head), nb, data);
+    cen.push([[].concat(le(0x02014b50, 4), le(20, 2), le(20, 2), le(0x0800, 2), le(0, 2), le(0, 2), le(0x21, 2),
+      le(crc, 4), le(data.length, 4), le(data.length, 4), le(nb.length, 2), le(0, 2), le(0, 2), le(0, 2), le(0, 2),
+      le(0, 4), le(off, 4)), nb]);
+    off += head.length + nb.length + data.length;
+  });
+  let csize = 0;
+  const cparts = [];
+  cen.forEach(([h, nb]) => { cparts.push(new Uint8Array(h), nb); csize += h.length + nb.length; });
+  const end = new Uint8Array([].concat(le(0x06054b50, 4), le(0, 2), le(0, 2), le(files.length, 2), le(files.length, 2),
+    le(csize, 4), le(off, 4), le(0, 2)));
+  return new Blob(parts.concat(cparts, [end]), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+function regXmlEsc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+function regTemplateBlob() {
+  const cs = regCircles(regMosqueId());
+  const ex = ["عبدالله محمد أحمد", "1234567890", "0500000000", "0550000000", (cs[0] && cs[0].name) || "حلقة", "تُنسب لخطة"];
+  const cell = (col, r, v) => `<c r="${col}${r}" t="inlineStr"><is><t>${regXmlEsc(v)}</t></is></c>`;
+  const L = "ABCDEF";
+  const row = (r, vals) => `<row r="${r}">${vals.map((v, i) => cell(L[i], r, v)).join("")}</row>`;
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"/></sheetViews>
+<cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="6" width="18" customWidth="1"/></cols>
+<sheetData>${row(1, REG_COLS.map(c => c.h))}${row(2, ex)}</sheetData></worksheet>`;
+  return regZip([
+    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`],
+    ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="الطلاب" sheetId="1" r:id="rId1"/></sheets></workbook>`],
+    ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`],
+    ["xl/worksheets/sheet1.xml", sheet]
+  ]);
+}
+window.regTemplate = function () {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(regTemplateBlob());
+  a.download = "نموذج-تسجيل-الطلاب.xlsx";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+};
+
+/* ---------- ٣) روابط تسجيل الطلاب ---------- */
+function regLinkOf(mqId, role) {
+  const base = (location.origin && location.origin !== "null") ? location.origin : "";
+  return base + "/signup.html?role=" + encodeURIComponent(role || "student") + "&mosque=" + encodeURIComponent(String(mqId));
+}
+function adminRegLinks() {
+  const ms = regMosques();
+  const card = m => {
+    const id = String(m.id);
+    const row = (role, title, sub) => {
+      const url = regLinkOf(id, role);
+      return `<div class="reg-link">
+        <div class="reg-link-h"><b>${title}</b><small>${sub}</small></div>
+        <div class="reg-link-url"><input readonly dir="ltr" value="${esc(url)}" onclick="this.select()"></div>
+        <div class="reg-link-btns">
+          <button type="button" class="btn btn-primary btn-sm" onclick="window.regCopy('${jsAttr(url)}')">${ic("doc", 15)} نسخ</button>
+          <a class="btn btn-ghost btn-sm reg-wa" target="_blank" rel="noopener"
+            href="https://wa.me/?text=${esc(encodeURIComponent(title + " — " + (m.name || "") + "\n" + url))}">${ic("phone", 15)} مشاركة واتساب</a>
+          <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="${esc(url)}">${ic("eye", 15)} فتح</a>
+        </div></div>`;
+    };
+    return `<div class="card reg-lcard"><div class="reg-lcard-h">${ic("mosque", 20)} <b>${esc(m.name || "—")}</b></div>
+      ${row("student", "رابط تسجيل طالب", "يفتح نموذجَ التسجيل وقد اختير فيه مسجدُك وصفةُ «طالب»")}
+      ${row("parent", "رابط تسجيل وليّ أمر", "لوليّ الأمر يسجّل أبناءه في مسجدك")}
+    </div>`;
+  };
+  return `<div class="page reg-page">
+    ${pageHead("روابط تسجيل الطلاب", "شارك الرابط فيسجّل الطالبُ نفسَه — ويصلك طلبُه في «طلبات إضافة مستخدم» لتعتمده")}
+    ${ms.length ? ms.map(card).join("") : emptyState("لا مسجد", "لا مسجدَ في نطاقك بعد.")}
+  </div>`;
+}
+window.regCopy = function (url) {
+  const done = () => showToast("نُسخ الرابط", "success");
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done).catch(() => msgCopyFallback(url, done));
+  else msgCopyFallback(url, done);
+};
+
 function adminSoon() {
   const key = subParam("p");
   if (key === "exams-home")   return adminExamsHome();
@@ -26507,6 +27082,15 @@ function adminSoon() {
   if (key === "move-circles")   return adminMoveCircles();
   if (key === "move-requests")  return adminUserRequests();
   if (key === "duty-approvals") return adminDutyApprovals();
+  /* أبوابُ «القبول والتسجيل» عند مدير المسجد */
+  /* والحارسُ هنا لا في القائمة: إخفاءُ البند لا يمنع كتابةَ العنوان */
+  if (/^reg-(multi|excel|links)$/.test(key)) {
+    const rr = ((STATE && STATE.user) || {}).role || "";
+    if (!(rr === "admin" || rr === "owner" || isMgrRole(rr))) return financeDenied("القبول والتسجيل");
+  }
+  if (key === "reg-multi")      return adminRegMulti();
+  if (key === "reg-excel")      return adminRegExcel();
+  if (key === "reg-links")      return adminRegLinks();
   if (key === "duty-home")      return adminDutyHome();
   if (key === "duty-report")    return adminDutyReport();
   if (key === "duty-staff")     return adminStaffReport();
@@ -53577,7 +54161,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-1950";
+  var APP_BUILD = "20261017-2110";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

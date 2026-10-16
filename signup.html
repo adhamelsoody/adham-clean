@@ -269,7 +269,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="firebase-config.js?v=202610171950"></script>
+<script src="firebase-config.js?v=202610172110"></script>
 <script>
 (function () {
   "use strict";
@@ -277,6 +277,15 @@
   var msg = document.getElementById("msg");
   var btn = document.getElementById("go");
   var role = "student";
+
+  /* رابطُ «روابط تسجيل الطلاب»: ?role=student|parent&mosque=<id> — الصفةُ
+     تُختار والمسجدُ يُعلَّم عند وصول قائمة المساجد. وما سواهما يُتجاهل. */
+  var URL_Q = {};
+  try { location.search.replace(/^\?/, "").split("&").forEach(function (kv) {
+    var i = kv.indexOf("="); if (i < 1) return;
+    URL_Q[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1).replace(/\+/g, " "));
+  }); } catch (e) {}
+  var URL_MOSQUE = String(URL_Q.mosque || "");
 
   /* اختيار الصفة */
   document.querySelectorAll("#roles .role").forEach(function (b) {
@@ -287,6 +296,10 @@
       toggleKids();
     });
   });
+  if (URL_Q.role === "student" || URL_Q.role === "parent") {
+    var rb = document.querySelector('#roles .role[data-role="' + URL_Q.role + '"]');
+    if (rb) setTimeout(function () { rb.click(); }, 0);
+  }
 
   /* ====================================================================
      قائمةُ المساجد — من الفهرس العلنيّ
@@ -406,7 +419,10 @@
       clean.push({ id: String(it.id), name: String(it.name),
                    cx: String(it.cx || ""), cxName: String(it.cxName || "") });
     }
-    mqSet({ items: clean, state: "ready", q: "", picked: "" });
+    /* رابطُ التسجيل من مدير المسجد يحمل مسجدَه (?mosque=) فيُختار سلفاً */
+    var want = "";
+    for (var w = 0; w < clean.length; w++) if (clean[w].id === URL_MOSQUE) { want = URL_MOSQUE; break; }
+    mqSet({ items: clean, state: "ready", q: "", picked: want });
   }
 
   (function loadMosques() {
