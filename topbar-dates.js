@@ -321,7 +321,17 @@
     if (!periodDD || typeof window.trmViewOptions !== "function") return;
     let o = null;
     try { o = window.trmViewOptions(); } catch (e) { return; }
-    if (!o || !o.items || !o.items.length) return;
+    if (!o || !o.items) return;
+    /* بلا فترةٍ فعّالة: تُقال الحالُ ولا يُعرض بديل — وقد طُلب صراحةً أن لا
+       تظهر المؤرشفةُ ولا الموقوفةُ مكانَها. ولا تُستدعى trmViewSet فلا
+       يتبدّل عرضٌ باختيارٍ لا معنى له. */
+    if (!o.items.length) {
+      const lbl = o.empty || "لا فترة فعّالة";
+      if (periodSig === "∅" + lbl) return;
+      periodSig = "∅" + lbl;
+      periodDD._setItems([lbl], lbl, function () {});
+      return;
+    }
     const sig = JSON.stringify(o);
     if (sig === periodSig) return;
     periodSig = sig;

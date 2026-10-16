@@ -249,7 +249,32 @@ service cloud.firestore {
       allow read: if coll in operational() && canRead();
       allow create, update: if coll in operational() && canWrite() && scopeOk();
       allow delete: if coll in operational() && canWrite()
-                    && (unscoped() || inScope(resource.data));
+                    && (unscoped() || inScope(resource.data))
+                    /* الفتراتُ لها قاعدةُ حذفٍ خاصّةٌ أدناه: لا تُحذف إلّا
+                       مؤرشفة. وقواعدُ Firestore تُجمع بـ OR، فلو بقيت
+                       الفتراتُ هنا لأذِنت هذه القاعدةُ بما تمنعه تلك. */
+                    && coll != 'terms';
+    }
+
+    /* ---------------- الفترات: لا حذفَ إلّا بعد الأرشفة ---------------- */
+    /* «لا تعتمد على إخفاء زر الحذف في الواجهة فقط — يجب فرض شرط الأرشفة
+       والصلاحيات على مستوى الخادم. لا تمنح العميل صلاحية تجاوز هذه
+       الحماية.» فالمسارُ مفروضٌ هنا: فترةٌ فعّالة ← أرشفة ← حذف.
+       والقراءةُ والإنشاءُ والتعديلُ كما لسائر البيانات التشغيلية. */
+    match /terms/{docId} {
+      allow read:   if canRead();
+      allow create: if canWrite() && scopeOk();
+      allow update: if canWrite() && scopeOk();
+      /* الحصرُ هنا كما في الإنشاء والتعديل سواءً بسواء (scopeOk): سجلُّ
+         الفترة بلا مسجدٍ ولا مجمّع، فلو اشتُرط inScope وحدَه لما حذف
+         مديرُ منشأةٍ فترةً قطّ — ويُقبل طلبُه في الواجهة ويردّه الخادمُ
+         صامتاً. ولا توسعةَ في ذلك: canWrite هو هو. */
+      allow delete: if canWrite()
+                    && (unscoped()
+                        || (resource.data.get('mosqueId', '') == ''
+                            && resource.data.get('complexId', '') == '')
+                        || inScope(resource.data))
+                    && resource.data.archived == true;
     }
 
 

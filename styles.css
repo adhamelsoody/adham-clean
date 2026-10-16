@@ -13186,3 +13186,41 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
 :root[data-theme="dark"] .tq-noday {
   color: #f0c475; background: #3a2d14; border-color: #5a4520;
 }
+
+/* =========================================================================
+   نظام الفترات: نوعُها · أيّامُ عملها · تعارضُها · فئاتُ الترحيل
+   -------------------------------------------------------------------------
+   أُضيف مع إنشاء الفترة المستقلّة والمتزامنة ومعالج الترحيل بفئاته الثلاث.
+   ولا يمسُّ شيئاً قائماً: أصنافٌ جديدةٌ بأسمائها وحدَها.
+   ========================================================================= */
+.trm-kind { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.trm-kind .manu-same { align-items: flex-start; }
+.trm-kind .manu-same small { display: block; opacity: .75; font-size: 11.5px; }
+
+.trm-days { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.trm-days .chip { border: 1px solid var(--line, #dfe3e8); cursor: pointer; }
+
+.trm-clash {
+  border: 1px solid #e7b86b; background: #fdf6e9; color: #6b4a12;
+  border-radius: 12px; padding: 12px 14px; font-size: 13px; line-height: 1.8;
+}
+.trm-clash p { margin: 6px 0 0; }
+.trm-clash .btn { margin-top: 8px; }
+
+.mig-cat {
+  border: 1px solid var(--line, #e3e7ec); border-radius: 14px;
+  padding: 12px 14px; margin-top: 12px;
+}
+.mig-cat-h {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 6px; font-size: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .trm-clash {
+    border-color: #6b5420; background: #2f2612; color: #f0c475;
+  }
+}
+:root[data-theme="dark"] .trm-clash {
+  border-color: #6b5420; background: #2f2612; color: #f0c475;
+}

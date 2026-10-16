@@ -5970,7 +5970,8 @@ function adminUsers() {
 }
 
 function adminSupervisors() {
-  const list = cur("users").filter(u => isMgrRole(u.role));
+  /* الفترةُ المعروضةُ تحصر القائمة إن كانت فترةً تبدأ خالية */
+  const list = trmSupsIn(cur("users").filter(u => isMgrRole(u.role)));
   return personTable({
     list, title: "المشرفين / ات", showCount: true,
     toolbar: "add", addLabel: "إضافة مشرف", addAction: "modal-user",
@@ -23676,6 +23677,74 @@ function trmIsNow(r) {
   const t = new Date().toISOString().slice(0, 10);
   return !!(r.from && r.to && r.from <= t && t <= r.to);
 }
+
+/* =========================================================================
+   حالةُ الفترة: حقلٌ رسميٌّ واحدٌ يُقرأ، لا اسمٌ ولا تاريخ
+   -------------------------------------------------------------------------
+   كانت الحالةُ تُستنتج من بوليانَين (active · archived) متفرّقَين في
+   الشيفرة، ولا سبيل إلى «موقوفةٍ مؤقتاً» أصلاً — فيختلط الإيقافُ بالأرشفة
+   وهما مختلفان: الموقوفةُ تعود بضغطة، والمؤرشفةُ سجلٌّ مغلَق.
+
+   فتُقرأ الحالةُ من هنا وحدَها. والحقلان يبقيان كما هما يُكتبان ويُقرآن،
+   فلا ينكسر قارئٌ قائم: الإيقافُ يُطفئ active ويرفع paused، والأرشفةُ
+   ترفع archived كما كانت.
+   ========================================================================= */
+function trmState(t) {
+  if (!t) return "";
+  if (t.archived === true) return "archived";
+  if (t.paused === true) return "paused";
+  return t.active === true ? "active" : "idle";
+}
+const TRM_STATE_AR = {
+  active: "فعّالة", paused: "موقوفة مؤقتاً",
+  archived: "مؤرشفة", idle: "غير مفعَّلة"
+};
+/* الفترةُ الفعّالة: يُعمل فيها ويُكتب، وتظهر في فلتر الشريط */
+function trmLive(t) { return trmState(t) === "active"; }
+
+/* =========================================================================
+   التزامنُ بين الفترات — بلا ربطٍ ذاتيٍّ ولا دوائر
+   -------------------------------------------------------------------------
+   «امنع ربط الفترة بنفسها أو إنشاء حلقات من العلاقات المتبادلة»: تُتبَّع
+   سلسلةُ syncWith صعوداً، فإن بلغت الفترةَ نفسَها فالربطُ دائرة.
+   ========================================================================= */
+function trmSyncCycle(id, targetId) {
+  let c = String(targetId || ""), g = 0;
+  const me = String(id || "");
+  while (c && g++ < 200) {
+    if (me && c === me) return true;
+    const t = (DB.terms || []).find(x => String(x.id) === c);
+    c = t && t.syncWith ? String(t.syncWith) : "";
+  }
+  return false;
+}
+/* الفتراتُ التي يصحُّ التزامنُ معها: فعّالةٌ، من نطاقك، ولا تصنع دائرة */
+function trmSyncable(id) {
+  return trmRows().filter(x => trmOwn(x) && trmLive(x) &&
+    String(x.id) !== String(id || "") && !trmSyncCycle(id, x.id));
+}
+function trmById(id) {
+  return (DB.terms || []).find(x => String(x.id) === String(id || "")) || null;
+}
+
+/* أيّامُ عمل الفترة — مصفوفةٌ دائماً */
+function trmWorkDays(t) {
+  return (typeof daysToArray === "function") ? daysToArray(t && t.days) : [];
+}
+
+/* مُنتقي أيّام العمل — أزرارٌ تُقلَب، تُقرأ عند الحفظ من الـ DOM */
+window.trmDayTog = function (el) { if (el) el.classList.toggle("day-on"); };
+function trmDaysPicker(sel) {
+  const on = sel || [];
+  return `<div class="trm-days" id="tmDays">${WEEK_DAYS.map(d =>
+    `<button type="button" class="chip${on.indexOf(d) > -1 ? " day-on" : ""}"
+       data-day="${esc(d)}" onclick="window.trmDayTog(this)">${esc(d)}</button>`).join("")}</div>`;
+}
+function trmDaysRead() {
+  return Array.prototype.map.call(
+    document.querySelectorAll("#tmDays .chip.day-on"), e => e.dataset.day)
+    .filter(d => WEEK_DAYS.indexOf(d) > -1);
+}
 /* فترات الجهة الحالية قابلة للتعديل، وفترات الجهات الأعلى للعرض فقط */
 function trmOwn(r) {
   const me = complexName(STATE.complexId) || "";
@@ -23691,48 +23760,191 @@ function trmCanDelete() {
   return typeof isMgrRole === "function" && isMgrRole(r);
 }
 
+/* =========================================================================
+   من يُنشئ فترةً ويعدّلها ويزامنها ويرحّل ويؤرشف
+   -------------------------------------------------------------------------
+   «تُنفَّذ العملياتُ الحسّاسة من قبل الأدوار المخوَّلة وحدَها، وتُرفض
+   المحاولاتُ غيرُ المصرَّح بها ولو استُدعيت خارج الواجهة». وهو الحارسُ
+   نفسُه الذي يحرس الحذف: مديرُ النظام ومديرُ المنشأة. ولا توسعةَ لمشرفٍ
+   ولا لمعلّم.
+   ========================================================================= */
+function trmCanManage() { return trmCanDelete(); }
+window.trmCanManage = trmCanManage;
+
 window.trmForm = function (id) {
   const r = id ? trmRows().find(x => String(x.id) === String(id)) : null;
   if (r && !trmOwn(r)) { showToast("فترات الجهات الأعلى للعرض فقط", "warn"); return; }
+  /* =======================================================================
+     نوعُ الفترة اختيارٌ إلزاميّ: مستقلّةٌ أو متزامنةٌ مع فعّالةٍ قائمة
+     -----------------------------------------------------------------------
+     و«الموازية» القديمةُ هي آليةُ التزامن نفسُها في قاعدة البيانات: تعمل
+     بجوار النشطة ولا تؤرشفها ويجوز تداخلُ تواريخهما. فلا حقلَ جديدٌ يُنسخ
+     على حقلٍ قائم: parallel يبقى كما هو يُكتب ويُقرأ، ويُضاف إليه
+     kind و syncWith و syncScope ليُعرف مع أيِّ فترةٍ تزامنت وما معنى
+     التزامن — فقد كان التداخلُ يقع بلا تسجيلِ العلاقة بين الطرفين.
+     ======================================================================= */
+  const kind = r ? (r.kind || (r.parallel ? "synced" : "independent"))
+                 : "independent";
+  const opts = trmSyncable(r ? r.id : "");
+  const sameOpt = (id) => opts.map(x =>
+    `<option value="${esc(x.id)}"${String(id) === String(x.id) ? " selected" : ""}>${
+      esc(x.name || "—")}</option>`).join("");
+
   openModal(r ? "تعديل الفترة" : "إضافة فترة دراسية", "",
     `<input type="hidden" id="tmId" value="${r ? esc(r.id) : ""}">
      <div class="form-grid">
       <div class="field full"><label>اسم الفترة <span class="req">*</span></label>
         <input id="tmName" value="${r ? esc(r.name || "") : ""}" placeholder="مثال: الفصل الدراسي الأول"></div>
+
+      <div class="field full"><label>نوع الفترة <span class="req">*</span></label>
+       <div class="trm-kind">
+        <label class="manu-same"><input type="radio" name="tmKind" value="independent"
+          ${kind === "independent" ? "checked" : ""} onchange="window.trmKindShow()">
+          <span>فترة مستقلّة</span>
+          <small>تقوم بذاتها، ولا يصحُّ أن تتداخل مع فترةٍ فعّالةٍ أخرى في نطاقك</small></label>
+        <label class="manu-same"><input type="radio" name="tmKind" value="synced"
+          ${kind === "synced" ? "checked" : ""} onchange="window.trmKindShow()"
+          ${opts.length ? "" : "disabled"}>
+          <span>فترة متزامنة مع فترةٍ فعّالة</span>
+          <small>${opts.length
+            ? "تعمل بجوارها ولا تؤرشفها — كالدورة الرمضانية مع الفصل"
+            : "لا توجد فترةٌ فعّالةٌ يصحُّ التزامنُ معها"}</small></label>
+       </div></div>
+
+      <div class="field full" id="tmClash"></div>
+
+      <div class="field full" id="tmSyncBox" style="${kind === "synced" ? "" : "display:none"}"
+        <label>الفترة المتزامن معها <span class="req">*</span></label>
+        <select id="tmSyncWith">${sameOpt(r && r.syncWith)}</select>
+        <div style="margin-top:8px"><label>معنى التزامن</label>
+          <select id="tmSyncScope">
+            <option value="dates"${(r && r.syncScope) !== "link" ? " selected" : ""}
+              >المواعيد وأيّام العمل — تُنسخ من الفترة الأصل</option>
+            <option value="link"${(r && r.syncScope) === "link" ? " selected" : ""}
+              >ارتباطٌ تنظيميٌّ فقط — لكلٍّ مواعيدُه وأيّامُه</option>
+          </select>
+          <small class="muted">ولا تُدمج سجلّاتُ الطلاب ولا المعلّمين بين الفترتين بحال —
+            التزامنُ علاقةٌ لا ترحيل.</small></div></div>
+
       <div class="field"><label>من <span class="req">*</span></label>
         <input type="date" id="tmFrom" value="${r ? esc(r.from || "") : ""}"></div>
       <div class="field"><label>إلى <span class="req">*</span></label>
         <input type="date" id="tmTo" value="${r ? esc(r.to || "") : ""}"></div>
-      <div class="field full"><label class="manu-same">
-        <input type="checkbox" id="tmParallel"${r && r.parallel ? " checked" : ""}>
-        <span>فترة موازية</span>
-        <small>تعمل مع الفترة النشطة دون أن تؤرشفها، ويجوز أن تتداخل تواريخهما — كالدورة الرمضانية</small>
-      </label></div>
+
+      <div class="field full"><label>أيّام العمل <span class="req">*</span></label>
+        ${trmDaysPicker(trmWorkDays(r))}</div>
      </div>`,
     `<button class="btn btn-primary" data-action="trm-save">${r ? "حفظ" : "إضافة"}</button>
-     ${r ? `<button class="btn btn-danger" data-action="trm-del" data-id="${esc(r.id)}">حذف</button>` : ""}
+     ${/* الحذفُ لا يُعرض إلّا للمؤرشفة — ومنعُه مفروضٌ في trmDelete
+          وفي قواعد الخادم كذلك، لا بإخفاء الزرّ وحدَه. */
+       (r && r.archived === true && trmCanDelete())
+         ? `<button class="btn btn-danger" data-action="trm-del" data-id="${esc(r.id)}">حذف</button>`
+         : ""}
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 };
+
+/* إظهارُ صندوق التزامنٍ وإخفاؤه مع تغيّر النوع */
+window.trmKindShow = function () {
+  const box = document.getElementById("tmSyncBox");
+  if (!box) return;
+  const el = document.querySelector('input[name="tmKind"]:checked');
+  box.style.display = (el && el.value === "synced") ? "" : "none";
+};
+
+/* تحويلُ الفترة المرفوضة إلى متزامنةٍ مع فعّالةٍ قائمة — من رسالة التعارض */
+window.trmToSynced = function (withId) {
+  const el = document.querySelector('input[name="tmKind"][value="synced"]');
+  if (el) { el.disabled = false; el.checked = true; }
+  window.trmKindShow();
+  const sel = document.getElementById("tmSyncWith");
+  if (sel && withId) sel.value = String(withId);
+  const box = document.getElementById("tmClash");
+  if (box) box.innerHTML = "";
+  showToast("صارت متزامنة — راجع الاختيار ثمّ احفظ", "info");
+};
 window.trmSave = function () {
+  /* الصلاحيةُ تُفحص هنا كما تُفحص في الخادم — لا بإخفاء الزرّ وحدَه */
+  if (!trmCanManage()) { showToast("إنشاءُ الفترات وتعديلُها لمن يملكه", "warn"); return; }
+
   const name = (val("#tmName") || "").trim();
-  const from = val("#tmFrom"), to = val("#tmTo");
+  let from = val("#tmFrom"), to = val("#tmTo");
   if (!name) { showToast("اسم الفترة مطلوب", "warn"); return; }
-  if (!from || !to) { showToast("تاريخا البداية والنهاية مطلوبان", "warn"); return; }
-  if (to <= from) { showToast("تاريخ النهاية يجب أن يكون بعد البداية", "warn"); return; }
 
   const id = val("#tmId");
   const me = complexName(STATE.complexId) || "";
-  const pEl = document.getElementById("tmParallel");
-  const parallel = !!(pEl && pEl.checked);
-  /* منع تداخل الفترات لنفس الجهة — إلا الموازية: تداخلُها مقصود */
+  const kEl = document.querySelector('input[name="tmKind"]:checked');
+  const kind = kEl ? String(kEl.value) : "";
+  if (!kind) { showToast("اختر نوع الفترة: مستقلّة أو متزامنة", "warn"); return; }
+
+  const parallel = kind === "synced";
+  let syncWith = "", syncScope = "";
+
+  if (parallel) {
+    syncWith = String(val("#tmSyncWith") || "");
+    syncScope = String(val("#tmSyncScope") || "dates");
+    const tgt = trmById(syncWith);
+    if (!tgt) { showToast("اختر الفترة المتزامن معها", "warn"); return; }
+    if (String(tgt.id) === String(id)) { showToast("لا تُربط الفترةُ بنفسها", "warn"); return; }
+    if (!trmLive(tgt)) {
+      showToast("لا تزامنَ مع فترةٍ " + (TRM_STATE_AR[trmState(tgt)] || "غير فعّالة"), "warn");
+      return;
+    }
+    if (trmSyncCycle(id, tgt.id)) { showToast("هذا الربطُ يصنع دائرةً بين الفترات", "warn"); return; }
+    /* «وضّح هل التزامن يشمل المواعيد وأيّام العمل» — والمعنى يُنفَّذ لا يُقال */
+    if (syncScope === "dates") { from = tgt.from || from; to = tgt.to || to; }
+  }
+
+  if (!from || !to) { showToast("تاريخا البداية والنهاية مطلوبان", "warn"); return; }
+  if (to <= from) { showToast("تاريخ النهاية يجب أن يكون بعد البداية", "warn"); return; }
+
+  let days = trmDaysRead();
+  if (parallel && syncScope === "dates") {
+    const d2 = trmWorkDays(trmById(syncWith));
+    if (d2.length) days = d2;
+  }
+  if (!days.length) { showToast("اختر يوماً واحداً على الأقلّ من أيّام العمل", "warn"); return; }
+
+  /* =======================================================================
+     تعارضُ الفترة المستقلّة — والاختيارُ لصاحبه لا للنظام
+     -----------------------------------------------------------------------
+     كان التعارضُ يُردّ برسالةٍ عابرةٍ وينتهي الأمر. والمطلوب: إمّا الإلغاء،
+     وإمّا تحويلُ الجديدة إلى متزامنةٍ مع الفعّالة القائمة — بتسجيل العلاقة
+     بينهما، لا بجعلهما متطابقتين بلا رابط.
+
+     والفحصُ بنطاق الفترة الحقيقيّ (مالكُها: جهتُها)، لا بوجود أيّ فترةٍ في
+     قاعدة البيانات.
+     ======================================================================= */
   const clash = parallel ? null : trmRows().find(x => String(x.id) !== String(id) && trmOwn(x) &&
                                     !x.parallel && x.from && x.to && from <= x.to && to >= x.from);
-  if (clash) { showToast("الفترة تتداخل مع «" + (clash.name || "") + "»", "warn"); return; }
+  if (clash) {
+    const box = document.getElementById("tmClash");
+    const live = trmLive(clash);
+    const msg = `<div class="trm-clash">
+        <strong>تتعارض مع «${esc(clash.name || "")}»</strong>
+        <div class="muted" dir="ltr">${esc(clash.from || "")} → ${esc(clash.to || "")}</div>
+        <p>فترةٌ ${esc(TRM_STATE_AR[trmState(clash)] || "")} في نطاقك تتداخل مواعيدُها مع هذه،
+          فلا تقوم الجديدةُ مستقلّةً بجوارها.</p>
+        <p>${live
+          ? "إمّا أن تُلغيَ العملية، وإمّا أن تجعلها متزامنةً معها — فتُسجَّل العلاقةُ بينهما."
+          : "غيّر التواريخ أو ألغِ العملية — ولا تزامنَ إلّا مع فترةٍ فعّالة."}</p>
+        ${live ? `<button type="button" class="btn btn-primary btn-sm"
+            onclick="window.trmToSynced('${jsAttr(clash.id)}')">اجعلها متزامنةً معها</button>` : ""}
+      </div>`;
+    if (box) box.innerHTML = msg; else showToast("الفترة تتداخل مع «" + (clash.name || "") + "»", "warn");
+    return;
+  }
+  const cbox = document.getElementById("tmClash");
+  if (cbox) cbox.innerHTML = "";
 
   if (!Array.isArray(DB.terms)) DB.terms = [];
   if (id) {
     const r = DB.terms.find(x => String(x.id) === String(id));
-    if (r) { Object.assign(r, { name, from, to, parallel }); persistSet("terms", r); }
+    if (r) {
+      Object.assign(r, { name, from, to, parallel, kind, days });
+      if (parallel) { r.syncWith = syncWith; r.syncScope = syncScope; }
+      else { r.syncWith = ""; r.syncScope = ""; }
+      persistSet("terms", r);
+    }
     showToast("حُفظت الفترة", "success");
     closeModal(); mount();
     return;
@@ -23746,7 +23958,9 @@ window.trmSave = function () {
      ما قبلها كلَّها لأنّ السجلّات غيرَ الموسومة تظهر في كلّ فترة، فلا
      يُفرَّق بين فترةٍ وأخرى. والوسمُ على الفترة لا على السجلّات، فلا
      تتأثّر الفتراتُ القائمةُ بشيء. */
-  const r = { id: "tm" + Date.now(), name, from, to, owner: me, parallel, fresh: true };
+  const r = { id: "tm" + Date.now(), name, from, to, owner: me, parallel, fresh: true,
+              kind, days, syncWith: parallel ? syncWith : "",
+              syncScope: parallel ? syncScope : "" };
   DB.terms.push(r); persistSet("terms", r);
   showToast("أُضيفت الفترة", "success");
   closeModal();
@@ -23765,7 +23979,7 @@ window.trmSave = function () {
      دورة سابقة». الموازيةُ لا تُرحَّل إليها — تعمل بجوار النشطة. */
   const act = (wasAct && String(wasAct.id) !== String(r.id)) ? wasAct : activeTerm();
   if (!parallel && act && String(act.id) !== String(r.id)) {
-    openModal("ترحيل البيانات", r.name,
+    openModal("نقل البيانات من فترة أخرى؟", r.name,
       noteCard(`<p>الفترةُ <strong>${esc(r.name)}</strong> صارت الفترةَ النشطة —
         تُدخَل فيها البيانات مباشرةً.</p>
         <p style="margin-top:8px"><strong>والترحيلُ اختياريّ.</strong>
@@ -23780,18 +23994,115 @@ window.trmSave = function () {
        <button class="btn btn-ghost" data-action="close-modal">لا، ابدأ فارغة</button>`);
   }
 };
+/* =========================================================================
+   لا حذفَ إلّا بعد أرشفة — والمسارُ: فعّالة ← أرشفة ← طلب ← تأكيد
+   -------------------------------------------------------------------------
+   كان زرُّ «حذف» في نافذة تعديل الفترة يحذف أيَّ فترةٍ ولو كانت فعّالة،
+   وإخفاؤه من جدول الفترات لم يكن يمنع شيئاً: الدالّةُ تُستدعى من الكونسول
+   فتمضي. فالشرطُ الآن في الدالّة نفسِها، وفي قواعد الخادم كذلك
+   (firestore.rules: لا يُحذف سجلُّ فترةٍ إلّا و archived == true).
+
+   وما يُحذف هو سجلُّ الفترة وحدَه: لا طالبٌ ولا معلّمٌ ولا حلقةٌ ولا خطةٌ
+   ولا حضورٌ ولا تسميع. والسجلّاتُ الموسومةُ بها تبقى كما هي، ويُقال
+   لصاحبها كم هي قبل أن يؤكّد.
+   ========================================================================= */
+function trmDelBlockers(id) {
+  const tid = String(id || "");
+  const n = (coll) => (curAll(coll) || []).filter(x => recInTerm(x, tid)).length;
+  const kids = (DB.terms || []).filter(t => t && String(t.syncWith || "") === tid);
+  return {
+    kids,
+    students: n("students"), teachers: n("teachers"),
+    circles: n("circles"), plans: n("plans"),
+    att: (curAll("attendance") || []).filter(x => String(x.termId || "") === tid).length,
+    rec: (curAll("recitations") || []).filter(x => String(x.termId || "") === tid).length,
+    asg: (curAll("assignments") || []).filter(x => String(x.termId || "") === tid).length
+  };
+}
+
 window.trmDelete = function (id) {
   const r = trmRows().find(x => String(x.id) === String(id));
-  if (r && !trmOwn(r)) { showToast("فترات الجهات الأعلى للعرض فقط", "warn"); return; }
+  if (!r) return;
+  if (!trmOwn(r)) { showToast("فترات الجهات الأعلى للعرض فقط", "warn"); return; }
+  if (!trmCanDelete()) { showToast("حذفُ الفترات لمدير النظام ومدير المنشأة", "warn"); return; }
+  if (r.archived !== true) {
+    showToast("لا تُحذف فترةٌ " + (TRM_STATE_AR[trmState(r)] || "") + " — أرشِفها أوّلاً", "warn");
+    return;
+  }
 
-  /* تأكيدُ الحذف — كان يحذف بضغطةٍ واحدة، والفترةُ لا تُستردّ */
-  if (!needDelOk("الفترة «" + ((r && r.name) || "") + "»",
-                 function () { window.trmDelete(id); })) return;
+  const b = trmDelBlockers(id);
+  const num = x => toArabicDigits(x);
+
+  if (b.kids.length) {
+    openModal("لا يمكن الحذف", r.name || "",
+      noteCard(`<p>تتزامن مع هذه الفترة
+        <strong>${num(b.kids.length)}</strong> فترةٌ أخرى:
+        ${b.kids.map(k => "«" + esc(k.name || "") + "»").join("، ")}.</p>
+        <p style="margin-top:8px">وحذفُها يقطع ارتباطَ تلك الفترات — وحذفُ فترةٍ
+        لا يجوز أن يمسَّ فترةً أخرى. فكّ التزامنَ من كلِّ واحدةٍ منها أوّلاً
+        (تعديلُ الفترة ← نوعُها ← مستقلّة)، ثمّ أعِد المحاولة.</p>`),
+      `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+    return;
+  }
+
+  const rows = [["طلاب", b.students], ["معلّمون", b.teachers], ["حلقات", b.circles],
+                ["خطط", b.plans], ["سجلّات حضور", b.att], ["جلسات تسميع", b.rec],
+                ["واجبات", b.asg]].filter(x => x[1] > 0);
+
+  openModal("حذف الفترة المؤرشفة نهائياً", r.name || "",
+    noteCard(`<p><strong>الحذفُ لا يُستردّ.</strong> يُمحى سجلُّ الفترة
+      <strong>${esc(r.name || "")}</strong> وحدَه.</p>
+      ${rows.length ? `<p style="margin-top:8px">والموسومُ بها يبقى كما هو ولا يُحذف منه شيء،
+        غير أنّه يصير بلا فترةٍ يُنسب إليها:</p>
+        <ul style="margin:6px 18px 0">${rows.map(x =>
+          `<li>${num(x[1])} ${esc(x[0])}</li>`).join("")}</ul>
+        <p style="margin-top:8px">فإن أردتَ الإبقاء على نسبتها فاترك الفترةَ مؤرشفةً
+          ولا تحذفها — الأرشفةُ تكفي لإخراجها من فلتر الشريط.</p>`
+        : `<p style="margin-top:8px">ولا سجلَّ موسومٌ بها، فلا يتأثّر شيء.</p>`}
+      <p style="margin-top:8px">ولا تتأثّر فترةٌ أخرى، فعّالةً كانت أو متزامنةً أو مؤرشفة.</p>`),
+    `<button class="btn btn-danger" onclick="window.trmDeleteDo('${jsAttr(id)}')">نعم، احذفها نهائياً</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.trmDeleteDo = function (id) {
+  const r = trmRows().find(x => String(x.id) === String(id));
+  if (!r) return;
+  /* الحرّاسُ يُعادون هنا: الدالّةُ تُستدعى مباشرةً كما تُستدعى أختُها */
+  if (!trmOwn(r) || !trmCanDelete() || r.archived !== true) {
+    showToast("لا تُحذف فترةٌ إلّا بعد أرشفتها وبصلاحيةِ صاحبها", "warn"); return;
+  }
+  if (trmDelBlockers(id).kids.length) {
+    showToast("فكَّ تزامنَ الفترات المرتبطة أوّلاً", "warn"); return;
+  }
+  if (!needDelOk("الفترة «" + (r.name || "") + "»",
+                 function () { window.trmDeleteDo(id); })) return;
 
   const i = (DB.terms || []).findIndex(x => String(x.id) === String(id));
   if (i > -1) { DB.terms.splice(i, 1); persistDelete("terms", id); }
+  if (viewTermPicked() === String(id)) window.trmViewSet("", true);
   closeModal();
   showToast("حُذفت الفترة", "success"); mount();
+};
+
+/* =========================================================================
+   الإيقافُ المؤقّت غيرُ الأرشفة
+   -------------------------------------------------------------------------
+   الموقوفةُ تخرج من فلتر الشريط ومن فترات العمل، وتعود بضغطة، وبياناتُها
+   تُكتب متى عادت. والمؤرشفةُ سجلٌّ مغلَقٌ للقراءة. ولا تُؤرشف ولا تُوقَف
+   فترةٌ متزامنةٌ معها تبعاً لها: العمليةُ على المحدَّدة وحدَها.
+   ========================================================================= */
+window.trmPause = function (id, on) {
+  const t = trmById(id);
+  if (!t) return;
+  if (!trmOwn(t) || !trmCanManage()) { showToast("هذه العمليةُ لمن يملكها", "warn"); return; }
+  if (t.archived === true) { showToast("الفترةُ مؤرشفة", "warn"); return; }
+  t.paused = !!on;
+  if (on) t.active = false; else t.active = true;
+  Promise.resolve(persistSet("terms", t)).then(function () {
+    if (on && viewTermPicked() === String(id)) window.trmViewSet("", true);
+    showToast(on ? "أُوقفت الفترة مؤقتاً" : "عادت الفترة فعّالة", "success");
+    mount();
+  });
 };
 
 /* =========================================================================
@@ -23957,15 +24268,31 @@ window.trmViewOptions = function () {
 
      ولم تُحذف ميزةُ عرض الفترات القديمة: زرُّ «عرض» بجانب كلّ فترةٍ في
      صفحة «الفترات الدراسية والأرشيف» يفتحها كما كان. */
-  const open2 = all.filter(t => t.archived !== true);
-  const live = open2.filter(t =>
-    t.active === true || String(t.id) === String(cur2));
-  const terms = live.length ? live : (open2.length ? open2 : all);
-  const items = terms.map(t => ({
+  /* =======================================================================
+     الفعّالةُ وحدَها — لا مؤرشفةٌ ولا موقوفةٌ ولا بديلٌ عند الفراغ
+     -----------------------------------------------------------------------
+     كان في القائمة ارتدادان: المعروضةُ تُستدرَك ولو لم تكن فعّالة، وإن خلت
+     القائمةُ عُرضت غيرُ المؤرشفة ثمّ الكلُّ — والكلُّ يشمل المؤرشفة. فكان
+     يمكن أن يعرض الشريطُ فترةً مؤرشفةً بديلاً، وقد طُلب منعُه صراحةً.
+
+     والحالةُ تُقرأ من الحقل الرسميّ (trmState) لا من الاسم ولا من التاريخ.
+     وإن لم تكن فترةٌ فعّالةٌ عادت القائمةُ فارغةً ومعها رسالةٌ يعرضها
+     الشريط — ولا يُعرض بديل.
+     ======================================================================= */
+  /* وفترةُ العمل تُعدّ فعّالةً ولو لم تحمل وسمَ active: الفتراتُ المنشأةُ
+     قبل أن يوجد الوسمُ تُعرف بتاريخها (activeTerm)، فلو حُذفت من القائمة
+     لبقي صاحبُها بلا فترةٍ يختارها وهو يعمل فيها. والمؤرشفةُ والموقوفةُ
+     لا تدخل بحالٍ — وهو المطلوب. */
+  const _act = typeof activeTermId === "function" ? activeTermId() : "";
+  const live = all.filter(t => trmLive(t) ||
+    (_act && String(t.id) === String(_act) && t.archived !== true && t.paused !== true));
+  const items = live.map(t => ({
     id: String(t.id),
-    label: (t.name || "—") + (t.active === true && t.archived !== true
-      ? (t.parallel ? " · موازية" : " · نشطة") : t.archived ? " · مؤرشفة" : "")
+    label: (t.name || "—") + (t.parallel ? " · متزامنة" : " · فعّالة")
   }));
+  if (!items.length) {
+    return { items: [], selected: "", empty: "لا فترة فعّالة" };
+  }
   const sel = items.find(x => x.id === cur2);
   return { items: items, selected: sel ? sel.label : "" };
 };
@@ -23990,6 +24317,21 @@ const TERM_VIEW_COLLS = ["attendance", "recitations"];
 const TERM_FRESH_COLLS = ["students", "teachers", "circles", "plans"];
 
 function termIsFresh(t) { return !!(t && t.fresh === true); }
+
+/* =========================================================================
+   مشرفو الفترة — عضويّةٌ في سجلّ الفترة لا وسمٌ على الحساب
+   -------------------------------------------------------------------------
+   الفترةُ التي تبدأ خاليةً لا تعرض إلّا من رُحِّل إليها: «عدد المشرفين = 0»
+   حتى يُرحَّل. والحسابُ لا يُمَسُّ، فدورُه ونطاقُه وصلاحياتُه على حالها،
+   ويبقى يدخل النظامَ كما كان — إنّما قائمةُ مشرفي هذه الفترة هي المحصورة.
+   ========================================================================= */
+function trmSupsIn(list) {
+  const tid = typeof viewTermId === "function" ? viewTermId() : "";
+  const t = tid ? ((DB.terms || []).find(x => String(x.id) === String(tid)) || null) : null;
+  if (!termIsFresh(t)) return list || [];
+  const ids = Array.isArray(t.supIds) ? t.supIds.map(String) : [];
+  return (list || []).filter(u => u && ids.indexOf(String(u.id)) > -1);
+}
 
 /* هل يخصُّ السجلُّ هذه الفترة؟ termId أو عضويةُ termIds */
 function recInTerm(x, tid) {
@@ -24042,16 +24384,31 @@ function curAll(coll) {
 window.trmEnd = function (id) {
   const t = (DB.terms || []).find(x => String(x.id) === String(id));
   if (!t) return;
-  openModal("إنهاء الفترة وأرشفتها", t.name || "",
+  if (!trmOwn(t) || !trmCanManage()) { showToast("الأرشفةُ لمن يملكها", "warn"); return; }
+  /* الفتراتُ المتزامنةُ معها لا تُؤرشف تبعاً لها — العمليةُ على المحدَّدة وحدَها */
+  const kids = (DB.terms || []).filter(x => x && String(x.syncWith || "") === String(id) &&
+                                            x.archived !== true);
+  const main = trmLive(t) && !t.parallel;
+  openModal("أرشفة الفترة", t.name || "",
     noteCard(`<p>تُؤرشف <strong>${esc(t.name || "")}</strong> للقراءة فقط.
-      بياناتها تبقى كاملة في التقارير وعند عرضها، ولا يُكتب فيها بعد ذلك.</p>`),
-    `<button class="btn btn-danger" onclick="window.trmEndDo('${jsAttr(id)}')">إنهاء وأرشفة</button>
+      بياناتها تبقى كاملة في التقارير وعند عرضها، ولا يُكتب فيها بعد ذلك.</p>
+      <p style="margin-top:8px">ولا يُحذف شيء: لا طالبٌ ولا معلّمٌ ولا مشرفٌ ولا حلقةٌ
+        ولا خطةٌ ولا سجلُّ تسميع.</p>
+      <p style="margin-top:8px">وتخرج من فلتر الفترات في الشريط العلوي.</p>
+      ${kids.length ? `<p style="margin-top:8px">وتتزامن معها
+        <strong>${toArabicDigits(kids.length)}</strong> فترة
+        (${kids.map(k => "«" + esc(k.name || "") + "»").join("، ")}) —
+        <strong>لا تُؤرشف معها</strong>، تبقى كما هي.</p>` : ""}
+      ${main ? `<p style="margin-top:8px">وهي الفترةُ الفعّالةُ الأساسيّة: بعد أرشفتها
+        لا تبقى فترةُ عملٍ حتى تُفعِّل غيرَها.</p>` : ""}`),
+    `<button class="btn btn-danger" onclick="window.trmEndDo('${jsAttr(id)}')">أرشفة</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 };
 window.trmEndDo = function (id) {
   const t = (DB.terms || []).find(x => String(x.id) === String(id));
   if (!t) return;
-  t.active = false; t.archived = true; t.archivedAt = Date.now();
+  if (!trmOwn(t) || !trmCanManage()) { showToast("الأرشفةُ لمن يملكها", "warn"); return; }
+  t.active = false; t.archived = true; t.paused = false; t.archivedAt = Date.now();
   Promise.resolve(persistSet("terms", t)).then(ok => {
     if (viewTermPicked() === String(id)) window.trmViewSet("", true);
     closeModal();
@@ -24102,6 +24459,8 @@ window.trmActivateDo = function (id, keepPrev) {
   if (!Array.isArray(DB.terms)) return;
   const target = DB.terms.find(x => String(x.id) === String(id));
   if (!target) return;
+  if (!trmOwn(target) || !trmCanManage()) { showToast("تفعيلُ الفترات لمن يملكه", "warn"); return; }
+  if (target.archived === true) { showToast("الفترةُ مؤرشفة — لا تُفعَّل", "warn"); return; }
   let archived = 0;
 
   /* الكتابة في فترة العمل لا في معروضةٍ للقراءة */
@@ -24110,7 +24469,7 @@ window.trmActivateDo = function (id, keepPrev) {
   DB.terms.forEach(t => {
     const isIt = String(t.id) === String(id);
     if (isIt) {
-      t.active = true; t.archived = false; t.activatedAt = Date.now();
+      t.active = true; t.archived = false; t.paused = false; t.activatedAt = Date.now();
     } else if (t.active === true && !target.parallel && !t.parallel) {
       /* الأساسيةُ الجديدة تؤرشف الأساسيةَ السابقة — والموازيةُ تبقى */
       t.active = false;
@@ -24139,9 +24498,36 @@ window.trmActivateDo = function (id, keepPrev) {
      • الإنجازات لا تُصفَّر: سجلاتها موسومة بفترتها فتُفرَز بها.
    ========================================================================= */
 /* pick: من يُرحَّل · dest: وجهة كلٍّ إن نُقل · staff: ترحيل المعلّمين */
-const MIG = { from: "", to: "", pick: {}, dest: {}, staff: true };
+/* =========================================================================
+   ثلاثُ فئاتٍ مستقلّةٍ في الترحيل — لكلٍّ قرارُها
+   -------------------------------------------------------------------------
+   «لا تفترض أنّ اختيار ترحيل الجميع للمعلّمين يعني نقل جميع الطلاب
+   والمشرفين أيضاً»: كان في المعالج مفتاحٌ واحدٌ للمعلّمين (كلُّهم أو لا
+   أحد)، ولا ذكرَ للمشرفين ألبتّة، والطلابُ وحدَهم لهم تخصيص.
+
+   فصار لكلّ فئةٍ قرارٌ من ثلاثة: الجميع · تخصيص · لا ترحيل. ولا يُنقل
+   أحدٌ بصمتٍ لأنّ غيرَه نُقل.
+   ========================================================================= */
+const MIG = { from: "", to: "", pick: {}, dest: {}, staff: true,
+              mode: { teachers: "all", sups: "all", students: "custom" },
+              pickT: {}, pickS: {}, run: false };
+
+/* مشرفو النظام: مستخدمون أدوارُهم إداريّة — لا يُنشأ لهم سجلٌّ آخر */
+function migSups() {
+  return (cur("users") || []).filter(u => u && isMgrRole(u.role) && u.active !== false);
+}
+function migTeachers() {
+  return (cur("teachers") || []).filter(t => t && t.active !== false);
+}
+/* اسمُ الدور بالعربية — من قائمة الأدوار القائمة لا من جدولٍ ثانٍ */
+function migRoleAr(r) {
+  const hit = (typeof USER_ROLES !== "undefined" && Array.isArray(USER_ROLES))
+    ? USER_ROLES.find(x => x && x.k === String(r || "")) : null;
+  return (hit && hit.h) || String(r || "—");
+}
 
 window.trmMigrate = function (toId) {
+  if (!trmCanManage()) { showToast("الترحيلُ لمدير النظام ومدير المنشأة", "warn"); return; }
   const terms = (cur("terms") || []).filter(t => t);
   if (terms.length < 2) {
     showToast("يلزم فترتان على الأقل: التي تُغلق والتي تُفتح", "warn");
@@ -24177,15 +24563,59 @@ window.trmMigrate = function (toId) {
   }
   MIG.pick = {};
   MIG.dest = {};
+  MIG.pickT = {};
+  MIG.pickS = {};
+  MIG.run = false;
+  MIG.mode = { teachers: "all", sups: "all", students: "custom" };
 
   /* الجميع مُختارون ابتداءً: الأغلب استمرارٌ لا انقطاع */
   (cur("students") || []).forEach(s => { if (s.status !== "متوقف") MIG.pick[String(s.id)] = true; });
+  migTeachers().forEach(t => { MIG.pickT[String(t.id)] = true; });
+  migSups().forEach(u => { MIG.pickS[String(u.id)] = true; });
 
   trmMigrateRender();
 };
 
 window.trmMigSet = function (which, v) { MIG[which] = String(v || ""); trmMigrateRender(); };
 window.trmMigPick = function (id, on) { MIG.pick[String(id)] = !!on; };
+window.trmMigPickT = function (id, on) { MIG.pickT[String(id)] = !!on; };
+window.trmMigPickS = function (id, on) { MIG.pickS[String(id)] = !!on; };
+window.trmMigMode = function (cat, v) {
+  const m = String(v || "all");
+  MIG.mode[cat] = m;
+  /* «الجميع» و«لا ترحيل» يضبطان الاختيارَ كلَّه، و«تخصيص» يُبقيه كما هو */
+  if (m !== "custom") {
+    const on = m === "all";
+    if (cat === "students") (cur("students") || []).forEach(s => {
+      if (s.status !== "متوقف") MIG.pick[String(s.id)] = on; });
+    if (cat === "teachers") migTeachers().forEach(t => { MIG.pickT[String(t.id)] = on; });
+    if (cat === "sups")     migSups().forEach(u => { MIG.pickS[String(u.id)] = on; });
+  }
+  if (cat === "teachers") MIG.staff = m !== "none";   /* الحقلُ القديم يبقى صحيحاً */
+  trmMigrateRender();
+};
+window.trmMigAllT = function (on) {
+  migTeachers().forEach(t => { MIG.pickT[String(t.id)] = !!on; });
+  trmMigrateRender();
+};
+window.trmMigAllS = function (on) {
+  migSups().forEach(u => { MIG.pickS[String(u.id)] = !!on; });
+  trmMigrateRender();
+};
+
+/* من يُرحَّل فعلاً من كلّ فئة — بحسب قرارها وحدَه */
+function migChosenT() {
+  return MIG.mode.teachers === "none" ? []
+    : migTeachers().filter(t => MIG.pickT[String(t.id)]);
+}
+function migChosenS() {
+  return MIG.mode.sups === "none" ? []
+    : migSups().filter(u => MIG.pickS[String(u.id)]);
+}
+function migChosenStu() {
+  return MIG.mode.students === "none" ? []
+    : (cur("students") || []).filter(s => s.status !== "متوقف" && MIG.pick[String(s.id)]);
+}
 
 /* المواصفات: «ترحيل مخصص: اختيار طلاب محددين — مثلاً نقل طلاب حلقة (أ)
    إلى حلقة (ب) لأن مستواهم تقدّم». وكان الترحيل ينقل أو يوقف ولا ينقل
@@ -24281,45 +24711,161 @@ function trmMigrateRender() {
           <br>الخطط والمصاحف تبقى كما هي — الطالب يواصل من حيث وقف.
           <br>سجلات الحضور والتسميع لا تُحذف: تبقى موسومة بفترتها فتُفرَز بها.
           <br>والواجبات المعلَّقة من الفترة المنتهية تُطوى فلا تُطالَب في الجديدة.
-          <br>غيرُ المحدَّدين يبقَون في الفترة القديمة موقوفين، والحلقةُ التي لا يُرحَّل منها أحدٌ تبقى فيها.
-          <br>المشرفون وصلاحياتُ الحسابات لا ترتبط بفترة، فتستمرّ كما هي.`)}
+          <br>وفي «تخصيص الاختيار» يبقى غيرُ المحدَّد في الفترة القديمة موقوفاً، وفي «لا ترحيل»
+            لا يُمَسُّ أحدٌ ألبتّة.
+          <br>والحلقةُ التي لا يُرحَّل منها أحدٌ تبقى في فترتها.
+          <br>وصلاحياتُ الحسابات لا ترتبط بفترة: المشرفُ المرحَّلُ تُسجَّل عضويتُه في الفترة
+            ولا يُمَسُّ حسابُه ولا دورُه ولا نطاقُه.`)}
 
-     <!-- المواصفات: «الموظفون غالباً مستمرون — نسخ جميع المعلمين والمشرفين
-          إلى الدورة الجديدة مع الحفاظ على صلاحياتهم ومجموعاتهم» -->
-     <label class="manu-same">
-       <input type="checkbox"${MIG.staff ? " checked" : ""}
-         onchange="window.trmMigStaff(this.checked)">
-       <span>ترحيل المعلّمين والمشرفين</span>
-       <small>${toArabicDigits((cur("teachers") || []).filter(t => t.active !== false).length)}
-         معلّماً — بحلقاتهم وصلاحياتهم</small>
-     </label>
+     ${migCatBox("teachers", "المعلّمون", migTeachers(), MIG.pickT, "trmMigPickT", "trmMigAllT",
+                 t => [t.name || "—", t.mosque || t.circle || "—", t.phone || ""])}
 
-     ${circleBar ? `<div class="muted" style="font-size:11.5px;margin:12px 0 6px">
-       ترحيلٌ مخصّص — اضغط الحلقة لتحديد طلابها كلِّهم أو إلغائهم</div>
-       <div class="amount-preview">${circleBar}</div>` : ""}
+     ${migCatBox("sups", "المشرفون", migSups(), MIG.pickS, "trmMigPickS", "trmMigAllS",
+                 u => [u.name || "—", migRoleAr(u.role), u.phone || ""])}
 
-     <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;align-items:center">
-       <button class="btn btn-ghost btn-sm" onclick="window.trmMigAll(true)">تحديد الكل</button>
-       <button class="btn btn-ghost btn-sm" onclick="window.trmMigAll(false)">إلغاء الكل</button>
-       <select class="mig-dest" onchange="window.trmMigDestAll(this.value)"
-         style="margin-inline-start:auto">
-         <option value="">نقل المحدَّدين إلى…</option>
-         ${circles.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("")}
-       </select>
-     </div>
+     <div class="mig-cat">
+       <div class="mig-cat-h"><strong>الطلاب</strong>
+         <span class="muted">${toArabicDigits(migChosenStu().length)} /
+           ${toArabicDigits(studs.length)}</span></div>
+       <div class="trm-kind">
+         ${[["all", "ترحيل الجميع"], ["custom", "تخصيص الاختيار"], ["none", "لا ترحيل"]].map(o =>
+           `<label class="manu-same"><input type="radio" name="migStu" value="${o[0]}"
+             ${MIG.mode.students === o[0] ? "checked" : ""}
+             onchange="window.trmMigMode('students','${o[0]}')"><span>${o[1]}</span></label>`).join("")}
+       </div>
 
-     <div class="pt-wrap" style="max-height:300px;overflow:auto">
-       <table class="ptable"><thead><tr><th></th><th>الطالب</th><th>الحلقة</th><th>المستوى</th><th>ينتقل إلى</th></tr></thead>
-       <tbody>${rows || '<tr><td colspan="4" class="muted" style="text-align:center;padding:20px">لا طلاب</td></tr>'}</tbody>
-       </table></div>`,
+     ${MIG.mode.students !== "custom" ? "" : `
+       ${circleBar ? `<div class="muted" style="font-size:11.5px;margin:12px 0 6px">
+         اضغط الحلقة لتحديد طلابها كلِّهم أو إلغائهم</div>
+         <div class="amount-preview">${circleBar}</div>` : ""}
+
+       <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;align-items:center">
+         <button class="btn btn-ghost btn-sm" onclick="window.trmMigAll(true)">تحديد الكل</button>
+         <button class="btn btn-ghost btn-sm" onclick="window.trmMigAll(false)">إلغاء الكل</button>
+         <select class="mig-dest" onchange="window.trmMigDestAll(this.value)"
+           style="margin-inline-start:auto">
+           <option value="">نقل المحدَّدين إلى…</option>
+           ${circles.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("")}
+         </select>
+       </div>
+
+       <div class="pt-wrap" style="max-height:300px;overflow:auto">
+         <table class="ptable"><thead><tr><th></th><th>الطالب</th><th>الحلقة</th><th>المستوى</th></tr></thead>
+         <tbody>${rows || '<tr><td colspan="4" class="muted" style="text-align:center;padding:20px">لا طلاب</td></tr>'}</tbody>
+         </table></div>`}
+     </div>`,
 
     `${MIG.from !== MIG.to
-      ? `<button class="btn btn-primary" onclick="window.trmMigrateDo()">تنفيذ الترحيل</button>` : ""}
+      ? `<button class="btn btn-primary" onclick="window.trmMigSummary()">مراجعة ثمّ تنفيذ</button>` : ""}
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+}
+
+/* =========================================================================
+   صندوقُ فئةٍ واحدة: قرارُها وقائمتُها
+   -------------------------------------------------------------------------
+   ثلاثةُ أزرارٍ لا مفتاحٌ واحد، وقائمةٌ تُعرض عند «تخصيص» وحدَها — وفيها
+   ما يُميّز بين المتشابهين في الاسم: مسجدُه أو حلقتُه أو دورُه وجوّالُه.
+   ========================================================================= */
+function migCatBox(cat, title, list, picks, pickFn, allFn, cells) {
+  const on = list.filter(x => picks[String(x.id)]).length;
+  const mode = MIG.mode[cat];
+  return `<div class="mig-cat">
+    <div class="mig-cat-h"><strong>${esc(title)}</strong>
+      <span class="muted">${toArabicDigits(mode === "none" ? 0 : on)} /
+        ${toArabicDigits(list.length)}</span></div>
+    <div class="trm-kind">
+      ${[["all", "ترحيل الجميع"], ["custom", "تخصيص الاختيار"], ["none", "لا ترحيل"]].map(o =>
+        `<label class="manu-same"><input type="radio" name="mig_${cat}" value="${o[0]}"
+          ${mode === o[0] ? "checked" : ""}
+          onchange="window.trmMigMode('${cat}','${o[0]}')"><span>${o[1]}</span></label>`).join("")}
+    </div>
+    ${mode !== "custom" ? "" : `
+      <div style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="window.${allFn}(true)">تحديد الكل</button>
+        <button class="btn btn-ghost btn-sm" onclick="window.${allFn}(false)">إلغاء الكل</button>
+      </div>
+      <div class="pt-wrap" style="max-height:220px;overflow:auto">
+        <table class="ptable"><tbody>${list.length ? list.map(x => {
+          const c = cells(x);
+          return `<tr>
+            <td class="pt-check"><label class="switch"><input type="checkbox"
+              ${picks[String(x.id)] ? "checked" : ""}
+              onchange="window.${pickFn}('${jsAttr(x.id)}',this.checked)">
+              <span class="slider"></span></label></td>
+            <td><strong>${esc(c[0])}</strong></td>
+            <td class="muted">${esc(c[1])}</td>
+            <td class="muted" dir="ltr">${esc(c[2] || "")}</td></tr>`;
+        }).join("") : '<tr><td class="muted" style="text-align:center;padding:16px">لا أحد</td></tr>'}
+        </tbody></table></div>`}
+  </div>`;
+}
+
+/* =========================================================================
+   مُلخَّصٌ قبل التنفيذ ثمّ تأكيدٌ نهائيّ
+   -------------------------------------------------------------------------
+   «اعرض ملخّصاً قبل التنفيذ يوضّح عدد المعلّمين والمشرفين والطلاب
+   المحدَّدين، واطلب تأكيداً نهائياً». وكان الزرُّ ينفّذ من أوّل ضغطة.
+   ========================================================================= */
+window.trmMigSummary = function () {
+  if (MIG.from === MIG.to) return;
+  const T = migChosenT(), S = migChosenS(), U = migChosenStu();
+  const fromT = trmById(MIG.from), toT = trmById(MIG.to);
+  const n = x => toArabicDigits(x);
+  const sig = migSignature();
+  const done = migAlreadyDone(sig);
+
+  openModal("مراجعة الترحيل", (fromT ? fromT.name : "") + " ← " + (toT ? toT.name : ""),
+    noteCard(`<p>سيُرحَّل:</p>
+      <ul style="margin:6px 18px 0">
+        <li><strong>${n(T.length)}</strong> معلّماً — ${migModeAr(MIG.mode.teachers)}</li>
+        <li><strong>${n(S.length)}</strong> مشرفاً — ${migModeAr(MIG.mode.sups)}</li>
+        <li><strong>${n(U.length)}</strong> طالباً — ${migModeAr(MIG.mode.students)}</li>
+      </ul>
+      <p style="margin-top:8px">ولا يُمَسُّ من لم يُحدَّد: يبقى في فترته بارتباطاته كما هي.
+        ولا تتغيّر صلاحياتُ أحدٍ بسبب الترحيل.</p>
+      <p style="margin-top:8px">وسجلّاتُ الفترة المصدر تبقى فيها: الحضورُ والتسميعُ
+        موسومان بفترتهما، فلا تُنسخ ولا تظهر مرّتين.</p>
+      ${done ? `<p style="margin-top:8px"><strong>نُفِّذ هذا الترحيلُ بعينه من قبل</strong>
+        — إعادتُه تكرارٌ، وقد مُنعت.</p>` : ""}`),
+    (done ? "" : `<button class="btn btn-primary" onclick="window.trmMigrateDo()">تأكيد التنفيذ</button>`) +
+    `<button class="btn btn-ghost" onclick="window.trmMigrateRenderBack()">رجوع</button>`);
+};
+window.trmMigrateRenderBack = function () { trmMigrateRender(); };
+
+function migModeAr(m) {
+  return m === "all" ? "الجميع" : m === "none" ? "لا ترحيل" : "اختيارٌ مخصّص";
+}
+
+/* =========================================================================
+   بصمةُ الترحيل — فلا يتكرّر بإعادة الضغط ولا بتحديث الصفحة
+   -------------------------------------------------------------------------
+   «امنع الترحيل المكرّر، خصوصاً عند إعادة المحاولة أو تحديث الصفحة»:
+   تُحسب بصمةٌ من المصدر والوجهة ومن اختير، وتُحفظ في سجلّ الفترة الوجهة
+   (migLog). فإعادةُ الطلب نفسِه تُردّ، واختيارٌ مختلفٌ يمضي.
+   ========================================================================= */
+function migSignature() {
+  const ids = (a) => a.map(x => String(x.id)).sort().join(",");
+  return [String(MIG.from), String(MIG.to),
+          "t:" + ids(migChosenT()), "s:" + ids(migChosenS()),
+          "u:" + ids(migChosenStu())].join("|");
+}
+function migAlreadyDone(sig) {
+  const t = trmById(MIG.to);
+  const log = (t && Array.isArray(t.migLog)) ? t.migLog : [];
+  return log.some(x => x && String(x.sig) === String(sig));
 }
 
 window.trmMigrateDo = function () {
   if (MIG.from === MIG.to) return;
+  if (!trmCanManage()) { showToast("الترحيلُ لمدير النظام ومدير المنشأة", "warn"); return; }
+  /* ضغطتان متتاليتان لا تُنفِّذان مرّتين */
+  if (MIG.run) return;
+  const _sig = migSignature();
+  if (migAlreadyDone(_sig)) {
+    showToast("نُفِّذ هذا الترحيلُ من قبل — لا يُكرَّر", "warn");
+    closeModal(); return;
+  }
+  MIG.run = true;
 
   /* الترحيل يكتب في فترة العمل: لو بقيت فترةٌ مؤرشفة معروضةً رُدّت كتاباته */
   window.trmViewSet("", true);
@@ -24351,6 +24897,17 @@ window.trmMigrateDo = function () {
     const tids = (Array.isArray(s.termIds) ? s.termIds : []).map(String);
 
     if (!MIG.pick[String(s.id)]) {
+      /* =================================================================
+         ولا يُوقَف إلّا من استُثني عمداً
+         -----------------------------------------------------------------
+         «لا تعدّل بياناتِ الطلاب في الفترة المصدر إلّا إذا كانت العمليةُ
+         المختارةُ تتطلّب ذلك صراحة»: إيقافُ من لم يُرحَّل معناه أنّ صاحبَه
+         مرَّ على اسمه فرفعه — وذلك «تخصيصُ الاختيار» وحدَه.
+
+         أمّا «لا ترحيل» فقرارٌ بأن تبدأ الفترةُ بلا طلاب، لا حكمٌ على
+         الطلاب بالانقطاع؛ فيبقَون في فترتهم كما هم بلا مساس.
+         ================================================================= */
+      if (MIG.mode.students !== "custom") return;
       s.status = "متوقف";
       s.stoppedAt = Date.now();
       s.stoppedReason = "لم يُرحَّل إلى الفترة الجديدة";
@@ -24443,17 +25000,38 @@ window.trmMigrateDo = function () {
     } catch (e) {}
   });
 
-  /* المعلّمون: «الموظفون غالباً مستمرون» — يُنقلون بحلقاتهم وصلاحياتهم */
+  /* المعلّمون: «الموظفون غالباً مستمرون» — يُنقلون بحلقاتهم وصلاحياتهم،
+     والمحدَّدون منهم وحدَهم. ومن لم يُحدَّد لا يُمَسُّ له ارتباطٌ ولا حالة. */
   let staffN = 0;
-  if (MIG.staff) {
-    (DB.teachers || []).forEach(t => {
-      if (!t || t.active === false) return;
-      t.termId = MIG.to;
-      persistSet("teachers", t);
-      staffN++;
-      /* نطاقه يُزامَن ليبقى حصره صحيحاً في الدورة الجديدة */
-      try { if (typeof syncTeacherScope === "function") syncTeacherScope(t.id); } catch (e) {}
-    });
+  const _chosenT = {};
+  migChosenT().forEach(t => { _chosenT[String(t.id)] = 1; });
+  (DB.teachers || []).forEach(t => {
+    if (!t || !_chosenT[String(t.id)]) return;
+    t.termIds = uniq((Array.isArray(t.termIds) ? t.termIds : []).map(String)
+      .concat([String(MIG.from), String(MIG.to)]));
+    t.termId = MIG.to;
+    persistSet("teachers", t);
+    staffN++;
+    /* نطاقه يُزامَن ليبقى حصره صحيحاً في الدورة الجديدة */
+    try { if (typeof syncTeacherScope === "function") syncTeacherScope(t.id); } catch (e) {}
+  });
+
+  /* =======================================================================
+     المشرفون: عضويّةٌ في الفترة، لا مساسَ بحسابٍ ولا بصلاحية
+     -----------------------------------------------------------------------
+     «حافظ على صلاحيات المشرفين وعلاقاتهم بالنطاق الصحيح، ولا تمنح
+     صلاحياتٍ إضافيةً بسبب الترحيل». فلا يُكتب في مستند الحساب شيء: تُحفظ
+     عضويّتُهم في سجلّ الفترة نفسِه (supIds)، فتُعرض قائمةُ مشرفي الفترة
+     منه. والحسابُ ودورُه ونطاقُه على حالهما بحرفهما.
+     ======================================================================= */
+  let supsN = 0;
+  const _sups = migChosenS().map(u => String(u.id));
+  if (_sups.length) {
+    const tt = (DB.terms || []).find(x => String(x.id) === String(MIG.to));
+    if (tt) {
+      tt.supIds = uniq((Array.isArray(tt.supIds) ? tt.supIds : []).map(String).concat(_sups));
+      supsN = _sups.length;
+    }
   }
 
   /* واجبات الفترة المنتهية تُطوى: المعلَّق منها لا يُطالَب به في دورة
@@ -24480,13 +25058,25 @@ window.trmMigrateDo = function () {
   /* تفعيل الفترة الجديدة وأرشفة السابقة */
   (DB.terms || []).forEach(t => {
     const isNew = String(t.id) === String(MIG.to);
-    if (String(t.id) === String(MIG.from)) { t.active = false; t.archived = true; }
-    if (isNew) { t.active = true; t.archived = false; t.activatedAt = Date.now(); }
+    if (String(t.id) === String(MIG.from)) { t.active = false; t.archived = true; t.paused = false; }
+    if (isNew) {
+      t.active = true; t.archived = false; t.paused = false; t.activatedAt = Date.now();
+      /* بصمةُ هذا الترحيل تُحفظ في الوجهة: إعادتُه بعينه تُردّ بعد اليوم،
+         ولو أُعيد تحميلُ الصفحة — فالسجلُّ في قاعدة البيانات لا في الذاكرة */
+      const u0 = (typeof STATE !== "undefined" && STATE.user) || {};
+      t.migLog = (Array.isArray(t.migLog) ? t.migLog : []).concat([{
+        sig: _sig, ts: Date.now(), by: u0.name || u0.email || "—",
+        from: String(MIG.from),
+        n: { t: staffN, s: supsN, u: kept }
+      }]).slice(-20);
+    }
     persistSet("terms", t);
   });
 
+  MIG.run = false;
   closeModal();
   showToast(`رُحّل ${toArabicDigits(kept)} طالباً و${toArabicDigits(movedC)} حلقة` +
+            (supsN ? ` · ${toArabicDigits(supsN)} مشرفاً` : "") +
             (plansN ? ` · رُحّلت ${toArabicDigits(plansN)} خطة بمواضعها` : "") +
             (moved ? ` · نُقل ${toArabicDigits(moved)} بين الحلقات` : "") +
             (staffN ? ` · ${toArabicDigits(staffN)} معلّماً` : "") +
@@ -24532,20 +25122,35 @@ function trmActivePanel() {
            وإن لم توجد بقيت بلا فترة فلا تظهر في فرزها.`)}</div>`}
 
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
-      <thead><tr><th>الفترة</th><th>النطاق</th><th>الحالة</th><th></th></tr></thead>
+      <thead><tr><th>الفترة</th><th>النطاق</th><th>أيّام العمل</th><th>الحالة</th><th></th></tr></thead>
       <tbody>${terms.map(t => {
-        const live = t.active === true && t.archived !== true;
+        const st = trmState(t);
+        const live = st === "active";
         const viewing = String(viewTermId()) === String(t.id);
+        const par = t.syncWith ? trmById(t.syncWith) : null;
+        const wd = trmWorkDays(t);
+        const can = trmOwn(t) && trmCanManage();
         return `<tr>
-          <td><strong>${esc(t.name || "—")}</strong>${t.parallel ? ' <span class="pt-badge">موازية</span>' : ""}</td>
+          <td><strong>${esc(t.name || "—")}</strong>${t.parallel
+              ? ` <span class="pt-badge">${par
+                  ? "متزامنة مع «" + esc(par.name || "") + "»" : "موازية"}</span>` : ""}${
+              t.parallel && t.syncScope
+                ? ` <small class="muted">${t.syncScope === "link"
+                    ? "ارتباطٌ تنظيميّ" : "المواعيد وأيّام العمل"}</small>` : ""}</td>
           <td class="pt-num" dir="ltr">${esc(t.from || "—")} → ${esc(t.to || "—")}</td>
-          <td>${live ? '<span class="pt-badge on">نشطة</span>'
-                   : t.archived ? '<span class="pt-badge off">مؤرشفة</span>'
-                   : '<span class="muted">—</span>'}${viewing ? ' <span class="pt-badge">معروضة</span>' : ""}</td>
+          <td class="muted">${wd.length ? esc(wd.join(" · ")) : "—"}</td>
+          <td>${live ? '<span class="pt-badge on">فعّالة</span>'
+                   : st === "archived" ? '<span class="pt-badge off">مؤرشفة</span>'
+                   : st === "paused" ? '<span class="pt-badge warn">موقوفة مؤقتاً</span>'
+                   : '<span class="muted">غير مفعَّلة</span>'}${
+             viewing ? ' <span class="pt-badge">معروضة</span>' : ""}</td>
           <td class="pt-actions">
             ${viewing ? "" : `<button class="btn btn-ghost btn-sm" onclick="window.trmViewSet('${jsAttr(t.id)}')">عرض</button>`}
-            ${live ? "" : `<button class="btn btn-ghost btn-sm" onclick="window.trmActivate('${jsAttr(t.id)}')">تفعيل</button>`}
-            ${live && t.parallel ? `<button class="btn btn-ghost btn-sm" onclick="window.trmEnd('${jsAttr(t.id)}')">إنهاء وأرشفة</button>` : ""}</td>
+            ${(!live && st !== "archived" && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmActivate('${jsAttr(t.id)}')">تفعيل</button>` : ""}
+            ${(live && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmPause('${jsAttr(t.id)}',true)">إيقاف مؤقّت</button>` : ""}
+            ${(st === "paused" && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmPause('${jsAttr(t.id)}',false)">استئناف</button>` : ""}
+            ${(st !== "archived" && can) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmEnd('${jsAttr(t.id)}')">أرشفة</button>` : ""}
+            ${(st === "archived" && can && trmCanDelete()) ? `<button class="btn btn-ghost btn-sm" onclick="window.trmDelete('${jsAttr(t.id)}')">حذف نهائيّ</button>` : ""}</td>
         </tr>`;
       }).join("")}</tbody></table></div></div>
   </div>`;
@@ -24771,9 +25376,17 @@ function setPanelTerms() {
             : esc(r.name || "—")}</td>
           <td class="pt-num">${esc(r.from || "—")}</td>
           <td class="pt-num">${esc(r.to || "—")}</td>
-          <td class="pt-num">${trmDays(r.from, r.to)}</td>
+          <td class="pt-num">${(function () {
+            const wd = trmWorkDays(r);
+            return wd.length ? '<span class="muted">' + esc(wd.join(" · ")) + "</span>"
+                             : toArabicDigits(trmDays(r.from, r.to));
+          })()}</td>
           <td class="tm-owner">${esc(r.owner || "جهتك")}</td>
-          <td>${now ? '<span class="tm-now">الحالية</span>' : '<span class="tm-dash">–</span>'}</td>
+          <td>${/* الحالةُ من حقلها الرسميّ لا من التاريخ — والتاريخُ يبقى
+                   مؤشّراً مساعداً: «الحالية» أي أنّ اليومَ في نطاقها. */ ""}
+            <span class="tm-now${trmState(r) === "active" ? "" : " tm-dash"}"
+              >${esc(TRM_STATE_AR[trmState(r)] || "—")}</span>${
+            now ? ' <small class="muted">اليومُ في نطاقها</small>' : ""}</td>
           <td>${/* زرُّ ترحيلٍ لكلّ فترة: من أنشأ فترةً واختار «لاحقاً» كان
                    يفقد المعالجَ ولا سبيل إليه، فتبقى الفترة فارغةً بلا
                    طلابٍ ولا معلّمين ولا حلقات. */ ""}${own
@@ -51936,7 +52549,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261016-2110";
+  var APP_BUILD = "20261016-2320";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
