@@ -1768,15 +1768,17 @@ function cxMgrDashboard(mode) {
   const cnt = st => students.filter(x => ((map[String(x.id)] || {}).status) === st).length;
   const present = cnt("حاضر"), late = cnt("متأخر"), excused = cnt("مستأذن"), absent = cnt("غائب");
   const pct = v => total ? Math.round(v / total * 100) : 0;
+  /* كلُّ صفٍّ زرٌّ يفتح قائمةَ طلاب حالته (cxdAttOpen) */
   const attRows = [
-    { cls: "att-present", ico: "check", label: "الحضور",   num: present, head: true },
-    { cls: "att-late",    ico: "eye",   label: "التأخر",   num: late },
-    { cls: "att-excused", ico: "eye",   label: "الاستئذان", num: excused },
-    { cls: "att-absent",  ico: "x",     label: "الغياب",   num: absent }
-  ].map(r => `<div class="att-row ${r.cls}${r.head ? " att-row-head" : ""}">
+    { cls: "att-present", ico: "check", label: "الحضور",   num: present, head: true, st: "حاضر" },
+    { cls: "att-late",    ico: "eye",   label: "التأخر",   num: late,    st: "متأخر" },
+    { cls: "att-excused", ico: "eye",   label: "الاستئذان", num: excused, st: "مستأذن" },
+    { cls: "att-absent",  ico: "x",     label: "الغياب",   num: absent,  st: "غائب" }
+  ].map(r => `<button type="button" class="att-row ${r.cls}${r.head ? " att-row-head" : ""}" data-st="${r.st}"
+      onclick="window.cxdAttOpen('${r.st}')" title="طلاب ${r.label}">
       <div class="ar-right"><span class="ar-ico">${ic(r.ico, r.head ? 22 : 20)}</span>
         <span class="ar-label">${r.label}</span><span class="ar-count">(${n2(r.num)})</span></div>
-      <span class="ar-pct">${n2(pct(r.num))}%</span></div>`).join("");
+      <span class="ar-pct">${n2(pct(r.num))}%</span></button>`).join("");
 
   /* ---------- البطاقاتُ الأربع — كلٌّ زرٌّ إلى شاشته ---------- */
   const cards = [
@@ -1870,8 +1872,7 @@ function cxMgrDashboard(mode) {
     <div class="dash-top">
       <div class="card gauge-wrap">${donut}${mqGauge}</div>
       <div class="card facility-wrap"><div class="facility-grid">${cards}</div></div>
-      <button type="button" class="card att-summary-wrap cxd-att" data-go="attendance"
-        onclick="window.go('attendance')" title="سجلّ الحضور"><div class="att-rows">${attRows}</div></button>
+      <div class="card att-summary-wrap cxd-att"><div class="att-rows">${attRows}</div></div>
     </div>
     <div class="card cxd-faces">
       ${facesCol("أوجه الحفظ", "hd", "ht")}
@@ -1879,6 +1880,308 @@ function cxMgrDashboard(mode) {
     </div>
   </div>`;
 }
+
+/* =========================================================================
+   قائمةُ طلاب الحالة من بطاقة الحضور — ورسائلُ التنبيه
+   -------------------------------------------------------------------------
+   «لمّا أضغط على أيّ زرٍّ من أزرار الحضور يجيبلي الطلاب، وكمان يكون في
+   رسائل تنبيه للغايبين — بنفس الشكل».
+
+   نافذةٌ واحدة: بحثٌ · تحديدُ الكلّ · تصفيةٌ بالحلقة · «حالة التحضير»
+   تبدّل القائمة · زرُّ رسالةٍ يفتح «إرسال رسالة إلى الطلاب / ات» · وزرُّ
+   تنبيهٍ يرسل قالبَ الغياب المحفوظ في الإعدادات إلى المحدَّدين.
+
+   القراءةُ من cur() (نطاقُ صاحب اللوحة)، والكتابةُ رسائلُ في
+   site_messages عبر persistSet وحدَها — لا يُمَسّ تحضيرٌ ولا ارتباط.
+   ========================================================================= */
+const CXD_ATT_ST = [["حاضر", "حضور"], ["متأخر", "تأخر"], ["مستأذن", "استئذان"], ["غائب", "غياب"]];
+const CXD_ATT_TITLE = { "حاضر": "الحضور", "متأخر": "التأخر", "مستأذن": "الاستئذان", "غائب": "الغياب" };
+let CXD_ATT = { st: "غائب", q: "", circle: "", flt: false, sel: {} };
+
+function cxdAttStudents(st) {
+  const d = typeof attDate === "function" ? attDate() : todayISO();
+  const map = typeof attMap === "function" ? attMap(d) : {};
+  const cById = {};
+  (cur("circles") || []).forEach(c => { if (c) cById[String(c.id)] = c; });
+  const tName = id => ((cur("teachers") || []).find(t => t && String(t.id) === String(id)) || {}).name || "";
+  return (cur("students") || [])
+    .filter(s => s && s.status !== "متوقف" && ((map[String(s.id)] || {}).status) === st)
+    .map(s => {
+      const c = cById[String(s.circleId || "")] || {};
+      return { s, circleId: String(s.circleId || ""), circle: c.name || s.circle || "—",
+               teacher: tName(c.teacherId || s.teacherId) || s.teacher || "" };
+    });
+}
+
+/* اسمُ حلقة الطالب من سجلّها بالمعرّف، والاسمُ المنسوخ احتياطٌ */
+function cxdCircleName(s) {
+  const c = (cur("circles") || []).find(x => x && String(x.id) === String((s || {}).circleId || ""));
+  return (c && c.name) || (s && s.circle) || "";
+}
+
+function cxdAttRowsHTML() {
+  const all = cxdAttStudents(CXD_ATT.st);
+  const q = String(CXD_ATT.q || "").trim();
+  const list = all.filter(x => (!CXD_ATT.circle || x.circleId === CXD_ATT.circle) &&
+    (!q || String(x.s.name || "").indexOf(q) > -1 || String(x.circle).indexOf(q) > -1));
+  if (!list.length) return `<div class="cxa-empty">${ic("list", 46)}<strong>لا توجد بيانات</strong></div>`;
+  return list.map(x => {
+    const id = String(x.s.id);
+    return `<label class="cxa-row">
+      <input type="checkbox" class="cxa-ck" value="${esc(id)}" ${CXD_ATT.sel[id] ? "checked" : ""}
+        onchange="window.cxdAttSel(this)">
+      <span class="cxa-av">${esc(String(x.s.name || "؟").trim().charAt(0))}</span>
+      <span class="cxa-who"><b>${esc(x.s.name || "—")}</b>
+        <small>${esc(x.circle)}${x.teacher ? " · " + esc(x.teacher) : ""}</small></span>
+    </label>`;
+  }).join("");
+}
+
+function cxdAttPaint() {
+  const box = document.getElementById("cxaList");
+  if (box) box.innerHTML = cxdAttRowsHTML();
+  const n = cxdAttStudents(CXD_ATT.st).length;
+  const h = document.querySelector("#modalRoot .modal-head h3");
+  if (h) h.textContent = CXD_ATT_TITLE[CXD_ATT.st] + " (" + toArabicDigits(n) + ")";
+  const all = document.getElementById("cxaAll");
+  const cks = [].slice.call(document.querySelectorAll("#cxaList .cxa-ck"));
+  if (all) all.checked = cks.length > 0 && cks.every(c => c.checked);
+  const cnt = document.getElementById("cxaSelN");
+  const k = Object.keys(CXD_ATT.sel).length;
+  if (cnt) cnt.textContent = k ? "محدَّد " + toArabicDigits(k) : "";
+}
+
+window.cxdAttOpen = function (st) {
+  CXD_ATT = { st: CXD_ATT_TITLE[st] ? st : "غائب", q: "", circle: "", flt: false, sel: {} };
+  const circles = (cur("circles") || []).filter(c => c && c.status !== "متوقف");
+  const n = cxdAttStudents(CXD_ATT.st).length;
+  openModal(CXD_ATT_TITLE[CXD_ATT.st] + " (" + toArabicDigits(n) + ")", "",
+    `<div class="cxa">
+      <div class="cxa-search">${ic("search", 18)}
+        <input id="cxaQ" placeholder="ابحث هنا.." oninput="CXD_ATT.q=this.value; cxdAttPaint();"></div>
+      <div class="cxa-bar">
+        <label class="cxa-all"><input type="checkbox" id="cxaAll" onchange="window.cxdAttAll(this.checked)">
+          <span>تحديد الكل</span></label>
+        <span class="cxa-seln" id="cxaSelN"></span>
+        <div class="cxa-tools">
+          <button type="button" class="cxa-tool t-flt" title="تصفية بالحلقة" onclick="window.cxdAttFlt()">${ic("filter", 18)}</button>
+          <button type="button" class="cxa-tool t-msg" title="إرسال رسالة" onclick="window.cxdMsgOpen()">${ic("send", 18)}</button>
+          <button type="button" class="cxa-tool t-bell" title="إرسال تنبيه" onclick="window.cxdAttNotify()">${ic("bell", 18)}</button>
+        </div>
+      </div>
+      <div class="cxa-flt" id="cxaFlt" hidden>
+        <label>الحلقة</label>
+        <select id="cxaCircle" onchange="CXD_ATT.circle=this.value; cxdAttPaint();">
+          <option value="">كل الحلقات</option>
+          ${circles.map(c => `<option value="${esc(String(c.id))}">${esc(c.name || "—")}</option>`).join("")}
+        </select>
+      </div>
+      <div class="cxa-field"><label>حالة التحضير</label>
+        <select id="cxaSt" onchange="window.cxdAttSt(this.value)">
+          ${CXD_ATT_ST.map(([v, t]) => `<option value="${v}" ${v === CXD_ATT.st ? "selected" : ""}>${t}</option>`).join("")}
+        </select></div>
+      <div class="cxa-list" id="cxaList">${cxdAttRowsHTML()}</div>
+    </div>`, "");
+  const m = document.querySelector("#modalRoot .modal");
+  if (m) m.classList.add("cxa-modal");
+  cxdAttPaint();
+};
+
+window.cxdAttSt = function (v) { CXD_ATT.st = v; CXD_ATT.sel = {}; cxdAttPaint(); };
+window.cxdAttFlt = function () {
+  const f = document.getElementById("cxaFlt");
+  if (f) f.hidden = !f.hidden;
+  const b = document.querySelector(".cxa-tool.t-flt");
+  if (b && f) b.classList.toggle("on", !f.hidden);
+};
+window.cxdAttSel = function (el) {
+  if (el.checked) CXD_ATT.sel[el.value] = true; else delete CXD_ATT.sel[el.value];
+  cxdAttPaint();
+};
+window.cxdAttAll = function (on) {
+  document.querySelectorAll("#cxaList .cxa-ck").forEach(c => {
+    c.checked = on;
+    if (on) CXD_ATT.sel[c.value] = true; else delete CXD_ATT.sel[c.value];
+  });
+  cxdAttPaint();
+};
+
+/* المحدَّدون — وإن لم يُحدَّد أحدٌ فطلابُ القائمة الظاهرة كلُّهم */
+function cxdAttPicked() {
+  const ids = Object.keys(CXD_ATT.sel);
+  const all = cxdAttStudents(CXD_ATT.st).map(x => x.s);
+  return ids.length ? all.filter(s => ids.indexOf(String(s.id)) > -1) : [];
+}
+
+/* رسالةٌ داخل النظام إلى طالب — السجلُّ نفسُه الذي يكتبه msgSend */
+function cxdMsgRec(s, title, text) {
+  const u = (STATE && STATE.user) || {};
+  return {
+    id: "m" + Date.now() + Math.floor(Math.random() * 100000),
+    title, text, ts: Date.now(),
+    toId: String(s.id), toUid: String(s.uid || s.id || ""),
+    toEmail: String(s.email || "").toLowerCase(), toName: s.name || "",
+    fromId: String(u.uid || u.id || ""), fromEmail: String(u.email || "").toLowerCase(),
+    fromName: u.name || "", read: false, type: "info"
+  };
+}
+
+function cxdSendAll(list, title, textOf) {
+  if (!Array.isArray(DB.site_messages)) DB.site_messages = [];
+  const recs = list.map(s => cxdMsgRec(s, title, textOf(s)));
+  recs.forEach(r => DB.site_messages.push(r));
+  return Promise.all(recs.map(r => Promise.resolve(persistSet("site_messages", r)).catch(() => false)))
+    .then(res => res.filter(Boolean).length);
+}
+
+/* تنبيهُ الغياب: قالبُ «غياب بدون عذر» من الإعدادات بأسماء الطلاب */
+window.cxdAttNotify = function () {
+  const list = cxdAttPicked();
+  if (!list.length) { showToast("حدّد طالباً واحداً على الأقلّ", "warn"); return; }
+  const d = typeof attDate === "function" ? attDate() : todayISO();
+  const ev = typeof msgEvent === "function" ? msgEvent(CXD_ATT.st === "متأخر" ? "late" : "absent") : {};
+  const body = ev.body || "ابنكم {الطالب} لم يحضر حلقة {الحلقة} اليوم {التاريخ}. نرجو المتابعة.";
+  const textOf = s => msgFill(body, { "الطالب": s.name || "", "الحلقة": cxdCircleName(s), "التاريخ": d });
+  openModal("إرسال تنبيه", CXD_ATT_TITLE[CXD_ATT.st] + " · " + toArabicDigits(list.length) + " طالب",
+    `<div class="cxa-note">${ic("bell", 18)}<div>
+       <b>سيصل كلَّ طالبٍ محدَّدٍ تنبيهٌ داخل النظام بهذا النصّ:</b>
+       <p>${esc(textOf(list[0]))}</p>
+       <small>النصُّ من «الرسائل التلقائية» في الإعدادات، ويُملأ باسم كلّ طالب.</small></div></div>`,
+    `<button class="btn btn-primary" id="cxaNotifyGo">${ic("bell", 16)} إرسال التنبيه</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+  const go = document.getElementById("cxaNotifyGo");
+  if (go) go.onclick = function () {
+    go.disabled = true; go.textContent = "جارٍ الإرسال…";
+    cxdSendAll(list, "تنبيه " + CXD_ATT_TITLE[CXD_ATT.st], textOf).then(n => {
+      closeModal();
+      showToast(n === list.length ? "أُرسل التنبيه إلى " + toArabicDigits(n) + " طالب"
+        : "وصل " + toArabicDigits(n) + " من " + toArabicDigits(list.length) + " — تحقّق من الاتصال",
+        n === list.length ? "success" : "warn");
+    });
+  };
+};
+
+/* ---------- «إرسال رسالة إلى الطلاب / ات» ---------- */
+let CXD_MSG = { circles: [], kids: [], via: "site" };
+
+function cxdMsgPool() {
+  const set = CXD_MSG.circles;
+  return (cur("students") || []).filter(s => s && s.status !== "متوقف" &&
+    (!set.length || set.indexOf(String(s.circleId || "")) > -1));
+}
+
+function cxdMsgPaint() {
+  const cs = (cur("circles") || []);
+  const nm = id => ((cs.find(c => String(c.id) === id) || {}).name) || "—";
+  const chips = document.getElementById("cxmChips");
+  if (chips) chips.innerHTML = CXD_MSG.circles.length
+    ? CXD_MSG.circles.map(id => `<span class="cxm-chip">${esc(nm(id))}
+        <button type="button" title="إزالة" onclick="window.cxdMsgUnC('${jsAttr(id)}')">${ic("x", 12)}</button></span>`).join("")
+    : `<span class="muted">كل الحلقات</span>`;
+  const cn = document.getElementById("cxmCN");
+  if (cn) cn.textContent = "(" + toArabicDigits(CXD_MSG.circles.length) + ")";
+  const pool = cxdMsgPool();
+  const ok = new Set(pool.map(s => String(s.id)));
+  CXD_MSG.kids = CXD_MSG.kids.filter(id => ok.has(id));
+  const list = document.getElementById("cxmKids");
+  if (list) list.innerHTML = pool.length ? pool.map(s => `<label class="cxm-kid">
+      <input type="checkbox" value="${esc(String(s.id))}" ${CXD_MSG.kids.indexOf(String(s.id)) > -1 ? "checked" : ""}
+        onchange="window.cxdMsgKid(this)"><span>${esc(s.name || "—")}</span>
+      <small>${esc(cxdCircleName(s))}</small></label>`).join("")
+    : `<div class="muted" style="padding:10px;text-align:center">لا طلاب</div>`;
+  const kn = document.getElementById("cxmKN");
+  if (kn) kn.textContent = "( " + toArabicDigits(pool.length) + " / " + toArabicDigits(CXD_MSG.kids.length) + " )";
+  const sum = document.getElementById("cxmKSum");
+  if (sum) sum.textContent = CXD_MSG.kids.length
+    ? pool.filter(s => CXD_MSG.kids.indexOf(String(s.id)) > -1).map(s => s.name).slice(0, 3).join("، ")
+      + (CXD_MSG.kids.length > 3 ? " و" + toArabicDigits(CXD_MSG.kids.length - 3) + " غيرهم" : "")
+    : "إختر";
+  document.querySelectorAll(".cxm-via").forEach(b => b.classList.toggle("on", b.dataset.via === CXD_MSG.via));
+}
+
+window.cxdMsgOpen = function () {
+  const picked = cxdAttPicked();
+  const base = picked.length ? picked : cxdAttStudents(CXD_ATT.st).map(x => x.s);
+  const cids = [];
+  base.forEach(s => { const c = String(s.circleId || ""); if (c && cids.indexOf(c) < 0) cids.push(c); });
+  CXD_MSG = { circles: cids, kids: picked.map(s => String(s.id)), via: "site" };
+  const circles = (cur("circles") || []).filter(c => c && c.status !== "متوقف");
+  openModal("إرسال رسالة إلى الطلاب / ات", "",
+    `<div class="cxm">
+      <div class="cxm-f"><label>إختر الحلقات <span id="cxmCN"></span></label>
+        <div class="cxm-box">
+          <div class="cxm-chips" id="cxmChips"></div>
+          <select class="cxm-add" onchange="window.cxdMsgAddC(this)">
+            <option value="">+ إضافة حلقة</option>
+            ${circles.map(c => `<option value="${esc(String(c.id))}">${esc(c.name || "—")}</option>`).join("")}
+          </select></div></div>
+      <div class="cxm-f cxm-row2"><label>الطلاب / ات <small id="cxmKN"></small></label>
+        <details class="cxm-dd"><summary><span id="cxmKSum">إختر</span>${ic("arrowDown", 16)}</summary>
+          <div class="cxm-ddtools">
+            <button type="button" onclick="window.cxdMsgKids(true)">تحديد الكل</button>
+            <button type="button" onclick="window.cxdMsgKids(false)">إلغاء التحديد</button></div>
+          <div class="cxm-kids" id="cxmKids"></div></details></div>
+      <div class="cxm-f"><label>الرسالة</label>
+        <textarea id="cxmText" rows="6" placeholder="اكتب رسالتك هنا…"></textarea></div>
+      <div class="cxm-hint">${ic("info", 16)} لإضافة اسم الطالب داخل الرسالة اكتب {الطالب} — ويُستبدل باسم كلّ طالب</div>
+      <div class="cxm-f"><label>نوع الإرسال</label>
+        <div class="cxm-vias">
+          <button type="button" class="cxm-via" data-via="site" onclick="window.cxdMsgVia('site')">${ic("building", 16)} داخل النظام</button>
+          <button type="button" class="cxm-via" data-via="wa" onclick="window.cxdMsgVia('wa')">${ic("phone", 16)} الواتس</button>
+        </div></div>
+    </div>`,
+    `<button class="btn btn-primary cxm-send" id="cxmGo">${ic("send", 16)} إرسال</button>
+     <button class="btn btn-ghost cxm-cancel" data-action="close-modal">إلغاء</button>`);
+  const m = document.querySelector("#modalRoot .modal");
+  if (m) m.classList.add("cxa-modal", "cxm-modal");
+  const go = document.getElementById("cxmGo");
+  if (go) go.onclick = window.cxdMsgSend;
+  cxdMsgPaint();
+};
+
+window.cxdMsgAddC = function (sel) {
+  const v = sel.value; sel.value = "";
+  if (v && CXD_MSG.circles.indexOf(v) < 0) CXD_MSG.circles.push(v);
+  cxdMsgPaint();
+};
+window.cxdMsgUnC = function (id) { CXD_MSG.circles = CXD_MSG.circles.filter(x => x !== id); cxdMsgPaint(); };
+window.cxdMsgKid = function (el) {
+  CXD_MSG.kids = CXD_MSG.kids.filter(x => x !== el.value);
+  if (el.checked) CXD_MSG.kids.push(el.value);
+  cxdMsgPaint();
+};
+window.cxdMsgKids = function (on) { CXD_MSG.kids = on ? cxdMsgPool().map(s => String(s.id)) : []; cxdMsgPaint(); };
+window.cxdMsgVia = function (v) { CXD_MSG.via = v === "wa" ? "wa" : "site"; cxdMsgPaint(); };
+
+window.cxdMsgSend = function () {
+  const text = String((document.getElementById("cxmText") || {}).value || "").trim();
+  const list = cxdMsgPool().filter(s => CXD_MSG.kids.indexOf(String(s.id)) > -1);
+  if (!list.length) { showToast("اختر طالباً واحداً على الأقلّ", "warn"); return; }
+  if (!text) { showToast("نصّ الرسالة مطلوب", "warn"); return; }
+  const textOf = s => msgFill(text, { "الطالب": s.name || "", "الحلقة": cxdCircleName(s) });
+
+  if (CXD_MSG.via === "wa") {
+    /* واتساب لا يُفتح لعدّة أرقامٍ دفعةً: قائمةٌ بزرٍّ لكلّ طالب */
+    const rows = list.map(s => {
+      const ph = s.parent || s.parentPhone || s.phone || "";
+      const n = typeof waNumber === "function" ? waNumber(ph) : "";
+      return `<div class="cxw-row"><span><b>${esc(s.name || "—")}</b><small>${esc(cxdCircleName(s))}</small></span>
+        ${n ? `<a class="btn btn-primary btn-sm" target="_blank" rel="noopener" href="${esc(waLink(ph, textOf(s)))}">${ic("phone", 14)} فتح الواتس</a>`
+            : `<span class="muted">لا رقم مسجَّل</span>`}</div>`;
+    }).join("");
+    openModal("الإرسال عبر الواتس", toArabicDigits(list.length) + " طالب — اضغط لكلّ طالب",
+      `<div class="cxw">${rows}</div>`, `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+    return;
+  }
+  const go = document.getElementById("cxmGo");
+  if (go) { go.disabled = true; go.textContent = "جارٍ الإرسال…"; }
+  cxdSendAll(list, "رسالة من الإدارة", textOf).then(n => {
+    closeModal();
+    showToast(n === list.length ? "أُرسلت الرسالة إلى " + toArabicDigits(n) + " طالب"
+      : "وصلت إلى " + toArabicDigits(n) + " من " + toArabicDigits(list.length) + " — تحقّق من الاتصال",
+      n === list.length ? "success" : "warn");
+  });
+};
 
 function supervisorDashboard() {
   const sc = myScope();
@@ -53251,7 +53554,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-1745";
+  var APP_BUILD = "20261017-1900";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
