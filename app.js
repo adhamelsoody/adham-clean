@@ -9325,8 +9325,38 @@ function urqDate(ts) {
   catch (e) { return "—"; }
 }
 
+/* =========================================================================
+   المنشأةُ المطلوبةُ في طلب انضمام مديرٍ أو مشرف
+   -------------------------------------------------------------------------
+   «إذا كان طلبُ الانضمام لمدير مسجدٍ أو مجمّعٍ أو مشرفٍ فليملأ بياناتِه
+   كاملةً وبياناتِ المجمّع أو المسجد، وإذا قبل مديرُ النظام الطلبَ أُنشئ
+   المسجدُ أو المجمّعُ حسب الاختيار.»
+
+   والبياناتُ تُحفظ في ملفّ الطلب وحدَه (reqFacility) ولا تصير منشأةً
+   بالتسجيل الذاتيّ — قاعدةُ النظام: لا ارتباطَ يُكتب ولا منشأةَ تُنشأ إلّا
+   بإجراءٍ صريحٍ من مخوَّل.
+   ========================================================================= */
+function reqFacOf(u) {
+  const f = u && u.reqFacility;
+  if (!f || !String(f.name || "").trim()) return null;
+  return {
+    kind: String(f.kind || "mosque") === "complex" ? "complex" : "mosque",
+    name: String(f.name || "").trim(),
+    region: String(f.region || "").trim(),
+    phone: String(f.phone || "").trim(),
+    cxName: String(f.cxName || "").trim()
+  };
+}
+function reqFacLabel(f) {
+  if (!f) return "";
+  return (f.kind === "complex" ? "طلبُ إنشاء مجمّع: " : "طلبُ إنشاء مسجد: ") + f.name;
+}
+
 /* اسمُ منشأة الحساب — مسجدُه وإلا مجمّعُه */
 function urqFacName(u) {
+  /* المنشأةُ المطلوبُ إنشاؤها تُقال أوّلاً: هي موضوعُ الطلب */
+  const rf = reqFacOf(u);
+  if (rf && !(u && (u.mosqueId || u.complexId))) return reqFacLabel(rf);
   const m = (DB.mosques || []).find(x => String(x.id) === String((u && u.mosqueId) || ""));
   if (m) return m.name || "—";
   const c = (DB.complexes || []).find(x => String(x.id) === String((u && u.complexId) || ""));
@@ -9373,6 +9403,8 @@ function selfSignupRequests() {
         roleAr: roleAr,
         facId: u.complexId || u.mosqueId || "",
         requestedMosqueId: u.requestedMosqueId || "",
+        /* بياناتُ المنشأة التي طلبها مديرٌ أو مشرف — تُعرض وتُنشأ عند الاعتماد */
+        reqFacility: u.reqFacility || null,
         /* أعمدةُ الجدول: كانت تُقرأ من مفاتيحَ لا وجودَ لها هنا فتظهر
            شَرَطاتٍ في كلّ صفّ — تُملأ الآن بأسمائها. */
         as: roleAr,
@@ -9386,6 +9418,76 @@ function selfSignupRequests() {
       };
     });
 }
+
+/* =========================================================================
+   بطاقةُ الطلب — البياناتُ كاملةً قبل البتّ
+   -------------------------------------------------------------------------
+   كان الجدولُ يعرض اسماً ودوراً وتاريخاً، فيُعتمد طلبُ إدارةٍ أو إشرافٍ
+   بلا أن يرى مديرُ النظام جوّالَ صاحبه ولا بريدَه ولا جنسيّتَه، ولا
+   بياناتِ المنشأة التي يطلبها. فتُعرض هنا كلُّها، ومنها يُبَتّ.
+   ========================================================================= */
+window.urqView = function (id) {
+  const uid = String(id || "").indexOf("self:") === 0 ? String(id).slice(5) : "";
+  const u = uid ? (DB.users || []).find(x => String(x.id) === String(uid)) : null;
+  if (!u) { showToast("تعذّر العثور على الطلب", "warn"); return; }
+
+  const roleAr = (USER_ROLES.find(x => x.k === (u.requestedRole || u.role)) || {}).h || "—";
+  const row = (k, v) => v ? `<tr><td class="muted">${esc(k)}</td><td><strong>${esc(v)}</strong></td></tr>` : "";
+  const rf = reqFacOf(u);
+  const rqM = (DB.mosques || []).find(x => String(x.id) === String(u.requestedMosqueId || ""));
+
+  openModal("طلب انضمام", u.name || "",
+    `<div class="urq-view">
+      <div class="urq-sec">بيانات مقدّم الطلب</div>
+      <table class="ptable urq-kv"><tbody>
+        ${row("الاسم", u.name)}
+        ${row("الدور المطلوب", roleAr)}
+        ${row("الجوال", u.phone)}
+        ${row("البريد", u.email || u.loginEmail)}
+        ${row("اسم الدخول", u.username)}
+        ${row("رقم الهوية", u.idNo || u.nationalId)}
+        ${row("الجنسية", u.nationality)}
+        ${row("الجنس", u.gender)}
+        ${row("تاريخ الطلب", urqDate(u.createdAt))}
+        ${row("مصدر الطلب", u.selfSignup === true ? "تسجيل ذاتيّ" : (u.createdByName || "الإدارة"))}
+      </tbody></table>
+
+      ${rf ? `<div class="urq-sec">${rf.kind === "complex"
+            ? "بيانات المجمّع المطلوب" : "بيانات المسجد المطلوب"}</div>
+        <table class="ptable urq-kv"><tbody>
+          ${row("نوع المنشأة", rf.kind === "complex" ? "مجمّع" : "مسجد")}
+          ${row("الاسم", rf.name)}
+          ${row("المدينة / المنطقة", rf.region)}
+          ${row("الهاتف", rf.phone)}
+          ${rf.kind === "mosque"
+            ? row("المجمّع التابع له", rf.cxName || "مسجد مستقلّ") : ""}
+        </tbody></table>
+        ${noteCard(`عند الموافقة يُنشَأ ${rf.kind === "complex" ? "المجمّع" : "المسجد"}
+          <strong>«${esc(rf.name)}</strong>» ويُسنَد إليه مقدّمُ الطلب بدوره المطلوب،
+          فيظهر في قائمة المديرين والمشرفين. ولا يُنشَأ شيءٌ قبل ذلك.${
+          rf.kind === "mosque" && rf.cxName
+            ? ` وإن لم يوجد مجمّعٌ باسم «${esc(rf.cxName)}» أُنشئ المسجدُ مستقلّاً
+                ويُربط لاحقاً من صفحة المساجد.` : ""}`)}`
+      : rqM ? `<div class="urq-sec">المسجد المطلوب الانضمام إليه</div>
+        <table class="ptable urq-kv"><tbody>
+          ${row("المسجد", rqM.name)}
+          ${row("المجمّع", complexName(rqM.complexId) || "مسجد مستقلّ")}
+        </tbody></table>`
+      : ""}
+
+      ${Array.isArray(u.kidsRequested) && u.kidsRequested.length
+        ? `<div class="urq-sec">الأبناء المطلوب ربطهم</div>
+           <table class="ptable urq-kv"><tbody>${u.kidsRequested.map(k =>
+             `<tr><td class="muted">${esc(k.name || "—")}</td>
+                  <td dir="ltr">${esc(k.idNo || "—")}</td></tr>`).join("")}
+           </tbody></table>` : ""}
+     </div>`,
+    `<button class="btn btn-primary" onclick="window.urqDecide('approved',['self:${jsAttr(u.id)}'])"
+       >${ic("check", 15)} موافقة</button>
+     <button class="btn btn-danger" onclick="window.urqDecide('rejected',['self:${jsAttr(u.id)}'])"
+       >${ic("x", 15)} رفض</button>
+     <button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+};
 
 function urqRows() {
   /* «طلباتي» تُشتقّ من مقدّم الطلب لا من حقلٍ مخزَّن: لو خُزِّن mine:true
@@ -9461,6 +9563,58 @@ window.urqDecide = function (to, ids) {
            ولا يُدهس ارتباطٌ قائم: من أسندته الإدارةُ إلى مسجدٍ قبل البتّ
            يبقى على ما أُسنِد.
            ================================================================= */
+        /* =================================================================
+           والمنشأةُ المطلوبةُ تُنشأ هنا — بيد مدير النظام وحدَه
+           -----------------------------------------------------------------
+           «وإذا قبل مديرُ النظام الطلبَ أنشأ مسجداً أو مجمّعاً حسب
+           الاختيار، والمديرُ ينتقل مباشرةً إلى المدراء.»
+
+           والإنشاءُ لا يقع إلّا من مدير النظام: هو وحدَه يرى طلبات
+           المديرين والمشرفين (selfSignupRequests)، وقواعدُ الخادم تحصر
+           كتابةَ المساجد والمجمّعات في الإدارة.
+
+           ولا تُكرَّر منشأة: إن وُجدت بالاسم نفسِه رُبط بها ولم تُنشأ
+           ثانية. ومسجدُ المجمّع يُربط باسمه إن وُجد، وإلّا بقي مستقلّاً
+           ويُربط من صفحة المساجد — ولا يُخترع مجمّعٌ لم يُطلب.
+           ================================================================= */
+        const _rf = reqFacOf(u);
+        if (_rf && !u.mosqueId && !u.complexId) {
+          try {
+            if (_rf.kind === "complex") {
+              if (!Array.isArray(DB.complexes)) DB.complexes = [];
+              let cx = DB.complexes.find(x => x && nameKey(x.name) === nameKey(_rf.name));
+              if (!cx) {
+                cx = { id: Date.now(), name: _rf.name,
+                       region: _rf.region || "—", manager: u.name || "—",
+                       phone: _rf.phone || "—", status: "نشط" };
+                DB.complexes.push(cx);
+                persistSet("complexes", cx);
+              }
+              u.complexId = String(cx.id);
+              u.complex = cx.name || "";
+            } else {
+              if (!Array.isArray(DB.mosques)) DB.mosques = [];
+              let mq = DB.mosques.find(x => x && nameKey(x.name) === nameKey(_rf.name));
+              if (!mq) {
+                const cxHit = _rf.cxName
+                  ? (DB.complexes || []).find(x => x && nameKey(x.name) === nameKey(_rf.cxName))
+                  : null;
+                mq = { id: Date.now(), complexId: cxHit ? String(cxHit.id) : "",
+                       name: _rf.name, region: _rf.region || "—",
+                       manager: u.name || "—", phone: _rf.phone || "—",
+                       status: "نشط", attendance: 0, plan: 0 };
+                DB.mosques.push(mq);
+                persistSet("mosques", mq);
+                try { if (window.pubMosqueIndexSync) window.pubMosqueIndexSync(); } catch (e) {}
+              }
+              u.mosqueId = String(mq.id);
+              u.mosque = mq.name || "";
+              if (mq.complexId) u.complexId = String(mq.complexId);
+            }
+          } catch (e) { console.warn("urq facility:", e); }
+        }
+        delete u.reqFacility;
+
         const rqId = String(u.requestedMosqueId || "");
         if (rqId && !u.mosqueId) {
           const mq0 = (DB.mosques || []).find(x => String(x.id) === rqId);
@@ -9630,6 +9784,9 @@ function adminUserRequests() {
           ? `<td><span class="pt-badge ${tone(r.status || "pending")}">${esc(r.statusAr)}</span></td>`
           : `<td class="${c.k === "name" ? "pt-name" : c.k === "left" ? "pt-num" : ""}">${esc(r[c.k] == null ? "—" : r[c.k])}</td>`).join("")}
         ${URQ.tab === "approve" ? `<td class="pt-actions">
+          ${String(r.id).indexOf("self:") === 0
+            ? `<button class="row-btn" onclick="window.urqView('${jsAttr(r.id)}')" title="عرض الطلب كاملاً">${ic("eye", 14)}</button>`
+            : ""}
           <button class="row-btn" onclick="window.urqDecide('approved',['${jsAttr(r.id)}'])" title="موافقة">${ic("check", 14)}</button>
           <button class="row-btn danger" onclick="window.urqDecide('rejected',['${jsAttr(r.id)}'])" title="رفض">${ic("x", 14)}</button>
         </td>` : ""}
@@ -52728,7 +52885,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-0410";
+  var APP_BUILD = "20261017-0545";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

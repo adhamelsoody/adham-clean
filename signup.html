@@ -46,6 +46,13 @@
   .f input.bad{border-color:#c62f2f;background:#fdf4f4}
   .hint{font-size:11.5px;color:#909fa0;margin-top:5px}
 
+  /* اختيارُ نوع المنشأة لطالب الإدارة أو الإشراف */
+  .fack{display:flex;gap:8px}
+  .facb{flex:1;padding:11px 8px;border:1.5px solid #dde3e3;border-radius:11px;background:#fbfcfc;
+        cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#3b4e4f;transition:.18s}
+  .facb:hover{border-color:#4bdee4}
+  .facb.on{border-color:#4bdee4;background:#ecfcfd;color:#2bb7bc;box-shadow:0 0 0 3px #e6f3f2}
+
   /* قائمةُ المساجد: بحثٌ وقائمةٌ تُعاد رسمُها من الحالة مع كلّ حرف.
      ارتفاعٌ محدودٌ بالتمرير — المساجدُ قد تبلغ مئاتٍ فلا تُغرِق الصفحة. */
   .mq-list{margin-top:6px;max-height:210px;overflow-y:auto;border:1px solid #dde5e5;
@@ -205,6 +212,34 @@
         <div class="hint" id="mosqueHint">يصل طلبُك إلى مدير هذا المسجد</div>
       </div>
 
+      <!-- =================================================================
+           بياناتُ المنشأة لطالبِ الإدارة أو الإشراف
+           -----------------------------------------------------------------
+           «إذا كان طلبُ الانضمام لمدير مسجدٍ أو مدير مجمّعٍ أو مشرف فليملأ
+           بياناتِه كاملةً وبياناتِ المجمّع أو المسجد، وإذا قبل مديرُ النظام
+           الطلبَ أُنشئ المسجدُ أو المجمّعُ حسب الاختيار.»
+
+           فتُجمع هنا، ولا تُنشأ منشأةٌ بالتسجيل الذاتيّ ألبتّة: تُحفظ
+           طلباً في reqFacility، ولا تصير مسجداً ولا مجمّعاً إلّا بيد مدير
+           النظام عند الاعتماد.
+           ================================================================= -->
+      <div class="f" id="facBox" style="grid-column:1/-1;display:none">
+        <label>بيانات المنشأة التي تطلبها <i>*</i></label>
+        <div class="fack" id="facKind">
+          <button type="button" class="facb on" data-fac="mosque">مسجد</button>
+          <button type="button" class="facb" data-fac="complex">مجمّع</button>
+        </div>
+        <input id="facName" autocomplete="off" placeholder="اسم المسجد أو المجمّع" style="margin-top:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+          <input id="facRegion" autocomplete="off" placeholder="المدينة / المنطقة">
+          <input id="facPhone" autocomplete="off" inputmode="tel" dir="ltr" placeholder="هاتف المنشأة">
+        </div>
+        <input id="facCx" autocomplete="off" style="margin-top:10px"
+          placeholder="اسم المجمّع التابع له — اتركه فارغاً إن كان مستقلّاً">
+        <div class="hint" id="facHint">
+          تُنشَأ المنشأةُ عند اعتماد مدير النظام لطلبك، وتُسنَد إليك حينئذٍ.</div>
+      </div>
+
       <div class="f">
         <label for="pass">كلمة المرور <i>*</i></label>
         <input id="pass" type="password" dir="ltr" placeholder="********" autocomplete="new-password">
@@ -234,7 +269,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="firebase-config.js?v=202610170410"></script>
+<script src="firebase-config.js?v=202610170545"></script>
 <script>
 (function () {
   "use strict";
@@ -389,12 +424,43 @@
   var kidsBox  = document.getElementById("kidsBox");
   var kidsList = document.getElementById("kidsList");
 
+  /* نوعُ المنشأة المطلوبة — يتبع الدورَ، والمشرفُ يختار */
+  var facKind = "mosque";
+  var facBox  = document.getElementById("facBox");
+  var facKindBox = document.getElementById("facKind");
+
+  function facIsMgr() {
+    return role === "mosqueManager" || role === "complexManager" || role === "supervisor";
+  }
+  function facPaint() {
+    Array.prototype.forEach.call(facKindBox.querySelectorAll(".facb"), function (b) {
+      b.classList.toggle("on", b.dataset.fac === facKind);
+    });
+    /* دورُ المدير يحسم النوعَ فلا يُختار، والمشرفُ يختار أيَّهما يشرف عليه */
+    facKindBox.style.display = (role === "supervisor") ? "" : "none";
+    var nm = document.getElementById("facName");
+    nm.placeholder = facKind === "complex" ? "اسم المجمّع" : "اسم المسجد";
+    document.getElementById("facCx").style.display = facKind === "complex" ? "none" : "";
+    document.getElementById("facHint").textContent = facKind === "complex"
+      ? "يُنشَأ المجمّعُ عند اعتماد مدير النظام لطلبك، وتُسنَد إدارتُه إليك."
+      : "يُنشَأ المسجدُ عند اعتماد مدير النظام لطلبك، ويُسنَد إليك.";
+  }
+  Array.prototype.forEach.call(facKindBox.querySelectorAll(".facb"), function (b) {
+    b.addEventListener("click", function () { facKind = b.dataset.fac; facPaint(); });
+  });
+
   function toggleKids() {
     kidsBox.style.display = (role === "parent") ? "" : "none";
     if (role === "parent" && !kidsList.children.length) addKidRow();
     /* والمسجدُ للطالب ووليّ الأمر: طلبُهما يصل مديرَ المسجد. أمّا المعلّمُ
        والمديرُ والمشرفُ فطلبُهم إلى مدير النظام، فلا يُسألون عنه. */
     mosqueBox.style.display = (role === "student" || role === "parent") ? "" : "none";
+
+    /* وبياناتُ المنشأة لمن طلب إدارتَها أو الإشرافَ عليها */
+    facBox.style.display = facIsMgr() ? "" : "none";
+    if (role === "mosqueManager") facKind = "mosque";
+    if (role === "complexManager") facKind = "complex";
+    if (facIsMgr()) facPaint();
   }
 
   function addKidRow() {
@@ -487,6 +553,21 @@
       return "اختر المسجد الذي تنضمّ إليه من القائمة.";
     }
 
+    /* بياناتُ المنشأة مطلوبةٌ ممّن طلب إدارتَها أو الإشرافَ عليها */
+    if (facIsMgr()) {
+      bad("facName", false);
+      var fn = v("facName");
+      if (fn.length < 3) {
+        bad("facName", 1);
+        return facKind === "complex" ? "اكتب اسم المجمّع الذي تطلبه."
+                                     : "اكتب اسم المسجد الذي تطلبه.";
+      }
+      var fp = v("facPhone").replace(/[\s-]/g, "");
+      if (fp && !/^\+?[0-9]{7,15}$/.test(fp)) {
+        bad("facPhone", 1); return "رقم هاتف المنشأة غير صحيح، أو اتركه فارغاً.";
+      }
+    }
+
     var p1 = v("pass"), p2 = v("pass2");
     if (p1.length < 8) { bad("pass", 1); return "كلمة المرور يجب أن تكون ٨ أحرف على الأقل."; }
     if (p1 !== p2) { bad("pass2", 1); return "كلمتا المرور غير متطابقتين."; }
@@ -551,6 +632,15 @@
         pending: true,
         selfSignup: true,
         requestedMosqueId: reqMosque,
+        /* طلبُ منشأةٍ لا إنشاؤها: مجرّدُ بياناتٍ في ملفّ الطلب حتى
+           يعتمدها مديرُ النظام، فلا يُنشئ مسجداً ولا مجمّعاً تسجيلٌ ذاتيّ */
+        reqFacility: facIsMgr() ? {
+          kind: facKind,
+          name: v("facName"),
+          region: v("facRegion"),
+          phone: v("facPhone").replace(/[\s-]/g, ""),
+          cxName: facKind === "mosque" ? v("facCx") : ""
+        } : null,
         createdAt: Date.now()
       }, { merge: true });
 

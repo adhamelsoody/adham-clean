@@ -13291,3 +13291,19 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
   .tm-foot-ops { margin-inline-start: 0; }
   .tm-foot .btn { flex: 1 1 auto; justify-content: center; }
 }
+
+/* =========================================================================
+   بطاقةُ طلب الانضمام — بياناتُ مقدّمه وبياناتُ منشأته
+   -------------------------------------------------------------------------
+   جدولُ مفتاحٍ وقيمةٍ هادئ: الطلبُ يُقرأ قبل أن يُبَتّ فيه.
+   ========================================================================= */
+.urq-view { display: flex; flex-direction: column; gap: 4px; }
+.urq-sec {
+  font-weight: 800; font-size: 13.5px; color: var(--brand-dark, #2c4f50);
+  margin: 14px 0 6px;
+}
+.urq-sec:first-child { margin-top: 0; }
+.urq-kv { width: 100%; }
+.urq-kv td { padding: 8px 10px; font-size: 13.5px; }
+.urq-kv td:first-child { width: 42%; white-space: nowrap; }
+.urq-kv tr + tr td { border-top: 1px solid var(--border-soft, #eef2f2); }
