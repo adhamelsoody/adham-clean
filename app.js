@@ -9152,7 +9152,7 @@ window.mvsHistory = function () {
    الاختياراتُ تبقى في BLK حتى الضغط على زرّ الحفظ، فلا يُكتب في السجلّات
    إلا بأمرٍ صريح، ومن تُرك بلا اختيارٍ لا يُمَسّ.
    ========================================================================= */
-const BLK = { circle: {}, level: {}, q: "" };
+const BLK = { circle: {}, level: {}, q: "", from: "" };
 
 function blkReset() { BLK.circle = {}; BLK.level = {}; }
 
@@ -9179,9 +9179,59 @@ function blkSyncBtn() {
 
 window.blkSearch = function (q) {
   BLK.q = String(q || "").trim();
-  document.querySelectorAll("#blkBody tr").forEach(function (tr) {
-    tr.style.display = !BLK.q || (tr.dataset.name || "").indexOf(BLK.q) > -1 ? "" : "none";
+  blkFilter();
+};
+
+/* الصفوفُ الظاهرة: كلمةُ البحث، والحلقةُ الحاليةُ المختارةُ من رأس الجدول */
+function blkFilter() {
+  let n = 0;
+  document.querySelectorAll("#blkBody tr[data-name]").forEach(function (tr) {
+    const okQ = !BLK.q || (tr.dataset.name || "").indexOf(BLK.q) > -1;
+    /* الحلقةُ الحاليةُ لا تصفّي إلّا في شاشةٍ لها رأسُها («نقل الطلاب») */
+    const okC = !BLK.from || !document.getElementById("blkFromSel") || String(tr.dataset.cid || "") === BLK.from;
+    tr.style.display = okQ && okC ? "" : "none";
+    if (okQ && okC) n++;
   });
+  const out = document.getElementById("blkShown");
+  if (out) out.textContent = toArabicDigits(n) + " طالباً";
+  return n;
+}
+
+/* =========================================================================
+   «نقل الطلاب»: الحلقةُ الحاليةُ قائمةٌ تُظهر طلابَها وحدَهم، والحلقةُ
+   المنقولُ إليها قائمةٌ تُطبَّق على الظاهرين كلِّهم. والكتابةُ لا تقع
+   إلّا بزرّ «نقل الطلاب» كما كانت — بالطريق نفسه (blkApply).
+   ========================================================================= */
+window.blkFrom = function (cid) {
+  BLK.from = String(cid || "");
+  /* اختياراتُ الحلقة السابقة تُرفع: لا يُنقل طالبٌ لا يظهر في القائمة */
+  BLK.circle = {};
+  document.querySelectorAll("#blkBody select[data-k=circle]").forEach(s => { s.value = ""; });
+  const n = blkFilter();
+  blkSyncBtn();
+  const to = document.getElementById("blkToAll");
+  if (to) {
+    [].forEach.call(to.options, o => { o.disabled = !!o.value && o.value === BLK.from; });
+    to.value = "";
+  }
+  if (BLK.from && !n) showToast("لا طلابَ في هذه الحلقة", "warn");
+};
+window.blkToAll = function (cid) {
+  const target = String(cid || "");
+  if (!target) return;
+  let n = 0, same = 0;
+  document.querySelectorAll("#blkBody tr[data-name]").forEach(function (tr) {
+    if (tr.style.display === "none") return;
+    const sel = tr.querySelector("select[data-k=circle]");
+    if (!sel) return;
+    if (String(tr.dataset.cid || "") === target) { same++; return; }   /* في الحلقة أصلاً */
+    sel.value = target;
+    BLK.circle[String(sel.dataset.sid)] = target;
+    n++;
+  });
+  blkSyncBtn();
+  showToast(n ? "اختيرت الحلقةُ لـ" + toArabicDigits(n) + " طالباً — اضغط «نقل الطلاب» للتنفيذ"
+              : "لا طالبَ يُنقل — كلُّهم في هذه الحلقة", n ? "success" : "warn");
 };
 
 window.blkApply = function () {
@@ -9239,7 +9289,7 @@ function blkScreen(opt) {
   };
 
   const selCircle = function (st) {
-    return `<select class="blk-sel" onchange="window.blkPick('circle','${jsAttr(st.id)}', this.value)">
+    return `<select class="blk-sel" data-k="circle" data-sid="${esc(String(st.id))}" onchange="window.blkPick('circle','${jsAttr(st.id)}', this.value)">
       <option value="">إختر</option>
       ${cirs.map(c => `<option value="${esc(String(c.id))}"${String(BLK.circle[st.id]) === String(c.id) ? " selected" : ""}>${esc(c.name || "—")}</option>`).join("")}
     </select>`;
@@ -9262,8 +9312,23 @@ function blkScreen(opt) {
   };
   const cols = opt.cols.map(k => COL[k]);
 
+  /* رأسا «نقل الطلاب»: قائمةٌ للحلقة الحالية وأخرى للمنقول إليها */
+  if (opt.circleHead) {
+    if (BLK.from && !cirs.some(c => String(c.id) === BLK.from)) BLK.from = "";
+    const cnt = id => studs.filter(st => String(st.circleId || "") === String(id)).length;
+    COL.curCircle.head = `<select class="blk-sel blk-hsel" id="blkFromSel" onchange="window.blkFrom(this.value)" title="اختر الحلقة الحالية">
+        <option value="">الحلقة الحالية — الكلّ (${toArabicDigits(cirs.length)})</option>
+        ${cirs.map(c => `<option value="${esc(String(c.id))}"${String(c.id) === BLK.from ? " selected" : ""}>${esc(c.name || "—")} (${toArabicDigits(cnt(c.id))})</option>`).join("")}
+      </select>`;
+    COL.toCircle.head = `<select class="blk-sel blk-hsel" id="blkToAll" onchange="window.blkToAll(this.value)" title="الحلقة التي يُنقل إليها الطلاب الظاهرون">
+        <option value="">تعديل الحلقة إلى — للجميع (${toArabicDigits(cirs.length)})</option>
+        ${cirs.map(c => `<option value="${esc(String(c.id))}"${String(c.id) === BLK.from ? " disabled" : ""}>${esc(c.name || "—")}</option>`).join("")}
+      </select>`;
+  }
+
   const rows = studs.length
-    ? studs.map((st, i) => `<tr data-name="${esc(st.name || "")}">
+    ? studs.map((st, i) => `<tr data-name="${esc(st.name || "")}" data-cid="${esc(String(st.circleId || ""))}"${
+        opt.circleHead && BLK.from && String(st.circleId || "") !== BLK.from ? ' style="display:none"' : ""}>
         <td class="pt-num blk-idx">${i + 1}</td>
         <td class="pt-name">${esc(st.name || "—")}</td>
         ${cols.map(c => `<td class="${c.cls}">${c.cell(st)}</td>`).join("")}
@@ -9280,15 +9345,15 @@ function blkScreen(opt) {
       <div class="fac-searchbox">
         <input placeholder="إبحث عن طالب" oninput="window.blkSearch(this.value)">
       </div>
-      <span class="muted" style="font-size:12.5px;margin-inline-start:auto">
-        ${studs.length} طالباً</span>
+      <span class="muted" id="blkShown" style="font-size:12.5px;margin-inline-start:auto">
+        ${opt.circleHead && BLK.from ? toArabicDigits(studs.filter(st => String(st.circleId || "") === BLK.from).length) : studs.length} طالباً</span>
     </div>
 
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable blk-table">
       <thead><tr>
         <th class="blk-idx">#</th>
         <th>اسم الطالب (${studs.length})</th>
-        ${cols.map(c => `<th class="${c.cls}">${esc(c.h)}</th>`).join("")}
+        ${cols.map(c => `<th class="${c.cls}">${c.head || esc(c.h)}</th>`).join("")}
       </tr></thead>
       <tbody id="blkBody">${rows}</tbody>
     </table></div></div>
@@ -9700,7 +9765,7 @@ function adminBulkPlans() {
 }
 
 function adminBulkMove()      { return blkScreen({ title: "نقل الطلاب", action: "نقل الطلاب",
-                                  cols: ["curCircle", "toCircle"] }); }
+                                  cols: ["curCircle", "toCircle"], circleHead: true }); }
 function adminBulkLevels()    { return blkScreen({ title: "تعديل المستويات المتعدد", action: "تعديل المستوى",
                                   cols: ["curCircle", "curLevel", "toLevel", "program"] }); }
 function adminBulkMoveLevel() { return blkScreen({ title: "نقل وتعديل المستوى", action: "تعديل المستوى",
@@ -54671,7 +54736,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261018-0130";
+  var APP_BUILD = "20261018-0240";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

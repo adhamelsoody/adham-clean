@@ -13728,3 +13728,11 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
   :root:not([data-theme="light"]) .dcfg-ico { background: #173a3e; }
 }
 :root[data-theme="dark"] .dcfg-ico { background: #173a3e; }
+
+/* «نقل الطلاب»: قائمتا الرأس — الحلقة الحالية والمنقول إليها — بإطارٍ أبيضَ على لون العمود */
+.blk-table th .blk-hsel {
+  background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.6);
+  border-radius: 10px; height: 40px; min-width: 220px; font-weight: 700; cursor: pointer;
+}
+.blk-table th .blk-hsel option { color: var(--text-main, #1d2b2c); background: var(--surface, #fff); }
+.blk-table th .blk-hsel:hover { border-color: #fff; background: rgba(255,255,255,.08); }
