@@ -2153,6 +2153,21 @@ window.cxdMsgKid = function (el) {
 window.cxdMsgKids = function (on) { CXD_MSG.kids = on ? cxdMsgPool().map(s => String(s.id)) : []; cxdMsgPaint(); };
 window.cxdMsgVia = function (v) { CXD_MSG.via = v === "wa" ? "wa" : "site"; cxdMsgPaint(); };
 
+/* رقمُ الواتس: جوالُ الطالب المسجَّل بمفتاحه (phone/phoneCC)، وإلا رقمُ
+   وليّه (parent/parentCC). المفتاحُ المكتوبُ في الرقم أصدق، ثمّ المحفوظ
+   بجانبه، ثمّ مفتاحُ النظام (waNumber). */
+function cxdWaNum(s) {
+  const pick = (v, cc) => {
+    let raw = String(v == null ? "" : v).trim();
+    if (!raw || raw === "—" || raw.replace(/\D+/g, "").length < 6) return "";
+    if (raw.charAt(0) !== "+" && raw.indexOf("00") !== 0 && cc && /^\+?\d+$/.test(String(cc).trim())) {
+      raw = "+" + String(cc).replace(/\D+/g, "") + raw.replace(/\D+/g, "").replace(/^0+/, "");
+    }
+    return typeof waNumber === "function" ? waNumber(raw) : raw.replace(/\D+/g, "");
+  };
+  return pick(s && s.phone, s && s.phoneCC) || pick(s && (s.parent || s.parentPhone), s && s.parentCC);
+}
+
 window.cxdMsgSend = function () {
   const text = String((document.getElementById("cxmText") || {}).value || "").trim();
   const list = cxdMsgPool().filter(s => CXD_MSG.kids.indexOf(String(s.id)) > -1);
@@ -2161,12 +2176,20 @@ window.cxdMsgSend = function () {
   const textOf = s => msgFill(text, { "الطالب": s.name || "", "الحلقة": cxdCircleName(s) });
 
   if (CXD_MSG.via === "wa") {
-    /* واتساب لا يُفتح لعدّة أرقامٍ دفعةً: قائمةٌ بزرٍّ لكلّ طالب */
+    /* الرقمُ الذي سُجِّل به الطالب (جوالُه بمفتاح دولته)، ثمّ رقمُ وليّه
+       إن لم يكن له رقم. ولطالبٍ واحدٍ تُفتح المحادثةُ مباشرةً؛ ولعدّةٍ
+       قائمةٌ بزرٍّ لكلٍّ منهم — المتصفّحُ يمنع فتحَ عدّة نوافذَ دفعةً. */
+    if (list.length === 1) {
+      const n1 = cxdWaNum(list[0]);
+      if (!n1) { showToast("لا رقمَ مسجَّلٌ للطالب " + (list[0].name || ""), "warn"); return; }
+      window.open("https://wa.me/" + n1 + "?text=" + encodeURIComponent(textOf(list[0])), "_blank");
+      closeModal();
+      return;
+    }
     const rows = list.map(s => {
-      const ph = s.parent || s.parentPhone || s.phone || "";
-      const n = typeof waNumber === "function" ? waNumber(ph) : "";
-      return `<div class="cxw-row"><span><b>${esc(s.name || "—")}</b><small>${esc(cxdCircleName(s))}</small></span>
-        ${n ? `<a class="btn btn-primary btn-sm" target="_blank" rel="noopener" href="${esc(waLink(ph, textOf(s)))}">${ic("phone", 14)} فتح الواتس</a>`
+      const n = cxdWaNum(s);
+      return `<div class="cxw-row"><span><b>${esc(s.name || "—")}</b><small>${esc(cxdCircleName(s))}${n ? ` · <bdi dir="ltr">+${esc(n)}</bdi>` : ""}</small></span>
+        ${n ? `<a class="btn btn-primary btn-sm" target="_blank" rel="noopener" href="https://wa.me/${esc(n)}?text=${esc(encodeURIComponent(textOf(s)))}">${ic("phone", 14)} فتح الواتس</a>`
             : `<span class="muted">لا رقم مسجَّل</span>`}</div>`;
     }).join("");
     openModal("الإرسال عبر الواتس", toArabicDigits(list.length) + " طالب — اضغط لكلّ طالب",
@@ -53554,7 +53577,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-1900";
+  var APP_BUILD = "20261017-1950";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
