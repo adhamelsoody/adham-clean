@@ -1732,6 +1732,116 @@ function perfChart(months) {
 
    قسمان: ما ينتظره، ثمّ حالُ حلقاته. ولا مالَ فيهما.
    ========================================================================= */
+/* =========================================================================
+   لوحةُ مدير المجمّع — بالشكل المطلوب
+   -------------------------------------------------------------------------
+   «أريد نفس هذا الشكل في مدير المجمّعات فقط، لكن زرّ المنشآت خلِّ اسمه
+   المساجد، وتأكّد أنّ الأزرار كلَّها تعمل.»
+
+   ثلاثُ بطاقاتٍ في الصدر: مؤشّرُ الإنجاز · بطاقاتُ المساجد والمعلّمين
+   والحلقات والطلاب · الحضورُ والتأخّرُ والاستئذانُ والغياب. وتحتها أوجهُ
+   الحفظ وأوجهُ المراجعة لكلّ مسجدٍ من مساجد المجمّع.
+
+   كلُّ رقمٍ من سجلّاتٍ فعليّةٍ في نطاقه (cur)، وكلُّ بطاقةٍ زرٌّ ينقل إلى
+   شاشتها. ولا كتابةَ هنا ألبتّة. ومديرُ المسجد والمشرفُ ومديرُ النظام
+   تبقى لوحاتُهم كما هي.
+   ========================================================================= */
+function cxMgrDashboard() {
+  const d = typeof attDate === "function" ? attDate() : todayISO();
+  const mosques  = cur("mosques")  || [];
+  const teachers = (cur("teachers") || []).filter(x => !(typeof isStaffManager === "function" && isStaffManager(x)));
+  const circles  = cur("circles")  || [];
+  const students = (cur("students") || []).filter(s => s && s.status !== "متوقف");
+  const total = students.length;
+  const n2 = x => toArabicDigits(x);
+
+  /* ---------- الحضور في اليوم المختار ---------- */
+  const map = typeof attMap === "function" ? attMap(d) : {};
+  const cnt = st => students.filter(x => ((map[String(x.id)] || {}).status) === st).length;
+  const present = cnt("حاضر"), late = cnt("متأخر"), excused = cnt("مستأذن"), absent = cnt("غائب");
+  const pct = v => total ? Math.round(v / total * 100) : 0;
+  const attRows = [
+    { cls: "att-present", ico: "check", label: "الحضور",   num: present, head: true },
+    { cls: "att-late",    ico: "eye",   label: "التأخر",   num: late },
+    { cls: "att-excused", ico: "eye",   label: "الاستئذان", num: excused },
+    { cls: "att-absent",  ico: "x",     label: "الغياب",   num: absent }
+  ].map(r => `<div class="att-row ${r.cls}${r.head ? " att-row-head" : ""}">
+      <div class="ar-right"><span class="ar-ico">${ic(r.ico, r.head ? 22 : 20)}</span>
+        <span class="ar-label">${r.label}</span><span class="ar-count">(${n2(r.num)})</span></div>
+      <span class="ar-pct">${n2(pct(r.num))}%</span></div>`).join("");
+
+  /* ---------- البطاقاتُ الأربع — كلٌّ زرٌّ إلى شاشته ---------- */
+  const cards = [
+    { tint: "t-green",  icon: "mosque",  num: mosques.length,  label: "المساجد",  go: "mosques" },
+    { tint: "t-teal",   icon: "teacher", num: teachers.length, label: "المعلمين", go: "teachers" },
+    { tint: "t-green",  icon: "grid",    num: circles.length,  label: "الحلقات",  go: "circles" },
+    { tint: "t-purple", icon: "users",   num: total,           label: "الطلاب",   go: "students" }
+  ].map(f => `<button type="button" class="facility-card ${f.tint}" data-go="${f.go}"
+      onclick="window.go('${f.go}')" title="فتح ${esc(f.label)}">
+      <div class="fc-num">${n2(f.num)}</div>
+      <div class="fc-body"><span class="fc-ico">${ic(f.icon, 22)}</span><span class="fc-label">${f.label}</span></div>
+    </button>`).join("");
+
+  /* ---------- مؤشّرُ الإنجاز: متوسّطُ تقدّم خطط الطلاب ---------- */
+  const prog = total ? Math.round(students.reduce((a, x) => a + (Number(x.progress) || 0), 0) / total) : 0;
+  const circ = 2 * Math.PI * 52;
+  const donut = `<button type="button" class="donut-wrap cxd-donut" data-go="students"
+      onclick="window.go('students')" title="تقدّم الطلاب">
+    <svg class="donut" viewBox="0 0 130 130">
+      <circle cx="65" cy="65" r="52" fill="none" stroke="var(--border-soft)" stroke-width="12"/>
+      <circle cx="65" cy="65" r="52" fill="none" stroke="var(--brand-main)" stroke-width="12" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${(circ * (1 - prog / 100)).toFixed(1)}" transform="rotate(-90 65 65)"/>
+      <text class="donut-num" x="65" y="72" text-anchor="middle">${n2(prog)}%</text>
+    </svg>
+    <div class="donut-label">مؤشر الإنجاز</div>
+  </button>`;
+
+  /* ---------- أوجهُ الحفظ والمراجعة لكلّ مسجد (الفترة النشطة) ---------- */
+  const byMq = {};
+  mosques.forEach(m => { byMq[String(m.id)] = { name: m.name || "—", hd: 0, ht: 0, rd: 0, rt: 0 }; });
+  const tot = { hd: 0, ht: 0, rd: 0, rt: 0 };
+  students.forEach(s => {
+    let t = null;
+    try { t = typeof planTally === "function" ? planTally({ studentId: s.id }) : null; } catch (e) { t = null; }
+    if (!t) return;
+    const row = byMq[String(s.mosqueId || "")];
+    [["hd", "hifzDone"], ["ht", "hifzTotal"], ["rd", "revDone"], ["rt", "revTotal"]].forEach(([k, f]) => {
+      const v = Number(t[f]) || 0;
+      tot[k] += v;
+      if (row) row[k] += v;
+    });
+  });
+  const r1 = x => Math.round(x * 10) / 10;
+  const bar = (done, all) => {
+    const w = all ? Math.min(100, Math.round(done / all * 100)) : 0;
+    return `<div class="cxd-bar"><i style="width:${w}%"></i></div>`;
+  };
+  const facesCol = (title, dk, tk) => `<div class="cxd-col">
+      <div class="cxd-head"><strong>${title}</strong>${bar(tot[dk], tot[tk])}
+        <span class="cxd-sum">${n2(r1(tot[dk]))} / ${n2(r1(tot[tk]))}</span></div>
+      ${Object.keys(byMq).length ? Object.keys(byMq).map(id => {
+        const m = byMq[id];
+        return `<button type="button" class="cxd-row" data-go="mosques"
+            onclick="window.go('mosques')" title="${esc(m.name)}">
+          <span class="cxd-name">${esc(m.name)}</span>${bar(m[dk], m[tk])}
+          <span class="cxd-num">${n2(r1(m[dk]))}</span></button>`;
+      }).join("") : `<div class="muted" style="padding:12px;text-align:center">لا مساجد في مجمّعك بعد</div>`}
+    </div>`;
+
+  return `<div class="page cxd">
+    ${pageHead("لوحة التحكم", "")}
+    <div class="dash-top">
+      <div class="card gauge-wrap">${donut}</div>
+      <div class="card facility-wrap"><div class="facility-grid">${cards}</div></div>
+      <button type="button" class="card att-summary-wrap cxd-att" data-go="attendance"
+        onclick="window.go('attendance')" title="سجلّ الحضور"><div class="att-rows">${attRows}</div></button>
+    </div>
+    <div class="card cxd-faces">
+      ${facesCol("أوجه الحفظ", "hd", "ht")}
+      ${facesCol("أوجه المراجعة", "rd", "rt")}
+    </div>
+  </div>`;
+}
+
 function supervisorDashboard() {
   const sc = myScope();
   const day = attDate();
@@ -40882,6 +40992,8 @@ const PAGES = {
   /* المشرف له لوحتُه: لوحةُ المدير تعرض إحصاءَ المجمّع وأرقامَه المالية */
   "admin/dashboard": function () {
     const r = ((STATE && STATE.user) || {}).role || "";
+    /* مديرُ المجمّع وحدَه له لوحتُه بالشكل المطلوب، وغيرُه كما كان */
+    if (isComplexMgr(r)) return cxMgrDashboard();
     return isMgrRole(r) ? supervisorDashboard() : adminDashboard();
   }, "admin/complexes": adminComplexes,
   "admin/mosques": adminMosques, "admin/circles": adminCircles,
@@ -52967,7 +53079,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261017-1325";
+  var APP_BUILD = "20261017-1440";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
