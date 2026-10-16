@@ -399,14 +399,15 @@ window.SHELL_MODE = true;
          باقيةٌ ولغيره كما هي — وحلّ محلّها ثلاثةُ أبوابٍ للتسجيل. */
       groupLabels: { move: "القبول والتسجيل" },
       /* وفي «إدارة العمليات الجماعية»: «تعديل خطط التسميع» اسمُها عنده
-         «تعديل الخطة الافتراضية»، ورُفع «نقل وتعديل المستوى» و«تعديل
-         المستويات» بطلبٍ صريح — صفحاتُهما باقيةٌ ولغيره كما هي. */
+         «تعديل الخطة الافتراضية»، ورُفع «تعديل المستويات» بطلبٍ صريح —
+         صفحتُه باقيةٌ ولغيره كما هي. و«نقل وتعديل المستوى» رُفع ثمّ أُعيد
+         بطلبٍ صريحٍ تالٍ («ضيف الخانة دي»). */
       childLabels: { "bulk-plans": "تعديل الخطة الافتراضية" },
       groups: {
         reports: ["reports-students", "reports-circles", "reports-recitation"],
         stats:   ["statistics-all", "statistics-circles"],
         exams: "*", move: ["reg-multi", "reg-excel", "move-requests", "reg-links"],
-        bulk: ["bulk-plans", "bulk-move"], duty: "*", procs: "*", motivation: "*", finance: "*"
+        bulk: ["bulk-plans", "bulk-movelevel", "bulk-move"], duty: "*", procs: "*", motivation: "*", finance: "*"
       }
     }
   };
