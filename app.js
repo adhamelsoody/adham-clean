@@ -9672,7 +9672,6 @@ function adminBulkPlans() {
     return `<tr data-name="${esc(st.name || "")}">
       <td class="pt-num blk-idx">${i + 1}</td>
       <td class="pt-name">${esc(st.name || "—")}</td>
-      <td class="${st.circle && st.circle !== "—" ? "" : "pt-muted"}">${esc(st.circle || "بلا حلقة")}</td>
       <td class="bpl-plc">${bplPlanCell(st)}</td>
       ${C.hifz ? `
         <td class="bpl-sw">${tog(st.id, "hifzOn", e.hifzOn, "الحفظ")}</td>
@@ -9693,6 +9692,7 @@ function adminBulkPlans() {
           <span id="bplN${esc(String(st.id))}" data-k="tatCount">${e.tatCount}</span>
           <button type="button" onclick="window.bplStep('${jsAttr(st.id)}', -1)">−</button>
         </td>` : ""}
+      <td class="bpl-sw">${tog(st.id, "tilOn", e.tilOn, "التلاوة")}</td>
     </tr>`;
   }).join("") : `<tr><td colspan="20" class="pt-muted" style="text-align:center;padding:22px">لا طلاب في نطاقك.</td></tr>`;
 
@@ -9742,7 +9742,6 @@ function adminBulkPlans() {
       <thead><tr>
         <th class="blk-idx">#</th>
         <th>اسم الطالب (${studs.length})</th>
-        <th>اسم الحلقة</th>
         <th>الخطة المنسوبة</th>
         ${C.hifz ? `<th class="bpl-h">${hTog("hifzOn", "الحفظ")}</th>
           <th class="bpl-h">${hSel("hifzType", "نوع كمية الحفظ", PLAN_QTY_TYPE)}</th>
@@ -9756,6 +9755,9 @@ function adminBulkPlans() {
           <th class="bpl-r">${hStart("revSura", "revAyah", "ابتداء المراجعة")}</th>` : ""}
         ${C.tathbit ? `<th class="bpl-t">${hTog("tatOn", "التثبيت")}</th>
           <th class="bpl-t">${hNum("tatCount", "عدد دروس التثبيت")}</th>` : ""}
+        <!-- «التلاوة» في آخر الجدول: مفتاحُ «تلاوة الدرس الجديد» (st.plan.tilOn)
+             نفسُه الذي في بطاقة الطالب — ومفتاحُ الرأس يقلبه للجميع -->
+        <th class="bpl-l">${hTog("tilOn", "التلاوة")}</th>
       </tr></thead>
       <tbody id="blkBody">${rows}</tbody>
     </table></div></div>
@@ -54809,7 +54811,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261018-1950";
+  var APP_BUILD = "20261018-2030";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

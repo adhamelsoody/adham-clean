@@ -13760,3 +13760,6 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
 }
 .pl-colors > .card { margin-top: 10px !important; box-shadow: none; border: 1px solid var(--border-soft, #e6ecec); }
 @media (max-width: 760px) { .pl-group .ded-row { grid-template-columns: 1fr; } }
+
+/* عمودُ «التلاوة» في آخر جدول الخطة الافتراضية الجماعيّ */
+.bpl-table th.bpl-l { background: #5a3d8f; }
