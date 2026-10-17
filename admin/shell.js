@@ -122,7 +122,7 @@ window.SHELL_MODE = true;
 
     bulk:       "إدارة العمليات الجماعية",
     bulkPlans:  "تعديل خطط التسميع",
-    bulkMoveLv: "نقل وتعديل المستوى",
+    bulkMoveLv: "تعديل البرامج والمستويات",
     bulkMove:   "نقل الطلاب",
     bulkLevels: "تعديل المستويات",
 

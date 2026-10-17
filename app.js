@@ -6527,7 +6527,7 @@ const SOON_TITLES = {
   "bulk-plans":   "تعديل خطط التسميع",
   "bulk-levels":  "تعديل المستويات",
   "bulk-move":      "نقل الطلاب",
-  "bulk-movelevel": "نقل وتعديل المستوى",
+  "bulk-movelevel": "تعديل البرامج والمستويات",
   "exams-home": "الاختبارات — لوحة التحكم",
   "exams-record": "رصد الاختبارات",
   "exams-sheet": "كشف اختبارات الطلاب / ات",
@@ -10322,7 +10322,7 @@ function jzmScreen() {
                                    (!JZM.from || String(jzmCurJuz(st)) === JZM.from)).length;
   const n = jzmCount();
   return `<div class="page">
-    ${pageHead("نقل وتعديل المستوى", "", backArrow())}
+    ${pageHead("تعديل البرامج والمستويات", "", backArrow())}
     <div class="blk-note">${ic("info", 15)} الطلاب المسندون إلى برنامج — ${toArabicDigits(total - studs.length)} على الخطة الافتراضية لا يظهرون · ومستوياتُ كلّ جزءٍ بحدود سورها</div>
 
     <div class="fac-toolbar" style="margin-bottom:12px">
@@ -55637,7 +55637,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-0245";
+  var APP_BUILD = "20261019-0300";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
