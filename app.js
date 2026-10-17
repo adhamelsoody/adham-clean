@@ -9155,7 +9155,7 @@ window.mvsHistory = function () {
    الاختياراتُ تبقى في BLK حتى الضغط على زرّ الحفظ، فلا يُكتب في السجلّات
    إلا بأمرٍ صريح، ومن تُرك بلا اختيارٍ لا يُمَسّ.
    ========================================================================= */
-const BLK = { circle: {}, level: {}, q: "", from: "" };
+const BLK = { circle: {}, level: {}, q: "", from: "", fromLv: "" };
 
 function blkReset() { BLK.circle = {}; BLK.level = {}; }
 
@@ -9192,8 +9192,10 @@ function blkFilter() {
     const okQ = !BLK.q || (tr.dataset.name || "").indexOf(BLK.q) > -1;
     /* الحلقةُ الحاليةُ لا تصفّي إلّا في شاشةٍ لها رأسُها («نقل الطلاب») */
     const okC = !BLK.from || !document.getElementById("blkFromSel") || String(tr.dataset.cid || "") === BLK.from;
-    tr.style.display = okQ && okC ? "" : "none";
-    if (okQ && okC) n++;
+    /* والمستوى الحاليُّ كذلك — في شاشةٍ لها رأسُه («نقل وتعديل المستوى») */
+    const okL = !BLK.fromLv || !document.getElementById("blkFromLvSel") || String(tr.dataset.lid || "") === BLK.fromLv;
+    tr.style.display = okQ && okC && okL ? "" : "none";
+    if (okQ && okC && okL) n++;
   });
   const out = document.getElementById("blkShown");
   if (out) out.textContent = toArabicDigits(n) + " طالباً";
@@ -9207,9 +9209,9 @@ function blkFilter() {
    ========================================================================= */
 window.blkFrom = function (cid) {
   BLK.from = String(cid || "");
-  /* اختياراتُ الحلقة السابقة تُرفع: لا يُنقل طالبٌ لا يظهر في القائمة */
-  BLK.circle = {};
-  document.querySelectorAll("#blkBody select[data-k=circle]").forEach(s => { s.value = ""; });
+  /* الاختياراتُ السابقة تُرفع (الحلقةُ والمستوى): لا يُعدَّل طالبٌ لا يظهر في القائمة */
+  BLK.circle = {}; BLK.level = {};
+  document.querySelectorAll("#blkBody select[data-k=circle], #blkBody select[data-k=level]").forEach(s => { s.value = ""; });
   const n = blkFilter();
   blkSyncBtn();
   const to = document.getElementById("blkToAll");
@@ -9219,6 +9221,40 @@ window.blkFrom = function (cid) {
   }
   if (BLK.from && !n) showToast("لا طلابَ في هذه الحلقة", "warn");
 };
+/* «نقل وتعديل المستوى»: المستوى الحاليُّ قائمةٌ تصفّي، و«تعديل المستوى إلى»
+   قائمةٌ تُطبَّق على الظاهرين كلِّهم — كقائمتَي الحلقة */
+window.blkFromLv = function (lid) {
+  BLK.fromLv = String(lid || "");
+  BLK.circle = {}; BLK.level = {};
+  document.querySelectorAll("#blkBody select[data-k=circle], #blkBody select[data-k=level]").forEach(s => { s.value = ""; });
+  const n = blkFilter();
+  blkSyncBtn();
+  const to = document.getElementById("blkToAllLv");
+  if (to) {
+    [].forEach.call(to.options, o => { o.disabled = !!o.value && o.value === BLK.fromLv; });
+    to.value = "";
+  }
+  if (BLK.fromLv && !n) showToast("لا طلابَ في هذا المستوى", "warn");
+};
+window.blkToAllLv = function (lid) {
+  const target = String(lid || "");
+  if (!target) return;
+  let n = 0;
+  document.querySelectorAll("#blkBody tr[data-name]").forEach(function (tr) {
+    if (tr.style.display === "none") return;
+    const sel = tr.querySelector("select[data-k=level]");
+    if (!sel) return;
+    if (String(tr.dataset.lid || "") === target) return;            /* في المستوى أصلاً */
+    sel.value = target;
+    BLK.level[String(sel.dataset.sid)] = target;
+    n++;
+  });
+  blkSyncBtn();
+  const lbl = ((document.getElementById("blkApply") || {}).dataset || {}).label || "تعديل المستوى";
+  showToast(n ? "اختير المستوى لـ" + toArabicDigits(n) + " طالباً — اضغط «" + lbl + "» للتنفيذ"
+              : "لا طالبَ يُعدَّل — كلُّهم في هذا المستوى", n ? "success" : "warn");
+};
+
 window.blkToAll = function (cid) {
   const target = String(cid || "");
   if (!target) return;
@@ -9233,7 +9269,8 @@ window.blkToAll = function (cid) {
     n++;
   });
   blkSyncBtn();
-  showToast(n ? "اختيرت الحلقةُ لـ" + toArabicDigits(n) + " طالباً — اضغط «نقل الطلاب» للتنفيذ"
+  const lbl = ((document.getElementById("blkApply") || {}).dataset || {}).label || "نقل الطلاب";
+  showToast(n ? "اختيرت الحلقةُ لـ" + toArabicDigits(n) + " طالباً — اضغط «" + lbl + "» للتنفيذ"
               : "لا طالبَ يُنقل — كلُّهم في هذه الحلقة", n ? "success" : "warn");
 };
 
@@ -9298,7 +9335,7 @@ function blkScreen(opt) {
     </select>`;
   };
   const selLevel = function (st) {
-    return `<select class="blk-sel" onchange="window.blkPick('level','${jsAttr(st.id)}', this.value)">
+    return `<select class="blk-sel" data-k="level" data-sid="${esc(String(st.id))}" onchange="window.blkPick('level','${jsAttr(st.id)}', this.value)">
       <option value="">إختر</option>
       ${lvls.map(l => `<option value="${esc(String(l.id))}"${String(BLK.level[st.id]) === String(l.id) ? " selected" : ""}>${esc(l.name || "—")}</option>`).join("")}
     </select>`;
@@ -9329,9 +9366,25 @@ function blkScreen(opt) {
       </select>`;
   }
 
+  /* ورأسا المستوى في «نقل وتعديل المستوى» */
+  if (opt.levelHead) {
+    if (BLK.fromLv && !lvls.some(l => String(l.id) === BLK.fromLv)) BLK.fromLv = "";
+    const cntL = id => studs.filter(st => String(st.levelId || "") === String(id)).length;
+    COL.curLevel.head = `<select class="blk-sel blk-hsel" id="blkFromLvSel" onchange="window.blkFromLv(this.value)" title="اختر المستوى الحالي">
+        <option value="">المستوى الحالي — الكلّ (${toArabicDigits(lvls.length)})</option>
+        ${lvls.map(l => `<option value="${esc(String(l.id))}"${String(l.id) === BLK.fromLv ? " selected" : ""}>${esc(l.name || "—")} (${toArabicDigits(cntL(l.id))})</option>`).join("")}
+      </select>`;
+    COL.toLevel.head = `<select class="blk-sel blk-hsel" id="blkToAllLv" onchange="window.blkToAllLv(this.value)" title="المستوى الذي يُعدَّل إليه الطلاب الظاهرون">
+        <option value="">تعديل المستوى إلى — للجميع</option>
+        ${lvls.map(l => `<option value="${esc(String(l.id))}"${String(l.id) === BLK.fromLv ? " disabled" : ""}>${esc(l.name || "—")}</option>`).join("")}
+      </select>`;
+  }
+  const hideRow = st => (opt.circleHead && BLK.from && String(st.circleId || "") !== BLK.from) ||
+                        (opt.levelHead && BLK.fromLv && String(st.levelId || "") !== BLK.fromLv);
+
   const rows = studs.length
-    ? studs.map((st, i) => `<tr data-name="${esc(st.name || "")}" data-cid="${esc(String(st.circleId || ""))}"${
-        opt.circleHead && BLK.from && String(st.circleId || "") !== BLK.from ? ' style="display:none"' : ""}>
+    ? studs.map((st, i) => `<tr data-name="${esc(st.name || "")}" data-cid="${esc(String(st.circleId || ""))}" data-lid="${esc(String(st.levelId || ""))}"${
+        hideRow(st) ? ' style="display:none"' : ""}>
         <td class="pt-num blk-idx">${i + 1}</td>
         <td class="pt-name">${esc(st.name || "—")}</td>
         ${cols.map(c => `<td class="${c.cls}">${c.cell(st)}</td>`).join("")}
@@ -9349,7 +9402,7 @@ function blkScreen(opt) {
         <input placeholder="إبحث عن طالب" oninput="window.blkSearch(this.value)">
       </div>
       <span class="muted" id="blkShown" style="font-size:12.5px;margin-inline-start:auto">
-        ${opt.circleHead && BLK.from ? toArabicDigits(studs.filter(st => String(st.circleId || "") === BLK.from).length) : studs.length} طالباً</span>
+        ${(opt.circleHead && BLK.from) || (opt.levelHead && BLK.fromLv) ? toArabicDigits(studs.filter(st => !hideRow(st)).length) : studs.length} طالباً</span>
     </div>
 
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable blk-table">
@@ -9774,7 +9827,9 @@ function adminBulkMove()      { return blkScreen({ title: "نقل الطلاب",
 function adminBulkLevels()    { return blkScreen({ title: "تعديل المستويات المتعدد", action: "تعديل المستوى",
                                   cols: ["curCircle", "curLevel", "toLevel", "program"] }); }
 function adminBulkMoveLevel() { return blkScreen({ title: "نقل وتعديل المستوى", action: "تعديل المستوى",
-                                  cols: ["curCircle", "toCircle", "curLevel", "toLevel", "program"] }); }
+                                  cols: ["curCircle", "toCircle", "curLevel", "toLevel", "program"],
+                                  /* «زرٌّ في الأعلى لأحدّد الكلّ في كلّ خانة» */
+                                  circleHead: true, levelHead: true }); }
 
 function adminMoveStudents() {
   const facs = mvsFacs();
@@ -54811,7 +54866,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261018-2030";
+  var APP_BUILD = "20261018-2120";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
