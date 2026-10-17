@@ -9358,8 +9358,8 @@ function bddEnhance(root) {
         ? window.bplSuraFill(sel) : null;
       Promise.resolve(fill).then(function () {
         const th = sel.closest("th");
-        const head = sel.classList.contains("bpl-hsel") ? (sel.options[0] ? sel.options[0].textContent : "")
-          : (th ? th.textContent : "") ||
+        const head = sel.dataset.head || (sel.classList.contains("bpl-hsel") ? (sel.options[0] ? sel.options[0].textContent : "")
+          : (th ? th.textContent : "")) ||
             ((sel.closest("table") && sel.closest("td"))
               ? ((sel.closest("table").querySelectorAll("thead th")[sel.closest("td").cellIndex] || {}).textContent || "") : "");
         const items = [].map.call(sel.options, o => ({ v: o.value, t: (o.textContent || "").trim(), dis: o.disabled, why: "" }))
@@ -9949,8 +9949,11 @@ function adminBulkPlans() {
   const bplTitle = (((STATE && STATE.user) || {}).role === "mosqueManager") ? "تعديل الخطة الافتراضية" : "تعديل خطط التسميع";
   const C = BPL.cols;
 
+  const BPL_HEADS = { hifzType: "نوع كمية الحفظ", hifzQty: "كمية الحفظ", hifzDir: "اتجاه الحفظ",
+    revType: "نوع كمية المراجعة", revQty: "كمية المراجعة", revDir: "اتجاه المراجعة",
+    hifzSura: "ابتداء الحفظ", revSura: "ابتداء المراجعة" };
   const sel = (id, key, value, opts) =>
-    `<select class="blk-sel" data-k="${key}" onchange="window.bplSet('${jsAttr(id)}','${key}', this.value)">
+    `<select class="blk-sel" data-k="${key}" data-head="${esc(BPL_HEADS[key] || "")}" onchange="window.bplSet('${jsAttr(id)}','${key}', this.value)">
       ${opts.map(o => `<option${o === value ? " selected" : ""}>${esc(o)}</option>`).join("")}
     </select>`;
 
@@ -9961,7 +9964,7 @@ function adminBulkPlans() {
 
   /* الابتداء: السورةُ (تُملأ عند الفتح) والآية */
   const start = (id, sk, ak, sura, ayah) => `<div class="bpl-start">
-      <select class="blk-sel bpl-sura" data-k="${sk}" onfocus="window.bplSuraFill(this)" onmousedown="window.bplSuraFill(this)"
+      <select class="blk-sel bpl-sura" data-k="${sk}" data-head="${esc(BPL_HEADS[sk] || "")}" onfocus="window.bplSuraFill(this)" onmousedown="window.bplSuraFill(this)"
         onchange="window.bplSet('${jsAttr(id)}','${sk}', this.value)">
         <option value="">— لم يُحدَّد —</option>${sura ? `<option selected>${esc(sura)}</option>` : ""}</select>
       <input type="number" min="1" class="bpl-ayah" data-k="${ak}" value="${Number(ayah) || 1}" title="الآية"
@@ -10014,21 +10017,23 @@ function adminBulkPlans() {
 
   /* ---------- رأسُ الجدول: كلُّ عنصرٍ فيه يعمل على الطلاب كلِّهم ---------- */
   const allOn = key => studs.length > 0 && studs.every(st => !!(BPL.edit[String(st.id)] || bplOf(st))[key]);
+  /* الصفُّ الثاني من الرأس: «تحديدُ ما سيُعدَّل» — يُطبَّق على الظاهرين.
+     والصفُّ الأوّل أسماءُ الخانات نصّاً ثابتاً. */
   const hTog = (key, label) => `<button type="button" class="bpl-tog bpl-htog${allOn(key) ? " on" : ""}"
-      title="تفعيل / إلغاء ${esc(label)} للجميع" onclick="window.bplAllTog('${key}', this)">
-      <span class="bpl-knob"></span><b>${esc(label)}</b></button>`;
-  const hSel = (key, label, opts) => `<select class="blk-sel bpl-hsel" title="${esc(label)} — للجميع"
+      title="تفعيل / إلغاء ${esc(label)} للظاهرين" onclick="window.bplAllTog('${key}', this)">
+      <span class="bpl-knob"></span><b>تفعيل</b></button>`;
+  const hSel = (key, label, opts) => `<select class="blk-sel bpl-hsel" data-head="${esc(label)}" title="${esc(label)} — للظاهرين"
       onchange="window.bplAll('${key}', this.value); this.selectedIndex = 0;">
-      <option value="">${esc(label)}</option>${opts.map(o => `<option>${esc(o)}</option>`).join("")}</select>`;
+      <option value="">إختر</option>${opts.map(o => `<option>${esc(o)}</option>`).join("")}</select>`;
   const hStart = (sk, ak, label) => `<div class="bpl-start">
-      <select class="blk-sel bpl-hsel bpl-sura" title="${esc(label)} — للجميع"
+      <select class="blk-sel bpl-hsel bpl-sura" data-head="${esc(label)}" title="${esc(label)} — للظاهرين"
         onfocus="window.bplSuraFill(this)" onmousedown="window.bplSuraFill(this)"
         onchange="window.bplAll('${sk}', this.value); this.selectedIndex = 0;">
-        <option value="">${esc(label)}</option></select>
+        <option value="">إختر السورة</option></select>
       <input type="number" min="1" class="bpl-ayah bpl-hayah" placeholder="آية" title="آيةُ الابتداء — للجميع"
         onchange="if (this.value) { window.bplAll('${ak}', Math.max(1, Number(this.value) || 1)); this.value = ''; }">
     </div>`;
-  const hNum = (key, label) => `<input type="number" min="0" class="bpl-ayah bpl-hayah" placeholder="${esc(label)}"
+  const hNum = (key, label) => `<input type="number" min="0" class="bpl-ayah bpl-hayah bpl-hnum" placeholder="إختر"
       title="${esc(label)} — للجميع" onchange="if (this.value !== '') { window.bplAll('${key}', Math.max(0, Number(this.value) || 0)); this.value = ''; }">`;
 
   return `<div class="page">
@@ -10054,11 +10059,24 @@ function adminBulkPlans() {
     </div>
 
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable blk-table bpl-table">
-      <thead><tr>
-        <th class="blk-idx">#</th>
-        <th class="bpl-nameh"><button type="button" class="bdd-btn" id="bplPickBtn" onclick="window.bplPickOpen(this)"
+      <thead><tr class="bpl-titles">
+        <th class="blk-idx" rowspan="2">#</th>
+        <th class="bpl-nameh" rowspan="2"><button type="button" class="bdd-btn" id="bplPickBtn" onclick="window.bplPickOpen(this)"
           title="اختر الطلاب المعروضين"><span class="bdd-lbl">اسم الطالب (${bplPickCount()})</span>${BDD_CHEV}</button></th>
-        <th>الخطة المنسوبة</th>
+        <th rowspan="2">الخطة المنسوبة</th>
+        ${C.hifz ? `<th class="bpl-h">الحفظ</th><th class="bpl-h">نوع كمية الحفظ</th><th class="bpl-h">كمية الحفظ</th>
+          <th class="bpl-h">اتجاه الحفظ</th><th class="bpl-h">ابتداء الحفظ</th>` : ""}
+        ${C.review ? `<th class="bpl-r">المراجعة</th><th class="bpl-r">نوع كمية المراجعة</th><th class="bpl-r">كمية المراجعة</th>
+          <th class="bpl-r">اتجاه المراجعة</th><th class="bpl-r">ابتداء المراجعة</th>` : ""}
+        ${C.tathbit ? `<th class="bpl-t">التثبيت</th><th class="bpl-t">عدد دروس التثبيت</th>` : ""}
+        ${C.tathbitCum ? `<th class="bpl-t bpl-sysh" rowspan="2">التثبيت التراكمي<small>من الخطة الافتراضية</small></th>` : ""}
+        ${C.tilawah ? `<th class="bpl-l">التلاوة</th>` : ""}
+        ${C.tilawahNext ? `<th class="bpl-l bpl-sysh" rowspan="2">تلاوة الدرس القادم<small>من الخطة الافتراضية</small></th>` : ""}
+        ${C.reviewExtra ? `<th class="bpl-r bpl-sysh" rowspan="2">المراجعة الإضافية<small>من الخطة الافتراضية</small></th>` : ""}
+        ${C.reviewCum ? `<th class="bpl-r bpl-sysh" rowspan="2">المراجعة التراكمية<small>من الخطة الافتراضية</small></th>` : ""}
+      </tr>
+      <!-- «وفي أعلى الجدول تحديدُ ما سيُعدَّل»: صفٌّ ثانٍ يُطبَّق على الطلاب الظاهرين -->
+      <tr class="bpl-ctl">
         ${C.hifz ? `<th class="bpl-h">${hTog("hifzOn", "الحفظ")}</th>
           <th class="bpl-h">${hSel("hifzType", "نوع كمية الحفظ", PLAN_QTY_TYPE)}</th>
           <th class="bpl-h">${hSel("hifzQty", "كمية الحفظ", PLAN_QTY)}</th>
@@ -10071,13 +10089,8 @@ function adminBulkPlans() {
           <th class="bpl-r">${hStart("revSura", "revAyah", "ابتداء المراجعة")}</th>` : ""}
         ${C.tathbit ? `<th class="bpl-t">${hTog("tatOn", "التثبيت")}</th>
           <th class="bpl-t">${hNum("tatCount", "عدد دروس التثبيت")}</th>` : ""}
-        ${C.tathbitCum ? `<th class="bpl-t bpl-sysh">التثبيت التراكمي<small>من الخطة الافتراضية</small></th>` : ""}
-        <!-- «التلاوة»: مفتاحُ «تلاوة الدرس الجديد» (st.plan.tilOn) نفسُه الذي في
-             بطاقة الطالب — ومفتاحُ الرأس يقلبه للظاهرين -->
+        <!-- «التلاوة»: مفتاحُ «تلاوة الدرس الجديد» (st.plan.tilOn) -->
         ${C.tilawah ? `<th class="bpl-l">${hTog("tilOn", "التلاوة")}</th>` : ""}
-        ${C.tilawahNext ? `<th class="bpl-l bpl-sysh">تلاوة الدرس القادم<small>من الخطة الافتراضية</small></th>` : ""}
-        ${C.reviewExtra ? `<th class="bpl-r bpl-sysh">المراجعة الإضافية<small>من الخطة الافتراضية</small></th>` : ""}
-        ${C.reviewCum ? `<th class="bpl-r bpl-sysh">المراجعة التراكمية<small>من الخطة الافتراضية</small></th>` : ""}
       </tr></thead>
       <tbody id="blkBody">${rows}</tbody>
     </table></div></div>
@@ -55151,7 +55164,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-0010";
+  var APP_BUILD = "20261019-0050";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
