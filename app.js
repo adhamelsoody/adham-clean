@@ -9207,6 +9207,121 @@ function blkFilter() {
    المنقولُ إليها قائمةٌ تُطبَّق على الظاهرين كلِّهم. والكتابةُ لا تقع
    إلّا بزرّ «نقل الطلاب» كما كانت — بالطريق نفسه (blkApply).
    ========================================================================= */
+/* =========================================================================
+   القائمةُ المنسدلةُ في رأس الجدول — «خلِّ النافذة التي تُفتح بروفيشنال»
+   -------------------------------------------------------------------------
+   زرٌّ بعنوان الخانة، يفتح لوحةً عائمةً تحته: بحثٌ، وعناصرُ بعدد طلاب كلٍّ
+   وعلامةِ المختار، وما لا يصحّ اختيارُه معطَّلٌ ظاهرٌ. وتُغلق بالنقر خارجها
+   أو Esc أو التمرير. والاختيارُ يمرّ بالدوالّ نفسها (blkFrom · blkToAll ·
+   blkFromLv · blkToAllLv) فلا يتغيّر من السلوك شيء.
+   ========================================================================= */
+const BDD_CHEV = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+const BDD_TICK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+
+function bddSpec(kind) {
+  const studs = cur("students") || [];
+  const cirs = cur("circles") || [];
+  const lvls = DB.levels || [];
+  const cntC = id => studs.filter(st => String(st.circleId || "") === String(id)).length;
+  const cntL = id => studs.filter(st => String(st.levelId || "") === String(id)).length;
+  const nm = (arr, id) => ((arr.find(x => String(x.id) === String(id)) || {}).name) || "";
+  if (kind === "from") return {
+    title: "الحلقة الحالية", head: "الحلقة الحالية (" + toArabicDigits(cirs.length) + ")",
+    cur: BLK.from, curName: nm(cirs, BLK.from), reset: "إلغاء التصفية",
+    items: cirs.map(c => ({ v: String(c.id), t: c.name || "—", n: cntC(c.id) })), pick: window.blkFrom };
+  if (kind === "to") return {
+    title: "انقل الطلاب الظاهرين إلى", head: "تعديل الحلقة إلى (" + toArabicDigits(cirs.length) + ")",
+    items: cirs.map(c => ({ v: String(c.id), t: c.name || "—", n: cntC(c.id), dis: String(c.id) === BLK.from })), pick: window.blkToAll };
+  if (kind === "fromLv") return {
+    title: "المستوى الحالي", head: "المستوى الحالي (" + toArabicDigits(lvls.length) + ")",
+    cur: BLK.fromLv, curName: nm(lvls, BLK.fromLv), reset: "إلغاء التصفية",
+    items: lvls.map(l => ({ v: String(l.id), t: l.name || "—", n: cntL(l.id) })), pick: window.blkFromLv };
+  return {
+    title: "عدّل مستوى الطلاب الظاهرين إلى", head: "تعديل المستوى إلى",
+    items: lvls.map(l => ({ v: String(l.id), t: l.name || "—", n: cntL(l.id), dis: String(l.id) === BLK.fromLv })), pick: window.blkToAllLv };
+}
+
+function bddBtn(id, kind) {
+  const sp = bddSpec(kind);
+  const txt = sp.curName || sp.head;
+  return `<button type="button" class="bdd-btn${sp.curName ? " on" : ""}" id="${id}" data-dd="${kind}"
+      aria-haspopup="listbox" onclick="window.bddOpen(this)"><span class="bdd-lbl">${esc(txt)}</span>${BDD_CHEV}</button>`;
+}
+function bddLabel(id) {
+  const b = document.getElementById(id);
+  if (!b) return;
+  const sp = bddSpec(b.dataset.dd);
+  const l = b.querySelector(".bdd-lbl");
+  if (l) l.textContent = sp.curName || sp.head;
+  b.classList.toggle("on", !!sp.curName);
+}
+
+function bddClose() {
+  const p = document.getElementById("bddPop");
+  if (p) p.remove();
+  document.querySelectorAll(".bdd-btn.open").forEach(b => b.classList.remove("open"));
+  document.removeEventListener("mousedown", bddOutside, true);
+  window.removeEventListener("scroll", bddClose, true);
+  document.removeEventListener("keydown", bddKey, true);
+}
+function bddOutside(e) {
+  const p = document.getElementById("bddPop");
+  if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest(".bdd-btn.open"))) bddClose();
+}
+function bddKey(e) { if (e.key === "Escape") bddClose(); }
+
+window.bddOpen = function (btn) {
+  const was = btn.classList.contains("open");
+  bddClose();
+  if (was) return;
+  const sp = bddSpec(btn.dataset.dd);
+  btn.classList.add("open");
+  const pop = document.createElement("div");
+  pop.id = "bddPop";
+  pop.className = "bdd-pop";
+  pop.setAttribute("role", "listbox");
+  const item = it => `<button type="button" class="bdd-item${it.v === sp.cur ? " on" : ""}" data-v="${esc(it.v)}"
+      data-t="${esc(it.t)}"${it.dis ? " disabled" : ""}>
+      <span class="bdd-tick">${it.v === sp.cur ? BDD_TICK : ""}</span>
+      <span class="bdd-t">${esc(it.t)}</span>
+      ${it.dis ? `<small class="bdd-why">الحالية</small>` : `<span class="bdd-n">${toArabicDigits(it.n)}</span>`}</button>`;
+  pop.innerHTML = `<div class="bdd-head">${esc(sp.title)}</div>
+    ${sp.items.length > 6 ? `<div class="bdd-search">${ic("search", 16)}<input placeholder="ابحث…" oninput="window.bddFind(this.value)"></div>` : ""}
+    <div class="bdd-list">
+      ${sp.reset && sp.cur ? `<button type="button" class="bdd-item bdd-reset" data-v="">${ic("x", 14)}<span class="bdd-t">${esc(sp.reset)}</span></button>` : ""}
+      ${sp.items.length ? sp.items.map(item).join("") : `<div class="bdd-empty">لا عناصر</div>`}
+    </div>`;
+  document.body.appendChild(pop);
+  const r = btn.getBoundingClientRect();
+  const w = Math.max(r.width, 240);
+  pop.style.width = w + "px";
+  pop.style.top = (r.bottom + 6 + window.scrollY) + "px";
+  pop.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8) + window.scrollX) + "px";
+  pop.addEventListener("click", function (e) {
+    const b = e.target.closest && e.target.closest(".bdd-item");
+    if (!b || b.disabled) return;
+    const v = b.dataset.v || "";
+    bddClose();
+    if (typeof sp.pick === "function") sp.pick(v);
+  });
+  setTimeout(() => {
+    document.addEventListener("mousedown", bddOutside, true);
+    window.addEventListener("scroll", function sc(e) {
+      if (pop.contains(e.target)) return;
+      window.removeEventListener("scroll", sc, true); bddClose();
+    }, true);
+    document.addEventListener("keydown", bddKey, true);
+    const q = pop.querySelector(".bdd-search input");
+    if (q) q.focus();
+  }, 0);
+};
+window.bddFind = function (q) {
+  const t = String(q || "").trim();
+  document.querySelectorAll("#bddPop .bdd-item:not(.bdd-reset)").forEach(b => {
+    b.style.display = !t || String(b.dataset.t || "").indexOf(t) > -1 ? "" : "none";
+  });
+};
+
 window.blkFrom = function (cid) {
   BLK.from = String(cid || "");
   /* الاختياراتُ السابقة تُرفع (الحلقةُ والمستوى): لا يُعدَّل طالبٌ لا يظهر في القائمة */
@@ -9214,11 +9329,7 @@ window.blkFrom = function (cid) {
   document.querySelectorAll("#blkBody select[data-k=circle], #blkBody select[data-k=level]").forEach(s => { s.value = ""; });
   const n = blkFilter();
   blkSyncBtn();
-  const to = document.getElementById("blkToAll");
-  if (to) {
-    [].forEach.call(to.options, o => { o.disabled = !!o.value && o.value === BLK.from; });
-    to.value = "";
-  }
+  bddLabel("blkFromSel");
   if (BLK.from && !n) showToast("لا طلابَ في هذه الحلقة", "warn");
 };
 /* «نقل وتعديل المستوى»: المستوى الحاليُّ قائمةٌ تصفّي، و«تعديل المستوى إلى»
@@ -9229,11 +9340,7 @@ window.blkFromLv = function (lid) {
   document.querySelectorAll("#blkBody select[data-k=circle], #blkBody select[data-k=level]").forEach(s => { s.value = ""; });
   const n = blkFilter();
   blkSyncBtn();
-  const to = document.getElementById("blkToAllLv");
-  if (to) {
-    [].forEach.call(to.options, o => { o.disabled = !!o.value && o.value === BLK.fromLv; });
-    to.value = "";
-  }
+  bddLabel("blkFromLvSel");
   if (BLK.fromLv && !n) showToast("لا طلابَ في هذا المستوى", "warn");
 };
 window.blkToAllLv = function (lid) {
@@ -9352,32 +9459,18 @@ function blkScreen(opt) {
   };
   const cols = opt.cols.map(k => COL[k]);
 
-  /* رأسا «نقل الطلاب»: قائمةٌ للحلقة الحالية وأخرى للمنقول إليها */
+  /* رؤوسُ القوائم: زرٌّ يفتح قائمةً منسدلةً مصمَّمة (bddOpen) — لا قائمةَ
+     المتصفّح الرماديّة. «نقل الطلاب»: الحلقتان، و«نقل وتعديل المستوى»:
+     الحلقتان والمستويان. */
   if (opt.circleHead) {
     if (BLK.from && !cirs.some(c => String(c.id) === BLK.from)) BLK.from = "";
-    const cnt = id => studs.filter(st => String(st.circleId || "") === String(id)).length;
-    COL.curCircle.head = `<select class="blk-sel blk-hsel" id="blkFromSel" onchange="window.blkFrom(this.value)" title="اختر الحلقة الحالية">
-        <option value="">الحلقة الحالية — الكلّ (${toArabicDigits(cirs.length)})</option>
-        ${cirs.map(c => `<option value="${esc(String(c.id))}"${String(c.id) === BLK.from ? " selected" : ""}>${esc(c.name || "—")} (${toArabicDigits(cnt(c.id))})</option>`).join("")}
-      </select>`;
-    COL.toCircle.head = `<select class="blk-sel blk-hsel" id="blkToAll" onchange="window.blkToAll(this.value)" title="الحلقة التي يُنقل إليها الطلاب الظاهرون">
-        <option value="">تعديل الحلقة إلى — للجميع (${toArabicDigits(cirs.length)})</option>
-        ${cirs.map(c => `<option value="${esc(String(c.id))}"${String(c.id) === BLK.from ? " disabled" : ""}>${esc(c.name || "—")}</option>`).join("")}
-      </select>`;
+    COL.curCircle.head = bddBtn("blkFromSel", "from");
+    COL.toCircle.head  = bddBtn("blkToAll", "to");
   }
-
-  /* ورأسا المستوى في «نقل وتعديل المستوى» */
   if (opt.levelHead) {
     if (BLK.fromLv && !lvls.some(l => String(l.id) === BLK.fromLv)) BLK.fromLv = "";
-    const cntL = id => studs.filter(st => String(st.levelId || "") === String(id)).length;
-    COL.curLevel.head = `<select class="blk-sel blk-hsel" id="blkFromLvSel" onchange="window.blkFromLv(this.value)" title="اختر المستوى الحالي">
-        <option value="">المستوى الحالي — الكلّ (${toArabicDigits(lvls.length)})</option>
-        ${lvls.map(l => `<option value="${esc(String(l.id))}"${String(l.id) === BLK.fromLv ? " selected" : ""}>${esc(l.name || "—")} (${toArabicDigits(cntL(l.id))})</option>`).join("")}
-      </select>`;
-    COL.toLevel.head = `<select class="blk-sel blk-hsel" id="blkToAllLv" onchange="window.blkToAllLv(this.value)" title="المستوى الذي يُعدَّل إليه الطلاب الظاهرون">
-        <option value="">تعديل المستوى إلى — للجميع</option>
-        ${lvls.map(l => `<option value="${esc(String(l.id))}"${String(l.id) === BLK.fromLv ? " disabled" : ""}>${esc(l.name || "—")}</option>`).join("")}
-      </select>`;
+    COL.curLevel.head = bddBtn("blkFromLvSel", "fromLv");
+    COL.toLevel.head  = bddBtn("blkToAllLv", "toLv");
   }
   const hideRow = st => (opt.circleHead && BLK.from && String(st.circleId || "") !== BLK.from) ||
                         (opt.levelHead && BLK.fromLv && String(st.levelId || "") !== BLK.fromLv);
@@ -54866,7 +54959,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261018-2120";
+  var APP_BUILD = "20261018-2200";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
