@@ -13736,3 +13736,27 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
 }
 .blk-table th .blk-hsel option { color: var(--text-main, #1d2b2c); background: var(--surface, #fff); }
 .blk-table th .blk-hsel:hover { border-color: #fff; background: rgba(255,255,255,.08); }
+
+/* =========================================================================
+   زرُّ «الإعدادات» في صفحة الطلاب — يفتح لوحة الخطة الافتراضية كاملة،
+   وفيها قسما «درجة الالتزام وتقييم الأداء» و«ألوان الأخطاء»
+   ========================================================================= */
+.pt-set {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 11px 16px; border: 1px solid var(--border-soft, #dfe7e7); border-radius: 10px;
+  background: var(--surface, #fff); color: var(--brand-dark, #2c4f50);
+  font-family: var(--ff); font-size: 14px; font-weight: 700; margin-inline-start: auto;
+  transition: background .16s ease, border-color .16s ease;
+}
+.pt-set:hover { background: var(--bg-soft, #f2f7f7); border-color: var(--brand-main, #1a999d); }
+.pt-set + .pt-add { margin-inline-start: 0; }
+.pl-group.g-colors { border-inline-start-color: #c62f2f; }
+.pl-group .ded-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+.pl-group .ded-field { display: flex; flex-direction: column; gap: 8px; }
+.pl-group .ded-field label { font-weight: 700; font-size: 14px; }
+.pl-group .ded-field select {
+  height: 46px; border: 1px solid var(--border-soft, #e2e8e8); border-radius: 10px;
+  padding: 0 12px; font: inherit; font-weight: 700; background: var(--surface); color: inherit;
+}
+.pl-colors > .card { margin-top: 10px !important; box-shadow: none; border: 1px solid var(--border-soft, #e6ecec); }
+@media (max-width: 760px) { .pl-group .ded-row { grid-template-columns: 1fr; } }

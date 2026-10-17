@@ -2772,6 +2772,10 @@ function adminStudents() {
        وكان يزاحم الجدولَ في أعلى الشاشة كلَّ مرة. */
     overview: "",
     toolbar: "add", addLabel: "إضافة طالب", addAction: "modal-student",
+    /* «صفحةُ الخطة الافتراضية كاملةً في صفحة الطالب على شكل زرّ إعدادات»:
+       اللوحةُ نفسُها (sysPrgSetup) لمن يملك ضبطها */
+    extraBtn: (typeof canPlanSetup === "function" && canPlanSetup())
+      ? `<button type="button" class="pt-set" onclick="window.sysPrgSetup('sys_default')" title="الخطة الافتراضية">${ic("settings", 18)}<span>الإعدادات</span></button>` : "",
     searchHint: "إبحث عن طالب", actionsPanel: true, rowPanel: "panel-student",
     empty: "أضف أول طالب من زر الإضافة، بعد إضافة المسجد والحلقة.",
     cols: [
@@ -4518,6 +4522,7 @@ function personToolbarAdd(opt, activeCount) {
       ${tab("all", "الكل", nAll)}
     </div>
     <div class="fac-searchbox">${SR}<input placeholder="${esc(opt.searchHint || "ابحث..")}" oninput="window.ptSearch(this.value)"></div>
+    ${opt.extraBtn || ""}
     <button class="pt-add" data-action="${opt.addAction || ""}">${esc(opt.addLabel || "إضافة")}${PL}</button>
   </div>`;
 }
@@ -13139,15 +13144,33 @@ window.sysPrgSetup = function (pid) {
       </div>
       <div class="panel-body pl-body">
         ${groups}
+        <!-- «أريد إضافة درجة الالتزام فيها»: القسمُ نفسُه بشكل بطاقة البرنامج —
+             درجةُ الالتزام تُحفظ مع الخطة (plCommit ← plSave، بطبقة المسجد
+             لمديره)، وتقييمُ الأداء أزرارُ آلية الخصم القائمة (dedModeSet). -->
         <section class="pl-group g-commit">
           <div class="pl-ghead">
-            <span class="pl-gico">${ic("check", 18)}</span>
-            <div><h3>حالة الالتزام</h3><p>متى يُطالَب الطالب بما فاته</p></div>
+            <span class="pl-gico">${ic("target", 18)}</span>
+            <div><h3>درجة الالتزام وتقييم الأداء</h3><p>متى يُطالَب الطالب بما فاته، وكيف يُخصم من درجته</p></div>
           </div>
-          <div class="pl-fields"><div class="pl-f pl-wide">
-            <select id="plCommit" onchange="window.plDirty()">
-              ${SYS_COMMIT.map(x => `<option value="${esc(x.k)}"${x.k === c.commit ? " selected" : ""}>${esc(x.h)}</option>`).join("")}
-            </select></div></div>
+          <div class="ded-row">
+            <div class="ded-field">
+              <label for="plCommit">درجة الالتزام</label>
+              <select id="plCommit" onchange="window.plDirty()">
+                ${SYS_COMMIT.map(x => `<option value="${esc(x.k)}"${x.k === c.commit ? " selected" : ""}>${esc(x.h)}</option>`).join("")}
+              </select>
+            </div>
+            <div class="ded-field" id="plDedBox">${plDedSeg(pid)}</div>
+          </div>
+        </section>
+
+        <!-- «وأريد إضافة ألوان الأخطاء»: لوحةُ ألوان المصحف نفسُها (musCfgPanel)
+             — اسمُ كلّ خطأ ولونُه ووزنُه — بزرّ حفظها هي. -->
+        <section class="pl-group g-colors">
+          <div class="pl-ghead">
+            <span class="pl-gico">${ic("pen", 18)}</span>
+            <div><h3>ألوان الأخطاء</h3><p>اسمُ كلّ خطأ ولونُه في المصحف ووزنُه في خصم درجة التسميع</p></div>
+          </div>
+          <div class="pl-colors">${musCfgPanel()}</div>
         </section>
       </div>
       <div class="pl-bar" id="plBar">
@@ -14097,7 +14120,28 @@ function dedFindProgram(pid) {
 }
 
 /* إعادة رسم صفحة البرنامج مع حفظ موضع التمرير */
+/* زرّا «تقييم الأداء» وملخّصُه داخل لوحة الخطة الافتراضية */
+function plDedSeg(pid) {
+  const p2 = dedFindProgram(pid);
+  if (!p2 || String(pid) === SARD_ID) return "";
+  const can = canDedSetup();
+  const c = dedCfgOf(pid);
+  const j = jsAttr(pid);
+  return `<label>تقييم الأداء</label>
+    <div class="ded-seg" role="group" aria-label="تقييم الأداء">
+      <button type="button" class="ded-segb${c.mode === "default" ? " on" : ""}"${can ? "" : " disabled"}
+        onclick="window.dedModeSet('${j}', 'default')">الافتراضي</button>
+      <button type="button" class="ded-segb${c.mode === "custom" ? " on" : ""}"${can ? "" : " disabled"}
+        onclick="window.dedModeSet('${j}', 'custom')">تخصيص</button>
+    </div>
+    <div class="ded-note">${c.mode === "custom" ? "آليةُ خصمٍ مخصَّصة — اضغط «تخصيص» لتعديلها" : "يُطبَّق الخصم الافتراضي للنظام على جميع الأركان"}</div>`;
+}
+
 function dedRefreshView(pid) {
+  /* داخل لوحة الخطة الافتراضية: يُعاد رسمُ القسم وحدَه — إعادةُ رسم
+     صفحة البرنامج كانت ستستبدل اللوحةَ وتُضيع ما لم يُحفظ فيها */
+  const box = document.getElementById("plDedBox");
+  if (box && document.querySelector("#panelRoot .pl-page")) { box.innerHTML = plDedSeg(pid); return; }
   const body = document.querySelector("#panelRoot .sp-body");
   const top = body ? body.scrollTop : 0;
   if (typeof window.lvlView === "function") window.lvlView(pid);
@@ -54736,7 +54780,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261018-0240";
+  var APP_BUILD = "20261018-1910";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
