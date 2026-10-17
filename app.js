@@ -9221,6 +9221,8 @@ const BDD_CHEV = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" st
 const BDD_TICK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
 
 function bddSpec(kind) {
+  /* قوائمُ «نقل وتعديل المستوى» — صفوفُها مستوياتٌ لا طلاب */
+  if (kind === "lvProg" || kind === "lvTo" || kind === "lvSt") return lvmSpec(kind);
   const studs = cur("students") || [];
   const cirs = cur("circles") || [];
   const lvls = DB.levels || [];
@@ -9359,7 +9361,8 @@ function bddEnhance(root) {
         ? window.bplSuraFill(sel) : null;
       Promise.resolve(fill).then(function () {
         const th = sel.closest("th");
-        const head = sel.classList.contains("bpl-hsel") ? (sel.options[0] ? sel.options[0].textContent : "")
+        /* data-head: عنوانُ الخانة حين يكون الرأسُ صفَّين فلا يطابق موضعُ العمود */
+        const head = sel.dataset.head ? sel.dataset.head : sel.classList.contains("bpl-hsel") ? (sel.options[0] ? sel.options[0].textContent : "")
           : (th ? th.textContent : "") ||
             ((sel.closest("table") && sel.closest("td"))
               ? ((sel.closest("table").querySelectorAll("thead th")[sel.closest("td").cellIndex] || {}).textContent || "") : "");
@@ -10102,12 +10105,236 @@ function adminBulkMove()      { return blkScreen({ title: "نقل الطلاب",
                                   cols: ["curCircle", "toCircle"], circleHead: true }); }
 function adminBulkLevels()    { return blkScreen({ title: "تعديل المستويات المتعدد", action: "تعديل المستوى",
                                   cols: ["curCircle", "curLevel", "toLevel", "program"] }); }
-function adminBulkMoveLevel() { return blkScreen({ title: "نقل وتعديل المستوى", action: "تعديل المستوى",
-                                  cols: ["curCircle", "toCircle", "curLevel", "toLevel", "program"],
-                                  /* «زرٌّ في الأعلى لأحدّد الكلّ في كلّ خانة» */
-                                  circleHead: true, levelHead: true,
-                                  /* أسماءُ الخانات صفّاً، وتحتها صفُّ التحديد */
-                                  twoRow: true }); }
+/* «نقل وتعديل المستوى هي تعديلُ ونقلُ المستويات وليس الطلاب» — فصفوفُه
+   المستوياتُ نفسُها (lvmScreen). وخياراتُ blkScreen للطلاب باقيةٌ كما هي. */
+function adminBulkMoveLevel() { return lvmScreen(); }
+
+/* =========================================================================
+   «نقل وتعديل المستوى» — المستوياتُ لا الطلاب
+   -------------------------------------------------------------------------
+   صفٌّ لكلّ مستوى: برنامجُه الحاليّ وقائمةُ «نقل إلى البرنامج»، وحالتُه
+   وقائمةُ «تعديل الحالة إلى»، وعددُ طلابه، وزرُّ تعديلٍ يفتح نموذجَ
+   المستوى القائم (lvxForm) بكلّ حقوله. ورأسُ الجدول صفّان كما طُلب:
+   أسماءُ الخانات، وتحتها صفُّ التحديد («إختر») يطبَّق على الظاهرين.
+
+   لا يُكتب شيءٌ إلّا بزرّ «تعديل المستويات». والمستوى الذي عليه طلابٌ
+   أو خططٌ لا يُنقل إلى برنامجٍ آخر: خططُهم تحمل برنامجَه، ونقلُه وحده
+   يقطع ارتباطَها، وتغييرُها تلقائياً ممنوع («بياناتُ الارتباط لا تتغيّر
+   تلقائياً»). فيُتخطّى ويُذكر في الإشعار.
+   ========================================================================= */
+const LVM = { prog: "", q: "", to: {}, st: {} };
+const LVM_ST = ["فعال", "موقوف"];
+
+function lvmProgs() { return cur("programs") || []; }
+function lvmLevels() {
+  const pn = id => ((lvmProgs().find(p => String(p.id) === String(id)) || {}).name) || "";
+  return (cur("levels") || []).slice().sort((a, b) =>
+    pn(a.programId).localeCompare(pn(b.programId), "ar") ||
+    (Number(a.order) || 0) - (Number(b.order) || 0));
+}
+/* الطلابُ المرتبطون: بالاسم داخل البرنامج (lvxStudents) أو بمعرّف المستوى */
+function lvmLinked(l) {
+  const s = new Set();
+  (cur("plans") || []).forEach(p => {
+    const byId = String(p.levelId || "") === String(l.id);
+    const byName = String(p.programId) === String(l.programId) && String(p.level) === String(l.name);
+    if ((byId || byName) && p.studentId) s.add(String(p.studentId));
+  });
+  (cur("students") || []).forEach(st => { if (String(st.levelId || "") === String(l.id)) s.add(String(st.id)); });
+  return s.size;
+}
+
+function lvmSpec(kind) {
+  const progs = lvmProgs(), lv = lvmLevels();
+  const cnt = id => lv.filter(l => String(l.programId) === String(id)).length;
+  const nm = id => ((progs.find(p => String(p.id) === String(id)) || {}).name) || "";
+  if (kind === "lvProg") return {
+    title: "البرنامج الحالي", head: "البرنامج الحالي",
+    cur: LVM.prog, curName: nm(LVM.prog), reset: "إلغاء التصفية",
+    items: progs.map(p => ({ v: String(p.id), t: p.name || "—", n: cnt(p.id) })), pick: window.lvmFrom };
+  if (kind === "lvTo") return {
+    title: "انقل المستويات الظاهرة إلى", head: "نقل إلى البرنامج",
+    items: progs.map(p => ({ v: String(p.id), t: p.name || "—", n: cnt(p.id), dis: String(p.id) === LVM.prog })),
+    pick: window.lvmToAll };
+  return {
+    title: "عدّل حالة المستويات الظاهرة إلى", head: "تعديل الحالة إلى",
+    items: LVM_ST.map(t => ({ v: t, t: t, n: lv.filter(l => (l.status || "فعال") === t).length })),
+    pick: window.lvmStAll };
+}
+
+function lvmCount() {
+  const ids = {};
+  Object.keys(LVM.to).forEach(k => ids[k] = 1);
+  Object.keys(LVM.st).forEach(k => ids[k] = 1);
+  return Object.keys(ids).length;
+}
+function lvmSyncBtn() {
+  const b = document.getElementById("lvmApply");
+  if (!b) return;
+  const n = lvmCount();
+  b.disabled = !n;
+  b.textContent = "تعديل المستويات" + (n ? " (" + toArabicDigits(n) + ")" : "");
+}
+function lvmFilter() {
+  let n = 0;
+  document.querySelectorAll("#lvmBody tr[data-name]").forEach(tr => {
+    const ok = (!LVM.q || (tr.dataset.name || "").indexOf(LVM.q) > -1) &&
+               (!LVM.prog || String(tr.dataset.pid || "") === LVM.prog);
+    tr.style.display = ok ? "" : "none";
+    if (ok) n++;
+  });
+  const o = document.getElementById("lvmShown");
+  if (o) o.textContent = toArabicDigits(n) + " مستوى";
+  return n;
+}
+
+window.lvmSearch = function (q) { LVM.q = String(q || "").trim(); lvmFilter(); };
+window.lvmPick = function (kind, id, v) {
+  const m = kind === "to" ? LVM.to : LVM.st;
+  if (v) m[String(id)] = String(v); else delete m[String(id)];
+  lvmSyncBtn();
+};
+window.lvmFrom = function (pid) {
+  LVM.prog = String(pid || "");
+  /* لا يُعدَّل مستوىً لا يظهر في القائمة */
+  LVM.to = {}; LVM.st = {};
+  document.querySelectorAll("#lvmBody select.blk-sel").forEach(s => { s.value = ""; });
+  const n = lvmFilter();
+  lvmSyncBtn(); bddLabel("lvmFromSel"); bddSyncAll();
+  if (LVM.prog && !n) showToast("لا مستويات في هذا البرنامج", "warn");
+};
+function lvmSetAll(k, v, same) {
+  let n = 0;
+  document.querySelectorAll("#lvmBody tr[data-name]").forEach(tr => {
+    if (tr.style.display === "none") return;
+    const sel = tr.querySelector('select[data-k="' + k + '"]');
+    if (!sel || same(tr)) return;
+    sel.value = v;
+    (k === "to" ? LVM.to : LVM.st)[String(tr.dataset.lid)] = v;
+    n++;
+  });
+  lvmSyncBtn(); bddSyncAll();
+  return n;
+}
+window.lvmToAll = function (pid) {
+  const v = String(pid || ""); if (!v) return;
+  const n = lvmSetAll("to", v, tr => String(tr.dataset.pid || "") === v);
+  showToast(n ? "اختير البرنامج لـ" + toArabicDigits(n) + " مستوى — اضغط «تعديل المستويات» للتنفيذ"
+              : "لا مستوى يُنقل — كلُّها في هذا البرنامج", n ? "success" : "warn");
+};
+window.lvmStAll = function (t) {
+  const v = String(t || ""); if (!v) return;
+  const n = lvmSetAll("st", v, tr => String(tr.dataset.st || "") === v);
+  showToast(n ? "اختيرت الحالة لـ" + toArabicDigits(n) + " مستوى — اضغط «تعديل المستويات» للتنفيذ"
+              : "لا مستوى يُعدَّل — كلُّها على هذه الحالة", n ? "success" : "warn");
+};
+
+/* زرُّ التعديل: نموذجُ المستوى القائم نفسُه (الاسم · الترتيب · الحدود · الانتقال) */
+window.lvmEdit = function (id) {
+  const l = (DB.levels || []).find(x => String(x.id) === String(id));
+  if (!l) return;
+  LVX.prog = String(l.programId || "");
+  window.lvxForm(id);
+};
+
+window.lvmApply = function () {
+  const progs = lvmProgs();
+  const ids = Object.keys(Object.assign({}, LVM.to, LVM.st));
+  let done = 0, linked = 0, clash = 0;
+  ids.forEach(id => {
+    const l = (DB.levels || []).find(x => String(x.id) === String(id));
+    if (!l) return;
+    let ch = false;
+    const to = LVM.to[id];
+    if (to && to !== String(l.programId)) {
+      if (lvmLinked(l)) linked++;
+      else if ((DB.levels || []).some(x => String(x.programId) === to && String(x.name) === String(l.name))) clash++;
+      else {
+        const pr = progs.find(p => String(p.id) === to);
+        l.programId = to;
+        l.program = pr ? (pr.name || "") : "";
+        l.unit = (pr && pr.unit) || l.unit || "وجه";
+        /* آخرَ مستويات البرنامج المنقول إليه */
+        l.order = (DB.levels || []).filter(x => String(x.programId) === to && x !== l).length + 1;
+        ch = true;
+      }
+    }
+    const st = LVM.st[id];
+    if (st && st !== (l.status || "فعال")) { l.status = st; ch = true; }
+    if (ch) { persistSet("levels", l); done++; }
+  });
+  LVM.to = {}; LVM.st = {};
+  const skip = (linked ? " · تُخطّي " + toArabicDigits(linked) + " لارتباطه بطلاب" : "") +
+               (clash ? " · تُخطّي " + toArabicDigits(clash) + " لوجود مستوى بالاسم نفسه في البرنامج" : "");
+  showToast("عُدّل " + toArabicDigits(done) + " مستوى" + skip, done ? "success" : "warn");
+  mount();
+};
+
+function lvmScreen() {
+  const progs = lvmProgs(), lv = lvmLevels();
+  if (LVM.prog && !progs.some(p => String(p.id) === LVM.prog)) LVM.prog = "";
+  const pName = id => ((progs.find(p => String(p.id) === String(id)) || {}).name) || "";
+  const hide = l => LVM.prog && String(l.programId) !== LVM.prog;
+  const ok = l => (!LVM.q || String(l.name || "").indexOf(LVM.q) > -1) && !hide(l);
+
+  const rows = lv.length ? lv.map((l, i) => {
+    const id = String(l.id), stNow = l.status || "فعال", n = lvmLinked(l);
+    return `<tr data-name="${esc(l.name || "")}" data-lid="${esc(id)}" data-pid="${esc(String(l.programId || ""))}" data-st="${esc(stNow)}"${
+        ok(l) ? "" : ' style="display:none"'}>
+      <td class="pt-num blk-idx">${toArabicDigits(i + 1)}</td>
+      <td class="pt-name">${esc(l.name || "—")}</td>
+      <td class="blk-now"><span class="${pName(l.programId) ? "blk-val" : "pt-muted"}">${esc(pName(l.programId) || "بلا برنامج")}</span></td>
+      <td class="blk-to"><select class="blk-sel" data-head="نقل إلى البرنامج" data-k="to" onchange="window.lvmPick('to','${jsAttr(id)}',this.value)">
+        <option value="">إختر</option>
+        ${progs.map(p => `<option value="${esc(String(p.id))}"${LVM.to[id] === String(p.id) ? " selected" : ""}${
+          String(p.id) === String(l.programId) ? " disabled" : ""}>${esc(p.name || "—")}</option>`).join("")}</select></td>
+      <td class="blk-now"><span class="blk-val">${esc(stNow)}</span></td>
+      <td class="blk-to"><select class="blk-sel" data-head="تعديل الحالة إلى" data-k="st" onchange="window.lvmPick('st','${jsAttr(id)}',this.value)">
+        <option value="">إختر</option>
+        ${LVM_ST.map(t => `<option value="${t}"${LVM.st[id] === t ? " selected" : ""}${t === stNow ? " disabled" : ""}>${t}</option>`).join("")}</select></td>
+      <td class="pt-num">${n ? toArabicDigits(n) : '<span class="pt-muted">٠</span>'}</td>
+      <td><button type="button" class="btn btn-ghost btn-sm" onclick="window.lvmEdit('${jsAttr(id)}')">${ic("edit", 14)} تعديل</button></td>
+    </tr>`;
+  }).join("")
+    : `<tr><td colspan="8" class="pt-muted" style="text-align:center;padding:22px">لا مستويات في نطاقك.</td></tr>`;
+
+  const n = lvmCount();
+  return `<div class="page">
+    ${pageHead("نقل وتعديل المستوى", "", backArrow())}
+    <div class="blk-note">${ic("info", 15)} المستوى المرتبط بطلاب لا يُنقل إلى برنامج آخر — انقل طلابه أولاً</div>
+
+    <div class="fac-toolbar" style="margin-bottom:12px">
+      <div class="fac-searchbox">
+        <input placeholder="إبحث عن مستوى" value="${esc(LVM.q)}" oninput="window.lvmSearch(this.value)">
+      </div>
+      <span class="muted" id="lvmShown" style="font-size:12.5px;margin-inline-start:auto">${toArabicDigits(lv.filter(ok).length)} مستوى</span>
+    </div>
+
+    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable blk-table">
+      <thead><tr class="blk-titles">
+        <th class="blk-idx" rowspan="2">#</th>
+        <th rowspan="2">اسم المستوى (${toArabicDigits(lv.length)})</th>
+        <th class="blk-now">البرنامج الحالي (${toArabicDigits(progs.length)})</th>
+        <th class="blk-to">نقل إلى البرنامج</th>
+        <th class="blk-now" rowspan="2">الحالة الحالية</th>
+        <th class="blk-to">تعديل الحالة إلى</th>
+        <th rowspan="2">الطلاب</th>
+        <th rowspan="2"></th>
+      </tr>
+      <tr class="blk-ctl">
+        <th class="blk-now">${bddBtn("lvmFromSel", "lvProg", "إختر")}</th>
+        <th class="blk-to">${bddBtn("lvmToAll", "lvTo", "إختر")}</th>
+        <th class="blk-to">${bddBtn("lvmStAll", "lvSt", "إختر")}</th>
+      </tr></thead>
+      <tbody id="lvmBody">${rows}</tbody>
+    </table></div></div>
+
+    <div class="blk-foot">
+      <button class="btn btn-primary blk-apply" id="lvmApply"
+        onclick="window.lvmApply()"${n ? "" : " disabled"}>تعديل المستويات${n ? " (" + toArabicDigits(n) + ")" : ""}</button>
+    </div>
+  </div>`;
+}
 
 function adminMoveStudents() {
   const facs = mvsFacs();
@@ -55162,7 +55389,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-0130";
+  var APP_BUILD = "20261019-0215";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
