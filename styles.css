@@ -13832,3 +13832,7 @@ th .bdd-btn.bdd-row.bdd-hrow {
 th .bdd-btn.bdd-row.bdd-hrow svg { color: #fff; }
 th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-color: #fff; }
 .bpl-start .bdd-btn.bdd-row { min-width: 130px; }
+
+/* قسمُ «التلاوة» في بطاقة الطالب وبطاقة المعلّم — مستقلٌّ عن الحفظ بلونه */
+.sp-card.sp-til { border-inline-start: 4px solid #5a3d8f; }
+.sp-ghead.g-til > svg:first-child { background: #5a3d8f; }

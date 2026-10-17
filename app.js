@@ -12435,16 +12435,17 @@ const SYS_DIRS_REV  = ["من الفاتحة", "من الناس", "تخصيص"];
 const SYS_PLAN_MAP = [
   {
     g: "hifz", h: "الحفظ", icon: "book", tone: "g-hifz",
-    d: "الركن الأساسي — تتفرّع منه ثلاثة أركان مرتبطة",
+    d: "الركن الأساسي — يتفرّع منه ركنا التثبيت",
     main: { k: "hifz", base: "حفظ", fields: ["qtyType", "qty", "dir", "start"] },
     kidsLabel: "أركان متفرّعة من الحفظ",
+    /* «في خانة الحفظ بياناتُ الحفظ فقط، والتلاوةُ للتلاوة فقط»: «تلاوة الدرس
+       القادم» انتقلت إلى قسم التلاوة أدناه — بمفتاحها نفسه (tilawahNext)
+       وحقولها، فلا يتغيّر المحفوظُ ولا المولّد. */
     kids: [
       { k: "tathbit",     base: "تثبيت",
         fields: ["lessons", "dir", "start"] },
       { k: "tathbitCum",  base: "تثبيت تراكمي",       off: true,
-        fields: ["lessons", "dir", "start"] },
-      { k: "tilawahNext", base: "تلاوة الدرس القادم", off: true,
-        fields: ["qtyType", "qty", "dir", "start"] }
+        fields: ["lessons", "dir", "start"] }
     ]
   },
   {
@@ -12461,9 +12462,13 @@ const SYS_PLAN_MAP = [
   },
   {
     g: "tilawah", h: "التلاوة", icon: "mic", tone: "g-til",
-    d: "التلاوة الجهرية للمقروء",
+    d: "التلاوة الجهرية للمقروء، وتلاوة الدرس القادم",
     main: { k: "tilawah", base: "تلاوة", fields: ["qtyType", "qtyNum", "dir", "start"] },
-    kidsLabel: "", kids: []
+    kidsLabel: "",
+    kids: [
+      { k: "tilawahNext", base: "تلاوة الدرس القادم", off: true,
+        fields: ["qtyType", "qty", "dir", "start"] }
+    ]
   }
 ];
 
@@ -32447,7 +32452,6 @@ function tstuPlanBox(st) {
             <button type="button" onclick="window.spNum('spTatCount', -1)">−</button>
           </div></div>
       </div>
-      <div class="sp-kidrow" style="margin-top:10px">${spTilToggle(pl.tilOn)}</div>
     </section>
 
     <section class="sp-card sp-rev${pl.revOn ? "" : " sp-off"}">
@@ -32467,6 +32471,15 @@ function tstuPlanBox(st) {
       </div>
       ${startRow("spRev", (posR && posR.sura) || sp.revSura,
                  (posR && posR.ayah) || sp.revAyah, "spRevDir", pl.revDir)}
+    </section>
+
+    <!-- التلاوةُ في بطاقتها هي — لا داخل بطاقة التثبيت -->
+    <section class="sp-card sp-til">
+      <div class="sp-plrow">
+        <span class="sp-pldot"></span>
+        <span class="sp-plname"><b>التلاوة</b></span>
+      </div>
+      <div class="sp-kidrow" style="margin-top:6px">${spTilToggle(pl.tilOn)}</div>
     </section>
   </div>`;
 }
@@ -47499,7 +47512,6 @@ function panelStudent(id, keepDraft) {
           <button type="button" onclick="window.spNum('spTatCount', -1)">−</button>
         </div>
         <span class="muted" style="font-size:12.5px">دروس</span>
-        ${spTilToggle(pl.tilOn)}
       </div>
     </section>
 
@@ -47520,6 +47532,12 @@ function panelStudent(id, keepDraft) {
         <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("spRevDir", pl.revDir, PLAN_DIR_REV)}</div>
       </div>
       ${startRow("spRev", (spRevPos && spRevPos.sura) || (s.plan || {}).revSura, (spRevPos && spRevPos.ayah) || (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
+    </section>
+
+    <!-- التلاوةُ في قسمها هي: «لا تلاوةَ في خانة الحفظ ولا العكس» -->
+    <div class="sp-ghead sp-wide2 g-til">${ic("mic", 17)}<h3>التلاوة</h3></div>
+    <section class="sp-card sp-wide2 sp-til">
+      <div class="sp-kidrow">${spTilToggle(pl.tilOn)}</div>
     </section>
 
 `;
@@ -55043,7 +55061,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261018-2240";
+  var APP_BUILD = "20261018-2330";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
