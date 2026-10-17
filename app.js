@@ -9194,8 +9194,10 @@ function blkFilter() {
     const okC = !BLK.from || !document.getElementById("blkFromSel") || String(tr.dataset.cid || "") === BLK.from;
     /* والمستوى الحاليُّ كذلك — في شاشةٍ لها رأسُه («نقل وتعديل المستوى») */
     const okL = !BLK.fromLv || !document.getElementById("blkFromLvSel") || String(tr.dataset.lid || "") === BLK.fromLv;
-    tr.style.display = okQ && okC && okL ? "" : "none";
-    if (okQ && okC && okL) n++;
+    /* والطلابُ المختارون من رأس «اسم الطالب» في «تعديل الخطة الافتراضية» */
+    const okP = !BPL.pick || !document.getElementById("bplPickBtn") || !!BPL.pick[String(tr.dataset.sid || "")];
+    tr.style.display = okQ && okC && okL && okP ? "" : "none";
+    if (okQ && okC && okL && okP) n++;
   });
   const out = document.getElementById("blkShown");
   if (out) out.textContent = toArabicDigits(n) + " طالباً";
@@ -9697,7 +9699,12 @@ function spDirText(v) {
   return PLAN_DIR.indexOf(t) > -1 ? t : (t.indexOf("الناس") > -1 ? "من الناس" : PLAN_DIR[0]);
 }
 
-const BPL = { edit: {}, cols: { hifz: 1, review: 1, tathbit: 1 } };
+/* الأعمدةُ بترتيب الصورة المرجعيّة؛ والأربعةُ الأخيرةُ ركائزُ الخطة الافتراضية
+   (لا حقلَ لها في خطة الطالب) فتُعرض حالتُها منها ولا تُعدَّل هنا.
+   pick: الطلابُ المعروضون من رأس «اسم الطالب» — null = كلُّهم */
+const BPL = { edit: {}, pick: null,
+  cols: { tilawah: 1, hifz: 1, review: 1, tathbit: 1,
+          tathbitCum: 0, tilawahNext: 0, reviewExtra: 0, reviewCum: 0 } };
 
 /* =========================================================================
    مفتاحُ «تلاوة الدرس الجديد» — جنبَ التثبيت في الأركان المتفرّعة من الحفظ
@@ -9808,7 +9815,71 @@ window.bplApply = function () {
    يكون على كلّ الطلاب». فمفتاحُ الرأس يقلب الركنَ للجميع، وقائمتُه تضع
    قيمتَها في صفّ كلّ طالب. والكتابةُ لا تقع إلّا بزرّ «تعديل الخطة».
    ========================================================================= */
-function bplAllIds() { return (cur("students") || []).map(x => String(x.id)); }
+/* رأسُ الجدول يعمل على الطلاب الظاهرين (البحثُ واختيارُ «اسم الطالب») */
+function bplAllIds() {
+  const rows = document.querySelectorAll("#blkBody tr[data-sid]");
+  if (rows.length) return [].filter.call(rows, tr => tr.style.display !== "none").map(tr => String(tr.dataset.sid));
+  return (cur("students") || []).map(x => String(x.id));
+}
+
+/* ركيزةٌ من الخطة الافتراضية: مفعّلةٌ أم موقوفة (بطبقة المسجد) */
+function bplSysOn(k) {
+  try { return ((sysPrgCfg("sys_default").pillars || {})[k] || {}).on === true; } catch (e) { return false; }
+}
+
+/* ---------- «اسم الطالب (١٥ / ١١٦)»: اختيارُ الطلاب المعروضين ---------- */
+function bplPickCount() {
+  const all = (cur("students") || []).length;
+  const n = BPL.pick ? Object.keys(BPL.pick).length : all;
+  return toArabicDigits(n) + " / " + toArabicDigits(all);
+}
+window.bplPickOpen = function (btn) {
+  const was = btn.classList.contains("open");
+  bddClose();
+  if (was) return;
+  btn.classList.add("open");
+  const studs = cur("students") || [];
+  const on = id => !BPL.pick || !!BPL.pick[String(id)];
+  const pop = document.createElement("div");
+  pop.id = "bddPop"; pop.className = "bdd-pop bpl-pickpop";
+  pop.innerHTML = `<div class="bdd-head">الطلاب المعروضون</div>
+    <div class="bdd-search">${ic("search", 16)}<input placeholder="ابحث…" oninput="window.bddFind(this.value)"></div>
+    <div class="bpl-pickbar">
+      <button type="button" onclick="window.bplPickAll(true)">تحديد الكل</button>
+      <button type="button" onclick="window.bplPickAll(false)">إلغاء التحديد</button>
+    </div>
+    <div class="bdd-list">${studs.map(st => `<label class="bdd-item bpl-pickit" data-t="${esc(st.name || "")}">
+      <input type="checkbox" value="${esc(String(st.id))}" ${on(st.id) ? "checked" : ""} onchange="window.bplPickOne(this)">
+      <span class="bdd-t">${esc(st.name || "—")}</span></label>`).join("")}</div>`;
+  document.body.appendChild(pop);
+  const r = btn.getBoundingClientRect();
+  const w = Math.max(r.width, 260);
+  pop.style.width = w + "px";
+  pop.style.top = (r.bottom + 6 + window.scrollY) + "px";
+  pop.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8) + window.scrollX) + "px";
+  setTimeout(() => {
+    document.addEventListener("mousedown", bddOutside, true);
+    document.addEventListener("keydown", bddKey, true);
+    const q = pop.querySelector(".bdd-search input"); if (q) q.focus();
+  }, 0);
+};
+function bplPickPaint() {
+  const b = document.getElementById("bplPickBtn");
+  if (b) { const l = b.querySelector(".bdd-lbl"); if (l) l.textContent = "اسم الطالب (" + bplPickCount() + ")"; }
+  if (typeof blkFilter === "function") blkFilter();
+}
+window.bplPickOne = function (cb) {
+  const studs = cur("students") || [];
+  if (!BPL.pick) { BPL.pick = {}; studs.forEach(st => { BPL.pick[String(st.id)] = true; }); }
+  if (cb.checked) BPL.pick[cb.value] = true; else delete BPL.pick[cb.value];
+  if (Object.keys(BPL.pick).length === studs.length) BPL.pick = null;
+  bplPickPaint();
+};
+window.bplPickAll = function (on) {
+  BPL.pick = on ? null : {};
+  document.querySelectorAll("#bddPop .bpl-pickit input").forEach(c => { c.checked = !!on; });
+  bplPickPaint();
+};
 
 function bplPaintKey(key, value) {
   document.querySelectorAll('#blkBody [data-k="' + key + '"]').forEach(function (el) {
@@ -9897,9 +9968,14 @@ function adminBulkPlans() {
         onchange="window.bplSet('${jsAttr(id)}','${ak}', Math.max(1, Number(this.value) || 1))">
     </div>`;
 
+  /* ركائزُ الخطة الافتراضية: حالتُها منها، تُضبط من «الإعدادات» في بطاقة الطالب */
+  const sysCell = k => `<td class="bpl-sys"><span class="bpl-pl${bplSysOn(k) ? "" : " none"}">${bplSysOn(k) ? "مفعّل" : "موقوف"}</span></td>`;
+  if (BPL.pick) Object.keys(BPL.pick).forEach(id => { if (!studs.some(st => String(st.id) === id)) delete BPL.pick[id]; });
+
   const rows = studs.length ? studs.map(function (st, i) {
     const e = BPL.edit[String(st.id)] || bplOf(st);
-    return `<tr data-name="${esc(st.name || "")}">
+    const hide = BPL.pick && !BPL.pick[String(st.id)];
+    return `<tr data-name="${esc(st.name || "")}" data-sid="${esc(String(st.id))}"${hide ? ' style="display:none"' : ""}>
       <td class="pt-num blk-idx">${i + 1}</td>
       <td class="pt-name">${esc(st.name || "—")}</td>
       <td class="bpl-plc">${bplPlanCell(st)}</td>
@@ -9922,7 +9998,11 @@ function adminBulkPlans() {
           <span id="bplN${esc(String(st.id))}" data-k="tatCount">${e.tatCount}</span>
           <button type="button" onclick="window.bplStep('${jsAttr(st.id)}', -1)">−</button>
         </td>` : ""}
-      <td class="bpl-sw">${tog(st.id, "tilOn", e.tilOn, "التلاوة")}</td>
+      ${C.tathbitCum ? sysCell("tathbitCum") : ""}
+      ${C.tilawah ? `<td class="bpl-sw">${tog(st.id, "tilOn", e.tilOn, "التلاوة")}</td>` : ""}
+      ${C.tilawahNext ? sysCell("tilawahNext") : ""}
+      ${C.reviewExtra ? sysCell("reviewExtra") : ""}
+      ${C.reviewCum ? sysCell("reviewCum") : ""}
     </tr>`;
   }).join("") : `<tr><td colspan="20" class="pt-muted" style="text-align:center;padding:22px">لا طلاب في نطاقك.</td></tr>`;
 
@@ -9953,12 +10033,17 @@ function adminBulkPlans() {
 
   return `<div class="page">
     ${pageHead(bplTitle, "", backArrow())}
-    <div class="blk-note">${ic("info", 15)} يمكن تعديل حتى ١٠٠ طالب في المرة الواحدة — وما تختاره في رأس الجدول يُطبَّق على الطلاب كلِّهم</div>
+    <div class="blk-note">${ic("info", 15)} يمكن تعديل حتى ١٠٠ طالب في المرة الواحدة — وما تختاره في رأس الجدول يُطبَّق على الطلاب الظاهرين</div>
 
     <div class="bpl-cols">
+      ${colBox("tilawah", "التلاوة")}
       ${colBox("hifz", "الحفظ")}
       ${colBox("review", "المراجعة")}
       ${colBox("tathbit", "التثبيت")}
+      ${colBox("tathbitCum", "التثبيت التراكمي")}
+      ${colBox("tilawahNext", "تلاوة الدرس القادم")}
+      ${colBox("reviewExtra", "المراجعة الإضافية")}
+      ${colBox("reviewCum", "المراجعة التراكمية")}
     </div>
 
     <div class="fac-toolbar" style="margin-bottom:12px">
@@ -9971,7 +10056,8 @@ function adminBulkPlans() {
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable blk-table bpl-table">
       <thead><tr>
         <th class="blk-idx">#</th>
-        <th>اسم الطالب (${studs.length})</th>
+        <th class="bpl-nameh"><button type="button" class="bdd-btn" id="bplPickBtn" onclick="window.bplPickOpen(this)"
+          title="اختر الطلاب المعروضين"><span class="bdd-lbl">اسم الطالب (${bplPickCount()})</span>${BDD_CHEV}</button></th>
         <th>الخطة المنسوبة</th>
         ${C.hifz ? `<th class="bpl-h">${hTog("hifzOn", "الحفظ")}</th>
           <th class="bpl-h">${hSel("hifzType", "نوع كمية الحفظ", PLAN_QTY_TYPE)}</th>
@@ -9985,9 +10071,13 @@ function adminBulkPlans() {
           <th class="bpl-r">${hStart("revSura", "revAyah", "ابتداء المراجعة")}</th>` : ""}
         ${C.tathbit ? `<th class="bpl-t">${hTog("tatOn", "التثبيت")}</th>
           <th class="bpl-t">${hNum("tatCount", "عدد دروس التثبيت")}</th>` : ""}
-        <!-- «التلاوة» في آخر الجدول: مفتاحُ «تلاوة الدرس الجديد» (st.plan.tilOn)
-             نفسُه الذي في بطاقة الطالب — ومفتاحُ الرأس يقلبه للجميع -->
-        <th class="bpl-l">${hTog("tilOn", "التلاوة")}</th>
+        ${C.tathbitCum ? `<th class="bpl-t bpl-sysh">التثبيت التراكمي<small>من الخطة الافتراضية</small></th>` : ""}
+        <!-- «التلاوة»: مفتاحُ «تلاوة الدرس الجديد» (st.plan.tilOn) نفسُه الذي في
+             بطاقة الطالب — ومفتاحُ الرأس يقلبه للظاهرين -->
+        ${C.tilawah ? `<th class="bpl-l">${hTog("tilOn", "التلاوة")}</th>` : ""}
+        ${C.tilawahNext ? `<th class="bpl-l bpl-sysh">تلاوة الدرس القادم<small>من الخطة الافتراضية</small></th>` : ""}
+        ${C.reviewExtra ? `<th class="bpl-r bpl-sysh">المراجعة الإضافية<small>من الخطة الافتراضية</small></th>` : ""}
+        ${C.reviewCum ? `<th class="bpl-r bpl-sysh">المراجعة التراكمية<small>من الخطة الافتراضية</small></th>` : ""}
       </tr></thead>
       <tbody id="blkBody">${rows}</tbody>
     </table></div></div>
@@ -55061,7 +55151,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261018-2330";
+  var APP_BUILD = "20261019-0010";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

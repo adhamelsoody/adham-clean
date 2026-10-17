@@ -13836,3 +13836,17 @@ th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-c
 /* قسمُ «التلاوة» في بطاقة الطالب وبطاقة المعلّم — مستقلٌّ عن الحفظ بلونه */
 .sp-card.sp-til { border-inline-start: 4px solid #5a3d8f; }
 .sp-ghead.g-til > svg:first-child { background: #5a3d8f; }
+
+/* «تعديل خطط التسميع» بشكل الصورة المرجعيّة: رأسُ «اسم الطالب» قائمةُ
+   اختيارٍ بعددها، وأعمدةُ ركائز الخطة الافتراضية للعرض بحالتها */
+.bpl-table th.bpl-nameh { background: #128c90; min-width: 220px; }
+.bpl-table th.bpl-sysh { white-space: nowrap; }
+.bpl-table th.bpl-sysh small { display: block; font-size: 11px; font-weight: 600; opacity: .8; margin-top: 2px; }
+.bpl-table td.bpl-sys { text-align: center; }
+.bpl-pickpop .bpl-pickbar { display: flex; gap: 8px; padding: 0 10px 8px; }
+.bpl-pickpop .bpl-pickbar button {
+  flex: 1; height: 34px; border: 1px solid var(--border-soft, #e2eaea); border-radius: 9px;
+  background: var(--surface, #fff); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.bpl-pickpop .bpl-pickbar button:hover { border-color: var(--brand-main, #1a999d); color: var(--brand-dark, #12474a); }
+.bpl-pickit input { width: 18px; height: 18px; accent-color: var(--brand-main, #1a999d); flex: none; }
