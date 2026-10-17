@@ -2772,10 +2772,8 @@ function adminStudents() {
        وكان يزاحم الجدولَ في أعلى الشاشة كلَّ مرة. */
     overview: "",
     toolbar: "add", addLabel: "إضافة طالب", addAction: "modal-student",
-    /* «صفحةُ الخطة الافتراضية كاملةً في صفحة الطالب على شكل زرّ إعدادات»:
-       اللوحةُ نفسُها (sysPrgSetup) لمن يملك ضبطها */
-    extraBtn: (typeof canPlanSetup === "function" && canPlanSetup())
-      ? `<button type="button" class="pt-set" onclick="window.sysPrgSetup('sys_default')" title="الخطة الافتراضية">${ic("settings", 18)}<span>الإعدادات</span></button>` : "",
+    /* زرُّ «الإعدادات» (الخطة الافتراضية) انتقل إلى ترويسة بطاقة الطالب
+       بطلبٍ صريح: «اعمل زرّ إعدادات هنا» — panelStudent ← spPlanSettings */
     searchHint: "إبحث عن طالب", actionsPanel: true, rowPanel: "panel-student",
     empty: "أضف أول طالب من زر الإضافة، بعد إضافة المسجد والحلقة.",
     cols: [
@@ -12590,6 +12588,8 @@ window.plSave = function (pid) {
       showToast(ok === false ? "تعذّر حفظ خطة المسجد" : "حُفظت خطة المسجد — غير مثبتة",
                 ok === false ? "warn" : "success");
       mount();
+      /* فُتحت من بطاقة طالب: تعود إليها */
+      if (PL_RETURN) window.plBackStu();
     });
     return;
   }
@@ -12603,6 +12603,7 @@ window.plSave = function (pid) {
   closePanel();
   showToast("حُفظت خطة التسميع المثبتة", "success");
   mount();
+  if (PL_RETURN) window.plBackStu();
 };
 
 
@@ -13100,7 +13101,30 @@ window.plDirty = function () {
   if (bar) bar.classList.add("on");
 };
 
+/* =========================================================================
+   زرُّ «الإعدادات» في بطاقة الطالب — الخطةُ الافتراضيةُ بكلّ تفاصيلها
+   -------------------------------------------------------------------------
+   اللوحةُ نفسُها (sysPrgSetup) تُفتح مكان البطاقة، وإغلاقُها أو حفظُها
+   يُعيد بطاقةَ الطالب نفسَه — فلا يخرج المديرُ من ملفّ الطالب الذي كان فيه.
+   ========================================================================= */
+let PL_RETURN = "", PL_ARM = false;
+window.spPlanSettings = function (sid) {
+  PL_RETURN = String(sid || "");
+  PL_ARM = true;
+  window.sysPrgSetup("sys_default");
+};
+window.plBackStu = function () {
+  const sid = PL_RETURN;
+  PL_RETURN = "";
+  try { closePanel(); } catch (e) {}
+  if (sid && typeof panelStudent === "function") panelStudent(sid);
+};
+
 window.sysPrgSetup = function (pid) {
+  /* «رجوع إلى الطالب» لمن فتحها من بطاقته وحدَه — فتحُها من غير البطاقة
+     (الإعدادات ← البرامج) لا يحمل رجوعاً عالقاً من إغلاقٍ سابقٍ بـ Esc */
+  if (!PL_ARM && !document.querySelector("#panelRoot .pl-page")) PL_RETURN = "";
+  PL_ARM = false;
   const pr = sysPrograms().find(x => String(x.id) === String(pid));
   if (!pr) return;
   if (!canPlanSetup()) { showToast("الضبط من صلاحية مدير النظام أو مدير المسجد", "warn"); return; }
@@ -13124,7 +13148,7 @@ window.sysPrgSetup = function (pid) {
           <div class="pl-kid">${sysRow(pid, kd.k, false)}${sysFields(pid, kd)}</div>`).join("")}</div>` : ""}
     </section>`).join("");
 
-  openPanel(`<div class="panel-back" data-action="close-panel"></div>
+  openPanel(`${PL_RETURN ? `<div class="panel-back" onclick="window.plBackStu()"></div>` : `<div class="panel-back" data-action="close-panel"></div>`}
     <aside class="side-panel sp-page pl-page" data-stop>
       <div class="sp-head">
         <div class="sp-id">
@@ -13140,7 +13164,9 @@ window.sysPrgSetup = function (pid) {
             </div>
           </div>
         </div>
-        <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
+        ${PL_RETURN
+          ? `<button class="modal-close" title="رجوع إلى الطالب" onclick="window.plBackStu()">${ic("x", 18)}</button>`
+          : `<button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>`}
       </div>
       <div class="panel-body pl-body">
         ${groups}
@@ -46867,6 +46893,9 @@ function panelStudent(id, keepDraft) {
         onclick="window.spMsg('${jsAttr(s.id)}')">${ic("chat", 17)}</button>
       <button class="sp-act" title="${s.status === "متوقف" ? "تفعيل" : "إيقاف مؤقت"}"
         data-action="toggle-student" data-id="${s.id}">${ic(s.status === "متوقف" ? "play" : "pause", 17)}</button>
+      ${(typeof canPlanSetup === "function" && canPlanSetup())
+        ? `<button class="sp-act sp-act-set" title="الإعدادات — الخطة الافتراضية"
+            onclick="window.spPlanSettings('${jsAttr(s.id)}')">${ic("settings", 17)}</button>` : ""}
       <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
     </div>
   </div>`;
@@ -54780,7 +54809,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261018-1910";
+  var APP_BUILD = "20261018-1950";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
