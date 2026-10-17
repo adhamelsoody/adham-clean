@@ -9302,8 +9302,12 @@ window.bddOpen = function (btn, sp0) {
   const r = btn.getBoundingClientRect();
   const w = Math.max(r.width, 240);
   pop.style.width = w + "px";
-  pop.style.top = (r.bottom + 6 + window.scrollY) + "px";
-  pop.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8) + window.scrollX) + "px";
+  const place = function () {
+    const q = btn.getBoundingClientRect();
+    pop.style.top = (q.bottom + 6 + window.scrollY) + "px";
+    pop.style.left = Math.max(8, Math.min(q.right - w, window.innerWidth - w - 8) + window.scrollX) + "px";
+  };
+  place();
   pop.addEventListener("click", function (e) {
     const b = e.target.closest && e.target.closest(".bdd-item");
     if (!b || b.disabled) return;
@@ -9313,9 +9317,14 @@ window.bddOpen = function (btn, sp0) {
   });
   setTimeout(() => {
     document.addEventListener("mousedown", bddOutside, true);
+    /* كان تمريرُ الصفحة يُغلقها — والتمريرُ داخل القائمة إذا بلغ آخرَها
+       ينتقل إلى الصفحة، فتُغلق القائمةُ أثناء النزول في الأجزاء. فالآن
+       تبقى مفتوحةً وتتبع زرَّها، ولا تُغلق إلّا بالنقر خارجها أو Esc. */
     window.addEventListener("scroll", function sc(e) {
+      if (!document.body.contains(pop)) { window.removeEventListener("scroll", sc, true); return; }
       if (pop.contains(e.target)) return;
-      window.removeEventListener("scroll", sc, true); bddClose();
+      if (!document.body.contains(btn)) { window.removeEventListener("scroll", sc, true); bddClose(); return; }
+      place();
     }, true);
     document.addEventListener("keydown", bddKey, true);
     const q = pop.querySelector(".bdd-search input");
@@ -10127,10 +10136,20 @@ function adminBulkMoveLevel() { return jzmScreen(); }
    ========================================================================= */
 const JZM = { q: "", from: "", jz: {}, lv: {} };
 
+/* أسماءُ الأجزاء بعُرف الحلقات: بأوّل كلمةٍ منه، والأواخرُ بسورتها
+   («جزء عمّ · جزء تبارك …»). أسماءٌ للعرض فحسب — لا تُكتب في سجلّ. */
+const JZM_NAMES = ["", "الم", "سيقول", "تلك الرسل", "لن تنالوا", "والمحصنات",
+  "لا يحب الله", "وإذا سمعوا", "ولو أننا", "قال الملأ", "واعلموا",
+  "يعتذرون", "وما من دابة", "وما أبرئ", "ربما", "سبحان",
+  "قال ألم", "اقترب", "قد أفلح", "وقال الذين", "أمّن خلق",
+  "اتل ما أوحي", "ومن يقنت", "وما لي", "فمن أظلم", "إليه يرد",
+  "الأحقاف", "الذاريات", "قد سمع", "تبارك", "عمّ"];
+/* «إضافة مستوى» فيها خمسةُ أجزاء: عمّ · تبارك · قد سمع · الذاريات · الأحقاف */
+const JZM_ADD = [30, 29, 28, 27, 26];
 function jzmName(j) {
   const n = Number(j) || 0;
   if (!n) return "";
-  return n === 30 ? "جزء عمّ" : "الجزء " + juzOrd(n);
+  return JZM_NAMES[n] ? "جزء " + JZM_NAMES[n] : "الجزء " + juzOrd(n);
 }
 /* الجزءُ الذي يقع فيه موضعٌ (سورة · آية) */
 function jzmJuzAt(s, a) {
@@ -10181,7 +10200,7 @@ function jzmSpec(kind) {
     items: all.map(j => ({ v: String(j), t: jzmName(j), n: cnt(j) })), pick: window.jzmFrom };
   if (kind === "jzTo") return {
     title: "أضف للطلاب الظاهرين مستوىً من الجزء", head: "إضافة مستوى",
-    items: all.map(j => ({ v: String(j), t: jzmName(j), n: jzmLevels(j).length })), pick: window.jzmToAll };
+    items: JZM_ADD.map(j => ({ v: String(j), t: jzmName(j), n: jzmLevels(j).length })), pick: window.jzmToAll };
   /* المستوى لكلّ الظاهرين: مستوياتُ الجزء المصفّى، وإلّا كلُّ المستويات المحدّدة بجزء */
   const ls = JZM.from ? jzmLevels(JZM.from) : (cur("levels") || []).filter(l => jzmLvJuz(l));
   return {
@@ -10297,8 +10316,6 @@ function jzmScreen() {
   const studs = jzmStudents();
   const total = (cur("students") || []).length;
   const pName = id => (((cur("programs") || []).find(p => String(p.id) === String(id)) || {}).name) || "—";
-  const allJ = Array.from({ length: 30 }, (_, i) => i + 1);
-
   const rows = studs.length ? studs.map((st, i) => {
     const sid = String(st.id), cj = jzmCurJuz(st), lid = String(st.levelId || "");
     const hide = (JZM.q && String(st.name || "").indexOf(JZM.q) < 0) || (JZM.from && String(cj) !== JZM.from);
@@ -10310,7 +10327,7 @@ function jzmScreen() {
       <td class="blk-now"><span class="${cj ? "blk-val" : "pt-muted"}">${cj ? esc(jzmName(cj)) : "غير محدّد"}</span></td>
       <td class="blk-to"><select class="blk-sel" data-head="إضافة مستوى" data-k="jz" onchange="window.jzmPickJz('${jsAttr(sid)}',this.value,this)">
         <option value="">إختر</option>
-        ${allJ.map(j => `<option value="${j}"${pj === String(j) ? " selected" : ""}>${esc(jzmName(j))}</option>`).join("")}</select></td>
+        ${JZM_ADD.map(j => `<option value="${j}"${pj === String(j) ? " selected" : ""}>${esc(jzmName(j))}</option>`).join("")}</select></td>
       <td class="blk-now"><span class="${st.level ? "blk-val" : "pt-muted"}">${esc(st.level || "بلا مستوى")}</span></td>
       <td class="blk-to"><select class="blk-sel" data-head="تعديل المستوى إلى" data-k="lv" onchange="window.jzmPickLv('${jsAttr(sid)}',this.value)">
         ${jzmLvOptions(pj || cj, JZM.lv[sid] || "", lid)}</select></td>
@@ -33092,7 +33109,13 @@ window.selProClose = function () {
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") window.selProClose();
   });
-  document.addEventListener("scroll", function () { window.selProClose(); }, true);
+  /* التمريرُ داخل القائمة نفسِها لا يُغلقها — كان كلُّ تمريرٍ يُغلقها،
+     فلا يُنزَل في قائمةٍ طويلة (السور · الأجزاء) إلى ما تحت */
+  document.addEventListener("scroll", function (e) {
+    const t = e.target;
+    if (t && t.closest && t.closest(".selpro-menu")) return;
+    window.selProClose();
+  }, true);
   window.addEventListener("resize", function () { window.selProClose(); });
 })();
 
@@ -55637,7 +55660,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-0315";
+  var APP_BUILD = "20261019-0340";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

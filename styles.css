@@ -13850,3 +13850,6 @@ th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-c
 }
 .bpl-pickpop .bpl-pickbar button:hover { border-color: var(--brand-main, #1a999d); color: var(--brand-dark, #12474a); }
 .bpl-pickit input { width: 18px; height: 18px; accent-color: var(--brand-main, #1a999d); flex: none; }
+
+/* القائمةُ المنسدلة: التمريرُ داخلها لا ينتقل إلى الصفحة إذا بلغ آخرَها */
+.bdd-list, .selpro-menu { overscroll-behavior: contain; }
