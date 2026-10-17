@@ -9270,11 +9270,11 @@ function bddOutside(e) {
 }
 function bddKey(e) { if (e.key === "Escape") bddClose(); }
 
-window.bddOpen = function (btn) {
+window.bddOpen = function (btn, sp0) {
   const was = btn.classList.contains("open");
   bddClose();
   if (was) return;
-  const sp = bddSpec(btn.dataset.dd);
+  const sp = sp0 || bddSpec(btn.dataset.dd);
   btn.classList.add("open");
   const pop = document.createElement("div");
   pop.id = "bddPop";
@@ -9284,7 +9284,8 @@ window.bddOpen = function (btn) {
       data-t="${esc(it.t)}"${it.dis ? " disabled" : ""}>
       <span class="bdd-tick">${it.v === sp.cur ? BDD_TICK : ""}</span>
       <span class="bdd-t">${esc(it.t)}</span>
-      ${it.dis ? `<small class="bdd-why">الحالية</small>` : `<span class="bdd-n">${toArabicDigits(it.n)}</span>`}</button>`;
+      ${it.dis && it.why !== "" ? `<small class="bdd-why">${esc(it.why || "الحالية")}</small>`
+        : it.n != null ? `<span class="bdd-n">${toArabicDigits(it.n)}</span>` : ""}</button>`;
   pop.innerHTML = `<div class="bdd-head">${esc(sp.title)}</div>
     ${sp.items.length > 6 ? `<div class="bdd-search">${ic("search", 16)}<input placeholder="ابحث…" oninput="window.bddFind(this.value)"></div>` : ""}
     <div class="bdd-list">
@@ -9315,6 +9316,84 @@ window.bddOpen = function (btn) {
     if (q) q.focus();
   }, 0);
 };
+/* =========================================================================
+   «خلِّ كلَّ النوافذ بروفيشنال» — قوائمُ الصفوف بالشكل نفسه
+   -------------------------------------------------------------------------
+   كلُّ <select class="blk-sel"> في جداول العمليات الجماعية (نقل الطلاب ·
+   نقل وتعديل المستوى · تعديل الخطة الافتراضية) يُلبَس زرّاً يفتح اللوحةَ
+   نفسَها. والقائمةُ الأصليةُ تبقى في الصفحة مخفيّةً: هي حاملةُ القيمة،
+   والاختيارُ يكتب فيها ويُطلق change فيعمل onchange القائمُ كما هو
+   (blkPick · bplSet · bplAll …). والكتابةُ البرمجيّةُ فيها تُعكَس على الزرّ
+   بـ bddSyncAll.
+   ========================================================================= */
+function bddSelText(sel) {
+  const o = sel.options[sel.selectedIndex];
+  return o ? (o.textContent || "").trim() : "";
+}
+function bddSyncSel(sel) {
+  const b = sel && sel.nextElementSibling;
+  if (!b || !b.classList.contains("bdd-row")) return;
+  const l = b.querySelector(".bdd-lbl");
+  if (l) l.textContent = bddSelText(sel) || "إختر";
+  b.classList.toggle("on", !!sel.value && !sel.classList.contains("bpl-hsel"));
+}
+function bddSyncAll() { document.querySelectorAll("select.bdd-src").forEach(bddSyncSel); }
+window.bddSyncAll = bddSyncAll;
+
+function bddEnhance(root) {
+  (root || document).querySelectorAll("select.blk-sel:not(.bdd-src)").forEach(function (sel) {
+    sel.classList.add("bdd-src");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "bdd-btn bdd-row" + (sel.classList.contains("bpl-hsel") ? " bdd-hrow" : "");
+    b.innerHTML = '<span class="bdd-lbl"></span>' + BDD_CHEV;
+    b.title = sel.title || "";
+    sel.insertAdjacentElement("afterend", b);
+    bddSyncSel(sel);
+    b.addEventListener("click", function () {
+      /* قائمةُ السور تُملأ عند الفتح أوّلَ مرّة */
+      const fill = sel.classList.contains("bpl-sura") && typeof window.bplSuraFill === "function"
+        ? window.bplSuraFill(sel) : null;
+      Promise.resolve(fill).then(function () {
+        const th = sel.closest("th");
+        const head = sel.classList.contains("bpl-hsel") ? (sel.options[0] ? sel.options[0].textContent : "")
+          : (th ? th.textContent : "") ||
+            ((sel.closest("table") && sel.closest("td"))
+              ? ((sel.closest("table").querySelectorAll("thead th")[sel.closest("td").cellIndex] || {}).textContent || "") : "");
+        const items = [].map.call(sel.options, o => ({ v: o.value, t: (o.textContent || "").trim(), dis: o.disabled, why: "" }))
+          .filter(it => it.v !== "");
+        window.bddOpen(b, {
+          title: String(head || "اختر").trim(),
+          cur: sel.value,
+          reset: sel.querySelector('option[value=""]') && !sel.classList.contains("bpl-hsel") ? "بدون اختيار" : "",
+          items,
+          pick: function (v) {
+            sel.value = v;
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+            bddSyncSel(sel);
+          }
+        });
+      });
+    });
+  });
+}
+/* كلُّ رسمٍ جديدٍ للجداول يُلبَس تلقائياً */
+(function () {
+  try {
+    const mo = new MutationObserver(function (list) {
+      for (const m of list) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.matches && n.matches("select.blk-sel")) { bddEnhance(n.parentNode); continue; }
+          if (n.querySelector && n.querySelector("select.blk-sel:not(.bdd-src)")) bddEnhance(n);
+        }
+      }
+    });
+    const start = () => mo.observe(document.body, { childList: true, subtree: true });
+    if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);
+  } catch (e) {}
+})();
+
 window.bddFind = function (q) {
   const t = String(q || "").trim();
   document.querySelectorAll("#bddPop .bdd-item:not(.bdd-reset)").forEach(b => {
@@ -9330,6 +9409,7 @@ window.blkFrom = function (cid) {
   const n = blkFilter();
   blkSyncBtn();
   bddLabel("blkFromSel");
+  bddSyncAll();
   if (BLK.from && !n) showToast("لا طلابَ في هذه الحلقة", "warn");
 };
 /* «نقل وتعديل المستوى»: المستوى الحاليُّ قائمةٌ تصفّي، و«تعديل المستوى إلى»
@@ -9341,6 +9421,7 @@ window.blkFromLv = function (lid) {
   const n = blkFilter();
   blkSyncBtn();
   bddLabel("blkFromLvSel");
+  bddSyncAll();
   if (BLK.fromLv && !n) showToast("لا طلابَ في هذا المستوى", "warn");
 };
 window.blkToAllLv = function (lid) {
@@ -9357,6 +9438,7 @@ window.blkToAllLv = function (lid) {
     n++;
   });
   blkSyncBtn();
+  bddSyncAll();
   const lbl = ((document.getElementById("blkApply") || {}).dataset || {}).label || "تعديل المستوى";
   showToast(n ? "اختير المستوى لـ" + toArabicDigits(n) + " طالباً — اضغط «" + lbl + "» للتنفيذ"
               : "لا طالبَ يُعدَّل — كلُّهم في هذا المستوى", n ? "success" : "warn");
@@ -9376,6 +9458,7 @@ window.blkToAll = function (cid) {
     n++;
   });
   blkSyncBtn();
+  bddSyncAll();
   const lbl = ((document.getElementById("blkApply") || {}).dataset || {}).label || "نقل الطلاب";
   showToast(n ? "اختيرت الحلقةُ لـ" + toArabicDigits(n) + " طالباً — اضغط «" + lbl + "» للتنفيذ"
               : "لا طالبَ يُنقل — كلُّهم في هذه الحلقة", n ? "success" : "warn");
@@ -9740,6 +9823,7 @@ function bplPaintKey(key, value) {
     if (el.tagName === "INPUT") { el.value = String(value); return; }
     el.textContent = String(value);                         /* عدّادُ التثبيت */
   });
+  if (typeof bddSyncAll === "function") bddSyncAll();
 }
 
 window.bplAll = function (key, value) {
@@ -9766,7 +9850,7 @@ window.bplAllTog = function (key, btn) {
 window.bplSuraFill = function (sel) {
   if (!sel || sel.dataset.filled || !window.Quran || typeof Quran.surahs !== "function") return;
   sel.dataset.filled = "1";
-  Quran.surahs().then(function (list) {
+  return Quran.surahs().then(function (list) {
     const names = (list || []).map(x => (x && (x.n || x.name)) || "").filter(Boolean);
     if (!names.length) { delete sel.dataset.filled; return; }
     const cur0 = sel.value;
@@ -54959,7 +55043,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261018-2200";
+  var APP_BUILD = "20261018-2240";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

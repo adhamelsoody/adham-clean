@@ -13814,3 +13814,21 @@ button, .btn, .fac-tbtn, .tst-tool, .tat-opt, .duty-listen {
   :root:not([data-theme="light"]) .bdd-item.on { background: #173a3e; color: #bfe6e8; }
 }
 :root[data-theme="dark"] .bdd-item.on { background: #173a3e; color: #bfe6e8; }
+
+/* قوائمُ الصفوف في جداول العمليات الجماعية — الزرُّ نفسُه بلون الصفّ،
+   والقائمةُ الأصليةُ مخفيّةٌ تحمل القيمة */
+select.bdd-src { display: none !important; }
+.bdd-btn.bdd-row {
+  min-width: 140px; height: 40px; background: var(--surface, #fff); color: var(--text-main, #1d2b2c);
+  border: 1px solid var(--border-soft, #dfe7e7); font-weight: 600;
+}
+.bdd-btn.bdd-row:hover { background: var(--bg-soft, #f4f8f8); border-color: var(--brand-main, #1a999d); }
+.bdd-btn.bdd-row.open { border-color: var(--brand-main, #1a999d); box-shadow: 0 0 0 3px rgba(26,153,157,.15); }
+.bdd-btn.bdd-row.on { border-color: var(--brand-main, #1a999d); color: var(--brand-dark, #12474a); font-weight: 800; }
+.bdd-btn.bdd-row svg { color: var(--text-muted, #7a8a8f); }
+th .bdd-btn.bdd-row.bdd-hrow {
+  background: rgba(255,255,255,.06); color: #fff; border-color: rgba(255,255,255,.6); font-weight: 700;
+}
+th .bdd-btn.bdd-row.bdd-hrow svg { color: #fff; }
+th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-color: #fff; }
+.bpl-start .bdd-btn.bdd-row { min-width: 130px; }
