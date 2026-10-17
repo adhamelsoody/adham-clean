@@ -10120,7 +10120,7 @@ function adminBulkMoveLevel() { return jzmScreen(); }
    الافتراضية» (بلا برنامج أو برنامجٍ من النظام) لا يظهرون، فلا مستوياتَ له.
 
    الجزءُ لا حقلَ له في السجلّات: يُستخرج من حدود المستوى (fromSurah ·
-   fromAyah) بفهرس الأجزاء QJUZ. فخانةُ «نقل إلى الجزء» تحديدٌ يحصر قائمةَ
+   fromAyah) بفهرس الأجزاء QJUZ. فخانةُ «إضافة مستوى» (كان اسمُها «نقل إلى الجزء») تحديدٌ يحصر قائمةَ
    المستويات في مستويات ذلك الجزء، والكتابةُ عند «تعديل المستوى» هي
    المستوى وحدَه — st.levelId و st.level — بالطريق نفسه الذي كتبته blkApply.
    ولا يُمسّ برنامجٌ ولا حلقةٌ ولا خطة.
@@ -10180,7 +10180,7 @@ function jzmSpec(kind) {
     cur: JZM.from, curName: jzmName(JZM.from), reset: "إلغاء التصفية",
     items: all.map(j => ({ v: String(j), t: jzmName(j), n: cnt(j) })), pick: window.jzmFrom };
   if (kind === "jzTo") return {
-    title: "انقل الطلاب الظاهرين إلى الجزء", head: "نقل إلى الجزء",
+    title: "أضف للطلاب الظاهرين مستوىً من الجزء", head: "إضافة مستوى",
     items: all.map(j => ({ v: String(j), t: jzmName(j), n: jzmLevels(j).length })), pick: window.jzmToAll };
   /* المستوى لكلّ الظاهرين: مستوياتُ الجزء المصفّى، وإلّا كلُّ المستويات المحدّدة بجزء */
   const ls = JZM.from ? jzmLevels(JZM.from) : (cur("levels") || []).filter(l => jzmLvJuz(l));
@@ -10308,7 +10308,7 @@ function jzmScreen() {
       <td class="pt-name">${esc(st.name || "—")}</td>
       <td><span class="pt-muted">${esc(pName(jzmProgId(st)))}</span></td>
       <td class="blk-now"><span class="${cj ? "blk-val" : "pt-muted"}">${cj ? esc(jzmName(cj)) : "غير محدّد"}</span></td>
-      <td class="blk-to"><select class="blk-sel" data-head="نقل إلى الجزء" data-k="jz" onchange="window.jzmPickJz('${jsAttr(sid)}',this.value,this)">
+      <td class="blk-to"><select class="blk-sel" data-head="إضافة مستوى" data-k="jz" onchange="window.jzmPickJz('${jsAttr(sid)}',this.value,this)">
         <option value="">إختر</option>
         ${allJ.map(j => `<option value="${j}"${pj === String(j) ? " selected" : ""}>${esc(jzmName(j))}</option>`).join("")}</select></td>
       <td class="blk-now"><span class="${st.level ? "blk-val" : "pt-muted"}">${esc(st.level || "بلا مستوى")}</span></td>
@@ -10338,7 +10338,7 @@ function jzmScreen() {
         <th rowspan="2">اسم الطالب (${toArabicDigits(studs.length)})</th>
         <th rowspan="2">البرنامج</th>
         <th class="blk-now">الجزء الحالي</th>
-        <th class="blk-to">نقل إلى الجزء</th>
+        <th class="blk-to">إضافة مستوى</th>
         <th class="blk-now" rowspan="2">المستوى الحالي</th>
         <th class="blk-to">تعديل المستوى إلى</th>
       </tr>
@@ -55637,7 +55637,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-0300";
+  var APP_BUILD = "20261019-0315";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
