@@ -13856,3 +13856,6 @@ th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-c
 
 /* «الخيارات» في بطاقة الخطة الافتراضية: صفّا التثبيت والتلاوة متباعدان */
 .po-page .sp-kidrow + .sp-kidrow { margin-top: 8px; }
+/* التلاوةُ جنبَ التثبيت في صفٍّ واحد، بفاصلٍ بينهما */
+.po-page .sp-kidrow { flex-wrap: wrap; }
+.po-page .po-kidsep { width: 1px; align-self: stretch; background: rgba(15, 111, 114, .15); margin-inline: 14px; }

@@ -14123,7 +14123,7 @@ window.sysPrgEmpty = function (pid) {
       <div class="sp-head">
         <div class="sp-id">
           <div class="avatar sp-avatar">${ic("settings", 24)}</div>
-          <div class="sp-idtext"><h2>الخيارات</h2>
+          <div class="sp-idtext"><h2>خطة التسميع الافتراضية</h2>
             <div class="sp-chips"><span class="sp-chip">${esc((pr && pr.name) || "")}</span></div></div>
         </div>
         <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
@@ -14143,8 +14143,9 @@ window.sysPrgEmpty = function (pid) {
           </div>
           ${startRow("poHifz", H, "poHifzDir", H.dir)}
           <div class="sp-klabel">${ic("layers", 14)} أركان متفرّعة من الحفظ</div>
-          <div class="sp-kidrow">${tog("poTatOn", T.on !== false, "تثبيت")}${step("poTatCount", T.lessons, "دروس")}</div>
-          <div class="sp-kidrow">${tog("poTilOn", L.on !== false, "تلاوة")}${step("poTilCount", L.qtyNum, "أوجه")}</div>
+          <!-- التلاوةُ في صفّ التثبيت نفسِه، جنبَه -->
+          <div class="sp-kidrow">${tog("poTatOn", T.on !== false, "تثبيت")}${step("poTatCount", T.lessons, "دروس")}
+            <span class="po-kidsep"></span>${tog("poTilOn", L.on !== false, "تلاوة")}${step("poTilCount", L.qtyNum, "أوجه")}</div>
         </section>
 
         <div class="sp-ghead sp-wide2 g-rev">${ic("refresh", 17)}<h3>المراجعة</h3></div>
@@ -55974,7 +55975,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-1800";
+  var APP_BUILD = "20261019-1810";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
