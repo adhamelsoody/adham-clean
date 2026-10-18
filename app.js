@@ -28315,6 +28315,29 @@ const REG_COLS = [
 ];
 const REG_ENROLL = [["plan", "تُنسب لخطة"], ["attend", "تحضير فقط"]];
 
+/* «في خانة التنسيب لخطة خياران: برنامج أو خطة افتراضية — البرنامجُ تظهر
+   مستوياتُه، والخطةُ الافتراضية لا مستوياتَ لها وتظهر الخططُ الافتراضية».
+   أعمدةٌ للتسجيل المتعدد وحده — REG_COLS (أعمدةُ ملف الإكسل) لا تُمسّ. */
+const REG_MULTI_EXTRA = [{ h: "التنسيب" }, { h: "البرنامج / الخطة" }, { h: "المستوى" }];
+const REG_PKIND = [["prog", "برنامج"], ["sys", "خطة افتراضية"]];
+/* البرامجُ الفعّالة التي وضعها المدير، أو الخططُ الافتراضية (برامجُ النظام) */
+function regProgList(kind) {
+  if (kind === "sys") return sysPrograms().filter(x => x.status === "فعال");
+  if (kind === "prog") return (cur("programs") || []).filter(x => !/^sys_/.test(String(x.id)) && (x.status || "فعال") === "فعال");
+  return [];
+}
+function regProgOpts(kind, sel) {
+  const l = regProgList(kind);
+  return `<option value="">${kind ? "— اختر —" : "—"}</option>` +
+    l.map(p => `<option value="${esc(String(p.id))}" ${String(sel || "") === String(p.id) ? "selected" : ""}>${esc(p.name || "—")}</option>`).join("");
+}
+function regLevelOpts(kind, pid, sel) {
+  if (kind !== "prog" || !pid) return `<option value="">—</option>`;
+  const l = typeof lvxOf === "function" ? lvxOf(pid) : [];
+  return `<option value="">${l.length ? "— اختر —" : "لا مستويات"}</option>` +
+    l.map(x => `<option value="${esc(String(x.id))}" ${String(sel || "") === String(x.id) ? "selected" : ""}>${esc(x.name || "—")}</option>`).join("");
+}
+
 function regMosques() { return (cur("mosques") || []).filter(m => m && m.status !== "متوقف"); }
 function regMosqueId() {
   const ms = regMosques();
@@ -28359,6 +28382,12 @@ function regRowError(r, mqId, seenIds) {
   if (String(r.name || "").trim().length < 2) return "الاسم مطلوب";
   if (!regCircleOf(r.circle, mqId)) return r.circle ? "الحلقة «" + r.circle + "» ليست في هذا المسجد" : "اختر الحلقة";
   if (!regEnrollOf(r.enroll)) return "نوع التسجيل: خطة أو تحضير فقط";
+  /* صفوفُ «التسجيل المتعدد» تحمل التنسيب: المنسوبُ لخطةٍ يُختار له برنامجٌ أو خطةٌ افتراضية */
+  if ("pkind" in r && regEnrollOf(r.enroll) === "plan") {
+    if (!r.pkind) return "اختر التنسيب: برنامج أو خطة افتراضية";
+    if (!regProgList(r.pkind).some(p => String(p.id) === String(r.prog)))
+      return r.pkind === "sys" ? "اختر الخطة الافتراضية" : "اختر البرنامج";
+  }
   const id = String(r.idNo || "").replace(/\D+/g, "");
   if (r.idNo && id.length !== 10) return "رقم الهوية عشرة أرقام";
   if (id) {
@@ -28374,7 +28403,8 @@ function regStudentRec(r, mqId, n) {
   const m = regMosques().find(x => String(x.id) === String(mqId)) || {};
   const c = regCircleOf(r.circle, mqId);
   const prog = (typeof programsForPick === "function" ? programsForPick() : [])[0] || (DB.programs || [])[0] || {};
-  return {
+  /* التنسيبُ المختار في التسجيل المتعدد (regPlacement) يعلو هذا الافتراض */
+  return Object.assign({
     id: Date.now() + (n || 0),
     complexId: m.complexId || STATE.complexId || "",
     name: String(r.name).trim().replace(/\s+/g, " "),
@@ -28394,7 +28424,15 @@ function regStudentRec(r, mqId, n) {
     phone: String(r.phone || "").replace(/[^\d+]/g, ""), parentRel: "الأب",
     address: "", health: "",
     joinedAt: Date.now()
-  };
+  }, regPlacement(r));
+}
+/* البرنامجُ أو الخطةُ الافتراضية والمستوى — لمن نُسب لخطةٍ واختير له تنسيب */
+function regPlacement(r) {
+  if (!r || !("pkind" in r) || regEnrollOf(r.enroll) !== "plan" || !r.pkind) return {};
+  const p = regProgList(r.pkind).find(x => String(x.id) === String(r.prog));
+  if (!p) return {};
+  const lv = r.pkind === "prog" && r.level ? (lvxOf(p.id) || []).find(x => String(x.id) === String(r.level)) : null;
+  return { program: p.name || "—", levelId: lv ? String(lv.id) : "", level: lv ? (lv.name || "") : "" };
 }
 
 /* الكتابة: صفٌّ صفٌّ عبر persistSet، وسعةُ الحلقة تُحترم عند كلّ صف */
@@ -28440,23 +28478,67 @@ function regRowHTML(i, mqId, r) {
     <td><input class="rg-name" placeholder="الاسم ثلاثياً" value="${esc(r.name || "")}"></td>
     <td><input class="rg-idNo" dir="ltr" inputmode="numeric" maxlength="10" value="${esc(r.idNo || "")}"
       oninput="this.value=this.value.replace(/[^0-9]/g,'')"></td>
-    <td><input class="rg-phone" dir="ltr" inputmode="tel" value="${esc(r.phone || "")}"></td>
-    <td><input class="rg-parent" dir="ltr" inputmode="tel" value="${esc(r.parent || "")}"></td>
+    <td><input class="rg-phone" dir="ltr" inputmode="numeric" maxlength="${SP_PHONE_MAX_OTHER}" value="${esc(r.phone || "")}"
+      oninput="window.regPhoneIn(this)"></td>
+    <td><input class="rg-parent" dir="ltr" inputmode="numeric" maxlength="${SP_PHONE_MAX_OTHER}" value="${esc(r.parent || "")}"
+      oninput="window.regPhoneIn(this)"></td>
     <td><select class="rg-circle"><option value="">— اختر —</option>
       ${cs.map(c => `<option value="${esc(String(c.id))}" ${String(r.circle || "") === String(c.id) ? "selected" : ""}>${esc(c.name || "—")}</option>`).join("")}</select></td>
-    <td><select class="rg-enroll"><option value="">— اختر —</option>
+    <td><select class="rg-enroll" onchange="window.regEnrollCh(this)"><option value="">— اختر —</option>
       ${REG_ENROLL.map(([v, t]) => `<option value="${v}" ${r.enroll === v ? "selected" : ""}>${t}</option>`).join("")}</select></td>
+    <td><select class="rg-pkind" onchange="window.regKindCh(this)"${r.enroll === "plan" ? "" : " disabled"}><option value="">— اختر —</option>
+      ${REG_PKIND.map(([v, t]) => `<option value="${v}" ${r.pkind === v ? "selected" : ""}>${t}</option>`).join("")}</select></td>
+    <td><select class="rg-prog" onchange="window.regProgCh(this)"${r.enroll === "plan" && r.pkind ? "" : " disabled"}>${regProgOpts(r.pkind, r.prog)}</select></td>
+    <td><select class="rg-level"${r.enroll === "plan" && r.pkind === "prog" && r.prog ? "" : " disabled"}>${regLevelOpts(r.pkind, r.prog, r.level)}</select></td>
     <td><button type="button" class="reg-del" title="حذف الصفّ" onclick="window.regDelRow(this)">${ic("trash", 16)}</button></td>
   </tr>`;
 }
+
+/* «إضافةُ الأرقام تُتيح أرقاماً بلا نهاية — أريدها أرقاماً فقط لا أكثر»:
+   الجوّالان بقاعدة بطاقة الطالب (spPhoneIn) نفسِها — أرقامٌ فقط، والصفرُ
+   البادئ يُسقط، والسعوديُّ (يبدأ بالخمسة) تسعةُ أرقام، وغيرُه حتى ١١. */
+window.regPhoneIn = function (el) {
+  if (!el) return;
+  let v = String(el.value || "").replace(/\D+/g, "").replace(/^0+/, "");
+  const cc = SP_CC_BY1[v.charAt(0)] || "";
+  v = v.slice(0, phoneMax(cc));
+  try { el.setAttribute("maxlength", String(phoneMax(cc))); } catch (e) {}
+  if (v !== el.value) {
+    el.value = v;
+    try { el.setSelectionRange(v.length, v.length); } catch (e) {}
+  }
+};
 
 function regMultiRead() {
   return [].map.call(document.querySelectorAll("#regBody .reg-tr"), tr => {
     const g = c => ((tr.querySelector(".rg-" + c) || {}).value || "").trim();
     return { name: g("name"), idNo: g("idNo"), phone: g("phone"), parent: g("parent"),
-             circle: g("circle"), enroll: g("enroll") };
+             circle: g("circle"), enroll: g("enroll"),
+             pkind: g("pkind"), prog: g("prog"), level: g("level") };
   });
 }
+/* نوعُ التسجيل: «تحضير فقط» لا تنسيبَ له — تُفرَّغ خاناتُه وتُعطَّل */
+window.regEnrollCh = function (sel) {
+  const tr = sel && sel.closest("tr"); if (!tr) return;
+  const k = tr.querySelector(".rg-pkind");
+  const plan = regEnrollOf(sel.value) === "plan";
+  if (k) { k.disabled = !plan; if (!plan) k.value = ""; window.regKindCh(k); }
+};
+/* التنسيب: «برنامج» يُظهر برامجَ المدير، و«خطة افتراضية» خططَ النظام — والمستوى للبرنامج وحده */
+window.regKindCh = function (sel) {
+  const tr = sel && sel.closest("tr"); if (!tr) return;
+  const kind = sel.disabled ? "" : sel.value;
+  const p = tr.querySelector(".rg-prog");
+  if (p) { p.innerHTML = regProgOpts(kind, ""); p.disabled = !kind; window.regProgCh(p); }
+};
+window.regProgCh = function (sel) {
+  const tr = sel && sel.closest("tr"); if (!tr) return;
+  const k = tr.querySelector(".rg-pkind");
+  const kind = k && !k.disabled ? k.value : "";
+  const pid = sel.disabled ? "" : sel.value;
+  const l = tr.querySelector(".rg-level");
+  if (l) { l.innerHTML = regLevelOpts(kind, pid, ""); l.disabled = !(kind === "prog" && pid); }
+};
 function regRenumber() {
   document.querySelectorAll("#regBody .reg-n").forEach((td, i) => { td.textContent = toArabicDigits(i + 1); });
   const n = document.getElementById("regCount");
@@ -28484,7 +28566,7 @@ function adminRegMulti() {
         <span class="reg-cnt">الصفوف: <b id="regCount">${toArabicDigits(5)}</b></span>
       </div>
       <div class="reg-scroll"><table class="reg-table">
-        <thead><tr><th>#</th>${REG_COLS.map(c => `<th>${c.h}${c.req ? ' <span class="req">*</span>' : ""}</th>`).join("")}<th></th></tr></thead>
+        <thead><tr><th>#</th>${REG_COLS.map(c => `<th>${c.h}${c.req ? ' <span class="req">*</span>' : ""}</th>`).join("")}${REG_MULTI_EXTRA.map(c => `<th>${c.h}</th>`).join("")}<th></th></tr></thead>
         <tbody id="regBody">${rows}</tbody></table></div>
       <div class="reg-add">
         <button type="button" class="btn btn-ghost" onclick="window.regAddRows(1)">${ic("plus", 16)} صفّ</button>
@@ -28517,7 +28599,7 @@ window.regFillAll = function () {
   const e = (document.getElementById("regAllEnroll") || {}).value || "";
   document.querySelectorAll("#regBody .reg-tr").forEach(tr => {
     if (c) tr.querySelector(".rg-circle").value = c;
-    if (e) tr.querySelector(".rg-enroll").value = e;
+    if (e) { tr.querySelector(".rg-enroll").value = e; window.regEnrollCh(tr.querySelector(".rg-enroll")); }
   });
 };
 window.regMultiSave = function () {
@@ -56023,7 +56105,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-0010";
+  var APP_BUILD = "20261020-0020";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
