@@ -13087,8 +13087,9 @@ const SYS_PROGRAMS = [
    ========================================================================= */
 const SYS_PILLARS = [
   { k: "hifz",    name: "الحفظ",    fields: ["dir", "start", "qty"], color: "#d64545" },
-  { k: "tathbit", name: "التثبيت",  fields: ["lessons"],             color: "#2c3f8f" },
-  { k: "review",  name: "المراجعة", fields: ["dir", "start", "qty"], color: "#b7841c" },
+  /* «الأحمر حفظ، والتثبيت برتقالي، والمراجعة أزرق» — كانا #2c3f8f و #b7841c */
+  { k: "tathbit", name: "التثبيت",  fields: ["lessons"],             color: "#e07b12" },
+  { k: "review",  name: "المراجعة", fields: ["dir", "start", "qty"], color: "#2563c9" },
   { k: "tilawah", name: "التلاوة",  fields: ["qty"],                 color: "#17915a" }
 ];
 
@@ -13584,7 +13585,9 @@ function pillarRule(kind) {
   const k = Object.keys(PILLAR_KIND).find(x => PILLAR_KIND[x] === String(kind));
   if (!k) return null;
   const c = (sysPrgCfg("sys_default").pillars[k]) || {};
-  return { pass: Number(c.pass) || 0, onFail: c.onFail || "repeat", color: c.color || "" };
+  /* colorOn مطفأ («مفعّل» في ألوان الأخطاء): لا لونَ للواجب، فيبقى لونُ نوع الخطأ */
+  return { pass: Number(c.pass) || 0, onFail: c.onFail || "repeat",
+           color: c.colorOn === false ? "" : (c.color || "") };
 }
 
 const SARD_ID = "sys_sard";
@@ -14036,12 +14039,87 @@ window.plBackStu = function () {
 };
 
 /* «زرّ الخيارات الخاصّ بالخطة الافتراضية: امسح ما بداخله فقط، والزرُّ يبقى»
-   — زرُّ بطاقتها في الإعدادات ← البرامج يفتح لوحةً فارغة. والخطةُ نفسُها
-   (sysPrgSetup) باقيةٌ كما هي، تُفتح من زرّ الإعدادات في بطاقة الطالب. */
+   — ثمّ: «ضيف داخل زرّ الخيارات: ١- الحفظ كما في الصورة وزِد عليه زرّاً للتلاوة
+   مثل زرّ التثبيت ٢- تحته المراجعة بالشكل نفسه بلا تثبيت · وألوان الأخطاء كما
+   في الصورة: الأحمر حفظ والتثبيت برتقالي والمراجعة أزرق — الثلاثة فقط، وألغِ
+   خانة الوزن».
+
+   فاللوحةُ تضبط أركانَ الخطة الافتراضية نفسَها (sysPrgCfg) بشكل قسم الخطة في
+   بطاقة الطالب وأدواته (spTog · spDir · spQtyType · spAyah · spFillSurahs)،
+   وتحفظ بالطريق الذي يحفظ به plSave: المديرُ في settings.sysPrgCfg، ومديرُ
+   المسجد في mosques.planCfg. والحقولُ هي حقولُ الأركان القائمة (on · qtyType ·
+   qty · dir · dirRev · start · lessons · qtyNum · name · color)، وأُضيف لها
+   حقلان: startAyah (آيةُ الابتداء — يقرؤها المولّدُ مع سورة البداية) و
+   colorOn (مفعّل لونُ الواجب في المصحف، وإن أُطفئ بقي لونُ نوع الخطأ).
+   ولوحةُ «خطة التسميع الافتراضية» الكاملة (sysPrgSetup) باقيةٌ كما هي. */
+const SYS_OPT_COLORS = [
+  { k: "hifz",    base: "حفظ" },
+  { k: "tathbit", base: "تثبيت" },
+  { k: "review",  base: "مراجعة" }
+];
+function sysOptDefColor(k) { return (SYS_PILLARS.find(x => x.k === k) || {}).color || "#888888"; }
+
 window.sysPrgEmpty = function (pid) {
   const pr = sysPrograms().find(x => String(x.id) === String(pid));
+  if (!canPlanSetup()) { showToast("الضبط من صلاحية مدير النظام أو مدير المسجد", "warn"); return; }
+  if (!isTopAdmin() && !planScopeMosque()) {
+    showToast("لا مسجد مرتبط بحسابك — يُسنَد من الإعدادات ← المستخدمون", "warn"); return;
+  }
+  const P = sysPrgCfg(pid).pillars || {};
+  const H = P.hifz || {}, T = P.tathbit || {}, L = P.tilawah || {}, R = P.review || {};
+  const types = v => { const l = SYS_QTY_TYPES.slice(); if (v && l.indexOf(v) < 0) l.unshift(v); return l; };
+  const qtySel = (id, val, onch) => `<select id="${id}" class="sp-sel" onchange="${onch}">
+      ${types(val).map(o => `<option${o === val ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  const dirBtns = (id, val) => `<div class="sp-seg">
+      ${PLAN_DIR.map(o => `<button type="button" class="sp-segb${spDirText(val) === o ? " on" : ""}"
+        onclick="window.spDir(this,'${id}','${esc(o)}')">${esc(o)}${
+          planDirHint(o) ? ` <small>(${esc(planDirHint(o))})</small>` : ""}</button>`).join("")}
+      <input type="hidden" id="${id}" value="${esc(val || PLAN_DIR[0])}">
+    </div>`;
+  const startRow = (pfx, v, dirId, dirVal) => {
+    const nm = v.start ? (surahName(v.start) || "") : "";
+    const def = spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة";
+    return `<div class="sp-start">
+      <label>${ic("target", 13)} الابتداء — السورة والآية</label>
+      <div class="sp-startrow">
+        <select id="${pfx}Sura" class="sp-sel sp-sura" data-dir="${esc(dirId)}" data-cur="${esc(nm || def)}"
+          data-init="${esc(nm || def)}" data-saved="${esc(v.start || "")}"
+          onchange="window.ayahCap('${pfx}Ayah','${pfx}Sura')">
+          <option>${esc(nm || def)}</option>
+        </select>
+        <div class="sp-step">
+          <button type="button" onclick="window.spAyah('${pfx}', 1)">+</button>
+          <input id="${pfx}Ayah" type="number" min="1" value="${Math.max(1, Number(v.startAyah) || 1)}"
+            data-sura="${pfx}Sura" oninput="window.ayahCap('${pfx}Ayah')" onchange="window.ayahCap('${pfx}Ayah')">
+          <button type="button" onclick="window.spAyah('${pfx}', -1)">−</button>
+        </div>
+      </div>
+    </div>`;
+  };
+  const tog = (id, on, label) => `<button type="button" class="bpl-tog${on ? " on" : ""}"
+      onclick="window.spTog(this,'${id}')"><span class="bpl-knob"></span>${label ? `<b>${esc(label)}</b>` : ""}</button>
+    <input type="hidden" id="${id}" value="${on ? 1 : 0}">`;
+  const step = (id, v, unit) => `<div class="sp-step">
+      <button type="button" onclick="window.spNum('${id}', 1)">+</button>
+      <input id="${id}" type="number" min="0" value="${Number(v) || 0}">
+      <button type="button" onclick="window.spNum('${id}', -1)">−</button>
+    </div><span class="muted" style="font-size:12.5px">${esc(unit)}</span>`;
+  const sum = (q, d) => esc(q || "—") + " · " + esc(spDirText(d || PLAN_DIR[0]));
+
+  const colorRows = SYS_OPT_COLORS.map(c => {
+    const v = P[c.k] || {};
+    return `<tr>
+      <td><strong>${esc(c.base)}</strong>
+        <div class="muted" style="font-size:11px">${esc(c.base)}</div></td>
+      <td><input id="poNm_${c.k}" value="${esc(v.name || c.base)}" placeholder="${esc(c.base)}" style="width:100%"></td>
+      <td><input type="color" id="poCl_${c.k}" value="${esc(v.color || sysOptDefColor(c.k))}" class="mus-color"></td>
+      <td><label class="switch"><input type="checkbox" id="poCo_${c.k}"${v.colorOn === false ? "" : " checked"}>
+        <span class="slider"></span></label></td>
+    </tr>`;
+  }).join("");
+
   openPanel(`<div class="panel-back" data-action="close-panel"></div>
-    <aside class="side-panel sp-page pl-page" data-stop>
+    <aside class="side-panel sp-page pl-page po-page" data-stop>
       <div class="sp-head">
         <div class="sp-id">
           <div class="avatar sp-avatar">${ic("settings", 24)}</div>
@@ -14050,8 +14128,133 @@ window.sysPrgEmpty = function (pid) {
         </div>
         <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
       </div>
-      <div class="panel-body pl-body"></div>
+      <div class="panel-body sp-body pl-body">
+        <div class="sp-ghead sp-wide2">${ic("doc", 17)}<h3>الحفظ</h3></div>
+        <section class="sp-card sp-wide2 sp-hifz${H.on === false ? " sp-off" : ""}">
+          <div class="sp-plrow">
+            <span class="sp-pldot"></span><b>الحفظ</b>
+            <span class="sp-plsum">${sum(H.qty, H.dir)}</span>
+            ${tog("poHifzOn", H.on !== false, "")}
+          </div>
+          <div class="sp-grid">
+            <div class="sp-field"><label>نوع الكمية</label>${qtySel("poHifzType", H.qtyType || SYS_QTY_TYPES[0], "window.spQtyType(this,'poHifzQty')")}</div>
+            <div class="sp-field" id="poHifzQtyBox">${spQtyCtl("poHifzQty", H.qty, H.qtyType || SYS_QTY_TYPES[0])}</div>
+            <div class="sp-field"><label>الاتجاه</label>${dirBtns("poHifzDir", H.dir)}</div>
+          </div>
+          ${startRow("poHifz", H, "poHifzDir", H.dir)}
+          <div class="sp-klabel">${ic("layers", 14)} أركان متفرّعة من الحفظ</div>
+          <div class="sp-kidrow">${tog("poTatOn", T.on !== false, "تثبيت")}${step("poTatCount", T.lessons, "دروس")}</div>
+          <div class="sp-kidrow">${tog("poTilOn", L.on !== false, "تلاوة")}${step("poTilCount", L.qtyNum, "أوجه")}</div>
+        </section>
+
+        <div class="sp-ghead sp-wide2 g-rev">${ic("refresh", 17)}<h3>المراجعة</h3></div>
+        <section class="sp-card sp-wide2 sp-rev${R.on === false ? " sp-off" : ""}">
+          <div class="sp-plrow">
+            <span class="sp-pldot"></span><b>مراجعة</b>
+            <span class="sp-plsum">${sum(R.qty, R.dirRev)}</span>
+            ${tog("poRevOn", R.on !== false, "")}
+          </div>
+          <div class="sp-grid">
+            <div class="sp-field"><label>نوع الكمية</label>${qtySel("poRevType", R.qtyType || SYS_QTY_TYPES[0], "window.spQtyType(this,'poRevQty')")}</div>
+            <div class="sp-field" id="poRevQtyBox">${spQtyCtl("poRevQty", R.qty, R.qtyType || SYS_QTY_TYPES[0])}</div>
+            <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("poRevDir", R.dirRev)}</div>
+          </div>
+          ${startRow("poRev", R, "poRevDir", R.dirRev)}
+        </section>
+
+        <div class="sp-ghead sp-wide2">${ic("pen", 17)}<h3>ألوان الأخطاء</h3></div>
+        <section class="sp-card sp-wide2 po-colors">
+          <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
+            <thead><tr><th>النوع</th><th>الاسم المعروض</th><th>اللون</th><th>مفعّل</th></tr></thead>
+            <tbody>${colorRows}</tbody></table></div></div>
+          <div style="display:flex;gap:8px;padding:12px 4px 0">
+            <button class="btn btn-ghost btn-sm" onclick="window.sysOptColorsReset()">القيم الافتراضية</button>
+          </div>
+        </section>
+      </div>
+      <div class="sp-foot">
+        <button class="btn btn-primary sp-save" id="poSave" onclick="window.sysOptSave('${jsAttr(pid)}')">
+          ${ic("check", 16)} حفظ الخيارات</button>
+      </div>
     </aside>`);
+  requestAnimationFrame(() => { try { spFillSurahs($("#panelRoot")); } catch (e) {} });
+};
+
+window.sysOptColorsReset = function () {
+  SYS_OPT_COLORS.forEach(c => {
+    const n = document.getElementById("poNm_" + c.k); if (n) n.value = c.base;
+    const l = document.getElementById("poCl_" + c.k); if (l) l.value = sysOptDefColor(c.k);
+    const o = document.getElementById("poCo_" + c.k); if (o) o.checked = true;
+  });
+};
+
+window.sysOptSave = function (pid) {
+  if (!canPlanSetup()) { showToast("الضبط من صلاحية مدير النظام أو مدير المسجد", "warn"); return; }
+  const g = id => { const el = document.getElementById(id); return el ? el.value : null; };
+  const prev = sysPrgCfg(pid);
+  const out = { commit: prev.commit, pillars: {} };
+  Object.keys(prev.pillars || {}).forEach(k => { out.pillars[k] = Object.assign({}, prev.pillars[k]); });
+  const P = out.pillars;
+  ["hifz", "tathbit", "tilawah", "review"].forEach(k => { if (!P[k]) P[k] = {}; });
+
+  /* سورةُ الابتداء: لا تُكتب ما لم تُغيَّر عن المعروض أوّلاً — وإلّا صار
+     افتراضُ العرض («الفاتحة») بدايةً محفوظةً لم يخترها أحد */
+  const startOf = pfx => {
+    const sel = document.getElementById(pfx + "Sura");
+    if (!sel) return null;
+    if (sel.value === sel.dataset.init && !sel.dataset.saved) return "";
+    const i = spSurahIdx(sel.value);
+    return i ? String(i) : (sel.dataset.saved || "");
+  };
+  const ayahOf = pfx => Math.max(1, Number(g(pfx + "Ayah")) || 1);
+
+  P.hifz.on = g("poHifzOn") === "1";
+  P.hifz.qtyType = g("poHifzType") || P.hifz.qtyType;
+  if (g("poHifzQty") != null) P.hifz.qty = String(g("poHifzQty"));
+  P.hifz.dir = g("poHifzDir") || P.hifz.dir;
+  const hs = startOf("poHifz"); if (hs != null) P.hifz.start = hs;
+  P.hifz.startAyah = P.hifz.start ? ayahOf("poHifz") : 1;
+
+  P.tathbit.on = g("poTatOn") === "1";
+  P.tathbit.lessons = Number(g("poTatCount")) || 0;
+  P.tilawah.on = g("poTilOn") === "1";
+  P.tilawah.qtyNum = Number(g("poTilCount")) || 0;
+
+  P.review.on = g("poRevOn") === "1";
+  P.review.qtyType = g("poRevType") || P.review.qtyType;
+  if (g("poRevQty") != null) P.review.qty = String(g("poRevQty"));
+  P.review.dirRev = g("poRevDir") || P.review.dirRev;
+  const rs = startOf("poRev"); if (rs != null) P.review.start = rs;
+  P.review.startAyah = P.review.start ? ayahOf("poRev") : 1;
+
+  SYS_OPT_COLORS.forEach(c => {
+    const nm = g("poNm_" + c.k); if (nm != null) P[c.k].name = String(nm).trim() || c.base;
+    const cl = g("poCl_" + c.k); if (cl) P[c.k].color = cl;
+    const co = document.getElementById("poCo_" + c.k); if (co) P[c.k].colorOn = !!co.checked;
+  });
+
+  /* الطريقُ نفسُه في plSave: مديرُ المسجد سجلُّ مسجده، والمديرُ الإعدادات */
+  if (!isTopAdmin()) {
+    const m = planScopeMosque();
+    if (!m) { showToast("لا مسجد مرتبط بحسابك", "warn"); return; }
+    m.planCfg = Object.assign({}, m.planCfg || {});
+    m.planCfg[String(pid)] = out;
+    Promise.resolve(persistSet("mosques", m)).then(function (ok) {
+      closePanel();
+      showToast(ok === false ? "تعذّر حفظ الخيارات" : "حُفظت الخيارات — خطة المسجد",
+                ok === false ? "warn" : "success");
+      mount();
+    });
+    return;
+  }
+  if (!DB.settings) DB.settings = {};
+  if (!DB.settings.sysPrgCfg) DB.settings.sysPrgCfg = {};
+  DB.settings.sysPrgCfg[String(pid)] = out;
+  DB.settings.id = DB.settings.id || "app";
+  persistSet("settings", DB.settings);
+  closePanel();
+  showToast("حُفظت الخيارات", "success");
+  mount();
 };
 
 window.sysPrgSetup = function (pid) {
@@ -17560,7 +17763,7 @@ window.manuAssignDo = function () {
         if (isR && plan && Number(plan.revFromS) > 0) {
           rec.fromS = Number(plan.revFromS); rec.fromA = Number(plan.revFromA) || 1;
         } else if (isR && ps > 0) {
-          rec.fromS = ps; rec.fromA = rec.direction === "backward" ? 0 : 1;
+          rec.fromS = ps; rec.fromA = pillarStartAyahOf(kb) || (rec.direction === "backward" ? 0 : 1);
         } else if (plan && plan.hifzFromS) {
           rec.fromS = plan.hifzFromS; rec.fromA = plan.hifzFromA || 1;
         }
@@ -19822,8 +20025,9 @@ function nextHifzFrom(plan, forDate) {
      الافتراضية، وإلا موضعُه الحالي. */
   const ps = typeof pillarStartOf === "function" ? pillarStartOf("hifz") : 0;
   const _s0 = Number(plan.hifzFromS) || ps || Number(plan.currentS) || 0;
+  const _pa = !Number(plan.hifzFromS) && ps && typeof pillarStartAyahOf === "function" ? pillarStartAyahOf("hifz") : 0;
   return { s: _s0,
-           a: skipBasmala(_s0, Number(plan.hifzFromA) || Number(plan.currentA) || 1),
+           a: skipBasmala(_s0, Number(plan.hifzFromA) || _pa || Number(plan.currentA) || 1),
            after: false };
 }
 
@@ -19892,6 +20096,14 @@ function pillarStartOf(hwKey) {
   const v = defPillar(hwKey);
   const n = v ? Number(v.start) : 0;
   return isFinite(n) && n > 0 ? n : 0;
+}
+/* آيةُ الابتداء مع سورة البداية (من «الخيارات») — صفرٌ إن لم تُضبط أو كانت
+   الأولى، فيبقى الحكمُ القائم كما هو (الأولى صعوداً، والأخيرةُ نزولاً) */
+function pillarStartAyahOf(hwKey) {
+  const v = defPillar(hwKey);
+  if (!v || !(Number(v.start) > 0)) return 0;
+  const a = Number(v.startAyah) || 0;
+  return a > 1 ? a : 0;
 }
 
 /* نصُّ الكمية مقداراً بالأوجه — بترتيب PLAN_QTY نفسِه */
@@ -20171,7 +20383,7 @@ function generateAssignments(studentId, dateISO) {
           ? { s: Number(plan.revFromS), a: Number(plan.revFromA) || 1 } : null;
         if (cp && cp.s) { rec.fromS = cp.s; rec.fromA = cp.a || 1; }
         else if (rv) { rec.fromS = rv.s; rec.fromA = rv.a; }
-        else if (ps) { rec.fromS = ps; rec.fromA = rec.direction === "backward" ? 0 : 1; }
+        else if (ps) { rec.fromS = ps; rec.fromA = pillarStartAyahOf(t.k) || (rec.direction === "backward" ? 0 : 1); }
         else if (plan.hifzFromS) { rec.fromS = plan.hifzFromS; rec.fromA = plan.hifzFromA || 1; }
       }
       revClampStart(rec, plan);            /* لا تتجاوز المراجعةُ ما حُفظ */
@@ -55762,7 +55974,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-1720";
+  var APP_BUILD = "20261019-1800";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

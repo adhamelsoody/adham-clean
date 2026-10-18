@@ -13853,3 +13853,6 @@ th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-c
 
 /* القائمةُ المنسدلة: التمريرُ داخلها لا ينتقل إلى الصفحة إذا بلغ آخرَها */
 .bdd-list, .selpro-menu { overscroll-behavior: contain; }
+
+/* «الخيارات» في بطاقة الخطة الافتراضية: صفّا التثبيت والتلاوة متباعدان */
+.po-page .sp-kidrow + .sp-kidrow { margin-top: 8px; }
