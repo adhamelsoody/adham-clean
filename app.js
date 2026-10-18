@@ -10057,16 +10057,7 @@ function adminBulkPlans() {
     ${pageHead(bplTitle, "", backArrow())}
     <div class="blk-note">${ic("info", 15)} يمكن تعديل حتى ١٠٠ طالب في المرة الواحدة — وما تختاره في رأس الجدول يُطبَّق على الطلاب الظاهرين</div>
 
-    <div class="bpl-cols">
-      ${colBox("tilawah", "التلاوة")}
-      ${colBox("hifz", "الحفظ")}
-      ${colBox("review", "المراجعة")}
-      ${colBox("tathbit", "التثبيت")}
-      ${colBox("tathbitCum", "التثبيت التراكمي")}
-      ${colBox("tilawahNext", "تلاوة الدرس القادم")}
-      ${colBox("reviewExtra", "المراجعة الإضافية")}
-      ${colBox("reviewCum", "المراجعة التراكمية")}
-    </div>
+    <!-- «شيل هذه العلامات»: رُفع شريطُ مربّعات الأعمدة — والأعمدةُ على افتراضها (BPL.cols) -->
 
     <div class="fac-toolbar" style="margin-bottom:12px">
       <div class="fac-searchbox">
@@ -56028,7 +56019,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-2345";
+  var APP_BUILD = "20261019-2350";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
