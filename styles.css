@@ -13862,3 +13862,6 @@ th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-c
 /* بطاقةُ الطالب: التلاوةُ جنبَ التثبيت بالفاصل نفسه */
 .sp-kidrow .po-kidsep { width: 1px; align-self: stretch; background: rgba(15, 111, 114, .15); margin-inline: 14px; }
 .sp-kidrow { flex-wrap: wrap; }
+
+/* تنسيبُ ملف الإكسل: لا يظهر حتى يُنسب أحدٌ لخطة */
+#regXPlace:empty { display: none; }

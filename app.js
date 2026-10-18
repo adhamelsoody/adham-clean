@@ -28382,18 +28382,19 @@ function regRowError(r, mqId, seenIds) {
   if (String(r.name || "").trim().length < 2) return "الاسم مطلوب";
   if (!regCircleOf(r.circle, mqId)) return r.circle ? "الحلقة «" + r.circle + "» ليست في هذا المسجد" : "اختر الحلقة";
   if (!regEnrollOf(r.enroll)) return "نوع التسجيل: خطة أو تحضير فقط";
-  /* صفوفُ «التسجيل المتعدد» تحمل التنسيب: المنسوبُ لخطةٍ يُختار له برنامجٌ أو خطةٌ افتراضية */
-  if ("pkind" in r && regEnrollOf(r.enroll) === "plan") {
-    if (!r.pkind) return "اختر التنسيب: برنامج أو خطة افتراضية";
-    if (!regProgList(r.pkind).some(p => String(p.id) === String(r.prog)))
-      return r.pkind === "sys" ? "اختر الخطة الافتراضية" : "اختر البرنامج";
-  }
   const id = String(r.idNo || "").replace(/\D+/g, "");
   if (r.idNo && id.length !== 10) return "رقم الهوية عشرة أرقام";
   if (id) {
     if ((DB.students || []).some(s => s && String(s.idNo || "") === id)) return "رقم الهوية مسجَّلٌ لطالبٍ آخر";
     if (seenIds && seenIds[id]) return "رقم الهوية مكرَّرٌ في القائمة";
     if (seenIds) seenIds[id] = true;
+  }
+  /* التنسيب (التسجيلُ المتعدد وملفُّ الإكسل): المنسوبُ لخطةٍ يُختار له برنامجٌ أو
+     خطةٌ افتراضية — يُفحص أخيراً فتظهر قبله أخطاءُ الاسم والحلقة والهوية */
+  if ("pkind" in r && regEnrollOf(r.enroll) === "plan") {
+    if (!r.pkind) return "اختر التنسيب: برنامج أو خطة افتراضية";
+    if (!regProgList(r.pkind).some(p => String(p.id) === String(r.prog)))
+      return r.pkind === "sys" ? "اختر الخطة الافتراضية" : "اختر البرنامج";
   }
   return "";
 }
@@ -28635,7 +28636,34 @@ window.regMultiSave = function () {
 /* ---------- ٢) تسجيل الطلاب من ملف اكسل ----------
    يُقرأ ملفُّ xlsx في المتصفّح بلا مكتبة: هو أرشيفُ zip فيه XML، يُفكّ
    بـ DecompressionStream ويُحلَّل بـ DOMParser. ويُقبل CSV كذلك. */
-let REG_X = { rows: [], file: "", enroll: "" };
+let REG_X = { rows: [], file: "", enroll: "", pkind: "", prog: "", level: "" };
+
+/* «في الإكسل إذا نقرتُ تنسيب لخطة يظهر لي الخطط أختار منها»: تنسيبٌ واحدٌ
+   لكلّ صفٍّ منسوبٍ لخطة — برنامجٌ ومستواه أو خطةٌ افتراضية — بالقوائم نفسها
+   التي في التسجيل المتعدد (regProgOpts · regLevelOpts) */
+function regXRow(r) {
+  const rr = Object.assign({}, r, { enroll: r.enroll || REG_X.enroll });
+  if (regEnrollOf(rr.enroll) === "plan") Object.assign(rr, { pkind: REG_X.pkind, prog: REG_X.prog, level: REG_X.level });
+  return rr;
+}
+function regXHasPlan() {
+  return REG_X.enroll === "plan" || REG_X.rows.some(r => regEnrollOf(r.enroll) === "plan");
+}
+function regXPlaceHTML() {
+  if (!regXHasPlan()) return "";
+  return `<label>التنسيب لمن نُسب لخطة:</label>
+    <select id="regXKind" onchange="window.regXSet('pkind', this.value)"><option value="">— التنسيب —</option>
+      ${REG_PKIND.map(([v, t]) => `<option value="${v}" ${REG_X.pkind === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+    <select id="regXProg" onchange="window.regXSet('prog', this.value)"${REG_X.pkind ? "" : " disabled"}>${regProgOpts(REG_X.pkind, REG_X.prog)}</select>
+    ${REG_X.pkind === "prog" ? `<select id="regXLevel" onchange="window.regXSet('level', this.value)"${REG_X.prog ? "" : " disabled"}>${regLevelOpts("prog", REG_X.prog, REG_X.level)}</select>` : ""}`;
+}
+window.regXSet = function (k, v) {
+  REG_X[k] = String(v || "");
+  if (k === "pkind") { REG_X.prog = ""; REG_X.level = ""; }
+  if (k === "prog") REG_X.level = "";
+  const b = document.getElementById("regXPlace"); if (b) b.innerHTML = regXPlaceHTML();
+  window.regPaintPrev();
+};
 
 function regU16(b, o) { return b[o] | (b[o + 1] << 8); }
 function regU32(b, o) { return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0; }
@@ -28762,7 +28790,7 @@ function regPreviewHTML() {
   const seen = {};
   let okN = 0;
   const trs = REG_X.rows.map((r, i) => {
-    const rr = Object.assign({}, r, { enroll: r.enroll || REG_X.enroll });
+    const rr = regXRow(r);
     const err = regRowError(rr, mqId, seen);
     if (!err) okN++;
     const c = regCircleOf(rr.circle, mqId);
@@ -28770,7 +28798,8 @@ function regPreviewHTML() {
       <td>${toArabicDigits(i + 1)}</td><td>${esc(r.name)}</td><td dir="ltr">${esc(r.idNo)}</td>
       <td dir="ltr">${esc(r.phone)}</td><td dir="ltr">${esc(r.parent)}</td>
       <td>${esc(c ? c.name : r.circle)}</td>
-      <td>${esc(((REG_ENROLL.find(x => x[0] === regEnrollOf(rr.enroll)) || [])[1]) || rr.enroll || "—")}</td>
+      <td>${esc(((REG_ENROLL.find(x => x[0] === regEnrollOf(rr.enroll)) || [])[1]) || rr.enroll || "—")}${
+        regEnrollOf(rr.enroll) === "plan" && regPlacement(rr).program ? `<small class="muted" style="display:block">${esc(regPlacement(rr).program)}${regPlacement(rr).level ? " · " + esc(regPlacement(rr).level) : ""}</small>` : ""}</td>
       <td>${err ? `<span class="reg-st bad">${esc(err)}</span>` : `<span class="reg-st ok">${ic("check", 14)} جاهز</span>`}</td></tr>`;
   }).join("");
   return `<div class="reg-prev-head"><b>${esc(REG_X.file)}</b>
@@ -28805,9 +28834,10 @@ function adminRegExcel() {
         ${ic("download", 30)}<b>اضغط لاختيار الملف أو اسحبه هنا</b><small>‎.xlsx · ‎.csv</small>
       </label>
       <div class="reg-fill"><label>نوع التسجيل لمن لم يُحدَّد له في الملف:</label>
-        <select onchange="REG_X.enroll=this.value; window.regPaintPrev();">
+        <select onchange="REG_X.enroll=this.value; var b=document.getElementById('regXPlace'); if (b) b.innerHTML=regXPlaceHTML(); window.regPaintPrev();">
           <option value="">— اختر —</option>
           ${REG_ENROLL.map(([v, t]) => `<option value="${v}" ${REG_X.enroll === v ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+      <div class="reg-fill" id="regXPlace">${regXPlaceHTML()}</div>
       <div id="regPrev">${regPreviewHTML()}</div>
       <div id="regOut"></div>
     </div>
@@ -28823,13 +28853,14 @@ window.regFilePick = function (f) {
     .then(t => {
       REG_X.rows = regMapRows(t); REG_X.file = f.name;
       if (!REG_X.rows.length) showToast("الملفُّ بلا صفوفِ طلاب", "warn");
+      const pb = document.getElementById("regXPlace"); if (pb) pb.innerHTML = regXPlaceHTML();
       window.regPaintPrev();
       const o = document.getElementById("regOut"); if (o) o.innerHTML = "";
     })
     .catch(e => { REG_X.rows = []; window.regPaintPrev(); showToast((e && e.message) || "تعذّرت قراءةُ الملف", "warn"); });
 };
 window.regImport = function () {
-  const rows = REG_X.rows.map(r => Object.assign({}, r, { enroll: r.enroll || REG_X.enroll }));
+  const rows = REG_X.rows.map(regXRow);
   const mqId = regMosqueId();
   const seen = {};
   const good = rows.filter(r => !regRowError(r, mqId, seen));
@@ -56105,7 +56136,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-0020";
+  var APP_BUILD = "20261020-0030";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
