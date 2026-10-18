@@ -10203,7 +10203,7 @@ function jzmShownOk(st, i) {
      بمربّعات كاسم الطالب: cset · fset (null = الكلّ) */
   return (!JZM.pick || !!JZM.pick[sid]) &&
          (!JZM.cset || !!JZM.cset[jzmCircleKey(st)]) &&
-         (!JZM.fset || !!JZM.fset[String(jzmCurJuz(st) || "")]) &&
+         (!JZM.fset || !!JZM.fset[jzmProgId(st)]) &&
          (!JZM.circle || jzmCircleKey(st) === JZM.circle) &&
          (!JZM.from || String(jzmCurJuz(st)) === JZM.from);
 }
@@ -10355,10 +10355,16 @@ function jzmItems(kind) {
     });
     return out;
   }
-  const js = {};
-  studs.forEach(st => { const j = String(jzmCurJuz(st) || ""); js[j] = (js[j] || 0) + 1; });
-  return Object.keys(js).sort((x, y) => (Number(y) || 0) - (Number(x) || 0))
-    .map(j => ({ v: j, t: j ? jzmName(j) : "غير محدّد", n: js[j] }));
+  /* «البرنامج الحالي يعرض البرامج الموجودة التي وضعتُها — لا اسمَ بالتخمين»:
+     برامجُ الإعدادات نفسُها (cur("programs")) بعدد طلاب كلٍّ، لا الأجزاء
+     المستخرجة من حدود المستويات */
+  return (cur("programs") || []).filter(pr => !/^sys_/.test(String(pr.id)))
+    .map(pr => ({ v: String(pr.id), t: pr.name || "—",
+                  n: studs.filter(st => jzmProgId(st) === String(pr.id)).length }));
+}
+function jzmProgName(st) {
+  const pr = (cur("programs") || []).find(x => String(x.id) === jzmProgId(st));
+  return pr ? (pr.name || "") : "";
 }
 function jzmSetLabel(kind) {
   const all = jzmItems(kind).length, set = JZM[JZM_SETS[kind]];
@@ -10458,12 +10464,12 @@ function jzmScreen() {
   JZM.circle = ""; JZM.from = "";       /* التصفيةُ الفرديّةُ القديمة حلّت محلَّها قائمتا التحديد */
 
   const rows = studs.length ? studs.map((st, i) => {
-    const sid = String(st.id), cj = jzmCurJuz(st), rj = jzmRowJuz(st);
+    const sid = String(st.id), rj = jzmRowJuz(st);
     return `<tr data-sid="${esc(sid)}" data-lid="${esc(String(st.levelId || ""))}"${jzmShownOk(st) ? "" : ' style="display:none"'}>
       <td class="pt-num blk-idx">${toArabicDigits(i + 1)}</td>
       <td class="pt-name">${esc(st.name || "—")}</td>
       <td><span class="${st.circle && st.circle !== "—" ? "blk-val" : "pt-muted"}">${esc(st.circle || "بلا حلقة")}</span></td>
-      <td class="blk-now"><span class="${cj ? "blk-val" : "pt-muted"}">${cj ? esc(jzmName(cj)) : "غير محدّد"}</span></td>
+      <td class="blk-now"><span class="${jzmProgName(st) ? "blk-val" : "pt-muted"}">${esc(jzmProgName(st) || "بلا برنامج")}</span></td>
       <td class="blk-to"><select class="blk-sel" data-head="نقل إلى برنامج" data-k="to" onchange="window.jzmPickTo('${jsAttr(sid)}',this.value,this)">
         <option value="">إختر</option>
         ${JZM_ADD.map(j => `<option value="${j}"${JZM.to[sid] === String(j) ? " selected" : ""}>${esc(jzmName(j))}</option>`).join("")}</select></td>
@@ -56022,7 +56028,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-2330";
+  var APP_BUILD = "20261019-2345";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
