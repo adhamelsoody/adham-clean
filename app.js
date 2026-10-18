@@ -48054,9 +48054,8 @@ function panelStudent(id, keepDraft) {
         onclick="window.spMsg('${jsAttr(s.id)}')">${ic("chat", 17)}</button>
       <button class="sp-act" title="${s.status === "متوقف" ? "تفعيل" : "إيقاف مؤقت"}"
         data-action="toggle-student" data-id="${s.id}">${ic(s.status === "متوقف" ? "play" : "pause", 17)}</button>
-      ${(typeof canPlanSetup === "function" && canPlanSetup())
-        ? `<button class="sp-act sp-act-set" title="الإعدادات — الخطة الافتراضية"
-            onclick="window.spPlanSettings('${jsAttr(s.id)}')">${ic("settings", 17)}</button>` : ""}
+      ${/* «شيل علامة الإعدادات في صفحة الطالب» — رُفع زرُّها. والخطةُ تُضبط من
+           «الخيارات» في بطاقة الخطة الافتراضية، و spPlanSettings باقيةٌ بلا زرّ. */ ""}
       <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
     </div>
   </div>`;
@@ -55975,7 +55974,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-1810";
+  var APP_BUILD = "20261019-1820";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
