@@ -14035,6 +14035,25 @@ window.plBackStu = function () {
   if (sid && typeof panelStudent === "function") panelStudent(sid);
 };
 
+/* «زرّ الخيارات الخاصّ بالخطة الافتراضية: امسح ما بداخله فقط، والزرُّ يبقى»
+   — زرُّ بطاقتها في الإعدادات ← البرامج يفتح لوحةً فارغة. والخطةُ نفسُها
+   (sysPrgSetup) باقيةٌ كما هي، تُفتح من زرّ الإعدادات في بطاقة الطالب. */
+window.sysPrgEmpty = function (pid) {
+  const pr = sysPrograms().find(x => String(x.id) === String(pid));
+  openPanel(`<div class="panel-back" data-action="close-panel"></div>
+    <aside class="side-panel sp-page pl-page" data-stop>
+      <div class="sp-head">
+        <div class="sp-id">
+          <div class="avatar sp-avatar">${ic("settings", 24)}</div>
+          <div class="sp-idtext"><h2>الخيارات</h2>
+            <div class="sp-chips"><span class="sp-chip">${esc((pr && pr.name) || "")}</span></div></div>
+        </div>
+        <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
+      </div>
+      <div class="panel-body pl-body"></div>
+    </aside>`);
+};
+
 window.sysPrgSetup = function (pid) {
   /* «رجوع إلى الطالب» لمن فتحها من بطاقته وحدَه — فتحُها من غير البطاقة
      (الإعدادات ← البرامج) لا يحمل رجوعاً عالقاً من إغلاقٍ سابقٍ بـ Esc */
@@ -25759,7 +25778,7 @@ function setPanelLevels() {
         <div class="sys-acts">
           <button class="btn btn-ghost btn-sm" onclick="window.lvlView('${jsAttr(sp.id)}')">${ic("eye", 15)} التفاصيل</button>
           ${canPlanSetup() ? `<button class="btn btn-soft btn-sm"
-            onclick="window.sysPrgSetup('${jsAttr(sp.id)}')">${ic("settings", 15)} الخيارات</button>` : ""}
+            onclick="window.${String(sp.id) === "sys_default" ? "sysPrgEmpty" : "sysPrgSetup"}('${jsAttr(sp.id)}')">${ic("settings", 15)} الخيارات</button>` : ""}
           ${isTopAdmin() ? `<button class="btn btn-ghost btn-sm"
             onclick="window.sysPrgToggle('${jsAttr(sp.id)}')">${on ? "إيقاف" : "تفعيل"}</button>` : ""}
         </div>
@@ -55743,7 +55762,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-1700";
+  var APP_BUILD = "20261019-1720";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
