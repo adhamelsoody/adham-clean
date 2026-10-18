@@ -9223,7 +9223,7 @@ const BDD_TICK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" st
 function bddSpec(kind) {
   /* قوائمُ «نقل وتعديل المستوى» — صفوفُها مستوياتٌ لا طلاب */
   if (kind === "lvProg" || kind === "lvTo" || kind === "lvSt") return lvmSpec(kind);
-  if (kind === "jzFrom" || kind === "jzTo" || kind === "jzLv") return jzmSpec(kind);
+  if (kind === "jzFrom" || kind === "jzTo" || kind === "jzLv" || kind === "jzCircle") return jzmSpec(kind);
   const studs = cur("students") || [];
   const cirs = cur("circles") || [];
   const lvls = DB.levels || [];
@@ -10117,24 +10117,30 @@ function adminBulkLevels()    { return blkScreen({ title: "تعديل المست
                                   cols: ["curCircle", "curLevel", "toLevel", "program"] }); }
 /* «نقل وتعديل المستوى هي تعديلُ ونقلُ المستويات وليس الطلاب» — فصفوفُه
    المستوياتُ نفسُها (lvmScreen). وخياراتُ blkScreen للطلاب باقيةٌ كما هي. */
-/* ثمّ: «يكون للطلاب الذين ليس لهم خطةٌ افتراضية، وخانةُ نقل البرامج تحديدُ
-   الأجزاء — جزء عمّ وباقي الأجزاء — وتعديلُ المستوى مستوياتُ الجزء الذي
-   وُضع له» — فصار jzmScreen. وشاشةُ المستويات (lvmScreen) باقيةٌ بلا مدخل. */
+/* «تعديل البرامج والمستويات» — بشكل الجدول المرسَل:
+   م · اسم الطالب · اسم الحلقة · البرنامج الحالي · نقل إلى برنامج · اختيار المستوى
+   وكلُّ عنوانٍ «فلتر»، أي تحديدُ الكلّ: اسمُ الطالب قائمةُ تحديد، والحلقةُ
+   والبرنامجُ الحاليّ يحصران الصفوف، و«نقل إلى برنامج» و«اختيار المستوى»
+   يُطبَّقان على الظاهرين كلِّهم. وزرُّ «حفظ التعديل» أسفلَ الجدول. */
 function adminBulkMoveLevel() { return jzmScreen(); }
 
 /* =========================================================================
-   «نقل وتعديل المستوى» — بالأجزاء
+   «تعديل البرامج والمستويات»
    -------------------------------------------------------------------------
-   الصفوف: طلابُ النطاق المسندون إلى برنامجٍ بعينه — من على «الخطة
-   الافتراضية» (بلا برنامج أو برنامجٍ من النظام) لا يظهرون، فلا مستوياتَ له.
+   الصفوف: طلابُ النطاق المسندون إلى برنامج — من على «الخطة الافتراضية»
+   لا يظهرون.
 
-   الجزءُ لا حقلَ له في السجلّات: يُستخرج من حدود المستوى (fromSurah ·
-   fromAyah) بفهرس الأجزاء QJUZ. فخانةُ «إضافة مستوى» (كان اسمُها «نقل إلى الجزء») تحديدٌ يحصر قائمةَ
-   المستويات في مستويات ذلك الجزء، والكتابةُ عند «تعديل المستوى» هي
-   المستوى وحدَه — st.levelId و st.level — بالطريق نفسه الذي كتبته blkApply.
-   ولا يُمسّ برنامجٌ ولا حلقةٌ ولا خطة.
+   «البرنامج» في هذه الشاشة هو الجزء (جزء عمّ · جزء تبارك …) كما في
+   الجدول المرسَل. والجزءُ لا حقلَ له في السجلّات: يُستخرج من حدود المستوى
+   (fromSurah · fromAyah) بفهرس QJUZ. و«اختيار المستوى» ترتيبُه في ذلك
+   الجزء (الأول … الخامس) — من مستويات برنامج الطالب فيه أوّلاً.
+
+   والكتابةُ عند «حفظ التعديل» المستوى وحدَه — st.levelId و st.level —
+   بالطريق الذي كتبته blkApply. ولا يُمسّ برنامجٌ ولا حلقةٌ ولا خطة.
    ========================================================================= */
-const JZM = { q: "", from: "", jz: {}, lv: {}, add: {} };
+/* pick: الطلابُ المحدَّدون من عنوان «اسم الطالب» — null = كلُّهم
+   circle / from: تصفيةُ الحلقة والبرنامج الحالي · to / lv: الاختيارات */
+const JZM = { pick: null, circle: "", from: "", to: {}, lv: {} };
 
 /* أسماءُ الأجزاء بعُرف الحلقات: بأوّل كلمةٍ منه، والأواخرُ بسورتها
    («جزء عمّ · جزء تبارك …»). أسماءٌ للعرض فحسب — لا تُكتب في سجلّ. */
@@ -10144,17 +10150,11 @@ const JZM_NAMES = ["", "الم", "سيقول", "تلك الرسل", "لن تنا
   "قال ألم", "اقترب", "قد أفلح", "وقال الذين", "أمّن خلق",
   "اتل ما أوحي", "ومن يقنت", "وما لي", "فمن أظلم", "إليه يرد",
   "الأحقاف", "الذاريات", "قد سمع", "تبارك", "عمّ"];
-/* «إضافة مستوى» فيها خمسةُ أجزاء: عمّ · تبارك · قد سمع · الذاريات · الأحقاف
-   — ثمّ صارت «المستوى الأول … الخامس» (JZM_ADD_LV)، والقائمةُ هذه باقيةٌ بلا استعمال */
+/* «نقل إلى برنامج»: الأجزاءُ الخمسة — عمّ · تبارك · قد سمع · الذاريات · الأحقاف */
 const JZM_ADD = [30, 29, 28, 27, 26];
-/* «إضافة مستوى»: المستوى الأول حتى الخامس — ويُكتب مستوى الطالب مباشرةً:
-   المستوى الذي بهذا الترتيب في برنامجه (lvxOf مرتّبةً بـ order) */
+/* «اختيار المستوى»: الأول حتى الخامس */
 const JZM_ADD_LV = [1, 2, 3, 4, 5];
 function jzmAddName(n) { return "المستوى " + juzOrd(n); }
-function jzmAddLevel(st, n) {
-  const pid = jzmProgId(st);
-  return pid ? (lvxOf(pid)[(Number(n) || 0) - 1] || null) : null;
-}
 function jzmName(j) {
   const n = Number(j) || 0;
   if (!n) return "";
@@ -10188,49 +10188,66 @@ function jzmLevels(j) {
   return (cur("levels") || []).filter(l => j && jzmLvJuz(l) === j)
     .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
 }
-function jzmLvText(l) {
-  const pr = (cur("programs") || []).find(p => String(p.id) === String(l.programId));
-  return (l.name || "—") + (pr && pr.name ? " — " + pr.name : "");
+/* المستوى رقم n في الجزء j: من مستويات برنامج الطالب فيه، وإلّا من مستويات الجزء كلّها */
+function jzmTarget(st, j, n) {
+  const all = jzmLevels(j), pid = jzmProgId(st);
+  const own = all.filter(l => String(l.programId) === pid);
+  return (own.length ? own : all)[(Number(n) || 0) - 1] || null;
 }
-function jzmLvOptions(j, sel, curLid) {
-  const ls = jzmLevels(j);
-  return `<option value="">${ls.length || !j ? "إختر" : "لا مستويات في هذا الجزء"}</option>` +
-    ls.map(l => `<option value="${esc(String(l.id))}"${String(sel) === String(l.id) ? " selected" : ""}${
-      String(l.id) === String(curLid) ? " disabled" : ""}>${esc(jzmLvText(l))}</option>`).join("");
+function jzmRowJuz(st) { return JZM.to[String(st.id)] || String(jzmCurJuz(st) || ""); }
+function jzmCircleKey(st) { return String(st.circleId || st.circle || ""); }
+
+function jzmShownOk(st, i) {
+  const sid = String(st.id);
+  return (!JZM.pick || !!JZM.pick[sid]) &&
+         (!JZM.circle || jzmCircleKey(st) === JZM.circle) &&
+         (!JZM.from || String(jzmCurJuz(st)) === JZM.from);
 }
 
 function jzmSpec(kind) {
   const studs = jzmStudents();
-  const all = Array.from({ length: 30 }, (_, i) => i + 1);
-  const cnt = j => studs.filter(st => jzmCurJuz(st) === j).length;
-  if (kind === "jzFrom") return {
-    title: "الجزء الحالي", head: "الجزء الحالي",
-    cur: JZM.from, curName: jzmName(JZM.from), reset: "إلغاء التصفية",
-    items: all.map(j => ({ v: String(j), t: jzmName(j), n: cnt(j) })), pick: window.jzmFrom };
+  if (kind === "jzCircle") {
+    const seen = {}, items = [];
+    studs.forEach(st => {
+      const k = jzmCircleKey(st); if (!k || seen[k]) return;
+      seen[k] = 1;
+      items.push({ v: k, t: st.circle || "—", n: studs.filter(x => jzmCircleKey(x) === k).length });
+    });
+    const curName = (items.find(it => it.v === JZM.circle) || {}).t || "";
+    return { title: "اسم الحلقة", head: "اسم الحلقة", cur: JZM.circle, curName,
+             reset: "كلُّ الحلقات", items, pick: window.jzmCircle };
+  }
+  if (kind === "jzFrom") {
+    const js = {};
+    JZM_ADD.forEach(j => { js[j] = 1; });
+    studs.forEach(st => { const j = jzmCurJuz(st); if (j) js[j] = 1; });
+    const list = Object.keys(js).map(Number).sort((a, b) => b - a);
+    return { title: "البرنامج الحالي", head: "البرنامج الحالي", cur: JZM.from, curName: jzmName(JZM.from),
+             reset: "كلُّ البرامج",
+             items: list.map(j => ({ v: String(j), t: jzmName(j), n: studs.filter(st => jzmCurJuz(st) === j).length })),
+             pick: window.jzmFrom };
+  }
   if (kind === "jzTo") return {
-    title: "أضف للطلاب الظاهرين مستوى", head: "إضافة مستوى",
-    items: JZM_ADD_LV.map(k => ({ v: String(k), t: jzmAddName(k) })), pick: window.jzmAddAll };
-  /* المستوى لكلّ الظاهرين: مستوياتُ الجزء المصفّى، وإلّا كلُّ المستويات المحدّدة بجزء */
-  const ls = JZM.from ? jzmLevels(JZM.from) : (cur("levels") || []).filter(l => jzmLvJuz(l));
+    title: "انقل الطلاب الظاهرين إلى", head: "نقل إلى برنامج",
+    items: JZM_ADD.map(j => ({ v: String(j), t: jzmName(j), n: jzmLevels(j).length })), pick: window.jzmToAll };
   return {
-    title: "عدّل مستوى الطلاب الظاهرين إلى", head: "تعديل المستوى إلى",
-    items: ls.map(l => ({ v: String(l.id), t: jzmLvText(l) + (JZM.from ? "" : " · " + jzmName(jzmLvJuz(l))) })),
-    pick: window.jzmLvAll };
+    title: "اختر المستوى للطلاب الظاهرين", head: "اختيار المستوى",
+    items: JZM_ADD_LV.map(k => ({ v: String(k), t: jzmAddName(k) })), pick: window.jzmLvAll };
 }
 
-function jzmCount() { return Object.keys(Object.assign({}, JZM.add, JZM.lv)).length; }
+function jzmCount() { return Object.keys(Object.assign({}, JZM.to, JZM.lv)).length; }
 function jzmSyncBtn() {
   const b = document.getElementById("jzmApply");
   if (!b) return;
   const n = jzmCount();
   b.disabled = !n;
-  b.textContent = "تعديل المستوى" + (n ? " (" + toArabicDigits(n) + ")" : "");
+  b.textContent = "حفظ التعديل" + (n ? " (" + toArabicDigits(n) + ")" : "");
 }
 function jzmFilter() {
   let n = 0;
-  document.querySelectorAll("#jzmBody tr[data-name]").forEach(tr => {
-    const ok = (!JZM.q || (tr.dataset.name || "").indexOf(JZM.q) > -1) &&
-               (!JZM.from || String(tr.dataset.jz || "") === JZM.from);
+  document.querySelectorAll("#jzmBody tr[data-sid]").forEach(tr => {
+    const st = (DB.students || []).find(x => String(x.id) === String(tr.dataset.sid));
+    const ok = !!st && jzmShownOk(st);
     tr.style.display = ok ? "" : "none";
     if (ok) n++;
   });
@@ -10238,129 +10255,151 @@ function jzmFilter() {
   if (o) o.textContent = toArabicDigits(n) + " طالباً";
   return n;
 }
-/* قائمةُ مستويات الصفّ تُعاد بجزئه الجديد */
+/* خياراتُ المستوى في الصفّ تتبع برنامجَه (الجزء): ما لا وجودَ له فيه معطَّل */
 function jzmRowLevels(tr) {
   const sid = String(tr.dataset.sid);
+  const st = (DB.students || []).find(x => String(x.id) === sid);
   const sel = tr.querySelector('select[data-k="lv"]');
-  if (!sel) return;
-  const j = JZM.jz[sid] || tr.dataset.jz;
-  if (JZM.lv[sid] && !jzmLevels(j).some(l => String(l.id) === JZM.lv[sid])) delete JZM.lv[sid];
-  sel.innerHTML = jzmLvOptions(j, JZM.lv[sid] || "", tr.dataset.lid);
+  if (!st || !sel) return;
+  const j = jzmRowJuz(st);
+  [].forEach.call(sel.options, o => { if (o.value) o.disabled = !jzmTarget(st, j, o.value); });
+  if (JZM.lv[sid] && !jzmTarget(st, j, JZM.lv[sid])) { delete JZM.lv[sid]; sel.value = ""; }
   bddSyncSel(sel);
 }
+function jzmNameLabel() {
+  const all = jzmStudents().length;
+  const n = JZM.pick ? Object.keys(JZM.pick).length : all;
+  return "اسم الطالب (" + toArabicDigits(n) + " / " + toArabicDigits(all) + ")";
+}
+/* تغييرُ ما يظهر يرفع الاختيارات: لا يُعدَّل طالبٌ لا يظهر */
+function jzmClearPicks() {
+  JZM.to = {}; JZM.lv = {};
+  document.querySelectorAll("#jzmBody tr[data-sid]").forEach(tr => {
+    tr.querySelectorAll("select.blk-sel").forEach(s => { s.value = ""; });
+    jzmRowLevels(tr);
+  });
+  bddSyncAll();
+}
 
-window.jzmSearch = function (q) { JZM.q = String(q || "").trim(); jzmFilter(); };
-window.jzmPickJz = function (sid, v, el) {
-  if (v) JZM.jz[String(sid)] = String(v); else delete JZM.jz[String(sid)];
+window.jzmPickTo = function (sid, v, el) {
+  if (v) JZM.to[String(sid)] = String(v); else delete JZM.to[String(sid)];
   const tr = el && el.closest ? el.closest("tr") : null;
   if (tr) jzmRowLevels(tr);
   jzmSyncBtn();
 };
-window.jzmPickLv = function (sid, v, el) {
+window.jzmPickLv = function (sid, v) {
   if (v) JZM.lv[String(sid)] = String(v); else delete JZM.lv[String(sid)];
-  /* خانتا المستوى لا تجتمعان على صفّ: الأحدثُ يُلغي الأخرى */
-  if (v) {
-    delete JZM.add[String(sid)];
-    const tr = el && el.closest ? el.closest("tr") : null;
-    const a = tr && tr.querySelector('select[data-k="add"]');
-    if (a) { a.value = ""; bddSyncSel(a); }
-  }
   jzmSyncBtn();
 };
-window.jzmPickAdd = function (sid, v, el) {
-  if (v) JZM.add[String(sid)] = String(v); else delete JZM.add[String(sid)];
-  if (v) {
-    delete JZM.lv[String(sid)];
-    const tr = el && el.closest ? el.closest("tr") : null;
-    if (tr) jzmRowLevels(tr);
-  }
-  jzmSyncBtn();
-};
-window.jzmAddAll = function (k) {
-  const v = String(k || ""); if (!v) return;
-  let n = 0, miss = 0;
-  document.querySelectorAll("#jzmBody tr[data-name]").forEach(tr => {
-    if (tr.style.display === "none") return;
-    const sid = String(tr.dataset.sid);
-    const st = (DB.students || []).find(x => String(x.id) === sid);
-    const l = st && jzmAddLevel(st, v);
-    if (!l) { miss++; return; }
-    if (String(l.id) === String(tr.dataset.lid || "")) return;          /* عليه أصلاً */
-    const a = tr.querySelector('select[data-k="add"]');
-    if (a) { a.value = v; }
-    JZM.add[sid] = v; delete JZM.lv[sid]; jzmRowLevels(tr); n++;
-  });
-  jzmSyncBtn(); bddSyncAll();
-  showToast(n ? "اختير " + jzmAddName(v) + " لـ" + toArabicDigits(n) + " طالباً — اضغط «تعديل المستوى» للتنفيذ" +
-                (miss ? " · " + toArabicDigits(miss) + " ليس في برنامجه " + jzmAddName(v) : "")
-              : (miss ? "لا " + jzmAddName(v) + " في برامج الطلاب الظاهرين" : "لا طالبَ يُعدَّل — كلُّهم على هذا المستوى"),
-            n ? "success" : "warn");
+window.jzmCircle = function (k) {
+  JZM.circle = String(k || "");
+  jzmClearPicks(); jzmFilter(); jzmSyncBtn(); bddLabel("jzmCircleSel");
 };
 window.jzmFrom = function (j) {
   JZM.from = String(j || "");
-  JZM.jz = {}; JZM.lv = {}; JZM.add = {};
-  document.querySelectorAll("#jzmBody tr[data-name]").forEach(tr => {
-    const s = tr.querySelector('select[data-k="add"]'); if (s) { s.value = ""; bddSyncSel(s); }
-    jzmRowLevels(tr);
-  });
-  const n = jzmFilter();
-  jzmSyncBtn(); bddLabel("jzmFromSel");
-  if (JZM.from && !n) showToast("لا طلابَ في هذا الجزء", "warn");
+  jzmClearPicks(); const n = jzmFilter(); jzmSyncBtn(); bddLabel("jzmFromSel");
+  if (JZM.from && !n) showToast("لا طلابَ في هذا البرنامج", "warn");
 };
+function jzmEachShown(fn) {
+  document.querySelectorAll("#jzmBody tr[data-sid]").forEach(tr => {
+    if (tr.style.display === "none") return;
+    const st = (DB.students || []).find(x => String(x.id) === String(tr.dataset.sid));
+    if (st) fn(st, tr);
+  });
+}
 window.jzmToAll = function (j) {
   const v = String(j || ""); if (!v) return;
   let n = 0;
-  document.querySelectorAll("#jzmBody tr[data-name]").forEach(tr => {
-    if (tr.style.display === "none") return;
-    const s = tr.querySelector('select[data-k="jz"]'); if (!s) return;
-    s.value = v; JZM.jz[String(tr.dataset.sid)] = v; jzmRowLevels(tr); n++;
+  jzmEachShown((st, tr) => {
+    const s = tr.querySelector('select[data-k="to"]'); if (!s) return;
+    s.value = v; JZM.to[String(st.id)] = v; jzmRowLevels(tr); n++;
   });
   jzmSyncBtn(); bddSyncAll();
-  const ln = jzmLevels(v).length;
-  showToast(n ? "اختير " + jzmName(v) + " لـ" + toArabicDigits(n) + " طالباً — اختر المستوى ثمّ «تعديل المستوى»" +
-                (ln ? "" : " · لا مستويات محدّدة بهذا الجزء")
-              : "لا طلابَ ظاهرين", n && ln ? "success" : "warn");
+  showToast(n ? "اختير " + jzmName(v) + " لـ" + toArabicDigits(n) + " طالباً — اضغط «حفظ التعديل»" : "لا طلابَ ظاهرين",
+            n ? "success" : "warn");
 };
-window.jzmLvAll = function (lid) {
-  const v = String(lid || ""); if (!v) return;
-  const l = (DB.levels || []).find(x => String(x.id) === v);
-  const lj = String(jzmLvJuz(l) || "");
-  let n = 0;
-  document.querySelectorAll("#jzmBody tr[data-name]").forEach(tr => {
-    if (tr.style.display === "none" || String(tr.dataset.lid || "") === v) return;
-    const sid = String(tr.dataset.sid);
-    /* جزءُ الصفّ يتبع جزءَ المستوى المختار — فيظهر المستوى في قائمته */
-    if (lj && (JZM.jz[sid] || tr.dataset.jz) !== lj) JZM.jz[sid] = lj;
-    const a = tr.querySelector('select[data-k="add"]');
-    if (a) a.value = "";
-    delete JZM.add[sid];
-    JZM.lv[sid] = v; jzmRowLevels(tr); n++;
+window.jzmLvAll = function (k) {
+  const v = String(k || ""); if (!v) return;
+  let n = 0, miss = 0;
+  jzmEachShown((st, tr) => {
+    const s = tr.querySelector('select[data-k="lv"]'); if (!s) return;
+    if (!jzmTarget(st, jzmRowJuz(st), v)) { miss++; return; }
+    s.value = v; JZM.lv[String(st.id)] = v; n++;
   });
   jzmSyncBtn(); bddSyncAll();
-  showToast(n ? "اختير المستوى لـ" + toArabicDigits(n) + " طالباً — اضغط «تعديل المستوى» للتنفيذ"
-              : "لا طالبَ يُعدَّل — كلُّهم في هذا المستوى", n ? "success" : "warn");
+  showToast(n ? "اختير " + jzmAddName(v) + " لـ" + toArabicDigits(n) + " طالباً — اضغط «حفظ التعديل»" +
+                (miss ? " · " + toArabicDigits(miss) + " ليس في برنامجه " + jzmAddName(v) : "")
+              : "لا " + jzmAddName(v) + " في برامج الطلاب الظاهرين", n ? "success" : "warn");
+};
+
+/* عنوانُ «اسم الطالب»: قائمةُ تحديدٍ بمربّعات — تحديد الكل / إلغاء التحديد */
+window.jzmPickOpen = function (btn) {
+  const was = btn.classList.contains("open");
+  bddClose();
+  if (was) return;
+  btn.classList.add("open");
+  const studs = jzmStudents();
+  const on = id => !JZM.pick || !!JZM.pick[String(id)];
+  const pop = document.createElement("div");
+  pop.id = "bddPop"; pop.className = "bdd-pop bpl-pickpop";
+  pop.innerHTML = `<div class="bdd-head">الطلاب</div>
+    <div class="bdd-search">${ic("search", 16)}<input placeholder="ابحث…" oninput="window.bddFind(this.value)"></div>
+    <div class="bpl-pickbar">
+      <button type="button" onclick="window.jzmPickAll(true)">تحديد الكل</button>
+      <button type="button" onclick="window.jzmPickAll(false)">إلغاء التحديد</button>
+    </div>
+    <div class="bdd-list">${studs.map(st => `<label class="bdd-item bpl-pickit" data-t="${esc(st.name || "")}">
+      <input type="checkbox" value="${esc(String(st.id))}" ${on(st.id) ? "checked" : ""} onchange="window.jzmPickOne(this)">
+      <span class="bdd-t">${esc(st.name || "—")}</span></label>`).join("")}</div>`;
+  document.body.appendChild(pop);
+  const r = btn.getBoundingClientRect();
+  const w = Math.max(r.width, 260);
+  pop.style.width = w + "px";
+  pop.style.top = (r.bottom + 6 + window.scrollY) + "px";
+  pop.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8) + window.scrollX) + "px";
+  setTimeout(() => {
+    document.addEventListener("mousedown", bddOutside, true);
+    document.addEventListener("keydown", bddKey, true);
+    const q = pop.querySelector(".bdd-search input"); if (q) q.focus();
+  }, 0);
+};
+function jzmPickPaint() {
+  const b = document.getElementById("jzmPickBtn");
+  if (b) { const l = b.querySelector(".bdd-lbl"); if (l) l.textContent = jzmNameLabel(); }
+  jzmFilter();
+}
+window.jzmPickOne = function (cb) {
+  const studs = jzmStudents();
+  if (!JZM.pick) { JZM.pick = {}; studs.forEach(st => { JZM.pick[String(st.id)] = true; }); }
+  if (cb.checked) JZM.pick[cb.value] = true;
+  else { delete JZM.pick[cb.value]; delete JZM.to[cb.value]; delete JZM.lv[cb.value]; }
+  if (Object.keys(JZM.pick).length === studs.length) JZM.pick = null;
+  jzmPickPaint(); jzmSyncBtn();
+};
+window.jzmPickAll = function (on) {
+  JZM.pick = on ? null : {};
+  if (!on) { JZM.to = {}; JZM.lv = {}; }
+  document.querySelectorAll("#bddPop .bpl-pickit input").forEach(c => { c.checked = !!on; });
+  jzmPickPaint(); jzmSyncBtn();
 };
 
 window.jzmApply = function () {
-  const ids = Object.keys(Object.assign({}, JZM.add, JZM.lv));
-  if (!ids.length) { showToast("لم تختر مستوىً لأحد", "warn"); return; }
+  const ids = Object.keys(Object.assign({}, JZM.to, JZM.lv));
+  if (!ids.length) { showToast("لم تختر تعديلاً لأحد", "warn"); return; }
   let done = 0, miss = 0;
   ids.forEach(sid => {
     const st = (DB.students || []).find(x => String(x.id) === String(sid));
     if (!st) return;
-    let lid = JZM.lv[sid];
-    if (!lid && JZM.add[sid]) {
-      const l = jzmAddLevel(st, JZM.add[sid]);
-      if (!l) { miss++; return; }
-      lid = String(l.id);
-    }
-    if (!lid || String(st.levelId || "") === lid) return;
-    st.levelId = lid; st.level = lvNameById(lid);
+    /* نُقل بلا اختيار مستوى: المستوى الأول من البرنامج المنقول إليه */
+    const l = jzmTarget(st, jzmRowJuz(st), JZM.lv[sid] || 1);
+    if (!l) { miss++; return; }
+    if (String(st.levelId || "") === String(l.id)) return;
+    st.levelId = String(l.id); st.level = lvNameById(l.id);
     persistSet("students", st);
     done++;
   });
-  JZM.jz = {}; JZM.lv = {}; JZM.add = {};
-  showToast("عُدّل مستوى " + toArabicDigits(done) + " طالباً" +
+  JZM.to = {}; JZM.lv = {};
+  showToast("حُفظ تعديل " + toArabicDigits(done) + " طالباً" +
             (miss ? " · تُخطّي " + toArabicDigits(miss) + " لا يوجد المستوى في برنامجه" : ""), done ? "success" : "warn");
   mount();
 };
@@ -10368,63 +10407,52 @@ window.jzmApply = function () {
 function jzmScreen() {
   const studs = jzmStudents();
   const total = (cur("students") || []).length;
-  const pName = id => (((cur("programs") || []).find(p => String(p.id) === String(id)) || {}).name) || "—";
+  if (JZM.pick) Object.keys(JZM.pick).forEach(k => { if (!studs.some(st => String(st.id) === k)) delete JZM.pick[k]; });
+
   const rows = studs.length ? studs.map((st, i) => {
-    const sid = String(st.id), cj = jzmCurJuz(st), lid = String(st.levelId || "");
-    const hide = (JZM.q && String(st.name || "").indexOf(JZM.q) < 0) || (JZM.from && String(cj) !== JZM.from);
-    const pj = JZM.jz[sid] || "";
-    return `<tr data-name="${esc(st.name || "")}" data-sid="${esc(sid)}" data-jz="${cj || ""}" data-lid="${esc(lid)}"${hide ? ' style="display:none"' : ""}>
+    const sid = String(st.id), cj = jzmCurJuz(st), rj = jzmRowJuz(st);
+    return `<tr data-sid="${esc(sid)}" data-lid="${esc(String(st.levelId || ""))}"${jzmShownOk(st) ? "" : ' style="display:none"'}>
       <td class="pt-num blk-idx">${toArabicDigits(i + 1)}</td>
       <td class="pt-name">${esc(st.name || "—")}</td>
-      <td><span class="pt-muted">${esc(pName(jzmProgId(st)))}</span></td>
+      <td><span class="${st.circle && st.circle !== "—" ? "blk-val" : "pt-muted"}">${esc(st.circle || "بلا حلقة")}</span></td>
       <td class="blk-now"><span class="${cj ? "blk-val" : "pt-muted"}">${cj ? esc(jzmName(cj)) : "غير محدّد"}</span></td>
-      <td class="blk-to"><select class="blk-sel" data-head="إضافة مستوى" data-k="add" onchange="window.jzmPickAdd('${jsAttr(sid)}',this.value,this)">
+      <td class="blk-to"><select class="blk-sel" data-head="نقل إلى برنامج" data-k="to" onchange="window.jzmPickTo('${jsAttr(sid)}',this.value,this)">
         <option value="">إختر</option>
-        ${JZM_ADD_LV.map(k => { const l = jzmAddLevel(st, k);
-          return `<option value="${k}"${JZM.add[sid] === String(k) ? " selected" : ""}${
-            !l || String(l.id) === lid ? " disabled" : ""}>${esc(jzmAddName(k))}</option>`; }).join("")}</select></td>
-      <td class="blk-now"><span class="${st.level ? "blk-val" : "pt-muted"}">${esc(st.level || "بلا مستوى")}</span></td>
-      <td class="blk-to"><select class="blk-sel" data-head="تعديل المستوى إلى" data-k="lv" onchange="window.jzmPickLv('${jsAttr(sid)}',this.value,this)">
-        ${jzmLvOptions(pj || cj, JZM.lv[sid] || "", lid)}</select></td>
+        ${JZM_ADD.map(j => `<option value="${j}"${JZM.to[sid] === String(j) ? " selected" : ""}>${esc(jzmName(j))}</option>`).join("")}</select></td>
+      <td class="blk-to"><select class="blk-sel" data-head="اختيار المستوى" data-k="lv" onchange="window.jzmPickLv('${jsAttr(sid)}',this.value)">
+        <option value="">إختر</option>
+        ${JZM_ADD_LV.map(k => `<option value="${k}"${JZM.lv[sid] === String(k) ? " selected" : ""}${
+          jzmTarget(st, rj, k) ? "" : " disabled"}>${esc(jzmAddName(k))}</option>`).join("")}</select></td>
     </tr>`;
   }).join("")
-    : `<tr><td colspan="7" class="pt-muted" style="text-align:center;padding:22px">لا طلابَ مسندين إلى برنامج في نطاقك — طلابُ الخطة الافتراضية لا يظهرون هنا.</td></tr>`;
+    : `<tr><td colspan="6" class="pt-muted" style="text-align:center;padding:22px">لا طلابَ مسندين إلى برنامج في نطاقك — طلابُ الخطة الافتراضية لا يظهرون هنا.</td></tr>`;
 
-  const shown = studs.filter(st => (!JZM.q || String(st.name || "").indexOf(JZM.q) > -1) &&
-                                   (!JZM.from || String(jzmCurJuz(st)) === JZM.from)).length;
+  const shown = studs.filter(st => jzmShownOk(st)).length;
   const n = jzmCount();
   return `<div class="page">
     ${pageHead("تعديل البرامج والمستويات", "", backArrow())}
-    <div class="blk-note">${ic("info", 15)} الطلاب المسندون إلى برنامج — ${toArabicDigits(total - studs.length)} على الخطة الافتراضية لا يظهرون · ومستوياتُ كلّ جزءٍ بحدود سورها</div>
+    <div class="blk-note">${ic("info", 15)} ${toArabicDigits(total - studs.length)} طالباً على الخطة الافتراضية لا يظهرون · ومن نُقل بلا اختيار مستوى يبدأ من المستوى الأول</div>
 
     <div class="fac-toolbar" style="margin-bottom:12px">
-      <div class="fac-searchbox">
-        <input placeholder="إبحث عن طالب" value="${esc(JZM.q)}" oninput="window.jzmSearch(this.value)">
-      </div>
       <span class="muted" id="jzmShown" style="font-size:12.5px;margin-inline-start:auto">${toArabicDigits(shown)} طالباً</span>
     </div>
 
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable blk-table">
-      <thead><tr class="blk-titles">
-        <th class="blk-idx" rowspan="2">#</th>
-        <th rowspan="2">اسم الطالب (${toArabicDigits(studs.length)})</th>
-        <th rowspan="2">البرنامج</th>
-        <th class="blk-now">الجزء الحالي</th>
-        <th class="blk-to">إضافة مستوى</th>
-        <th class="blk-now" rowspan="2">المستوى الحالي</th>
-        <th class="blk-to">تعديل المستوى إلى</th>
-      </tr>
-      <tr class="blk-ctl">
-        <th class="blk-now">${bddBtn("jzmFromSel", "jzFrom", "إختر")}</th>
-        <th class="blk-to">${bddBtn("jzmToAll", "jzTo", "إختر")}</th>
-        <th class="blk-to">${bddBtn("jzmLvAll", "jzLv", "إختر")}</th>
+      <thead><tr>
+        <th class="blk-idx">م</th>
+        <th class="bpl-nameh"><button type="button" class="bdd-btn" id="jzmPickBtn" onclick="window.jzmPickOpen(this)"
+          aria-haspopup="listbox"><span class="bdd-lbl">${esc(jzmNameLabel())}</span>${BDD_CHEV}</button></th>
+        <th>${bddBtn("jzmCircleSel", "jzCircle")}</th>
+        <th class="blk-now">${bddBtn("jzmFromSel", "jzFrom")}</th>
+        <th class="blk-to">${bddBtn("jzmToAll", "jzTo")}</th>
+        <th class="blk-to">${bddBtn("jzmLvAll", "jzLv")}</th>
       </tr></thead>
       <tbody id="jzmBody">${rows}</tbody>
     </table></div></div>
 
     <div class="blk-foot">
       <button class="btn btn-primary blk-apply" id="jzmApply"
-        onclick="window.jzmApply()"${n ? "" : " disabled"}>تعديل المستوى${n ? " (" + toArabicDigits(n) + ")" : ""}</button>
+        onclick="window.jzmApply()"${n ? "" : " disabled"}>حفظ التعديل${n ? " (" + toArabicDigits(n) + ")" : ""}</button>
     </div>
   </div>`;
 }
@@ -55715,7 +55743,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-0400";
+  var APP_BUILD = "20261019-1700";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
