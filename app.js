@@ -10140,7 +10140,7 @@ function adminBulkMoveLevel() { return jzmScreen(); }
    ========================================================================= */
 /* pick: الطلابُ المحدَّدون من عنوان «اسم الطالب» — null = كلُّهم
    circle / from: تصفيةُ الحلقة والبرنامج الحالي · to / lv: الاختيارات */
-const JZM = { pick: null, circle: "", from: "", to: {}, lv: {} };
+const JZM = { pick: null, circle: "", from: "", to: {}, lv: {}, cset: null, fset: null };
 
 /* أسماءُ الأجزاء بعُرف الحلقات: بأوّل كلمةٍ منه، والأواخرُ بسورتها
    («جزء عمّ · جزء تبارك …»). أسماءٌ للعرض فحسب — لا تُكتب في سجلّ. */
@@ -10199,7 +10199,11 @@ function jzmCircleKey(st) { return String(st.circleId || st.circle || ""); }
 
 function jzmShownOk(st, i) {
   const sid = String(st.id);
+  /* «غيّر الفلاتر لزرّ تحديد الكل» — الحلقةُ والبرنامجُ الحاليّ قائمتا تحديدٍ
+     بمربّعات كاسم الطالب: cset · fset (null = الكلّ) */
   return (!JZM.pick || !!JZM.pick[sid]) &&
+         (!JZM.cset || !!JZM.cset[jzmCircleKey(st)]) &&
+         (!JZM.fset || !!JZM.fset[String(jzmCurJuz(st) || "")]) &&
          (!JZM.circle || jzmCircleKey(st) === JZM.circle) &&
          (!JZM.from || String(jzmCurJuz(st)) === JZM.from);
 }
@@ -10332,25 +10336,56 @@ window.jzmLvAll = function (k) {
               : "لا " + jzmAddName(v) + " في برامج الطلاب الظاهرين", n ? "success" : "warn");
 };
 
-/* عنوانُ «اسم الطالب»: قائمةُ تحديدٍ بمربّعات — تحديد الكل / إلغاء التحديد */
-window.jzmPickOpen = function (btn) {
+/* العناوينُ الثلاثة (اسم الطالب · اسم الحلقة · البرنامج الحالي) قائمةُ تحديدٍ
+   بمربّعات — «تحديد الكل / إلغاء التحديد» — كزرّ «اسم الطالب» في «تعديل
+   الخطة الافتراضية». والمختارون وحدَهم يظهرون. */
+const JZM_SETS = { name: "pick", circle: "cset", from: "fset" };
+const JZM_HEADS = { name: "اسم الطالب", circle: "اسم الحلقة", from: "البرنامج الحالي" };
+const JZM_BTNS = { name: "jzmPickBtn", circle: "jzmCircleBtn", from: "jzmFromBtn" };
+function jzmItems(kind) {
+  const studs = jzmStudents();
+  if (kind === "name") return studs.map(st => ({ v: String(st.id), t: st.name || "—" }));
+  if (kind === "circle") {
+    const seen = {}, out = [];
+    studs.forEach(st => {
+      const k = jzmCircleKey(st);
+      if (seen[k] != null) { out[seen[k]].n++; return; }
+      seen[k] = out.length;
+      out.push({ v: k, t: st.circle || "بلا حلقة", n: 1 });
+    });
+    return out;
+  }
+  const js = {};
+  studs.forEach(st => { const j = String(jzmCurJuz(st) || ""); js[j] = (js[j] || 0) + 1; });
+  return Object.keys(js).sort((x, y) => (Number(y) || 0) - (Number(x) || 0))
+    .map(j => ({ v: j, t: j ? jzmName(j) : "غير محدّد", n: js[j] }));
+}
+function jzmSetLabel(kind) {
+  const all = jzmItems(kind).length, set = JZM[JZM_SETS[kind]];
+  const n = set ? Object.keys(set).length : all;
+  return JZM_HEADS[kind] + " (" + toArabicDigits(n) + " / " + toArabicDigits(all) + ")";
+}
+function jzmNameLabel() { return jzmSetLabel("name"); }
+
+window.jzmPickOpen = function (btn, kind) {
+  kind = kind || "name";
   const was = btn.classList.contains("open");
   bddClose();
   if (was) return;
   btn.classList.add("open");
-  const studs = jzmStudents();
-  const on = id => !JZM.pick || !!JZM.pick[String(id)];
+  const items = jzmItems(kind), set = JZM[JZM_SETS[kind]];
+  const on = v => !set || !!set[String(v)];
   const pop = document.createElement("div");
   pop.id = "bddPop"; pop.className = "bdd-pop bpl-pickpop";
-  pop.innerHTML = `<div class="bdd-head">الطلاب</div>
-    <div class="bdd-search">${ic("search", 16)}<input placeholder="ابحث…" oninput="window.bddFind(this.value)"></div>
+  pop.innerHTML = `<div class="bdd-head">${esc(JZM_HEADS[kind])}</div>
+    ${items.length > 6 ? `<div class="bdd-search">${ic("search", 16)}<input placeholder="ابحث…" oninput="window.bddFind(this.value)"></div>` : ""}
     <div class="bpl-pickbar">
-      <button type="button" onclick="window.jzmPickAll(true)">تحديد الكل</button>
-      <button type="button" onclick="window.jzmPickAll(false)">إلغاء التحديد</button>
+      <button type="button" onclick="window.jzmPickAll(true,'${kind}')">تحديد الكل</button>
+      <button type="button" onclick="window.jzmPickAll(false,'${kind}')">إلغاء التحديد</button>
     </div>
-    <div class="bdd-list">${studs.map(st => `<label class="bdd-item bpl-pickit" data-t="${esc(st.name || "")}">
-      <input type="checkbox" value="${esc(String(st.id))}" ${on(st.id) ? "checked" : ""} onchange="window.jzmPickOne(this)">
-      <span class="bdd-t">${esc(st.name || "—")}</span></label>`).join("")}</div>`;
+    <div class="bdd-list">${items.map(it => `<label class="bdd-item bpl-pickit" data-t="${esc(it.t)}">
+      <input type="checkbox" value="${esc(it.v)}" ${on(it.v) ? "checked" : ""} onchange="window.jzmPickOne(this,'${kind}')">
+      <span class="bdd-t">${esc(it.t)}</span>${it.n != null ? `<span class="bdd-n">${toArabicDigits(it.n)}</span>` : ""}</label>`).join("")}</div>`;
   document.body.appendChild(pop);
   const r = btn.getBoundingClientRect();
   const w = Math.max(r.width, 260);
@@ -10364,23 +10399,35 @@ window.jzmPickOpen = function (btn) {
   }, 0);
 };
 function jzmPickPaint() {
-  const b = document.getElementById("jzmPickBtn");
-  if (b) { const l = b.querySelector(".bdd-lbl"); if (l) l.textContent = jzmNameLabel(); }
+  Object.keys(JZM_BTNS).forEach(k => {
+    const b = document.getElementById(JZM_BTNS[k]);
+    if (b) { const l = b.querySelector(".bdd-lbl"); if (l) l.textContent = jzmSetLabel(k); }
+  });
   jzmFilter();
+  /* من خرج من الظاهرين تُرفع اختياراتُه: لا يُعدَّل طالبٌ لا يظهر */
+  document.querySelectorAll("#jzmBody tr[data-sid]").forEach(tr => {
+    if (tr.style.display !== "none") return;
+    const sid = String(tr.dataset.sid);
+    if (JZM.to[sid] || JZM.lv[sid]) {
+      delete JZM.to[sid]; delete JZM.lv[sid];
+      tr.querySelectorAll("select.blk-sel").forEach(x => { x.value = ""; });
+      jzmRowLevels(tr);
+    }
+  });
+  bddSyncAll(); jzmSyncBtn();
 }
-window.jzmPickOne = function (cb) {
-  const studs = jzmStudents();
-  if (!JZM.pick) { JZM.pick = {}; studs.forEach(st => { JZM.pick[String(st.id)] = true; }); }
-  if (cb.checked) JZM.pick[cb.value] = true;
-  else { delete JZM.pick[cb.value]; delete JZM.to[cb.value]; delete JZM.lv[cb.value]; }
-  if (Object.keys(JZM.pick).length === studs.length) JZM.pick = null;
-  jzmPickPaint(); jzmSyncBtn();
+window.jzmPickOne = function (cb, kind) {
+  kind = kind || "name";
+  const key = JZM_SETS[kind], items = jzmItems(kind);
+  if (!JZM[key]) { JZM[key] = {}; items.forEach(it => { JZM[key][it.v] = true; }); }
+  if (cb.checked) JZM[key][cb.value] = true; else delete JZM[key][cb.value];
+  if (Object.keys(JZM[key]).length === items.length) JZM[key] = null;
+  jzmPickPaint();
 };
-window.jzmPickAll = function (on) {
-  JZM.pick = on ? null : {};
-  if (!on) { JZM.to = {}; JZM.lv = {}; }
+window.jzmPickAll = function (on, kind) {
+  JZM[JZM_SETS[kind || "name"]] = on ? null : {};
   document.querySelectorAll("#bddPop .bpl-pickit input").forEach(c => { c.checked = !!on; });
-  jzmPickPaint(); jzmSyncBtn();
+  jzmPickPaint();
 };
 
 window.jzmApply = function () {
@@ -10408,6 +10455,7 @@ function jzmScreen() {
   const studs = jzmStudents();
   const total = (cur("students") || []).length;
   if (JZM.pick) Object.keys(JZM.pick).forEach(k => { if (!studs.some(st => String(st.id) === k)) delete JZM.pick[k]; });
+  JZM.circle = ""; JZM.from = "";       /* التصفيةُ الفرديّةُ القديمة حلّت محلَّها قائمتا التحديد */
 
   const rows = studs.length ? studs.map((st, i) => {
     const sid = String(st.id), cj = jzmCurJuz(st), rj = jzmRowJuz(st);
@@ -10440,10 +10488,8 @@ function jzmScreen() {
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable blk-table">
       <thead><tr>
         <th class="blk-idx">م</th>
-        <th class="bpl-nameh"><button type="button" class="bdd-btn" id="jzmPickBtn" onclick="window.jzmPickOpen(this)"
-          aria-haspopup="listbox"><span class="bdd-lbl">${esc(jzmNameLabel())}</span>${BDD_CHEV}</button></th>
-        <th>${bddBtn("jzmCircleSel", "jzCircle")}</th>
-        <th class="blk-now">${bddBtn("jzmFromSel", "jzFrom")}</th>
+        ${["name", "circle", "from"].map(k => `<th class="${k === "name" ? "bpl-nameh" : k === "from" ? "blk-now" : ""}"><button type="button" class="bdd-btn" id="${JZM_BTNS[k]}" onclick="window.jzmPickOpen(this,'${k}')"
+          aria-haspopup="listbox"><span class="bdd-lbl">${esc(jzmSetLabel(k))}</span>${BDD_CHEV}</button></th>`).join("")}
         <th class="blk-to">${bddBtn("jzmToAll", "jzTo")}</th>
         <th class="blk-to">${bddBtn("jzmLvAll", "jzLv")}</th>
       </tr></thead>
@@ -55974,7 +56020,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-1820";
+  var APP_BUILD = "20261019-1830";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
