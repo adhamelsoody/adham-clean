@@ -48540,8 +48540,10 @@ window.spTog = function (btn, hiddenId) {
   const on = btn.classList.contains("on");
   const h = document.getElementById(hiddenId);
   if (h) h.value = on ? 1 : 0;
-  /* الركنُ المطفأ تُطوى تفاصيلُه: حقولٌ لا أثرَ لها تُربك القارئ */
-  const card = btn.closest(".sp-card");
+  /* الركنُ المطفأ تُطوى تفاصيلُه: حقولٌ لا أثرَ لها تُربك القارئ.
+     والطيُّ لزرّ رأس البطاقة وحدَه (sp-plrow) — كان زرُّ التثبيت أو التلاوة
+     في «أركان متفرّعة من الحفظ» يطوي بطاقةَ الحفظ كلَّها. */
+  const card = btn.closest(".sp-plrow") ? btn.closest(".sp-card") : null;
   if (card) card.classList.toggle("sp-off", !on);
 };
 
@@ -56020,7 +56022,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-1830";
+  var APP_BUILD = "20261019-2330";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
