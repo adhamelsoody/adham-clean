@@ -14188,7 +14188,7 @@ window.sysPrgEmpty = function (pid) {
           <div class="sp-klabel">${ic("layers", 14)} أركان متفرّعة من الحفظ</div>
           <!-- التلاوةُ في صفّ التثبيت نفسِه، جنبَه -->
           <div class="sp-kidrow">${tog("poTatOn", T.on !== false, "تثبيت")}${step("poTatCount", T.lessons, "دروس")}
-            <span class="po-kidsep"></span>${tog("poTilOn", L.on !== false, "تلاوة")}${step("poTilCount", L.qtyNum, "أوجه")}</div>
+            <span class="po-kidsep"></span>${tog("poTilOn", L.on !== false, "تلاوة")}</div>
         </section>
 
         <div class="sp-ghead sp-wide2 g-rev">${ic("refresh", 17)}<h3>المراجعة</h3></div>
@@ -14262,7 +14262,8 @@ window.sysOptSave = function (pid) {
   P.tathbit.on = g("poTatOn") === "1";
   P.tathbit.lessons = Number(g("poTatCount")) || 0;
   P.tilawah.on = g("poTilOn") === "1";
-  P.tilawah.qtyNum = Number(g("poTilCount")) || 0;
+  /* «شيل عدّاد التلاوة»: زرُّ تفعيلٍ فقط — وقيمتُها المحفوظة (qtyNum) لا تُمسّ */
+  if (g("poTilCount") != null) P.tilawah.qtyNum = Number(g("poTilCount")) || 0;
 
   P.review.on = g("poRevOn") === "1";
   P.review.qtyType = g("poRevType") || P.review.qtyType;
@@ -56022,7 +56023,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-0000";
+  var APP_BUILD = "20261020-0010";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
