@@ -48468,6 +48468,13 @@ function panelStudent(id, keepDraft) {
           <button type="button" onclick="window.spNum('spTatCount', -1)">−</button>
         </div>
         <span class="muted" style="font-size:12.5px">دروس</span>
+        <!-- «عايز التلاوة جنب زرّ التثبيت»: مفتاحُ التلاوة انتقل من قسمه إلى هنا
+             بحقله نفسه (spTilOn → st.plan.tilOn) -->
+        <span class="po-kidsep"></span>
+        <button type="button" class="bpl-tog${pl.tilOn ? " on" : ""}"
+          onclick="window.spTog(this,'spTilOn')" title="تلاوة الدرس الجديد — تسبق الحفظ بمقداره"
+          ><span class="bpl-knob"></span><b>تلاوة</b></button>
+        <input type="hidden" id="spTilOn" value="${pl.tilOn ? 1 : 0}">
       </div>
     </section>
 
@@ -48490,11 +48497,7 @@ function panelStudent(id, keepDraft) {
       ${startRow("spRev", (spRevPos && spRevPos.sura) || (s.plan || {}).revSura, (spRevPos && spRevPos.ayah) || (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
     </section>
 
-    <!-- التلاوةُ في قسمها هي: «لا تلاوةَ في خانة الحفظ ولا العكس» -->
-    <div class="sp-ghead sp-wide2 g-til">${ic("mic", 17)}<h3>التلاوة</h3></div>
-    <section class="sp-card sp-wide2 sp-til">
-      <div class="sp-kidrow">${spTilToggle(pl.tilOn)}</div>
-    </section>
+    <!-- قسمُ التلاوة المستقلّ رُفع: مفتاحُها صار جنبَ التثبيت في قسم الحفظ -->
 
 `;
 
@@ -56019,7 +56022,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261019-2350";
+  var APP_BUILD = "20261020-0000";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
