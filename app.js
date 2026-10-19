@@ -29230,9 +29230,9 @@ function reglPage() {
   let body = "";
 
   if (REGL.tab === "new") {
-    const on = REGL_COLS.filter(c => REGL.cols[c.k]);
-    body = `<div class="regl-chips">${REGL_COLS.map(c => `<button type="button" class="regl-chip${REGL.cols[c.k] ? " on" : ""}" onclick="window.reglCol('${c.k}')">${esc(c.h)}</button>`).join("")}</div>
-    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable regl-table">
+    const on = [];
+    /* «شيل دول»: رُفع شريطُ أزرار الأعمدة الإضافية — والجدولُ بأعمدته الأساسية */
+    body = `<div class="pt-wrap"><div class="pt-scroll"><table class="ptable regl-table">
       <thead><tr><th>الطلاب (${toArabicDigits(sp.new.length)}/${toArabicDigits(sp.new.length)})</th><th>اسم المستخدم</th>
         ${on.map(c => `<th>${esc(c.h)}</th>`).join("")}
         <th><select class="regl-hsel" onchange="window.reglSetAll('c', this.value)"><option value="">إختر حلقة للجميع</option>
@@ -56456,7 +56456,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-0715";
+  var APP_BUILD = "20261020-0730";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
