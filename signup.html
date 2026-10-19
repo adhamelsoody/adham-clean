@@ -89,6 +89,18 @@
   .done p{color:#607171;font-size:14px;margin:0 0 8px;line-height:1.8}
 
   @media (max-width:560px){ .grid{grid-template-columns:1fr} .roles{grid-template-columns:repeat(2,1fr)} }
+  /* رابطُ تسجيل الطالب: «مسجَّلٌ من قبل» أم «انضمامٌ جديد» قبل النموذج */
+  .rk{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:6px 0 18px}
+  .rkb{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 12px;border:1.5px solid #dde3e3;
+       border-radius:16px;background:#fbfcfc;cursor:pointer;font:inherit;color:#1f3a3b;text-align:center}
+  .rkb:hover{border-color:#4bdee4}
+  .rkb b{font-size:15px}
+  .rkb small{font-size:12px;color:#7a8a8f;line-height:1.6}
+  .rkb .rki{width:48px;height:48px;border-radius:14px;background:#ecfcfd;color:#2bb7bc;display:grid;place-items:center}
+  .rk-tag{display:inline-flex;align-items:center;gap:8px;margin-bottom:14px;padding:6px 12px;border-radius:999px;
+          background:#ecfcfd;color:#0b7f83;font-size:12.5px;font-weight:700}
+  .rk-tag button{border:0;background:none;color:#0b7f83;text-decoration:underline;cursor:pointer;font:inherit;font-size:12px}
+  @media (max-width:560px){ .rk{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
@@ -96,7 +108,22 @@
 <div class="card">
   <img src="logo-mark.svg" alt="" class="logo" onerror="this.style.display='none'">
 
+  <!-- «عند فتح رابط التسجيل يُخيَّر الطالبُ بين خيارين: مسجَّلٌ من قبل أم
+       انضمامٌ جديد» — لا يظهر إلّا لرابط طالبٍ من «روابط تسجيل الطلاب» -->
+  <div id="rkWrap" style="display:none">
+    <h1>التسجيل في الحلقات</h1>
+    <p class="sub">اختر ما ينطبق عليك ثمّ املأ بياناتك</p>
+    <div class="rk">
+      <button type="button" class="rkb" data-rk="returning">
+        <span class="rki"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></span>
+        <b>مسجَّلٌ من قبل</b><small>سبق أن سجّلتُ في حلقات هذا المسجد أو غيره</small></button>
+      <button type="button" class="rkb" data-rk="new">
+        <span class="rki"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></span>
+        <b>انضمامٌ جديد</b><small>أوّلُ مرّةٍ أسجّل في الحلقات</small></button>
+    </div>
+  </div>
   <div id="formWrap">
+    <div class="rk-tag" id="rkTag" style="display:none"><span id="rkTagT"></span><button type="button" id="rkBack">تغيير</button></div>
     <h1>فتح حساب جديد</h1>
     <p class="sub">املأ بياناتك، ويُفعَّل حسابك بعد اعتماد إدارة النظام</p>
 
@@ -161,6 +188,28 @@
         <label for="name">الاسم بالكامل <i>*</i></label>
         <input id="name" placeholder="مثال: محمد أحمد السالم" autocomplete="name">
         <div class="hint">الاسم الأول واسم الأب واسم العائلة على الأقل</div>
+      </div>
+      <!-- رقمُ الهوية لرابط الطالب: هو «اسمُ المستخدم» وبه يُعرف المسجَّلُ من قبل -->
+      <div class="f rk-only" style="display:none">
+        <label for="idNo">رقم الهوية <i>*</i></label>
+        <input id="idNo" dir="ltr" inputmode="numeric" maxlength="10" placeholder="10 أرقام" autocomplete="off">
+        <div class="hint" id="idNoHint">عشرة أرقام</div>
+      </div>
+      <div class="f rk-new" style="display:none">
+        <label for="nameEn">الاسم بالإنجليزية</label>
+        <input id="nameEn" dir="ltr" placeholder="Mohammed Ahmed" autocomplete="off">
+      </div>
+      <div class="f rk-new" style="display:none">
+        <label for="birth">تاريخ الميلاد</label>
+        <input id="birth" type="date" dir="ltr">
+      </div>
+      <div class="f rk-new" style="display:none">
+        <label for="wa">رقم الواتس</label>
+        <input id="wa" dir="ltr" inputmode="numeric" maxlength="15" placeholder="05XXXXXXXX">
+      </div>
+      <div class="f rk-new" style="display:none">
+        <label for="pwa">واتس ولي الأمر</label>
+        <input id="pwa" dir="ltr" inputmode="numeric" maxlength="15" placeholder="05XXXXXXXX">
       </div>
       <div class="f">
         <label for="phone">رقم الجوال <i>*</i></label>
@@ -269,7 +318,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="firebase-config.js?v=202610200030"></script>
+<script src="firebase-config.js?v=202610200700"></script>
 <script>
 (function () {
   "use strict";
@@ -286,6 +335,34 @@
     URL_Q[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1).replace(/\+/g, " "));
   }); } catch (e) {}
   var URL_MOSQUE = String(URL_Q.mosque || "");
+
+  /* رابطُ طالبٍ: يُسأل أوّلاً «مسجَّلٌ من قبل أم انضمامٌ جديد» — ورقمُ الهوية
+     مطلوبٌ فيهما (به يُعرف المسجَّلُ من قبل)، وبياناتُ المنضمّ الجديد تُكمَّل */
+  var RK_LINK = URL_Q.role === "student" && !!URL_MOSQUE;
+  var regKind = "";
+  function rkShow(k) {
+    regKind = k || "";
+    var wrap = document.getElementById("rkWrap"), form = document.getElementById("formWrap");
+    if (RK_LINK && !regKind) { wrap.style.display = ""; form.style.display = "none"; return; }
+    wrap.style.display = "none"; form.style.display = "";
+    var tag = document.getElementById("rkTag");
+    if (tag) tag.style.display = RK_LINK ? "" : "none";
+    var tt = document.getElementById("rkTagT");
+    if (tt) tt.textContent = regKind === "returning" ? "مسجَّلٌ من قبل" : "انضمامٌ جديد";
+    document.querySelectorAll(".rk-only").forEach(function (e) { e.style.display = RK_LINK ? "" : "none"; });
+    document.querySelectorAll(".rk-new").forEach(function (e) { e.style.display = RK_LINK && regKind === "new" ? "" : "none"; });
+    var h = document.getElementById("idNoHint");
+    if (h) h.textContent = regKind === "returning" ? "رقمُ الهوية المسجَّلُ لدينا — به يُعرف تسجيلُك السابق" : "عشرة أرقام — يكون اسمَ المستخدم";
+  }
+  document.querySelectorAll("#rkWrap .rkb").forEach(function (b) {
+    b.addEventListener("click", function () { rkShow(b.dataset.rk); });
+  });
+  (function () { var bk = document.getElementById("rkBack"); if (bk) bk.addEventListener("click", function () { rkShow(""); }); })();
+  ["idNo", "wa", "pwa"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("input", function () { var v = el.value.replace(/\D+/g, ""); if (v !== el.value) el.value = v; });
+  });
+  rkShow("");
 
   /* اختيار الصفة */
   document.querySelectorAll("#roles .role").forEach(function (b) {
@@ -547,6 +624,8 @@
 
     if (!v("nat")) { bad("nat", 1); return "اختر الجنسية."; }
 
+    if (RK_LINK && !/^[0-9]{10}$/.test(v("idNo"))) { bad("idNo", 1); return "رقم الهوية عشرة أرقام."; }
+
     /* وليُّ الأمر بلا أبناء: حسابٌ لا يفتح على شيء */
     if (role === "parent") {
       var kids = readKids();
@@ -648,6 +727,15 @@
         pending: true,
         selfSignup: true,
         requestedMosqueId: reqMosque,
+        /* رابطُ التسجيل: نوعُ الطلب ورابطُه ورقمُ الهوية — تُفرز بها طلباتُ
+           الرابط في «روابط تسجيل الطلاب» (طلاب جدد · مسجّلون سابقاً · بموافقة) */
+        regKind: RK_LINK ? (regKind || "new") : "",
+        regLinkId: RK_LINK ? String(URL_Q.link || "") : "",
+        idNo: RK_LINK ? v("idNo") : "",
+        nameEn: RK_LINK && regKind === "new" ? v("nameEn") : "",
+        birth: RK_LINK && regKind === "new" ? v("birth") : "",
+        whatsapp: RK_LINK && regKind === "new" ? v("wa") : "",
+        parentWhatsapp: RK_LINK && regKind === "new" ? v("pwa") : "",
         /* طلبُ منشأةٍ لا إنشاؤها: مجرّدُ بياناتٍ في ملفّ الطلب حتى
            يعتمدها مديرُ النظام، فلا يُنشئ مسجداً ولا مجمّعاً تسجيلٌ ذاتيّ */
         reqFacility: facIsMgr() ? {

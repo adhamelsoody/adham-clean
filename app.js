@@ -28947,6 +28947,8 @@ function regLinkOf(mqId, role) {
   return base + "/signup.html?role=" + encodeURIComponent(role || "student") + "&mosque=" + encodeURIComponent(String(mqId));
 }
 function adminRegLinks() {
+  /* رابطٌ مسمّى مفتوح: صفحةُ طلباته بتبويباتها الثلاثة */
+  if (REGL.open) return reglPage();
   const ms = regMosques();
   const card = m => {
     const id = String(m.id);
@@ -28965,6 +28967,24 @@ function adminRegLinks() {
     return `<div class="card reg-lcard"><div class="reg-lcard-h">${ic("mosque", 20)} <b>${esc(m.name || "—")}</b></div>
       ${row("student", "رابط تسجيل طالب", "يفتح نموذجَ التسجيل وقد اختير فيه مسجدُك وصفةُ «طالب»")}
       ${row("parent", "رابط تسجيل وليّ أمر", "لوليّ الأمر يسجّل أبناءه في مسجدك")}
+      <div class="regl-named">
+        <div class="reg-link-h"><b>روابط التسجيل المسمّاة</b><small>رابطٌ باسمٍ (مثل «التسجيل لعام ١٤٤٧ الفصل الأول») تُفرز طلباتُه: طلاب جدد · مسجّلون سابقاً · يحتاج إلى موافقة</small></div>
+        ${reglLinks(m).map(l => {
+          const url = reglUrl(id, l.id), sp = reglSplit(l.id, id);
+          const n = sp.new.length + sp.prev.length + sp.appr.length;
+          return `<div class="reg-link">
+            <div class="reg-link-h"><b>${esc(l.name)}</b><small>${toArabicDigits(n)} طلب</small></div>
+            <div class="reg-link-url"><input readonly dir="ltr" value="${esc(url)}" onclick="this.select()"></div>
+            <div class="reg-link-btns">
+              <button type="button" class="btn btn-primary btn-sm" onclick="window.reglOpen('${jsAttr(id)}','${jsAttr(l.id)}')">${ic("users", 15)} الطلبات (${toArabicDigits(n)})</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="window.regCopy('${jsAttr(url)}')">${ic("doc", 15)} نسخ</button>
+              <a class="btn btn-ghost btn-sm reg-wa" target="_blank" rel="noopener"
+                href="https://wa.me/?text=${esc(encodeURIComponent(l.name + " — " + (m.name || "") + "\n" + url))}">${ic("phone", 15)} واتساب</a>
+            </div></div>`;
+        }).join("")}
+        <div class="regl-new"><input id="reglName_${esc(id)}" placeholder="اسم الرابط — مثال: التسجيل لعام ١٤٤٧ الفصل الأول">
+          <button type="button" class="btn btn-primary btn-sm" onclick="window.reglCreate('${jsAttr(id)}')">${ic("plus", 15)} إنشاء رابط</button></div>
+      </div>
     </div>`;
   };
   return `<div class="page reg-page">
@@ -28972,6 +28992,282 @@ function adminRegLinks() {
     ${ms.length ? ms.map(card).join("") : emptyState("لا مسجد", "لا مسجدَ في نطاقك بعد.")}
   </div>`;
 }
+/* =========================================================================
+   روابطُ التسجيل المسمّاة وطلباتُها
+   -------------------------------------------------------------------------
+   «أريد الصفحات التي في روابط تسجيل الطلاب بالشكل الذي في الصورة»:
+   لكلّ مسجدٍ روابطُ بأسماء («التسجيل لعام ١٤٤٧ الفصل الأول») تُحفظ في سجلّه
+   (mosques.regLinks). ومن سجّل من الرابط حمل طلبُه معرّفَه (users.regLinkId)
+   ورقمَ هويته، فتُفرز طلباتُ الرابط ثلاثاً برقم الهوية:
+     · طلاب جدد — لا طالبَ بهذه الهوية: يُضافون مباشرةً بحلقةٍ وبرنامج.
+     · مسجّلون في المنشأة سابقاً — طالبٌ بهذه الهوية في هذا المسجد: يُفعَّل
+       أو ينضمّ إلى حلقةٍ أو يُنقل — كلٌّ بزرٍّ صريح.
+     · يحتاج إلى موافقة — طالبٌ بهذه الهوية في مسجدٍ آخر: يُرسل إليه طلب،
+       ولا يُنقل من منشأته بغير إذنه.
+   والاعتمادُ بالطريق القائم نفسه (urqDecide) فلا يُنشأ حسابٌ ثانٍ.
+   ========================================================================= */
+const REGL = { open: "", mq: "", tab: "new", cols: {}, cAll: "", pAll: "", sel: {}, rowC: {}, rowP: {}, showData: false };
+const REGL_COLS = [
+  { k: "nameEn", h: "الاسم بالانجليزية" }, { k: "gender", h: "الجنس" },
+  { k: "whatsapp", h: "رقم الواتس" }, { k: "parentWhatsapp", h: "واتس ولي الامر" },
+  { k: "birth", h: "تاريخ الميلاد" }, { k: "nationality", h: "الجنسية" }
+];
+function reglLinks(m) { return Array.isArray(m && m.regLinks) ? m.regLinks : []; }
+function reglUrl(mqId, linkId) { return regLinkOf(mqId, "student") + "&link=" + encodeURIComponent(String(linkId)); }
+function reglReqs(linkId) {
+  return (cur("users") || DB.users || []).filter(u => u && u.active === false &&
+    (u.selfSignup === true || u.pending === true) && String(u.regLinkId || "") === String(linkId));
+}
+function reglStudentOf(u) {
+  const id = String((u && u.idNo) || "").replace(/\D+/g, "");
+  return id ? (DB.students || []).find(s => s && String(s.idNo || "") === id) || null : null;
+}
+function reglSplit(linkId, mqId) {
+  const out = { new: [], prev: [], appr: [] };
+  reglReqs(linkId).forEach(u => {
+    const st = reglStudentOf(u);
+    if (!st) out.new.push({ u });
+    else if (String(st.mosqueId || "") === String(mqId)) out.prev.push({ u, st });
+    else out.appr.push({ u, st });
+  });
+  return out;
+}
+
+window.reglCreate = function (mqId) {
+  const inp = document.getElementById("reglName_" + mqId);
+  const name = String((inp || {}).value || "").trim();
+  if (name.length < 3) { showToast("اكتب اسمَ الرابط", "warn"); return; }
+  const m = (DB.mosques || []).find(x => String(x.id) === String(mqId));
+  if (!m) return;
+  m.regLinks = reglLinks(m).concat([{ id: "rl" + Date.now(), name, at: Date.now() }]);
+  persistSet("mosques", m);
+  showToast("أُنشئ الرابط «" + name + "»", "success");
+  mount();
+};
+window.reglOpen = function (mqId, linkId) {
+  Object.assign(REGL, { open: String(linkId || ""), mq: String(mqId || ""), tab: "new", sel: {}, rowC: {}, rowP: {}, cAll: "", pAll: "" });
+  mount();
+};
+window.reglTab = function (t) { REGL.tab = t; REGL.sel = {}; mount(); };
+window.reglCol = function (k) { REGL.cols[k] = !REGL.cols[k]; mount(); };
+window.reglSel = function (uid, on) { if (on) REGL.sel[uid] = 1; else delete REGL.sel[uid]; reglSyncBtns(); };
+window.reglSelAll = function (on, ids) {
+  REGL.sel = {};
+  if (on) String(ids || "").split(",").filter(Boolean).forEach(i => { REGL.sel[i] = 1; });
+  document.querySelectorAll(".regl-table tbody input.regl-ck").forEach(c => { c.checked = !!on; });
+  reglSyncBtns();
+};
+function reglSyncBtns() {
+  const n = Object.keys(REGL.sel).length;
+  document.querySelectorAll(".regl-bulk").forEach(b => { b.disabled = !n; });
+}
+window.reglSetAll = function (k, v) {
+  if (k === "c") { REGL.cAll = String(v || ""); REGL.rowC = {}; }
+  else { REGL.pAll = String(v || ""); REGL.rowP = {}; }
+  mount();
+};
+window.reglRow = function (k, uid, v) { (k === "c" ? REGL.rowC : REGL.rowP)[uid] = String(v || ""); };
+
+/* الحلقةُ تُكتب في ملفّ الطالب بحقولها كلِّها — كما يكتبها blkApply */
+function reglPutCircle(st, c) {
+  st.circleId = String(c.id); st.circle = c.name || "—";
+  if (c.teacher) st.teacher = c.teacher;
+  if (c.teacherId) st.teacherId = String(c.teacherId);
+  if (c.mosqueId) {
+    st.mosqueId = String(c.mosqueId);
+    const mq = (DB.mosques || []).find(x => String(x.id) === String(c.mosqueId));
+    if (mq) { st.mosque = mq.name || st.mosque; if (mq.complexId) st.complexId = String(mq.complexId); }
+  }
+}
+
+/* طلاب جدد: يُعتمد الحساب ثمّ يُكمَّل ملفُّه بالحلقة والبرنامج وبياناتِ الرابط */
+window.reglRegisterNew = function () {
+  const sp = reglSplit(REGL.open, REGL.mq);
+  const rows = sp.new.map(x => x.u);
+  const ready = [], miss = [];
+  rows.forEach(u => {
+    const cid = REGL.rowC[u.id] || REGL.cAll;
+    if (regCircleOf(cid, REGL.mq)) ready.push(u); else miss.push(u);
+  });
+  if (!ready.length) { showToast("اختر الحلقة للطلاب أوّلاً", "warn"); return; }
+  const plan = {};
+  ready.forEach(u => { plan[u.id] = { cid: REGL.rowC[u.id] || REGL.cAll, pid: REGL.rowP[u.id] || REGL.pAll }; });
+  /* يُعيَّن المسجدُ المطلوب للرابط قبل الاعتماد، فيُكتب انتماؤه بالطريق القائم */
+  ready.forEach(u => { if (!u.requestedMosqueId) u.requestedMosqueId = REGL.mq; });
+  window.urqDecide("approved", ready.map(u => "self:" + u.id));
+  let done = 0;
+  ready.forEach(u => {
+    const st = (DB.students || []).find(s => s && ((u.uid && String(s.uid || "") === String(u.uid)) ||
+                                                   (u.studentId && String(s.id) === String(u.studentId))));
+    if (!st) return;
+    const c = regCircleOf(plan[u.id].cid, REGL.mq);
+    if (c) reglPutCircle(st, c);
+    const pr = (typeof programsForPick === "function" ? programsForPick() : []).find(p => String(p.id) === String(plan[u.id].pid));
+    if (pr) st.program = pr.name || st.program;
+    st.enrollType = st.enrollType || "plan";
+    if (u.idNo) st.idNo = String(u.idNo);
+    ["nameEn", "birth", "whatsapp", "parentWhatsapp"].forEach(k => { if (u[k] && !st[k]) st[k] = u[k]; });
+    if (u.parentWhatsapp && (!st.parent || st.parent === "—")) st.parent = u.parentWhatsapp;
+    st.status = "نشط";
+    persistSet("students", st);
+    done++;
+  });
+  showToast("سُجِّل " + toArabicDigits(done) + " طالباً" + (miss.length ? " · " + toArabicDigits(miss.length) + " بلا حلقة لم يُسجَّلوا" : ""),
+            miss.length ? "warn" : "success");
+  mount();
+};
+
+/* المسجّلون سابقاً: يُربط حسابُ الطلب بملفّه القائم (studentId) ثمّ يُعتمد —
+   وكلُّ إجراءٍ زرٌّ صريح: تفعيل · انضمامٌ إلى حلقة · نقلٌ إلى حلقة */
+function reglPrevApply(kind, uids, cid) {
+  const sp = reglSplit(REGL.open, REGL.mq);
+  const c = cid ? regCircleOf(cid, REGL.mq) : null;
+  if (kind !== "activate" && !c) { showToast("اختر الحلقة", "warn"); return; }
+  let n = 0, skip = 0;
+  const ids = [];
+  sp.prev.forEach(({ u, st }) => {
+    if (uids.indexOf(String(u.id)) < 0) return;
+    if (kind === "activate" && st.status !== "متوقف" && st.circleId) skip++;   /* النشطُ يتخطّى */
+    u.studentId = String(st.id);
+    ids.push("self:" + u.id);
+    if (kind !== "activate") reglPutCircle(st, c);
+    st.status = "نشط";
+    persistSet("students", st);
+    n++;
+  });
+  if (ids.length) window.urqDecide("approved", ids);
+  closeModal();
+  showToast((kind === "activate" ? "فُعّل " : kind === "join" ? "انضمّ " : "نُقل ") + toArabicDigits(n) + " طالباً" +
+            (skip ? " · " + toArabicDigits(skip) + " نشطٌ في حلقته أصلاً" : ""), n ? "success" : "warn");
+  mount();
+}
+window.reglPrev = function (kind, uid) {
+  const uids = uid ? [String(uid)] : Object.keys(REGL.sel);
+  if (!uids.length) { showToast("حدّد طالباً أوّلاً", "warn"); return; }
+  if (kind === "activate") { reglPrevApply("activate", uids, ""); return; }
+  const cs = regCircles(REGL.mq);
+  openModal(kind === "join" ? "الانضمام إلى حلقة جديدة" : "نقل إلى حلقة أخرى", toArabicDigits(uids.length) + " طالباً",
+    `<div class="field full"><label>الحلقة</label>
+      <select id="reglCircle"><option value="">— اختر —</option>
+        ${cs.map(c => `<option value="${esc(String(c.id))}">${esc(c.name || "—")}</option>`).join("")}</select></div>`,
+    `<button class="btn btn-primary" onclick="window.reglPrevGo('${kind}','${jsAttr(uids.join(","))}')">تنفيذ</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+window.reglPrevGo = function (kind, uids) {
+  reglPrevApply(kind, String(uids || "").split(",").filter(Boolean), (document.getElementById("reglCircle") || {}).value || "");
+};
+
+/* يحتاج إلى موافقة: يُرسل إشعارٌ إلى حساب الطالب في منشأته — ولا يُنقل */
+window.reglAsk = function () {
+  const sp = reglSplit(REGL.open, REGL.mq);
+  const m = (DB.mosques || []).find(x => String(x.id) === String(REGL.mq)) || {};
+  let n = 0;
+  sp.appr.forEach(({ u, st }) => {
+    if (!REGL.sel[String(u.id)]) return;
+    const acc = (DB.users || []).find(x => x && x !== u && x.active !== false &&
+      ((x.studentId && String(x.studentId) === String(st.id)) || (st.uid && String(x.uid || "") === String(st.uid))));
+    try {
+      if (acc && typeof notifyUser === "function")
+        notifyUser(acc.id, "regTransfer", "طلبُ تسجيلٍ في «" + (m.name || "مسجد") + "» برقم هويتك — راجع إدارتك للموافقة.", "طلب موافقة");
+    } catch (e) {}
+    u.transferAsked = Date.now();
+    persistSet("users", u);
+    n++;
+  });
+  REGL.sel = {};
+  showToast(n ? "أُرسل " + toArabicDigits(n) + " طلب" : "حدّد طالباً أوّلاً", n ? "success" : "warn");
+  mount();
+};
+window.reglReject = function (uid) {
+  window.urqDecide("rejected", ["self:" + uid]);
+};
+window.reglShowData = function (on) { REGL.showData = !!on; mount(); };
+
+function reglPage() {
+  const m = (DB.mosques || []).find(x => String(x.id) === String(REGL.mq)) || {};
+  const link = reglLinks(m).find(l => String(l.id) === String(REGL.open));
+  if (!link) { REGL.open = ""; return adminRegLinks(); }
+  const sp = reglSplit(link.id, m.id);
+  const cs = regCircles(m.id);
+  const progs = typeof programsForPick === "function" ? programsForPick() : [];
+  const tabs = [
+    { k: "new",  t: "طلاب جدد", d: "يمكن إضافتهم مباشرة", icon: "check" },
+    { k: "prev", t: "مسجلين في المنشأة سابقا", d: "النشط في نفس الحلقة يتخطى، والمتوقف يُفعّل مع التسجيل", icon: "building" },
+    { k: "appr", t: "يحتاج إلى موافقة", d: "يجب ارسال طلب موافقة للطالب", icon: "user" }
+  ];
+  const card = t => `<button type="button" class="regl-tab${REGL.tab === t.k ? " on" : ""}" onclick="window.reglTab('${t.k}')">
+      <span class="regl-ti">${ic(t.icon, 22)}</span>
+      <span class="regl-tt"><b>${esc(t.t)} (${toArabicDigits(sp[t.k].length)})</b><small>${esc(t.d)}</small></span>
+      <span class="regl-radio">${REGL.tab === t.k ? ic("check", 13) : ""}</span></button>`;
+  const ids = sp[REGL.tab].map(x => String(x.u.id)).join(",");
+  const allCk = `<input type="checkbox" class="regl-ckall" onchange="window.reglSelAll(this.checked,'${jsAttr(ids)}')">`;
+  const trash = uid => `<button type="button" class="regl-del" title="رفض الطلب" onclick="window.reglReject('${jsAttr(uid)}')">${ic("trash", 16)}</button>`;
+  const empty = n => `<tr><td colspan="${n}" class="regl-empty">${ic("doc", 34)}<div>لا توجد بيانات</div></td></tr>`;
+  let body = "";
+
+  if (REGL.tab === "new") {
+    const on = REGL_COLS.filter(c => REGL.cols[c.k]);
+    body = `<div class="regl-chips">${REGL_COLS.map(c => `<button type="button" class="regl-chip${REGL.cols[c.k] ? " on" : ""}" onclick="window.reglCol('${c.k}')">${esc(c.h)}</button>`).join("")}</div>
+    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable regl-table">
+      <thead><tr><th>الطلاب (${toArabicDigits(sp.new.length)}/${toArabicDigits(sp.new.length)})</th><th>اسم المستخدم</th>
+        ${on.map(c => `<th>${esc(c.h)}</th>`).join("")}
+        <th><select class="regl-hsel" onchange="window.reglSetAll('c', this.value)"><option value="">إختر حلقة للجميع</option>
+          ${cs.map(c => `<option value="${esc(String(c.id))}"${REGL.cAll === String(c.id) ? " selected" : ""}>${esc(c.name || "—")}</option>`).join("")}</select></th>
+        <th><select class="regl-hsel" onchange="window.reglSetAll('p', this.value)"><option value="">إختر برنامج للجميع</option>
+          ${progs.map(p => `<option value="${esc(String(p.id))}"${REGL.pAll === String(p.id) ? " selected" : ""}>${esc(p.name || "—")}</option>`).join("")}</select></th>
+      </tr></thead>
+      <tbody>${sp.new.length ? sp.new.map(({ u }) => {
+        const uc = REGL.rowC[u.id] || REGL.cAll, up = REGL.rowP[u.id] || REGL.pAll;
+        return `<tr><td class="pt-name">${trash(u.id)} ${esc(u.name || "—")}</td>
+          <td dir="ltr">${esc(u.idNo || "—")}</td>
+          ${on.map(c => `<td>${esc(u[c.k] || "—")}</td>`).join("")}
+          <td><select class="regl-rsel" onchange="window.reglRow('c','${jsAttr(u.id)}',this.value)"><option value="">إختر الحلقة</option>
+            ${cs.map(c => `<option value="${esc(String(c.id))}"${String(uc) === String(c.id) ? " selected" : ""}>${esc(c.name || "—")}</option>`).join("")}</select></td>
+          <td><select class="regl-rsel" onchange="window.reglRow('p','${jsAttr(u.id)}',this.value)"><option value="">إختر البرنامج</option>
+            ${progs.map(p => `<option value="${esc(String(p.id))}"${String(up) === String(p.id) ? " selected" : ""}>${esc(p.name || "—")}</option>`).join("")}</select></td></tr>`;
+      }).join("") : empty(4 + on.length)}</tbody></table></div></div>
+    <button type="button" class="btn btn-primary regl-go" onclick="window.reglRegisterNew()"${sp.new.length ? "" : " disabled"}>تسجيل الطلاب</button>`;
+  } else if (REGL.tab === "prev") {
+    body = `<div class="regl-acts">
+        <button type="button" class="regl-b b-join regl-bulk" disabled onclick="window.reglPrev('join')">الانضمام إلى حلقة جديدة</button>
+        <button type="button" class="regl-b b-move regl-bulk" disabled onclick="window.reglPrev('move')">نقل إلى حلقة أخرى</button></div>
+    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable regl-table">
+      <thead><tr><th class="regl-ckh">${allCk}</th><th>اسم الطالب</th><th>اسم المستخدم</th><th>إجراءات</th></tr></thead>
+      <tbody>${sp.prev.length ? sp.prev.map(({ u, st }) => `<tr>
+          <td><input type="checkbox" class="regl-ck" onchange="window.reglSel('${jsAttr(u.id)}', this.checked)"></td>
+          <td class="pt-name">${trash(u.id)} ${esc(st.name || u.name || "—")}</td>
+          <td dir="ltr">${esc(u.idNo || "—")}</td>
+          <td><div class="regl-acts">
+            <button type="button" class="regl-b b-join" onclick="window.reglPrev('join','${jsAttr(u.id)}')">الانضمام إلى حلقة جديدة</button>
+            <button type="button" class="regl-b b-act" onclick="window.reglPrev('activate','${jsAttr(u.id)}')">تفعيل لحلقة سابقة</button>
+            <button type="button" class="regl-b b-move" onclick="window.reglPrev('move','${jsAttr(u.id)}')">نقل إلى حلقة أخرى</button></div></td>
+        </tr>`).join("") : empty(4)}</tbody></table></div></div>`;
+  } else {
+    const lvName = st => st.level || "—";
+    body = `${noteCard("سيتم إرسال طلبات للطلاب المحددين")}
+      <label class="regl-sw"><span>عرض البيانات الموجودة في رابط التسجيل</span>
+        <input type="checkbox"${REGL.showData ? " checked" : ""} onchange="window.reglShowData(this.checked)"><i></i></label>
+    <div class="pt-wrap"><div class="pt-scroll"><table class="ptable regl-table">
+      <thead><tr><th class="regl-ckh">${allCk}</th><th>الطلاب (${toArabicDigits(sp.appr.length)}/${toArabicDigits(sp.appr.length)})</th><th>اسم المستخدم</th>
+        ${REGL.showData ? "<th>الجوال</th><th>الجنسية</th>" : ""}<th>اسم الحلقة</th><th>اسم البرنامج</th><th>اسم المستوى</th></tr></thead>
+      <tbody>${sp.appr.length ? sp.appr.map(({ u, st }) => `<tr>
+          <td><input type="checkbox" class="regl-ck" onchange="window.reglSel('${jsAttr(u.id)}', this.checked)"></td>
+          <td class="pt-name">${esc(st.name || u.name || "—")}${u.transferAsked ? ` <small class="regl-sent">أُرسل الطلب</small>` : ""}</td>
+          <td dir="ltr">${esc(u.idNo || "—")}</td>
+          ${REGL.showData ? `<td dir="ltr">${esc(u.phone || "—")}</td><td>${esc(u.nationality || "—")}</td>` : ""}
+          <td>${esc(st.circle || "—")}</td><td>${esc(st.program || "—")}</td><td>${esc(lvName(st))}</td></tr>`).join("")
+        : empty(REGL.showData ? 8 : 6)}</tbody></table></div></div>
+    <button type="button" class="btn btn-primary regl-go regl-bulk" disabled onclick="window.reglAsk()">إرسال الطلبات</button>`;
+  }
+
+  return `<div class="page reg-page regl-page">
+    <div class="regl-head"><button type="button" class="regl-back" onclick="window.reglOpen('','')">${ic("arrowRight", 20)}</button>
+      <h2>اسم الرابط : ${esc(link.name)}</h2></div>
+    <div class="regl-tabs">${tabs.map(card).join("")}</div>
+    ${body}
+  </div>`;
+}
+
 window.regCopy = function (url) {
   const done = () => showToast("نُسخ الرابط", "success");
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done).catch(() => msgCopyFallback(url, done));
@@ -56136,7 +56432,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-0030";
+  var APP_BUILD = "20261020-0700";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
