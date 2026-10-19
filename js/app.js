@@ -47436,6 +47436,22 @@ function facTwoFields(idCx, idMq, curCxId, curMqId) {
       <div class="hint" id="${idMq}_hint"></div></div>`;
 }
 
+/* =========================================================================
+   حلقةٌ فيها طلابٌ لا تُحذف
+   -------------------------------------------------------------------------
+   كان الحذفُ يمحو الحلقةَ ويترك طلابَها مرتبطين بمعرّفٍ لا وجودَ له: تختفي
+   الحلقةُ عند المعلّم فيختفي معها طلابُها من تحضيره، ويبقون في جدول الإدارة
+   بحلقةٍ محذوفة. ولا يُنقل أحدٌ تلقائياً — فيُردّ الحذفُ ويُقال السبب،
+   وينقلهم المخوَّلُ بنفسه أوّلاً ثمّ يحذف.
+   ========================================================================= */
+function circleDelBlocked(cid) {
+  const n = (DB.students || []).filter(s => s && String(s.circleId || "") === String(cid)).length;
+  if (!n) return false;
+  showToast("لا تُحذف الحلقة وفيها " + toArabicDigits(n) +
+    " طالباً — انقلهم إلى حلقةٍ أخرى أوّلاً", "warn");
+  return true;
+}
+
 /* تغيير المجمع يعيد بناء قائمة مساجده */
 window.facCxChange = function (idCx, idMq) {
   const cxSel = document.getElementById(idCx);
@@ -52859,6 +52875,7 @@ document.addEventListener("click", (e) => {
       if (!c) { showToast("الحلقة غير موجودة", "warn"); break; }
       const name = val("#ec_name", c.name);
       if (!name) { showToast("اسم الحلقة مطلوب", "warn"); break; }
+      const ecOldName = c.name;
       c.name = name;
       c.photo = photoVal("ec_photo", c.photo || "");   /* شعارُ الحلقة */
       photoReset("ec_photo");
@@ -52928,6 +52945,25 @@ document.addEventListener("click", (e) => {
         });
       }
 
+      /* =================================================================
+         اسمُ الحلقة الجديدُ يظهر عند الجميع
+         -----------------------------------------------------------------
+         سجلُّ الطالب والمعلّم يحمل اسمَ حلقته نصّاً (circle) تقرؤه جداولُ
+         الإدارة وتقاريرُها، فكان تغييرُ اسم الحلقة يظهر للمعلّم ويبقى
+         الاسمُ القديمُ في جدول الطلاب. يُحدَّث النصُّ وحدَه لمن هم فيها
+         بمعرّفها — والمعرّفُ circleId لا يُمسّ، فلا نقلَ ولا تبديلَ حلقة.
+         ================================================================= */
+      if (String(ecOldName || "") !== String(c.name || "")) {
+        ["students", "teachers"].forEach(cl => {
+          (DB[cl] || []).forEach(r => {
+            if (!r || String(r.circleId || "") !== String(c.id)) return;
+            if (String(r.circle || "") !== String(ecOldName || "")) return;
+            r.circle = c.name;
+            persistSet(cl, r);
+          });
+        });
+      }
+
       persistSet("circles", c);
       /* «تم تعديل أو تحديث بيانات الحلقة» — تنبيهٌ لمعلّمها الحاليّ */
       try {
@@ -52942,6 +52978,7 @@ document.addEventListener("click", (e) => {
     case "delete-circle": {
       const c = DB.circles.find(x => x.id == t.dataset.id);
       if (!c) { showToast("الحلقة غير موجودة", "warn"); break; }
+      if (circleDelBlocked(c.id)) break;
       openModal("حذف الحلقة", "تأكيد الحذف",
         `${noteCard("سيتم حذف حلقة <strong>" + esc(c.name) + "</strong> نهائياً من قاعدة البيانات. لا يمكن التراجع.")}`,
         `<button class="btn btn-danger" data-action="delete-circle-confirm" data-id="${c.id}">${ic("x", 16)} نعم، احذف الحلقة</button>
@@ -52950,6 +52987,7 @@ document.addEventListener("click", (e) => {
     }
     case "delete-circle-confirm": {
       const id = t.dataset.id;
+      if (circleDelBlocked(id)) { closeModal(); break; }
       DB.circles = DB.circles.filter(x => x.id != id);
       persistDelete("circles", id);
       closeModal(); renderNav(); mount();
@@ -56693,7 +56731,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-2000";
+  var APP_BUILD = "20261020-2100";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
