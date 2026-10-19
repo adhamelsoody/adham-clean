@@ -28966,6 +28966,8 @@ function regLinkOf(mqId, role) {
 function adminRegLinks() {
   /* رابطٌ مسمّى مفتوح: صفحةُ طلباته بتبويباتها الثلاثة */
   if (REGL.open) return reglPage();
+  /* «إضافة رابط جديد» / تعديلُه */
+  if (RLB.cfg) return rlbPage();
   const ms = regMosques();
   const card = m => {
     const id = String(m.id);
@@ -28994,13 +28996,13 @@ function adminRegLinks() {
             <div class="reg-link-url"><input readonly dir="ltr" value="${esc(url)}" onclick="this.select()"></div>
             <div class="reg-link-btns">
               <button type="button" class="btn btn-primary btn-sm" onclick="window.reglOpen('${jsAttr(id)}','${jsAttr(l.id)}')">${ic("users", 15)} الطلبات (${toArabicDigits(n)})</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="window.rlbStart('${jsAttr(id)}','${jsAttr(l.id)}')">${ic("edit", 15)} تعديل</button>
               <button type="button" class="btn btn-ghost btn-sm" onclick="window.regCopy('${jsAttr(url)}')">${ic("doc", 15)} نسخ</button>
               <a class="btn btn-ghost btn-sm reg-wa" target="_blank" rel="noopener"
                 href="https://wa.me/?text=${esc(encodeURIComponent(l.name + " — " + (m.name || "") + "\n" + url))}">${ic("phone", 15)} واتساب</a>
             </div></div>`;
         }).join("")}
-        <div class="regl-new"><input id="reglName_${esc(id)}" placeholder="اسم الرابط — مثال: التسجيل لعام ١٤٤٧ الفصل الأول">
-          <button type="button" class="btn btn-primary btn-sm" onclick="window.reglCreate('${jsAttr(id)}')">${ic("plus", 15)} إنشاء رابط</button></div>
+        <div class="regl-new"><button type="button" class="btn btn-primary btn-sm" onclick="window.rlbStart('${jsAttr(id)}')">${ic("plus", 15)} إضافة رابط جديد</button></div>
       </div>
     </div>`;
   };
@@ -29126,12 +29128,14 @@ window.reglRegisterNew = function () {
   const rows = sp.new.map(x => x.u);
   const ready = [], miss = [];
   rows.forEach(u => {
-    const cid = REGL.rowC[u.id] || REGL.cAll;
+    const cid = REGL.rowC[u.id] || REGL.cAll || (u.regPick || {}).circleId;
     if (regCircleOf(cid, REGL.mq)) ready.push(u); else miss.push(u);
   });
   if (!ready.length) { showToast("اختر الحلقة للطلاب أوّلاً", "warn"); return; }
   const plan = {};
-  ready.forEach(u => { plan[u.id] = { cid: REGL.rowC[u.id] || REGL.cAll, pid: REGL.rowP[u.id] || REGL.pAll }; });
+  ready.forEach(u => { const pk = u.regPick || {};
+    plan[u.id] = { cid: REGL.rowC[u.id] || REGL.cAll || pk.circleId, pid: REGL.rowP[u.id] || REGL.pAll || pk.programId,
+                   lid: pk.levelId || "", cat: pk.category || "" }; });
   /* يُعيَّن المسجدُ المطلوب للرابط قبل الاعتماد، فيُكتب انتماؤه بالطريق القائم */
   ready.forEach(u => { if (!u.requestedMosqueId) u.requestedMosqueId = REGL.mq; });
   window.urqDecide("approved", ready.map(u => "self:" + u.id));
@@ -29144,6 +29148,12 @@ window.reglRegisterNew = function () {
     if (c) reglPutCircle(st, c);
     const pr = (typeof programsForPick === "function" ? programsForPick() : []).find(p => String(p.id) === String(plan[u.id].pid));
     if (pr) st.program = pr.name || st.program;
+    /* المستوى الذي اختاره الطالبُ — إن كان من البرنامج المسجَّل فيه */
+    const lv = pr && plan[u.id].lid && !/^sys_/.test(String(pr.id)) ? lvxOf(pr.id).find(x => String(x.id) === String(plan[u.id].lid)) : null;
+    if (lv) { st.levelId = String(lv.id); st.level = lv.name || ""; }
+    if (plan[u.id].cat && !st.category) st.category = plan[u.id].cat;
+    if (u.notes && !st.notes) st.notes = u.notes;
+    if (Array.isArray(u.regAnswers) && u.regAnswers.length && !st.regAnswers) st.regAnswers = u.regAnswers;
     st.enrollType = st.enrollType || "plan";
     if (u.idNo) st.idNo = String(u.idNo);
     ["nameEn", "birth", "whatsapp", "parentWhatsapp"].forEach(k => { if (u[k] && !st[k]) st[k] = u[k]; });
@@ -29258,7 +29268,9 @@ function reglPage() {
           ${progs.map(p => `<option value="${esc(String(p.id))}"${REGL.pAll === String(p.id) ? " selected" : ""}>${esc(p.name || "—")}</option>`).join("")}</select></th>
       </tr></thead>
       <tbody>${sp.new.length ? sp.new.map(({ u }) => {
-        const uc = REGL.rowC[u.id] || REGL.cAll, up = REGL.rowP[u.id] || REGL.pAll;
+        /* ما اختاره الطالبُ في الرابط (regPick) يُعرض مبدئياً — والمديرُ يغيّره */
+        const pk = u.regPick || {};
+        const uc = REGL.rowC[u.id] || REGL.cAll || pk.circleId || "", up = REGL.rowP[u.id] || REGL.pAll || pk.programId || "";
         return `<tr><td class="pt-name">${trash(u.id)} ${esc(u.name || "—")}</td>
           <td dir="ltr">${esc(u.idNo || "—")}</td>
           ${on.map(c => `<td>${esc(u[c.k] || "—")}</td>`).join("")}
@@ -29306,6 +29318,195 @@ function reglPage() {
       <h2>${link.id === "*" ? "طلبات التسجيل" + (m.name ? " — " + esc(m.name) : "") : "اسم الرابط : " + esc(link.name)}</h2></div>
     <div class="regl-tabs">${tabs.map(card).join("")}</div>
     ${body}
+  </div>`;
+}
+
+/* =========================================================================
+   «إضافة رابط جديد» — مُنشئُ رابط التسجيل
+   -------------------------------------------------------------------------
+   «عايز كل التفاصيل دي في روابط تسجيل الطلاب»: أجزاءٌ تُطوى وتُفتح، في كلٍّ
+   عناصرُ تُشغَّل وتُطفأ وتُرتَّب بالسحب والإفلات:
+     معلومات تعريفية · البيانات الأساسية (بنصٍّ ظاهرٍ مخصَّص) · البيانات
+     التفصيلية · اختيار من قائمة · الاختيارات الإضافية · الأسئلة الإضافية
+   ثمّ «النص بعد إرسال طلب التسجيل» و«اسم الرابط (لا يظهر للمستخدمين)».
+
+   يُحفظ الرابطُ في سجلّ المسجد (mosques.regLinks) كما كان، وتُنشر نسختُه
+   العلنيّة — بلا شيءٍ خاصّ — في publicIndex/mosques تحت links.<id> بدمجٍ
+   لا يمسّ قائمةَ المساجد، فتقرؤها صفحةُ التسجيل لمن لا حسابَ له.
+   ========================================================================= */
+const RLB_SECS = [
+  { k: "intro", h: "معلومات تعريفية", note: "(يمكنك تخصيص النص الذي سيظهر للمستخدم مثل \"اسم المركز\" بدلاً من \"اسم المنشأة\")",
+    items: [{ k: "title", h: "عنوان الرابط", text: 1 }, { k: "welcome", h: "النص الترحيبي", text: 2 },
+            { k: "facility", h: "اسم وشعار المنشأة التعليمية" }, { k: "extLink", h: "رابط خارجي", text: 1, url: 1 },
+            { k: "ad", h: "الإعلان", text: 2 }] },
+  { k: "basic", h: "البيانات الأساسية", fixed: 1,
+    items: [{ k: "username", h: "اسم المستخدم" }, { k: "name", h: "اسم الطالب" }] },
+  { k: "detail", h: "البيانات التفصيلية",
+    items: [{ k: "whatsapp", h: "رقم الواتس" }, { k: "parentWhatsapp", h: "واتس ولي الأمر" },
+            { k: "email", h: "البريد الألكتروني" }, { k: "nameEn", h: "الاسم باللغة الإنجليزية" }, { k: "notes", h: "ملحوظات" }] },
+  { k: "lists", h: "اختيار من قائمة",
+    items: [{ k: "gender", h: "الجنس" }, { k: "nationality", h: "الجنسية" }, { k: "birth", h: "تاريخ الميلاد" }] },
+  { k: "extra", h: "الاختيارات الإضافية",
+    items: [{ k: "circle", h: "الحلقة" }, { k: "program", h: "البرنامج" }, { k: "level", h: "المستوى" }, { k: "category", h: "تصنيف الطلاب" }] }
+];
+function rlbBlank() {
+  const c = { name: "", doneText: "", questions: [] };
+  RLB_SECS.forEach(s => { c[s.k] = s.items.map(it => ({ k: it.k, on: !!s.fixed, text: "", url: "", label: "" })); });
+  return c;
+}
+/* إعدادٌ محفوظٌ يُكمَّل بما استجدّ من عناصر — ولا يُسقط ترتيبَه */
+function rlbNorm(cfg) {
+  const c = Object.assign(rlbBlank(), JSON.parse(JSON.stringify(cfg || {})));
+  RLB_SECS.forEach(s => {
+    const have = (Array.isArray(c[s.k]) ? c[s.k] : []).filter(x => s.items.some(it => it.k === x.k));
+    s.items.forEach(it => { if (!have.some(x => x.k === it.k)) have.push({ k: it.k, on: !!s.fixed, text: "", url: "", label: "" }); });
+    c[s.k] = have;
+  });
+  if (!Array.isArray(c.questions)) c.questions = [];
+  return c;
+}
+const RLB = { mq: "", id: "", cfg: null, open: { intro: 1 } };
+
+window.rlbStart = function (mqId, linkId) {
+  const m = (DB.mosques || []).find(x => String(x.id) === String(mqId)) || {};
+  const l = linkId ? reglLinks(m).find(x => String(x.id) === String(linkId)) : null;
+  Object.assign(RLB, { mq: String(mqId || ""), id: l ? String(l.id) : "", cfg: rlbNorm(l || {}), open: { intro: 1 } });
+  mount();
+};
+window.rlbBack = function () { RLB.cfg = null; mount(); };
+/* ما في الحقول يُقرأ إلى الحالة قبل كلّ إعادة رسم */
+function rlbRead() {
+  const c = RLB.cfg; if (!c) return;
+  document.querySelectorAll("[data-rlb]").forEach(el => {
+    const [sec, i, f] = el.dataset.rlb.split(".");
+    if (sec === "q") { const q = c.questions[Number(i)]; if (q) q[f] = el.type === "checkbox" ? el.checked : el.value; return; }
+    if (sec === "top") { c[f] = el.value; return; }
+    const it = (c[sec] || [])[Number(i)]; if (!it) return;
+    it[f] = el.type === "checkbox" ? el.checked : el.value;
+  });
+}
+window.rlbTog = function (sec, i, on) { rlbRead(); const it = RLB.cfg[sec][i]; if (it) it.on = !!on; mount(); };
+window.rlbSec = function (k) { rlbRead(); RLB.open[k] = !RLB.open[k]; mount(); };
+window.rlbAddQ = function () { rlbRead(); RLB.cfg.questions.push({ id: "q" + Date.now(), text: "", required: false }); RLB.open.questions = 1; mount(); };
+window.rlbDelQ = function (i) { rlbRead(); RLB.cfg.questions.splice(i, 1); mount(); };
+
+/* السحبُ والإفلات داخل الجزء الواحد */
+let RLB_DRAG = null;
+window.rlbDragStart = function (e, sec, i) { RLB_DRAG = { sec, i }; try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", sec + "." + i); } catch (x) {} };
+window.rlbDragOver = function (e, sec) { if (RLB_DRAG && RLB_DRAG.sec === sec) { e.preventDefault(); } };
+window.rlbDrop = function (e, sec, to) {
+  e.preventDefault();
+  if (!RLB_DRAG || RLB_DRAG.sec !== sec) return;
+  rlbMove(sec, RLB_DRAG.i, to); RLB_DRAG = null;
+};
+function rlbMove(sec, from, to) {
+  rlbRead();
+  const arr = sec === "q" ? RLB.cfg.questions : RLB.cfg[sec];
+  if (!arr || from === to || from < 0 || to < 0 || from >= arr.length || to >= arr.length) return;
+  const [x] = arr.splice(from, 1); arr.splice(to, 0, x);
+  mount();
+}
+window.rlbMove = rlbMove;
+
+/* النسخةُ العلنيّة: ما تحتاجه صفحةُ التسجيل وحدَه — والقوائمُ المطلوبةُ فقط */
+function rlbPublic(m, l) {
+  const on = (sec, k) => (l[sec] || []).some(x => x.k === k && x.on);
+  const pub = { mosque: String(m.name || ""), mosqueId: String(m.id),
+    intro: l.intro, basic: l.basic, detail: l.detail, lists: l.lists, extra: l.extra,
+    questions: (l.questions || []).filter(q => String(q.text || "").trim()), doneText: l.doneText || "", ts: Date.now() };
+  const ch = {};
+  if (on("extra", "circle")) ch.circles = regCircles(m.id).map(c => ({ id: String(c.id), name: c.name || "" }));
+  if (on("extra", "program") || on("extra", "level")) {
+    ch.programs = (typeof programsForPick === "function" ? programsForPick() : []).map(p => ({
+      id: String(p.id), name: p.name || "",
+      levels: on("extra", "level") && !/^sys_/.test(String(p.id)) ? lvxOf(p.id).map(x => ({ id: String(x.id), name: x.name || "" })) : [] }));
+  }
+  pub.choices = ch;
+  return pub;
+}
+function rlbPublish(m, l) {
+  try {
+    const db = typeof FDB === "function" ? FDB() : null;
+    if (!db) return Promise.resolve(false);
+    const links = {}; links[String(l.id)] = rlbPublic(m, l);
+    /* دمجٌ في links وحدَها: قائمةُ المساجد (items) لا تُمسّ */
+    return db.collection("publicIndex").doc("mosques").set({ links }, { merge: true }).then(() => true).catch(() => false);
+  } catch (e) { return Promise.resolve(false); }
+}
+window.rlbPublish = rlbPublish;
+
+window.rlbSave = function () {
+  rlbRead();
+  const c = RLB.cfg;
+  if (!String(c.doneText || "").trim()) { showToast("اكتب النصَّ الذي يظهر بعد إرسال طلب التسجيل", "warn"); return; }
+  if (String(c.name || "").trim().length < 3) { showToast("اكتب اسمَ الرابط", "warn"); return; }
+  const m = (DB.mosques || []).find(x => String(x.id) === String(RLB.mq));
+  if (!m) return;
+  const links = reglLinks(m).slice();
+  const rec = Object.assign({}, c, { id: RLB.id || "rl" + Date.now(), name: String(c.name).trim(),
+    at: RLB.id ? ((links.find(x => String(x.id) === RLB.id) || {}).at || Date.now()) : Date.now() });
+  const i = links.findIndex(x => String(x.id) === String(rec.id));
+  if (i > -1) links[i] = rec; else links.push(rec);
+  m.regLinks = links;
+  persistSet("mosques", m);
+  rlbPublish(m, rec).then(ok => { if (ok === false) showToast("حُفظ الرابط — وتعذّر نشرُ إعداده لصفحة التسجيل الآن", "warn"); });
+  showToast((RLB.id ? "حُدِّث" : "أُنشئ") + " الرابط «" + rec.name + "»", "success");
+  RLB.cfg = null;
+  mount();
+};
+
+function rlbPage() {
+  const c = RLB.cfg;
+  const sw = (sec, i, on) => `<label class="rlb-sw"><input type="checkbox"${on ? " checked" : ""} onchange="window.rlbTog('${sec}',${i},this.checked)"><i></i></label>`;
+  const grip = `<span class="rlb-grip" title="اسحب لإعادة الترتيب">⋮⋮</span>`;
+  const dnd = (sec, i) => `draggable="true" ondragstart="window.rlbDragStart(event,'${sec}',${i})" ondragover="window.rlbDragOver(event,'${sec}')" ondrop="window.rlbDrop(event,'${sec}',${i})"`;
+  const sec = s => {
+    const open = !!RLB.open[s.k];
+    const rows = c[s.k].map((it, i) => {
+      const def = s.items.find(x => x.k === it.k) || {};
+      if (s.fixed) return `<div class="rlb-row rlb-basic" ${dnd(s.k, i)}>${grip}
+          <span class="rlb-l">${esc(def.h)}</span><span class="rlb-arrow">⟸</span>
+          <div class="rlb-cust"><label>تخصيص النص الظاهر</label>
+            <input data-rlb="${s.k}.${i}.label" value="${esc(it.label || "")}" placeholder="${esc(def.h)}"></div></div>`;
+      return `<div class="rlb-row${it.on ? " on" : ""}" ${dnd(s.k, i)}>
+          <div class="rlb-rh">${grip}<span class="rlb-l">${esc(def.h)}</span>${sw(s.k, i, it.on)}</div>
+          ${it.on && def.text ? `<div class="rlb-more">
+            ${def.url ? `<input data-rlb="${s.k}.${i}.url" dir="ltr" value="${esc(it.url || "")}" placeholder="https://…">` : ""}
+            ${def.text === 2 ? `<textarea data-rlb="${s.k}.${i}.text" rows="3" placeholder="${esc(def.h)}">${esc(it.text || "")}</textarea>`
+              : `<input data-rlb="${s.k}.${i}.text" value="${esc(it.text || "")}" placeholder="${esc(def.url ? "نصّ الرابط" : def.h)}">`}</div>` : ""}
+          ${it.on && s.k === "intro" && it.k === "facility" ? `<div class="rlb-more"><small class="muted">يظهر اسمُ المسجد وشعارُ النظام أعلى صفحة التسجيل</small></div>` : ""}
+        </div>`;
+    }).join("");
+    return `<section class="rlb-sec${open ? " open" : ""}">
+      <button type="button" class="rlb-sh" onclick="window.rlbSec('${s.k}')"><b>${esc(s.h)}</b>${BDD_CHEV}</button>
+      ${open ? `${s.note ? `<p class="rlb-note">${esc(s.note)}</p>` : ""}<div class="rlb-rows">${rows}</div>` : ""}
+    </section>`;
+  };
+  const qOpen = !!RLB.open.questions;
+  const qs = `<section class="rlb-sec${qOpen ? " open" : ""}">
+      <button type="button" class="rlb-sh" onclick="window.rlbSec('questions')"><b>الأسئلة الاضافية</b>${BDD_CHEV}</button>
+      ${qOpen ? `<div class="rlb-rows">${c.questions.map((q, i) => `<div class="rlb-row on" ${dnd("q", i)}>
+          <div class="rlb-rh">${grip}<input class="rlb-q" data-rlb="q.${i}.text" value="${esc(q.text || "")}" placeholder="نصّ السؤال">
+            <label class="rlb-req"><input type="checkbox" data-rlb="q.${i}.required"${q.required ? " checked" : ""}> مطلوب</label>
+            <button type="button" class="regl-del" title="حذف السؤال" onclick="window.rlbDelQ(${i})">${ic("trash", 16)}</button></div></div>`).join("")}
+        <button type="button" class="btn btn-ghost btn-sm" onclick="window.rlbAddQ()">${ic("plus", 15)} إضافة سؤال</button></div>` : ""}
+    </section>`;
+  return `<div class="page reg-page rlb-page">
+    <div class="regl-head"><button type="button" class="regl-back" onclick="window.rlbBack()">${ic("arrowRight", 20)}</button>
+      <h2>${RLB.id ? "تعديل الرابط" : "إضافة رابط جديد"}</h2></div>
+    ${noteCard("يمكنك إعادة ترتيب العناصر بالسحب والإفلات داخل كل جزء")}
+    ${RLB_SECS.map(sec).join("")}
+    ${qs}
+    <div class="rlb-final">
+      <label>النص بعد إرسال طلب التسجيل <span class="req">*</span></label>
+      <textarea data-rlb="top.0.doneText" rows="4">${esc(c.doneText || "")}</textarea>
+      <label>اسم الرابط (لن يظهر للمستخدمين) <span class="req">*</span></label>
+      <input data-rlb="top.0.name" value="${esc(c.name || "")}">
+      <div class="rlb-btns">
+        <button type="button" class="btn btn-primary" onclick="window.rlbSave()">${RLB.id ? "حفظ الرابط" : "إنشاء الرابط"}</button>
+        <button type="button" class="btn btn-ghost" onclick="window.rlbBack()">رجوع</button>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -56473,7 +56674,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-1810";
+  var APP_BUILD = "20261020-1830";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */

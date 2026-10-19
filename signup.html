@@ -101,12 +101,23 @@
           background:#ecfcfd;color:#0b7f83;font-size:12.5px;font-weight:700}
   .rk-tag button{border:0;background:none;color:#0b7f83;text-decoration:underline;cursor:pointer;font:inherit;font-size:12px}
   @media (max-width:560px){ .rk{grid-template-columns:1fr} }
+  /* رابطٌ مسمّى بإعداده: الأجزاءُ التعريفيّة أعلى الصفحة */
+  #lkIntro{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;text-align:center}
+  #lkIntro:empty{display:none}
+  .lk-title{margin:0;font-size:22px;color:#0b3d3f}
+  .lk-welcome{margin:0;color:#3b4e4f;line-height:1.8;white-space:pre-line}
+  .lk-fac{display:flex;align-items:center;justify-content:center;gap:10px;font-weight:800;color:#0b3d3f}
+  .lk-fac img{width:40px;height:40px}
+  .lk-ext{display:inline-block;margin:0 auto;padding:8px 16px;border-radius:10px;background:#ecfcfd;color:#0b7f83;font-weight:700;text-decoration:none}
+  .lk-ad{padding:12px 14px;border-radius:12px;background:#fff8e6;color:#7a5b0c;line-height:1.7;white-space:pre-line}
+  textarea{width:100%;padding:12px 14px;border:1.5px solid #dde3e3;border-radius:12px;font:inherit;background:#fbfcfc}
 </style>
 </head>
 <body>
 
 <div class="card">
   <img src="logo-mark.svg" alt="" class="logo" onerror="this.style.display='none'">
+  <div id="lkIntro"></div>
 
   <!-- «عند فتح رابط التسجيل يُخيَّر الطالبُ بين خيارين: مسجَّلٌ من قبل أم
        انضمامٌ جديد» — لا يظهر إلّا لرابط طالبٍ من «روابط تسجيل الطلاب» -->
@@ -289,6 +300,11 @@
           تُنشَأ المنشأةُ عند اعتماد مدير النظام لطلبك، وتُسنَد إليك حينئذٍ.</div>
       </div>
 
+      <div class="f" id="notesBox" style="grid-column:1/-1;display:none">
+        <label for="notes">ملحوظات</label>
+        <textarea id="notes" rows="3"></textarea>
+      </div>
+      <div class="f" id="lkExtraBox" style="grid-column:1/-1;display:none"></div>
       <div class="f">
         <label for="pass">كلمة المرور <i>*</i></label>
         <input id="pass" type="password" dir="ltr" placeholder="********" autocomplete="new-password">
@@ -318,7 +334,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="firebase-config.js?v=202610201810"></script>
+<script src="firebase-config.js?v=202610201830"></script>
 <script>
 (function () {
   "use strict";
@@ -351,6 +367,7 @@
     if (tt) tt.textContent = regKind === "returning" ? "مسجَّلٌ من قبل" : "انضمامٌ جديد";
     document.querySelectorAll(".rk-only").forEach(function (e) { e.style.display = RK_LINK ? "" : "none"; });
     document.querySelectorAll(".rk-new").forEach(function (e) { e.style.display = RK_LINK && regKind === "new" ? "" : "none"; });
+    if (typeof lkFields === "function") lkFields();
     var h = document.getElementById("idNoHint");
     if (h) h.textContent = regKind === "returning" ? "رقمُ الهوية المسجَّلُ لدينا — به يُعرف تسجيلُك السابق" : "عشرة أرقام — يكون اسمَ المستخدم";
   }
@@ -363,6 +380,109 @@
     if (el) el.addEventListener("input", function () { var v = el.value.replace(/\D+/g, ""); if (v !== el.value) el.value = v; });
   });
   rkShow("");
+
+  /* =====================================================================
+     رابطٌ مسمّى (&link=<id>): إعدادُه من publicIndex/mosques → links.<id>
+     — عناوينُه ونصوصُه، والحقولُ المفعَّلةُ فيه وحدَها بنصوصها المخصَّصة،
+     والاختياراتُ الإضافيّة والأسئلة، ونصُّ ما بعد الإرسال.
+     ===================================================================== */
+  var LK = null;
+  function lkOn(sec, k) {
+    if (!LK) return false;
+    var a = LK[sec] || [];
+    for (var i = 0; i < a.length; i++) if (a[i].k === k) return !!a[i].on;
+    return false;
+  }
+  function lkItem(sec, k) {
+    var a = (LK && LK[sec]) || [];
+    for (var i = 0; i < a.length; i++) if (a[i].k === k) return a[i];
+    return {};
+  }
+  function fBox(id) { var e = document.getElementById(id); return e ? (e.closest(".f") || e) : null; }
+  function showBox(id, on) { var b = fBox(id); if (b) b.style.display = on ? "" : "none"; }
+  function esc2(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function lkFields() {
+    if (!LK) return;
+    showBox("phone", false);
+    showBox("mosqueSearch", false);
+    showBox("wa", lkOn("detail", "whatsapp"));
+    showBox("pwa", lkOn("detail", "parentWhatsapp"));
+    showBox("email", lkOn("detail", "email"));
+    showBox("nameEn", lkOn("detail", "nameEn"));
+    showBox("notes", lkOn("detail", "notes"));
+    showBox("gender", lkOn("lists", "gender"));
+    showBox("nat", lkOn("lists", "nationality"));
+    showBox("birth", lkOn("lists", "birth"));
+  }
+  function lkApply(cfg) {
+    LK = cfg;
+    var rl = document.getElementById("roles");
+    if (rl) { rl.style.display = "none"; if (rl.previousElementSibling) rl.previousElementSibling.style.display = "none"; }
+    var ms = document.getElementById("mosque"); if (ms && cfg.mosqueId) ms.value = cfg.mosqueId;
+    /* الأجزاءُ التعريفيّة بترتيبها */
+    var h = "";
+    (cfg.intro || []).forEach(function (it) {
+      if (!it.on) return;
+      if (it.k === "title" && it.text) h += '<h1 class="lk-title">' + esc2(it.text) + '</h1>';
+      if (it.k === "welcome" && it.text) h += '<p class="lk-welcome">' + esc2(it.text) + '</p>';
+      if (it.k === "facility") h += '<div class="lk-fac"><img src="logo-mark.svg" alt=""><span>' + esc2(cfg.mosque) + '</span></div>';
+      if (it.k === "extLink" && /^https?:\/\//i.test(it.url || "")) h += '<a class="lk-ext" target="_blank" rel="noopener" href="' + esc2(it.url) + '">' + esc2(it.text || it.url) + '</a>';
+      if (it.k === "ad" && it.text) h += '<div class="lk-ad">' + esc2(it.text) + '</div>';
+    });
+    document.getElementById("lkIntro").innerHTML = h;
+    if (lkOn("intro", "title")) document.querySelectorAll("#rkWrap > h1, #formWrap > h1").forEach(function (e) { e.style.display = "none"; });
+    if (lkOn("intro", "welcome")) document.querySelectorAll("#rkWrap > .sub, #formWrap > .sub").forEach(function (e) { e.style.display = "none"; });
+    /* النصوصُ الظاهرةُ المخصَّصة للبيانات الأساسية */
+    var ln = lkItem("basic", "name").label, lu = lkItem("basic", "username").label;
+    var la = document.querySelector('label[for="name"]'); if (la && ln) la.innerHTML = esc2(ln) + " <i>*</i>";
+    var lb = document.querySelector('label[for="idNo"]'); if (lb && lu) lb.innerHTML = esc2(lu) + " <i>*</i>";
+    /* الاختياراتُ الإضافيّة والأسئلة */
+    var ch = cfg.choices || {}, x = "";
+    var sel = function (id, lab, opts) {
+      return '<div class="f" style="margin-bottom:10px"><label for="' + id + '">' + esc2(lab) + '</label><select id="' + id + '"><option value="">— اختر —</option>' +
+        (opts || []).map(function (o) { return '<option value="' + esc2(o.id) + '">' + esc2(o.name) + '</option>'; }).join("") + '</select></div>';
+    };
+    (cfg.extra || []).forEach(function (it) {
+      if (!it.on) return;
+      if (it.k === "circle") x += sel("lkCircle", "الحلقة", ch.circles);
+      if (it.k === "program") x += sel("lkProgram", "البرنامج", ch.programs);
+      if (it.k === "level") x += sel("lkLevel", "المستوى", []);
+      if (it.k === "category") x += '<div class="f" style="margin-bottom:10px"><label for="lkCat">تصنيف الطالب</label><input id="lkCat" autocomplete="off"></div>';
+    });
+    (cfg.questions || []).forEach(function (q, i) {
+      x += '<div class="f" style="margin-bottom:10px"><label for="lkQ' + i + '">' + esc2(q.text) + (q.required ? " <i>*</i>" : "") +
+        '</label><input id="lkQ' + i + '" autocomplete="off"></div>';
+    });
+    var xb = document.getElementById("lkExtraBox");
+    if (xb) { xb.innerHTML = x; xb.style.display = x ? "" : "none"; }
+    var lp = document.getElementById("lkProgram"), ll = document.getElementById("lkLevel");
+    var fillLv = function () {
+      if (!ll) return;
+      var pid = lp ? lp.value : "", lv = [];
+      (ch.programs || []).forEach(function (p) { if (String(p.id) === pid) lv = p.levels || []; });
+      if (!lp) { lv = []; (ch.programs || []).forEach(function (p) { lv = lv.concat(p.levels || []); }); }
+      ll.innerHTML = '<option value="">— اختر —</option>' + lv.map(function (o) { return '<option value="' + esc2(o.id) + '">' + esc2(o.name) + '</option>'; }).join("");
+    };
+    if (lp) lp.addEventListener("change", fillLv);
+    fillLv();
+    /* نصُّ ما بعد الإرسال */
+    if (cfg.doneText) {
+      var dn = document.getElementById("done");
+      var ps = dn ? dn.querySelectorAll("p") : [];
+      if (ps.length) { ps[0].innerHTML = esc2(cfg.doneText).replace(/\n/g, "<br>"); for (var k = 1; k < ps.length; k++) ps[k].style.display = "none"; }
+    }
+    lkFields();
+  }
+  window.__lkApply = lkApply;          /* للفحص المحلّيّ بلا خادم */
+  if (RK_LINK && URL_Q.link) {
+    try {
+      db.collection("publicIndex").doc("mosques").get().then(function (snap) {
+        var d = snap && snap.exists ? (snap.data() || {}) : {};
+        var c = d.links && d.links[String(URL_Q.link)];
+        if (c) lkApply(c);
+      }).catch(function () {});
+    } catch (e) {}
+  }
 
   /* اختيار الصفة */
   document.querySelectorAll("#roles .role").forEach(function (b) {
@@ -616,13 +736,21 @@
     if (parts.length < 3) { bad("name", 1); return "الاسم بالكامل مطلوب — الاسم الأول واسم الأب واسم العائلة على الأقل."; }
     if (name.length < 6) { bad("name", 1); return "الاسم قصير جداً — تأكد من كتابته كاملاً."; }
 
+    /* برابطٍ مسمّى: الجوّالُ والبريدُ والجنسيةُ لا تُطلب إلّا إن كانت ظاهرة */
     var phone = v("phone").replace(/[\s-]/g, "");
-    if (!/^\+?[0-9]{9,15}$/.test(phone)) { bad("phone", 1); return "رقم الجوال غير صحيح."; }
+    if (!LK && !/^\+?[0-9]{9,15}$/.test(phone)) { bad("phone", 1); return "رقم الجوال غير صحيح."; }
 
     var email = v("email");
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) { bad("email", 1); return "صيغة البريد الإلكتروني غير صحيحة."; }
+    if ((!LK || lkOn("detail", "email")) && !/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) { bad("email", 1); return "صيغة البريد الإلكتروني غير صحيحة."; }
 
-    if (!v("nat")) { bad("nat", 1); return "اختر الجنسية."; }
+    if ((!LK || lkOn("lists", "nationality")) && !v("nat")) { bad("nat", 1); return "اختر الجنسية."; }
+
+    if (LK) {
+      var qs = LK.questions || [];
+      for (var qi = 0; qi < qs.length; qi++) {
+        if (qs[qi].required && !v("lkQ" + qi)) { bad("lkQ" + qi, 1); return "أجب عن: " + qs[qi].text; }
+      }
+    }
 
     if (RK_LINK && !/^[0-9]{10}$/.test(v("idNo"))) { bad("idNo", 1); return "رقم الهوية عشرة أرقام."; }
 
@@ -689,6 +817,12 @@
     var name   = v("name");
     var phone  = v("phone").replace(/[\s-]/g, "");
     var email  = v("email");
+    /* برابطٍ مسمّى: الجوّالُ من الواتس، والبريدُ إن لم يُطلب فبريدُ الدخول برقم الهوية
+       ({الهوية}@mirath.id) — وبه يدخل الطالبُ برقم هويته */
+    if (LK) {
+      if (!phone) phone = v("wa") || v("pwa") || "";
+      if (!lkOn("detail", "email") || !email) email = v("idNo") + "@mirath.id";
+    }
     var pass   = v("pass");
     var nat    = v("nat") || "المملكة العربية السعودية";
     var gender = v("gender") || "ذكر";
@@ -736,6 +870,15 @@
         birth: RK_LINK && regKind === "new" ? v("birth") : "",
         whatsapp: RK_LINK && regKind === "new" ? v("wa") : "",
         parentWhatsapp: RK_LINK && regKind === "new" ? v("pwa") : "",
+        /* إعدادُ الرابط المسمّى: الملحوظاتُ والاختياراتُ وإجاباتُ الأسئلة */
+        notes: LK && lkOn("detail", "notes") ? v("notes") : "",
+        regPick: LK ? {
+          circleId: (document.getElementById("lkCircle") || {}).value || "",
+          programId: (document.getElementById("lkProgram") || {}).value || "",
+          levelId: (document.getElementById("lkLevel") || {}).value || "",
+          category: (document.getElementById("lkCat") || {}).value || ""
+        } : null,
+        regAnswers: LK ? (LK.questions || []).map(function (q, i) { return { q: q.text, a: v("lkQ" + i) }; }) : [],
         /* طلبُ منشأةٍ لا إنشاؤها: مجرّدُ بياناتٍ في ملفّ الطلب حتى
            يعتمدها مديرُ النظام، فلا يُنشئ مسجداً ولا مجمّعاً تسجيلٌ ذاتيّ */
         reqFacility: facIsMgr() ? {
