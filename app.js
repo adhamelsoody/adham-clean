@@ -28989,6 +28989,7 @@ function adminRegLinks() {
   };
   return `<div class="page reg-page">
     ${pageHead("روابط تسجيل الطلاب", "شارك الرابط فيسجّل الطالبُ نفسَه — ويصلك طلبُه في «طلبات إضافة مستخدم» لتعتمده")}
+    ${ms.map(m => (ms.length > 1 ? `<div class="regl-topname">${ic("mosque", 16)} ${esc(m.name || "—")}</div>` : "") + reglTopCards(m)).join("")}
     ${ms.length ? ms.map(card).join("") : emptyState("لا مسجد", "لا مسجدَ في نطاقك بعد.")}
   </div>`;
 }
@@ -29014,9 +29015,17 @@ const REGL_COLS = [
 ];
 function reglLinks(m) { return Array.isArray(m && m.regLinks) ? m.regLinks : []; }
 function reglUrl(mqId, linkId) { return regLinkOf(mqId, "student") + "&link=" + encodeURIComponent(String(linkId)); }
-function reglReqs(linkId) {
+/* «*»: كلُّ طلبات تسجيل الطلاب للمسجد — من رابطٍ مسمّى أو من الرابط العامّ —
+   وهي ما تعرضه الأزرارُ الثلاثة أعلى «روابط تسجيل الطلاب» */
+function reglReqs(linkId, mqId) {
+  const m = (DB.mosques || []).find(x => String(x.id) === String(mqId));
+  const mine = reglLinks(m).map(l => String(l.id));
   return (cur("users") || DB.users || []).filter(u => u && u.active === false &&
-    (u.selfSignup === true || u.pending === true) && String(u.regLinkId || "") === String(linkId));
+    (u.selfSignup === true || u.pending === true) &&
+    (String(linkId) === "*"
+      ? String(u.requestedRole || u.role || "student") === "student" &&
+        (String(u.requestedMosqueId || "") === String(mqId) || mine.indexOf(String(u.regLinkId || "")) > -1)
+      : String(u.regLinkId || "") === String(linkId)));
 }
 function reglStudentOf(u) {
   const id = String((u && u.idNo) || "").replace(/\D+/g, "");
@@ -29024,7 +29033,7 @@ function reglStudentOf(u) {
 }
 function reglSplit(linkId, mqId) {
   const out = { new: [], prev: [], appr: [] };
-  reglReqs(linkId).forEach(u => {
+  reglReqs(linkId, mqId).forEach(u => {
     const st = reglStudentOf(u);
     if (!st) out.new.push({ u });
     else if (String(st.mosqueId || "") === String(mqId)) out.prev.push({ u, st });
@@ -29044,10 +29053,24 @@ window.reglCreate = function (mqId) {
   showToast("أُنشئ الرابط «" + name + "»", "success");
   mount();
 };
-window.reglOpen = function (mqId, linkId) {
-  Object.assign(REGL, { open: String(linkId || ""), mq: String(mqId || ""), tab: "new", sel: {}, rowC: {}, rowP: {}, cAll: "", pAll: "" });
+window.reglOpen = function (mqId, linkId, tab) {
+  Object.assign(REGL, { open: String(linkId || ""), mq: String(mqId || ""), tab: tab || "new", sel: {}, rowC: {}, rowP: {}, cAll: "", pAll: "" });
   mount();
 };
+/* «أريد أزرار: طلاب جدد · مسجلين في المنشأة سابقاً · يحتاج إلى موافقة» أعلى
+   الصفحة — بطاقاتُ صفحة الطلبات نفسُها بأعدادها، وكلٌّ يفتح تبويبَه */
+function reglTopCards(m) {
+  const id = String(m.id), sp = reglSplit("*", id);
+  const T = [
+    { k: "new",  t: "طلاب جدد", d: "يمكن إضافتهم مباشرة", icon: "check" },
+    { k: "prev", t: "مسجلين في المنشأة سابقا", d: "النشط في نفس الحلقة يتخطى، والمتوقف يُفعّل مع التسجيل", icon: "building" },
+    { k: "appr", t: "يحتاج إلى موافقة", d: "يجب ارسال طلب موافقة للطالب", icon: "user" }
+  ];
+  return `<div class="regl-tabs regl-top">${T.map(t => `<button type="button" class="regl-tab" onclick="window.reglOpen('${jsAttr(id)}','*','${t.k}')">
+      <span class="regl-ti">${ic(t.icon, 22)}</span>
+      <span class="regl-tt"><b>${esc(t.t)} (${toArabicDigits(sp[t.k].length)})</b><small>${esc(t.d)}</small></span>
+      <span class="regl-radio"></span></button>`).join("")}</div>`;
+}
 window.reglTab = function (t) { REGL.tab = t; REGL.sel = {}; mount(); };
 window.reglCol = function (k) { REGL.cols[k] = !REGL.cols[k]; mount(); };
 window.reglSel = function (uid, on) { if (on) REGL.sel[uid] = 1; else delete REGL.sel[uid]; reglSyncBtns(); };
@@ -29185,7 +29208,8 @@ window.reglShowData = function (on) { REGL.showData = !!on; mount(); };
 
 function reglPage() {
   const m = (DB.mosques || []).find(x => String(x.id) === String(REGL.mq)) || {};
-  const link = reglLinks(m).find(l => String(l.id) === String(REGL.open));
+  const link = String(REGL.open) === "*" ? { id: "*", name: "كل طلبات التسجيل" }
+    : reglLinks(m).find(l => String(l.id) === String(REGL.open));
   if (!link) { REGL.open = ""; return adminRegLinks(); }
   const sp = reglSplit(link.id, m.id);
   const cs = regCircles(m.id);
@@ -29262,7 +29286,7 @@ function reglPage() {
 
   return `<div class="page reg-page regl-page">
     <div class="regl-head"><button type="button" class="regl-back" onclick="window.reglOpen('','')">${ic("arrowRight", 20)}</button>
-      <h2>اسم الرابط : ${esc(link.name)}</h2></div>
+      <h2>${link.id === "*" ? "طلبات التسجيل" + (m.name ? " — " + esc(m.name) : "") : "اسم الرابط : " + esc(link.name)}</h2></div>
     <div class="regl-tabs">${tabs.map(card).join("")}</div>
     ${body}
   </div>`;
@@ -56432,7 +56456,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-0700";
+  var APP_BUILD = "20261020-0715";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
