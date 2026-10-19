@@ -12017,7 +12017,7 @@ body[data-iface="student"] .content { padding-top: 14px; }
   background-color: var(--mq-cream, #FFFDF5);
   background-image: none;
   border: 18px solid transparent;
-  border-image-source: url("mushaf-frame.svg");
+  border-image-source: url("../mushaf-frame.svg");
   border-image-slice: 40;
   border-image-repeat: round;
   border-image-width: 18px;
@@ -12131,7 +12131,7 @@ body[data-iface="student"] .content { padding-top: 14px; }
    ========================================================================= */
 .mus-orn {
   border-width: 30px;
-  border-image-source: url("mushaf-frame.svg");
+  border-image-source: url("../mushaf-frame.svg");
   border-image-slice: 80;
   border-image-width: 30px;
   border-image-repeat: round;
@@ -12272,7 +12272,7 @@ html.mus-fs-on, html.mus-fs-on body { overflow: hidden; }
    ========================================================================= */
 .mus-orn {
   border: 26px solid transparent;
-  border-image-source: url("mushaf-frame.webp");
+  border-image-source: url("../mushaf-frame.webp");
   border-image-slice: 33;
   border-image-width: 26px;
   border-image-repeat: stretch;
@@ -12292,7 +12292,7 @@ html.mus-fs-on, html.mus-fs-on body { overflow: hidden; }
   /* عنوانُ السورة كما هو في المصحف المطبوع: شريطٌ مزخرفٌ وسطُه معيَّنٌ
      فاتحٌ يُكتب فيه الاسم. مقتطعٌ من ملفّ المصحف الذي أرسله صاحبُ المشروع
      (standard1-quran.pdf)، ومُفرَّغٌ من اسمه ليُكتب فيه اسمُ كلّ سورة. */
-  background: url("mushaf-surah.webp") center / 100% 100% no-repeat;
+  background: url("../mushaf-surah.webp") center / 100% 100% no-repeat;
   border: 0; box-shadow: none; border-radius: 0;
 }
 .qv-lines .qv-h .mus-surah span {
@@ -12356,8 +12356,8 @@ html.mus-fs-on, html.mus-fs-on body { overflow: hidden; }
   margin: 0; padding: 0; font-size: 0; line-height: 0;
   background: currentColor;
   color: var(--mq-ink, #10201a);
-  -webkit-mask: url("mushaf-basmala.webp") center / contain no-repeat;
-  mask: url("mushaf-basmala.webp") center / contain no-repeat;
+  -webkit-mask: url("../mushaf-basmala.webp") center / contain no-repeat;
+  mask: url("../mushaf-basmala.webp") center / contain no-repeat;
 }
 
 /* ---- الوضعُ الليليّ: الورقةُ معه لا حولَه ---- */

@@ -37,17 +37,17 @@ const QURAN_CACHE = SW_VERSION + "-quran";
 
 /* ما يُخزَّن عند التنصيب — الحدّ الأدنى لفتح النظام */
 const SHELL = [
-  "/", "/index.html", "/app.js", "/styles.css",
-  "/auth.js", "/firebase-config.js", "/quran.js",
-  "/topbar-dates.js",
+  "/", "/index.html", "/js/app.js", "/css/styles.css",
+  "/js/auth.js", "/js/firebase-config.js", "/js/quran.js",
+  "/js/topbar-dates.js",
   "/admin/shell.js", "/admin/dashboard.html", "/admin/soon.html",
 
   /* الملحقات: مربوطةٌ بكلّ صفحة، فتخزينُها يوفّر مئةَ كيلو في كلّ فتحة */
-  "/clean-boot.js", "/clean-boot.css",
-  "/governance.js", "/governance.css",
-  "/duty-plus.js", "/duty-plus.css",
-  "/facilities-plus.js", "/facilities-plus.css",
-  "/manager-link.js", "/manager-link.css",
+  "/js/clean-boot.js", "/css/clean-boot.css",
+  "/js/governance.js", "/css/governance.css",
+  "/js/duty-plus.js", "/css/duty-plus.css",
+  "/js/facilities-plus.js", "/css/facilities-plus.css",
+  "/js/manager-link.js", "/css/manager-link.css",
 
   /* الأصول: ٣٦٠ كيلو كانت تُحمَّل مع كلّ فتحة */
   /* hijri.js و update.js و logo-mark.png و favicon.png كانت هنا ولا وجودَ

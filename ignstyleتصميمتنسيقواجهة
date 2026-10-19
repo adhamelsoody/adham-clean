@@ -1,0 +1,60 @@
+[33m2d74603[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m 394: registration link builder
+[33mb43a290[m 393: move to real programs
+[33mfe6b4c4[m 392: wider registration cells
+[33md253aa2[m 391: remove extra column chips
+[33mef8598e[m 390: request buttons on links page
+[33m3ccb237[m 389: registration links pages
+[33mbfa3e3c[m 388: excel placement pickers
+[33mf4c4f3a[m 387: reg phones and placement
+[33m686d226[m 386: remove tilawah counter
+[33m24c8465[m 385: tilawah beside tathbit on student card
+[33mf282840[m 384: remove column checkboxes
+[33m3a19383[m 383: real programs in current-program
+[33ma3f264b[m 382: kid toggles do not collapse hifz
+[33mf5ecc6c[m 381: select-all checklists
+[33mf3a6300[m 380: no settings button on student card
+[33m6740066[m 379: tilawah beside tathbit, panel title
+[33mf1df269[m 378: default-plan options panel
+[33m93d40b0[m 377: empty options panel
+[33m075f88d[m 376: programs-and-levels sheet layout
+[33m3f6af65[m 375: add-level one to five
+[33m5ef2036[m 374: dropdown scroll, juz names, 5 juz
+[33ma44e75f[m 373: add-level column name
+[33mb05c4f2[m 372: rename programs-and-levels
+[33mca3502f[m 371: move-and-level by juz
+[33mf9e4c19[m 370: move-and-level lists levels
+[33m4794962[m two-row header on move-level
+[33mc9680f2[m bulk plan two-row header
+[33m51ede26[m bulk plans reference layout
+[33md89447a[m tilawah own section
+[33m138deaf[m styled row dropdowns
+[33m258b365[m styled header dropdown
+[33maef66c1[m movelevel header lists
+[33m78a8e7f[m bulk tilawah column
+[33m1c7d76f[m student card settings
+[33m3c3bff3[m default plan settings button
+[33m70937d9[m bulk move circle heads
+[33m8419fa9[m duty settings
+[33m4920f48[m restore movelevel
+[33mdfdc0ee[m bulk plan header
+[33mde30779[m bulk default plan
+[33me70d862[m admissions registration
+[33m35de136[m whatsapp registered number
+[33m50bacc3[m attendance status lists and messages
+[33m8ac51f1[m mosque-manager dashboard
+[33m6014e83[m new-lesson recitation (tilawah ahead of hifz)
+[33m98f5cda[m fix: no complexes tab for complex manager
+[33m5ad0271[m feat: complex manager dashboard
+[33m6930142[m fix: complex manager sees his complex mosque managers only
+[33m4e44c70[m fix: mosque managers shows in complex manager menu
+[33m96828fd[m fix: attendance sheet agrees with the circle list
+[33mf9edca0[m fix: attendance lists only students on duty today
+[33m3ac7600[m feat: complex manager menu and wording
+[33m130242e[m feat: manager join request carries its facility, created on approval
+[33mf218805[m feat: archive and delete buttons in the term dialog footer
+[33m6fd0df6[m refactor: one terms table, actions moved into it
+[33md2bd672[m feat: migration step in the term form, filter beside the add button
+[33m2e29e27[m feat: terms system
+[33m47a0290[m fix: a new page each day, the surahs in order
+[33mbc21149[m fix: the plan surah is no longer lost when the mushaf index is late
+[33m6796465[m feat: a plan position set by hand wins over older progress
