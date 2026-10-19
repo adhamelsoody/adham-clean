@@ -13919,3 +13919,18 @@ th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-c
 /* البطاقاتُ الثلاث أعلى «روابط تسجيل الطلاب» */
 .regl-top { margin-bottom: 16px; }
 .regl-topname { display: flex; align-items: center; gap: 6px; font-weight: 700; color: #1f3a3b; margin: 4px 0 8px; }
+
+/* «الخانات كبيرة تأخذ البيانات كلَّها معروضة — الاسمُ ثلاثياً ظاهرٌ بوضوح»:
+   لكلّ خانةٍ في التسجيل المتعدد عرضٌ أدنى يسع قيمتَها كاملة، والجدولُ يُمرَّر
+   أفقياً إن ضاقت الشاشة بدل أن تُقصّ القيم */
+.reg-table:not(.reg-prev) { min-width: 1500px; }
+.reg-table input, .reg-table select { height: 44px; font-size: 15px; padding: 0 12px; text-overflow: clip; }
+.reg-table .rg-name   { min-width: 260px; }
+.reg-table .rg-idNo   { min-width: 150px; letter-spacing: .5px; }
+.reg-table .rg-phone,
+.reg-table .rg-parent { min-width: 150px; }
+.reg-table .rg-circle { min-width: 170px; }
+.reg-table .rg-enroll { min-width: 150px; }
+.reg-table .rg-pkind  { min-width: 150px; }
+.reg-table .rg-prog   { min-width: 200px; }
+.reg-table .rg-level  { min-width: 170px; }
