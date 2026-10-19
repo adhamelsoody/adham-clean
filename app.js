@@ -10179,13 +10179,19 @@ function jzmLevels(j) {
   return (cur("levels") || []).filter(l => j && jzmLvJuz(l) === j)
     .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
 }
-/* المستوى رقم n في الجزء j: من مستويات برنامج الطالب فيه، وإلّا من مستويات الجزء كلّها */
-function jzmTarget(st, j, n) {
-  const all = jzmLevels(j), pid = jzmProgId(st);
-  const own = all.filter(l => String(l.programId) === pid);
-  return (own.length ? own : all)[(Number(n) || 0) - 1] || null;
+/* «نقل إلى برنامج» برامجُ المدير الموجودة — لا الأجزاء — ما عدا البرنامجَ
+   الذي يُنقل منه الطالب. و«اختيار المستوى» ترتيبُ المستوى في البرنامج
+   المنقول إليه (أو في برنامجه إن لم يُنقل): الأول … الخامس. */
+function jzmProgList() {
+  return (cur("programs") || []).filter(x => !/^sys_/.test(String(x.id)) && (x.status || "فعال") === "فعال");
 }
-function jzmRowJuz(st) { return JZM.to[String(st.id)] || String(jzmCurJuz(st) || ""); }
+function jzmProgById(pid) { return (cur("programs") || []).find(x => String(x.id) === String(pid)) || null; }
+/* المستوى رقم n في البرنامج pid */
+function jzmTarget(st, pid, n) {
+  return pid ? (lvxOf(pid)[(Number(n) || 0) - 1] || null) : null;
+}
+/* برنامجُ الصفّ: المنقولُ إليه إن اختير، وإلّا برنامجُه الحالي */
+function jzmRowJuz(st) { return JZM.to[String(st.id)] || jzmProgId(st); }
 function jzmCircleKey(st) { return String(st.circleId || st.circle || ""); }
 
 function jzmShownOk(st, i) {
@@ -10222,9 +10228,14 @@ function jzmSpec(kind) {
              items: list.map(j => ({ v: String(j), t: jzmName(j), n: studs.filter(st => jzmCurJuz(st) === j).length })),
              pick: window.jzmFrom };
   }
-  if (kind === "jzTo") return {
-    title: "انقل الطلاب الظاهرين إلى", head: "نقل إلى برنامج",
-    items: JZM_ADD.map(j => ({ v: String(j), t: jzmName(j), n: jzmLevels(j).length })), pick: window.jzmToAll };
+  if (kind === "jzTo") {
+    /* ما عدا البرنامجَ الذي كلُّ الظاهرين فيه — منه يُنقلون */
+    const shown = studs.filter(st => jzmShownOk(st)).map(jzmProgId);
+    const same = shown.length && shown.every(x => x === shown[0]) ? shown[0] : "";
+    return { title: "انقل الطلاب الظاهرين إلى", head: "نقل إلى برنامج",
+      items: jzmProgList().filter(p => String(p.id) !== same)
+        .map(p => ({ v: String(p.id), t: p.name || "—", n: lvxOf(p.id).length })), pick: window.jzmToAll };
+  }
   return {
     title: "اختر المستوى للطلاب الظاهرين", head: "اختيار المستوى",
     items: JZM_ADD_LV.map(k => ({ v: String(k), t: jzmAddName(k) })), pick: window.jzmLvAll };
@@ -10307,10 +10318,11 @@ window.jzmToAll = function (j) {
   let n = 0;
   jzmEachShown((st, tr) => {
     const s = tr.querySelector('select[data-k="to"]'); if (!s) return;
+    if (jzmProgId(st) === v) return;              /* هو فيه أصلاً — لا يُنقل إليه */
     s.value = v; JZM.to[String(st.id)] = v; jzmRowLevels(tr); n++;
   });
   jzmSyncBtn(); bddSyncAll();
-  showToast(n ? "اختير " + jzmName(v) + " لـ" + toArabicDigits(n) + " طالباً — اضغط «حفظ التعديل»" : "لا طلابَ ظاهرين",
+  showToast(n ? "اختير " + ((jzmProgById(v) || {}).name || "") + " لـ" + toArabicDigits(n) + " طالباً — اضغط «حفظ التعديل»" : "لا طالبَ يُنقل — كلُّهم فيه",
             n ? "success" : "warn");
 };
 window.jzmLvAll = function (k) {
@@ -10434,12 +10446,17 @@ window.jzmApply = function () {
   ids.forEach(sid => {
     const st = (DB.students || []).find(x => String(x.id) === String(sid));
     if (!st) return;
-    /* نُقل بلا اختيار مستوى: المستوى الأول من البرنامج المنقول إليه */
-    const l = jzmTarget(st, jzmRowJuz(st), JZM.lv[sid] || 1);
-    if (!l) { miss++; return; }
-    if (String(st.levelId || "") === String(l.id)) return;
-    st.levelId = String(l.id); st.level = lvNameById(l.id);
+    const pid = jzmRowJuz(st);
+    const moved = !!JZM.to[sid] && JZM.to[sid] !== jzmProgId(st);
+    /* نُقل بلا اختيار مستوى: المستوى الأول من البرنامج المنقول إليه (إن كان له مستويات) */
+    const l = jzmTarget(st, pid, JZM.lv[sid] || 1);
+    if (!l && !moved) { miss++; return; }
+    if (!moved && String(st.levelId || "") === String(l.id)) return;
+    if (moved) { const pr = jzmProgById(pid); if (pr) st.program = pr.name || st.program; }
+    st.levelId = l ? String(l.id) : ""; st.level = l ? lvNameById(l.id) : "";
     persistSet("students", st);
+    /* سجلُّ الخطة يتبع ملفَّ الطالب (البرنامج والمستوى) بالطريق القائم نفسِه */
+    if (moved && typeof spSyncEnginePlan === "function") { try { spSyncEnginePlan(st); } catch (e) {} }
     done++;
   });
   JZM.to = {}; JZM.lv = {};
@@ -10463,7 +10480,7 @@ function jzmScreen() {
       <td class="blk-now"><span class="${jzmProgName(st) ? "blk-val" : "pt-muted"}">${esc(jzmProgName(st) || "بلا برنامج")}</span></td>
       <td class="blk-to"><select class="blk-sel" data-head="نقل إلى برنامج" data-k="to" onchange="window.jzmPickTo('${jsAttr(sid)}',this.value,this)">
         <option value="">إختر</option>
-        ${JZM_ADD.map(j => `<option value="${j}"${JZM.to[sid] === String(j) ? " selected" : ""}>${esc(jzmName(j))}</option>`).join("")}</select></td>
+        ${jzmProgList().filter(p => String(p.id) !== jzmProgId(st)).map(p => `<option value="${esc(String(p.id))}"${JZM.to[sid] === String(p.id) ? " selected" : ""}>${esc(p.name || "—")}</option>`).join("")}</select></td>
       <td class="blk-to"><select class="blk-sel" data-head="اختيار المستوى" data-k="lv" onchange="window.jzmPickLv('${jsAttr(sid)}',this.value)">
         <option value="">إختر</option>
         ${JZM_ADD_LV.map(k => `<option value="${k}"${JZM.lv[sid] === String(k) ? " selected" : ""}${
@@ -56456,7 +56473,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-1800";
+  var APP_BUILD = "20261020-1810";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
