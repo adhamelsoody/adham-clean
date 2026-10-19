@@ -2753,6 +2753,8 @@ function studentsOverview(list) {
 
 function adminStudents() {
   const list = cur("students");
+  /* حضورُ اليوم يُحسب مرّةً للجدول كلِّه لا مرّةً لكلّ صفّ */
+  let attToday = null;
 
   /* تنبيه صريح بمن لم يُسنَد بعد — كان يبقى صامتاً فلا يرى صاحبه أي بيانات */
   const noFac = list.filter(x => !x.mosqueId && !x.complexId);
@@ -2801,7 +2803,7 @@ function adminStudents() {
       { h: "حضور اليوم", cell: p2 => {
           /* من سجلات الحضور الفعلية — العمود السابق كان يعرض حقلاً مخزَّناً
              لا يحدّثه شيء، فيبقى صفراً مهما سُجّل الحضور. */
-          const r = attMap(todayISO())[String(p2.id)];
+          const r = (attToday || (attToday = attMap(todayISO())))[String(p2.id)];
           return r ? `<td><span class="chip ${ATT_TINT[r.status] || ""}">${esc(r.status)}</span></td>`
                    : `<td class="pt-muted">لم يُسجَّل</td>`;
         } },
@@ -21829,6 +21831,24 @@ function scanAlerts() {
   const out = [];
   const today = todayISO();
 
+  /* السجلّاتُ تُجمَّع لكلّ طالبٍ مرّةً واحدةً قبل الدوران: كانت تُقرأ
+     وتُصفّى كاملةً لكلّ طالبٍ على حدة (طلابٌ × سجلّات)، فتتعلّق الصفحةُ
+     ثوانيَ عند كلّ فتحٍ كلّما كبرت البيانات. والنتيجةُ هي نفسُها بترتيبها. */
+  const scanGroup = (arr, keep) => {
+    const m = new Map();
+    (arr || []).forEach(x => {
+      if (keep && !keep(x)) return;
+      const k = String(x.studentId);
+      let a = m.get(k);
+      if (!a) { a = []; m.set(k, a); }
+      a.push(x);
+    });
+    return m;
+  };
+  const ATT_BY = scanGroup(cur("attendance"), a => !a.staffId);
+  const REC_BY = scanGroup(cur("recitations"));
+  const ASG_BY = scanGroup(cur("assignments"));
+
   (cur("students") || []).forEach(st => {
     if (!st || st.status === "متوقف") return;
     const sid = String(st.id);
@@ -21837,9 +21857,8 @@ function scanAlerts() {
     /* «تحضير فقط» لا يُسمَّع قصداً: لا تُولَّد له تنبيهاتٌ تعليمية */
     const eduOn = !st.attOnly;
 
-    const att = (cur("attendance") || [])
-      .filter(a => !a.staffId && String(a.studentId) === sid);
-    const recs = (cur("recitations") || []).filter(r => String(r.studentId) === sid);
+    const att = ATT_BY.get(sid) || [];
+    const recs = REC_BY.get(sid) || [];
     const hasRec = d => recs.some(r => String(r.date) === String(d));
 
     /* ---------- تعليمي: حضر ولم يُسمَّع له ---------- */
@@ -21856,7 +21875,7 @@ function scanAlerts() {
        جلساتٌ تامّة، فيُنبَّه على من تحسّن. واليومُ الناقص: تسميعٌ ضعيف،
        أو واجبٌ أُغلق بعجز (shortQty) أو رسب — «عجز وتراجع». */
     const redo = planEngineCfg().redo;
-    const asgs = (cur("assignments") || []).filter(x => String(x.studentId) === sid);
+    const asgs = ASG_BY.get(sid) || [];
     const recDays = [...new Set(recs.map(r => String(r.date)))].map(d => ({ date: d }));
     const partialDay = d => recs.some(r => String(r.date) === d.date &&
         (r.grade === "إعادة" || (r.score != null && Number(r.score) < redo))) ||
@@ -56674,7 +56693,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-1900";
+  var APP_BUILD = "20261020-2000";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
