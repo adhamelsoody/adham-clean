@@ -20233,9 +20233,36 @@ function planQtyOf(plan, hwKey) {
    hwTypes وافتراضاتُها باقيةٌ كما هي، وتُقرأ في المقدار والجدولة لمن ضُبط
    له الركنُ أصلاً.
    ========================================================================= */
+/* =========================================================================
+   مفاتيحُ الأركان في بطاقة الطالب تُطاع
+   -------------------------------------------------------------------------
+   «أضفتُ للطالب أربعةَ واجباتٍ فظهر له وللإدارة ثلاثة»: مفاتيحُ الحفظ
+   والمراجعة والتثبيت في بطاقة الطالب تُحفظ في st.plan (hifzOn · revOn ·
+   tatOn) ولا يقرؤها المحرّك — فالتثبيتُ المفعَّلُ لا يُولَّد، والمراجعةُ
+   المطفأةُ تبقى تُولَّد. فما تراه الإدارةُ في البطاقة غيرُ ما يجده المعلّمُ
+   والطالب.
+
+   فيُقرأ المفتاحُ هنا: المطفأُ صراحةً لا يُولَّد، والتثبيتُ المفعَّلُ صراحةً
+   يُولَّد (من آخر الدروس المنجزة كما كان). وما لم يُضبط في البطاقة أصلاً
+   يمضي على القاعدة السابقة كما هو.
+   ========================================================================= */
+function stuPillarToggle(plan, k) {
+  try {
+    const st = (Array.isArray(DB.students) ? DB.students : [])
+      .find(x => x && String(x.id) === String(plan.studentId));
+    const p = (st && st.plan) || {};
+    const key = k === "hifz" ? "hifzOn" : k === "rev" ? "revOn" : k === "fix" ? "tatOn" : "";
+    if (!key || typeof p[key] !== "boolean") return null;
+    return p[key];
+  } catch (e) { return null; }
+}
+
 function planHasPillar(plan, kind) {
   if (!plan) return false;
   const k = String(kind || "").replace("_makeup", "");
+  const tg = stuPillarToggle(plan, k);
+  if (tg === false) return false;                 /* مطفأٌ في بطاقة الطالب */
+  if (tg === true && k === "fix") return true;     /* التثبيتُ مفعَّلٌ فيها */
   /* جدولُ أيامٍ مضبوطٌ لهذا الركن في خطته: قصدٌ صريحٌ مهما كانت أيامُه */
   const days = plan.hwDays && plan.hwDays[k];
   if (Array.isArray(days)) return true;
@@ -20663,9 +20690,32 @@ function asgEditStale(a) {
              : (edge.s < fS || (edge.s === fS && Number(edge.a) <= fA));
 }
 
+/* =========================================================================
+   موضعُ الخطة الأحدثُ من تعديل المعلّم يُتبَع
+   -------------------------------------------------------------------------
+   «الإدارةُ وضعت الأنعام ١ والمعلّمُ والطالبُ يريان الفاتحة ٥»: واجبُ اليوم
+   عدّله المعلّمُ قبلُ فوُسم edited، ثمّ غيّرت الإدارةُ موضعَ الخطة — فبقي
+   الواجبُ على تعديل المعلّم وتعرض البطاقةُ موضعَ الإدارة.
+
+   والقاعدةُ في هذا النظام «الأحدثُ هو القول» (spSyncEnginePlan): فإن
+   كُتب موضعُ الخطة بعد تعديل المعلّم اتُّبع، وإن عدّل المعلّمُ بعده بقي
+   تعديلُه. ولا يُمسّ واجبٌ سُمِّع أو قُسِّم — يحرسه ما بعد هذا السطر.
+   ========================================================================= */
+function asgPlanNewer(a) {
+  try {
+    const k = String(a.kind || "").replace("_makeup", "");
+    const plan = typeof planOfStudent === "function" ? planOfStudent({ id: a.studentId }) : null;
+    if (!plan) return false;
+    const pos = Number(k === "hifz" ? plan.hifzPosTs
+                     : (k === "rev" || k === "tilawah") ? plan.revPosTs : 0) || 0;
+    const ed = Number(a.editedTs) || Number(a.ts) || 0;
+    return pos > 0 && ed > 0 && pos > ed;
+  } catch (e) { return false; }
+}
+
 function asgFollowsPlan(a) {
   if (!a || a.status !== "pending") return false;
-  if (a.edited && !asgEditStale(a)) return false;   /* عدّله المعلّمُ بيده */
+  if (a.edited && !asgEditStale(a) && !asgPlanNewer(a)) return false;   /* عدّله المعلّمُ بيده */
   if (a.settled) return false;
   if (Array.isArray(a.parts) && a.parts.length) return false;
   if (Number(a.doneQty) > 0) return false;
@@ -20765,7 +20815,10 @@ function asgSkipWhy(studentId, dateISO) {
       if (typeof planHasPillar === "function" && !planHasPillar(plan, t.k)) {
         const pr = (cur("planRules") || []).find(x => String(x.planId) === String(plan.id));
         const off = t.fromLessons && pr && pr.rules && pr.rules.fixation === false;
-        out.push({ h: t.h, why: off
+        const tgOff = stuPillarToggle(plan, t.k) === false;
+        out.push({ h: t.h, why: tgOff
+          ? "مُطفأٌ في خطة الطالب"
+          : off
           ? "قاعدةُ «التثبيت يلحق الحفظ» مُطفأةٌ في خطته"
           : "لم يُضبط هذا الركنُ في خطة الطالب" });
         return;
@@ -56887,7 +56940,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-2330";
+  var APP_BUILD = "20261021-0100";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
