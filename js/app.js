@@ -20255,6 +20255,36 @@ function planHasPillar(plan, kind) {
   return false;
 }
 
+/* =========================================================================
+   واجبُ السرد — واحدٌ في اليوم
+   -------------------------------------------------------------------------
+   «سرد المحفوظ يكون واجباً واحداً: إعدادُه سورةٌ وآيةٌ من وإلى، والاتجاه».
+   يُضبط من «تغيير البرنامج والمستوى» ويُخزَّن في الخطة (sardFromS … sardDir)،
+   فيُولَّد منه واجبٌ وحيدٌ كلَّ يوم دوام. وما لم يُضبط له واجبٌ من طلاب
+   البرنامج يمضي كما كان — لا يتغيّر عليه شيء.
+   ========================================================================= */
+function sardDutyOf(plan, st, studentId, dateISO) {
+  if (!planIsSard(plan)) return null;
+  const fS = Number(plan.sardFromS) || 0, tS = Number(plan.sardToS) || 0;
+  if (!(fS > 0 && tS > 0)) return null;
+  const k = "sard";
+  const exists = asgFind(dateISO, studentId, k);
+  const rec = {
+    id: asgId(dateISO, studentId, k), date: dateISO,
+    studentId: String(studentId), student: st.name || "",
+    circleId: st.circleId || "", planId: plan.id || "",
+    kind: k, kindName: SARD_KIND, unit: "وجه", levelId: "",
+    qty: Number(plan.sardQty) || 0,
+    fromS: fS, fromA: Math.max(1, Number(plan.sardFromA) || 1),
+    toS: tS, toA: Math.max(1, Number(plan.sardToA) || 1),
+    direction: plan.sardDir === "forward" ? "forward" : "backward",
+    status: "pending", score: null,
+    termId: typeof activeTermId === "function" ? (activeTermId() || "") : "",
+    ts: Date.now()
+  };
+  return [exists ? asgPlanMerge(exists, rec) : rec];
+}
+
 function generateAssignments(studentId, dateISO) {
   const st = (cur("students") || []).find(x => String(x.id) === String(studentId));
   if (!st) return [];
@@ -20282,6 +20312,10 @@ function generateAssignments(studentId, dateISO) {
     : (cur("plans") || []).find(p => String(p.studentId) === String(studentId));
   if (!plan) return [];
   if (planIsFrozen(plan)) return [];          /* خطة مجمَّدة: لا توليد */
+
+  /* برنامجُ سرد المحفوظ بواجبه المضبوط: واجبٌ واحدٌ لا غير */
+  const sardOut = sardDutyOf(plan, st, studentId, dateISO);
+  if (sardOut) return sardOut;
 
   const day = typeof dayNameOf === "function" ? dayNameOf(dateISO) : "";
   const out = [];
@@ -20717,6 +20751,8 @@ function asgSkipWhy(studentId, dateISO) {
     if (st.attOnly) return out;
     const plan = typeof planOfStudent === "function" ? planOfStudent(st) : null;
     if (!plan || planIsFrozen(plan)) return out;
+    /* طالبُ السرد بواجبه المضبوط: واجبُه واحدٌ — لا يُقال عن غيره «لم يُضبط» */
+    if (planIsSard(plan) && Number(plan.sardFromS) > 0 && Number(plan.sardToS) > 0) return out;
 
     const day = typeof dayNameOf === "function" ? dayNameOf(dateISO) : "";
     const lock = hifzLocked(studentId, dateISO);
@@ -48329,6 +48365,14 @@ function stuCollect() {
     };
     if (dayBox) out.plan.days = [].slice.call(dayBox.querySelectorAll(".sp-day.on")).map(b => b.textContent.trim());
   }
+  /* واجبُ السرد — يُقرأ إن كان قسمُه معروضاً */
+  if (g("#spSardFromSura") != null) {
+    out.plan.sardFromSura = g("#spSardFromSura");
+    out.plan.sardFromAyah = Number(g("#spSardFromAyah")) || 1;
+    out.plan.sardToSura   = g("#spSardToSura");
+    out.plan.sardToAyah   = Number(g("#spSardToAyah")) || 1;
+    out.plan.sardDir      = g("#spSardDir") || "من الناس";
+  }
   return out;
 }
 
@@ -49002,6 +49046,48 @@ function panelStudent(id, keepDraft) {
   const spHifzPos = spLivePos("hifz");
   const spRevPos  = spLivePos("rev");
 
+  /* =======================================================================
+     برنامجُ سرد المحفوظ: واجبُه مكانَ أقسام الخطة الافتراضية
+     -----------------------------------------------------------------------
+     «السردُ بياناتُه برّا — مكانَ الخطة الافتراضية». واجبٌ واحد: سورةٌ وآيةٌ
+     من وإلى، والاتجاه. وأقسامُ الحفظ والمراجعة تُخفى ولا تُحذف — قيمُها
+     باقيةٌ في ملفّ الطالب وتعود إن رجع إلى برنامجٍ آخر.
+     ======================================================================= */
+  const spSard = spIsSardProg(s.program);
+  const sardRow = (pfx, label, sura, ayah) => `
+    <div class="sp-start">
+      <label>${ic("target", 13)} ${esc(label)} — السورة والآية</label>
+      <div class="sp-startrow">
+        <select id="${pfx}Sura" class="sp-sel sp-sura" data-cur="${esc(sura || "الناس")}"
+          onchange="window.ayahCap('${pfx}Ayah','${pfx}Sura')">
+          <option>${esc(sura || "الناس")}</option>
+        </select>
+        <div class="sp-step">
+          <button type="button" onclick="window.spAyah('${pfx}', 1)">+</button>
+          <input id="${pfx}Ayah" type="number" min="1" value="${Number(ayah) || 1}"
+            data-sura="${pfx}Sura" oninput="window.ayahCap('${pfx}Ayah')"
+            onchange="window.ayahCap('${pfx}Ayah')">
+          <button type="button" onclick="window.spAyah('${pfx}', -1)">−</button>
+        </div>
+      </div>
+    </div>`;
+  const sp0 = s.plan || {};
+  const secSard = spSard ? `
+    <div class="sp-ghead sp-wide2">${ic("book", 17)}<h3>السرد</h3></div>
+
+    <section class="sp-card sp-wide2 sp-hifz">
+      <div class="sp-plrow">
+        <span class="sp-pldot"></span><b>واجب السرد</b>
+        <span class="sp-plsum">واجبٌ واحدٌ كلَّ يوم دوام</span>
+      </div>
+      ${sardRow("spSardFrom", "من", sp0.sardFromSura, sp0.sardFromAyah)}
+      ${sardRow("spSardTo", "إلى", sp0.sardToSura, sp0.sardToAyah)}
+      <div class="sp-grid">
+        <div class="sp-field"><label>الاتجاه</label>${dirBtns("spSardDir",
+          sp0.sardDir === "من الفاتحة" ? "من الفاتحة" : "من الناس", ["من الناس", "من الفاتحة"])}</div>
+      </div>
+    </section>` : "";
+
   /* سورةُ الابتداء: افتراضُها أوّلُ سورةٍ في الاتجاه المختار —
      «من الفاتحة» تبدأ بالفاتحة، و«من الناس» تبدأ بالناس. */
   const startRow = (pfx, sura, ayah, dirId, dirVal) => `
@@ -49127,6 +49213,8 @@ function panelStudent(id, keepDraft) {
       <div class="sp-days">${dayBtns}</div>
     </section>
 
+    ${secSard}
+    ${spSard ? `<div style="display:none">` : ""}
     <div class="sp-ghead sp-wide2">${ic("doc", 17)}<h3>الحفظ</h3></div>
 
     <section class="sp-card sp-wide2 sp-hifz${pl.hifzOn ? "" : " sp-off"}">
@@ -49183,6 +49271,8 @@ function panelStudent(id, keepDraft) {
       </div>
       ${startRow("spRev", (spRevPos && spRevPos.sura) || (s.plan || {}).revSura, (spRevPos && spRevPos.ayah) || (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
     </section>
+
+    ${spSard ? `</div>` : ""}
 
     <!-- قسمُ التلاوة المستقلّ رُفع: مفتاحُها صار جنبَ التثبيت في قسم الحفظ -->
 
@@ -49809,6 +49899,27 @@ function spSyncEnginePlan(st) {
     if (n > 0) { rec.revQtyNum = n; rec.rAmount = String(n); rec.rUnit = "وجه"; }
   }
 
+  /* واجبُ السرد من بطاقة الطالب إلى خطته — يقرؤه المحرّك (sardDutyOf) */
+  if (p.sardFromSura && p.sardToSura) {
+    const sfS = spSurahIdx(p.sardFromSura), stS = spSurahIdx(p.sardToSura);
+    if (sfS && stS) {
+      const sfA = Math.max(1, Number(p.sardFromAyah) || 1), stA = Math.max(1, Number(p.sardToAyah) || 1);
+      const changed = rec.sardFromS !== sfS || rec.sardFromA !== sfA || rec.sardToS !== stS || rec.sardToA !== stA;
+      rec.sardFromS = sfS; rec.sardFromA = sfA;
+      rec.sardToS = stS;   rec.sardToA = stA;
+      rec.sardDir = spDirKey(p.sardDir) === "forward" ? "forward" : "backward";
+      /* مقدارُ الواجب بالأوجه من محرّك المصحف — يلحق حين يُحسب */
+      if ((changed || !rec.sardQty) && window.Quran && typeof Quran.measure === "function") {
+        const lo = (sfS < stS || (sfS === stS && sfA <= stA)) ? [sfS, sfA, stS, stA] : [stS, stA, sfS, sfA];
+        Quran.measure(lo[0], lo[1], lo[2], lo[3]).then(function (m) {
+          if (m && Number(m.faces) > 0 && rec.sardFromS === sfS && rec.sardToS === stS) {
+            rec.sardQty = Number(m.faces); persistSet("plans", rec);
+          }
+        }).catch(function () {});
+      }
+    }
+  }
+
   persistSet("plans", rec);
   return rec;
 }
@@ -49979,6 +50090,21 @@ window.spProgLevel = function (id) {
   window.spProgLevelFill(s.levelId || "", s.level || "");
 };
 
+/* برنامجُ سرد المحفوظ — بمعرّفه المثبَّت أو باسمه */
+function spIsSardProg(name) {
+  const n = String(name || "");
+  if (!n) return false;
+  const all = (typeof programsForPick === "function" ? programsForPick() : (cur("programs") || []));
+  const pg = all.find(x => x && String(x.name) === n);
+  return (pg && String(pg.id) === SARD_ID) || n === "برنامج سرد المحفوظ";
+}
+
+/* خطةٌ على برنامج السرد */
+function planIsSard(plan) {
+  return !!plan && (String(plan.programId || "") === SARD_ID ||
+                    String(plan.program || "") === "برنامج سرد المحفوظ");
+}
+
 /* مستوياتُ البرنامج المختار — المثبَّتُ والمُعرَّفُ سواء */
 function spLevelsOfProgram(name) {
   const all = (typeof programsForPick === "function" ? programsForPick() : (cur("programs") || []));
@@ -50016,6 +50142,21 @@ window.spProgLevelSave = function () {
   const lvEl = document.getElementById("pgl_level");
   const lvName = lvEl && lvEl.selectedIndex >= 0
     ? String(lvEl.options[lvEl.selectedIndex].text).split(" — ")[0] : "";
+
+  /* برنامجُ سرد المحفوظ بلا مستويات: لا يبقى عليه مستوى برنامجٍ سابق.
+     وواجبُه يُضبط في بطاقة الطالب مكانَ أقسام الخطة الافتراضية. */
+  if (spIsSardProg(prog)) {
+    s.program = prog; s.levelId = ""; s.level = "";
+    persistSet("students", s);
+    try {
+      const rec = spSyncEnginePlan(s);
+      if (rec) { rec.levelId = ""; rec.level = ""; delete rec.levelDoneCarry; persistSet("plans", rec); }
+    } catch (e) { console.warn("spProgLevel/sard:", e); }
+    closeModal();
+    showToast("حُفظ البرنامج — اضبط واجبَ السرد في خطة الطالب", "success");
+    panelStudent(s.id, true);
+    return;
+  }
 
   s.program = prog;
   if (lvId) { s.levelId = lvId; s.level = lvName; }
@@ -50135,6 +50276,21 @@ window.stuSave = function (id) {
   /* نسخةٌ سليمةٌ للمسوّدة: plan تُنزع منها days بعد قليل */
   const keepStu = Object.assign({}, stu);
   const keepPlan = Object.assign({}, plan);
+
+  /* واجبُ السرد: الترتيبُ على الاتجاه — التصاعديُّ من الفاتحة إلى الناس،
+     والتنازليُّ بالسور من الناس إلى الفاتحة، وفي السورة الواحدة بترتيب آياتها */
+  if (plan.sardFromSura != null && spIsSardProg(stu.program != null ? stu.program : s.program)) {
+    const fS = spSurahIdx(plan.sardFromSura), tS = spSurahIdx(plan.sardToSura);
+    const fA = Number(plan.sardFromAyah) || 1, tA = Number(plan.sardToAyah) || 1;
+    const fwd = spDirKey(plan.sardDir) === "forward";
+    if (!fS || !tS) { showToast("اختر سورتَي البداية والنهاية لواجب السرد", "warn"); return false; }
+    const ok = fS === tS ? fA <= tA : (fwd ? fS < tS : fS > tS);
+    if (!ok) {
+      showToast(fwd ? "السرد التصاعديّ: النهايةُ بعد البداية في ترتيب المصحف"
+                    : "السرد التنازليّ: سورةُ النهاية قبل سورة البداية في ترتيب المصحف", "warn");
+      return false;
+    }
+  }
 
   Object.keys(stu).forEach(k => { s[k] = stu[k]; });
 
@@ -56731,7 +56887,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261020-2100";
+  var APP_BUILD = "20261020-2330";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
