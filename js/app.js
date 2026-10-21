@@ -34307,8 +34307,12 @@ function tstuPlanBox(st) {
       const n = Number(which === "rev" ? rec.revFromS : rec.hifzFromS) || 0;
       if (!n) return null;
       const nm = typeof surahName === "function" ? surahName(n) : "";
-      if (!nm) { try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {} return null; }
-      return { sura: nm,
+      /* فهرسُ السور لم يصل بعد: يُطلب، ويبقى رقمُ السورة وآيتُها من سجلّ
+         المحرّك (sidx) فتختارها spFillSurahs حين يصل الفهرس. وكان يردّ null
+         فتُعرض سورةُ ملفّ الطالب القديمة — فيرى من فُتحت له البطاقةُ قبل
+         وصول الفهرس سورةً وآيةً غيرَ التي يراها من فُتحت له بعده. */
+      if (!nm) { try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {} }
+      return { sura: nm, sidx: n,
                ayah: Math.max(1, Number(which === "rev" ? rec.revFromA : rec.hifzFromA) || 1) };
     } catch (e) { return null; }
   };
@@ -34327,11 +34331,12 @@ function tstuPlanBox(st) {
       <input type="hidden" id="${name}" value="${esc(v)}">
     </div>`;
 
-  const startRow = (pfx, sura, ayah, dirId, dirVal) => `
+  const startRow = (pfx, sura, ayah, dirId, dirVal, sidx) => `
     <div class="sp-start">
       <label>${ic("target", 13)} الابتداء — السورة والآية</label>
       <div class="sp-startrow">
         <select id="${pfx}Sura" class="sp-sel sp-sura" data-dir="${esc(dirId)}"
+          data-sidx="${Number(sidx) > 0 ? Number(sidx) : ""}"
           data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}"
           onchange="window.ayahCap('${pfx}Ayah','${pfx}Sura')">
           <option>${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}</option>
@@ -34363,7 +34368,7 @@ function tstuPlanBox(st) {
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
       ${startRow("spHifz", (posH && posH.sura) || sp.hifzSura,
-                 (posH && posH.ayah) || sp.hifzAyah, "spHifzDir", pl.hifzDir)}
+                 (posH && posH.ayah) || sp.hifzAyah, "spHifzDir", pl.hifzDir, posH && posH.sidx)}
     </section>
 
     <section class="sp-card sp-fix${pl.tatOn ? "" : " sp-off"}">
@@ -34401,7 +34406,7 @@ function tstuPlanBox(st) {
         <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("spRevDir", pl.revDir, PLAN_DIR_REV)}</div>
       </div>
       ${startRow("spRev", (posR && posR.sura) || sp.revSura,
-                 (posR && posR.ayah) || sp.revAyah, "spRevDir", pl.revDir)}
+                 (posR && posR.ayah) || sp.revAyah, "spRevDir", pl.revDir, posR && posR.sidx)}
     </section>
 
     <!-- التلاوةُ في بطاقتها هي — لا داخل بطاقة التثبيت -->
@@ -49324,9 +49329,12 @@ function panelStudent(id, keepDraft) {
       const n = Number(which === "rev" ? rec.revFromS : rec.hifzFromS) || 0;
       if (!n) return null;
       const nm = typeof surahName === "function" ? surahName(n) : "";
-      /* فهرسُ السور لم يصل بعد: يُطلب، ويُعرض المحفوظُ ريثما يصل */
-      if (!nm) { try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {} return null; }
-      return { sura: nm,
+      /* فهرسُ السور لم يصل بعد: يُطلب، ويبقى رقمُ السورة وآيتُها من سجلّ
+         المحرّك (sidx) فتختارها spFillSurahs حين يصل الفهرس. وكان يردّ null
+         فتُعرض سورةُ ملفّ الطالب القديمة — فيرى من فُتحت له البطاقةُ قبل
+         وصول الفهرس سورةً وآيةً غيرَ التي يراها من فُتحت له بعده. */
+      if (!nm) { try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {} }
+      return { sura: nm, sidx: n,
                ayah: Math.max(1, Number(which === "rev" ? rec.revFromA : rec.hifzFromA) || 1) };
     } catch (e) { return null; }
   };
@@ -49379,11 +49387,12 @@ function panelStudent(id, keepDraft) {
 
   /* سورةُ الابتداء: افتراضُها أوّلُ سورةٍ في الاتجاه المختار —
      «من الفاتحة» تبدأ بالفاتحة، و«من الناس» تبدأ بالناس. */
-  const startRow = (pfx, sura, ayah, dirId, dirVal) => `
+  const startRow = (pfx, sura, ayah, dirId, dirVal, sidx) => `
     <div class="sp-start">
       <label>${ic("target", 13)} الابتداء — السورة والآية</label>
       <div class="sp-startrow">
         <select id="${pfx}Sura" class="sp-sel sp-sura" data-dir="${esc(dirId)}"
+          data-sidx="${Number(sidx) > 0 ? Number(sidx) : ""}"
           data-cur="${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}"
           onchange="window.ayahCap('${pfx}Ayah','${pfx}Sura')">
           <option>${esc(sura || (spDirKey(dirVal) === "backward" ? "الناس" : "الفاتحة"))}</option>
@@ -49518,7 +49527,7 @@ function panelStudent(id, keepDraft) {
         <div class="sp-field" id="spHifzQtyBox">${_fxQ ? spQtyFixed("spHifzQty", _fxQ) : spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div>
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
-      ${startRow("spHifz", (spHifzPos && spHifzPos.sura) || (s.plan || {}).hifzSura, (spHifzPos && spHifzPos.ayah) || (s.plan || {}).hifzAyah, "spHifzDir", pl.hifzDir)}
+      ${startRow("spHifz", (spHifzPos && spHifzPos.sura) || (s.plan || {}).hifzSura, (spHifzPos && spHifzPos.ayah) || (s.plan || {}).hifzAyah, "spHifzDir", pl.hifzDir, spHifzPos && spHifzPos.sidx)}
       <div class="sp-klabel">${ic("layers", 14)} أركان متفرّعة من الحفظ</div>
       <div class="sp-kidrow">
         <button type="button" class="bpl-tog${pl.tatOn ? " on" : ""}"
@@ -49557,7 +49566,7 @@ function panelStudent(id, keepDraft) {
         <div class="sp-field" id="spRevQtyBox">${spQtyCtl("spRevQty", pl.revQty, pl.revType)}</div>
         <div class="sp-field"><label>اتجاه المراجعة</label>${dirBtns("spRevDir", pl.revDir, PLAN_DIR_REV)}</div>
       </div>
-      ${startRow("spRev", (spRevPos && spRevPos.sura) || (s.plan || {}).revSura, (spRevPos && spRevPos.ayah) || (s.plan || {}).revAyah, "spRevDir", pl.revDir)}
+      ${startRow("spRev", (spRevPos && spRevPos.sura) || (s.plan || {}).revSura, (spRevPos && spRevPos.ayah) || (s.plan || {}).revAyah, "spRevDir", pl.revDir, spRevPos && spRevPos.sidx)}
     </section>
 
     ${spSard ? `</div>` : ""}
@@ -50020,7 +50029,12 @@ function spFillSurahs(root) {
       const dirEl = sel.dataset.dir ? document.getElementById(sel.dataset.dir) : null;
       const back = dirEl && String(dirEl.value || "").indexOf("الناس") > -1;
       const list2 = back ? names.slice().reverse() : names;
-      const cur = sel.dataset.cur || sel.value || list2[0];
+      /* رقمُ سورة الابتداء من سجلّ المحرّك يعلو الاسمَ المكتوب في الوسم */
+      const bySidx = sel.dataset.sidx
+        ? ((SP_SURAHS || []).find(x => Number(x.i) === Number(sel.dataset.sidx)) || {}).n : "";
+      const cur = bySidx || sel.dataset.cur || sel.value || list2[0];
+      /* مرّةً واحدة: بعدها يحكم ما يختاره المستخدم (data-cur) لا سجلُّ المحرّك */
+      if (bySidx) { sel.dataset.cur = bySidx; delete sel.dataset.sidx; }
       sel.innerHTML = list2.map(n =>
         '<option' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>').join("");
     });
