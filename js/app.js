@@ -57098,7 +57098,24 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261021-0830";
+  /* الرقمُ يُقرأ من ?v= في وسم هذا الملفّ: النشرُ يكتب الرقمَ نفسَه في
+     ?v= وفي version.json معاً. وكان مكتوباً هنا باليد فقط، فإذا نُشر بناءٌ
+     ولم يُرفع هذا السطرُ بقي البناءُ العاملُ أقدمَ من version.json أبداً —
+     فيعود الشريطُ بعد كلّ «تحديث الآن» ولا يختفي. والمكتوبُ هنا احتياطٌ
+     لوسمٍ بلا ?v= بصيغة البناء. */
+  var APP_BUILD = (function () {
+    var re = /[?&]v=(\d{8}-\d{4})(?:&|$)/;
+    try {
+      var s = document.currentScript, m = s && re.exec(s.src || "");
+      if (m) return m[1];
+      var all = document.getElementsByTagName("script");
+      for (var i = 0; i < all.length; i++) {
+        var src = all[i].src || "";
+        if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
+      }
+    } catch (e) {}
+    return "20261021-1326";
+  })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
