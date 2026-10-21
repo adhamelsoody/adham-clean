@@ -13338,7 +13338,65 @@ function planCfgMosque() {
     return (Array.isArray(DB.mosques) ? DB.mosques : [])
       .find(m => m && String(m.id) === String(PLAN_MQ_CTX)) || null;
   }
+  const am = planAdminMq();
+  if (am) return am;
   return planScopeMosque();
+}
+
+/* =========================================================================
+   «خطة لكل مسجد» — مديرُ النظام يختار المسجد
+   -------------------------------------------------------------------------
+   مديرُ النظام كان يرى الخطةَ العامّة وحدها، ومديرُ المسجد والمعلّم يريان
+   خطةَ المسجد — فتختلف آياتُ الابتداء بين الثلاثة. فصار في رأس لوحات
+   «خطة التسميع الافتراضية» قائمةٌ لمدير النظام: «الخطة العامة» أو مسجدٌ
+   بعينه، فيرى ويحفظ خطةَ ذلك المسجد نفسَها التي يراها مديرُه ومعلّموه.
+   الاختيارُ هنا وحده لا في planScopeMosque، لأنّ تلك تحكم إعداداتِ المنشأة
+   الأخرى أيضاً (setFacRec · cfgOwnMosque). */
+let PLAN_ADMIN_MQ = "";
+function planAdminMq() {
+  if (!PLAN_ADMIN_MQ || !isTopAdmin()) return null;
+  return (Array.isArray(DB.mosques) ? DB.mosques : [])
+    .find(m => m && String(m.id) === String(PLAN_ADMIN_MQ)) || null;
+}
+/* مسجدُ الحفظ: مديرُ النظام ما اختاره، ومديرُ المسجد مسجدُه، ولا شيء = العامّة */
+function planSaveMosque() {
+  return isTopAdmin() ? planAdminMq() : planScopeMosque();
+}
+/* نصُّ شارة اللوحة */
+function planScopeChip() {
+  const am = planAdminMq();
+  if (am) return "خطة مسجد " + esc(am.name || "");
+  return isTopAdmin()
+    ? "مثبتة — تسري على الجميع"
+    : "غير مثبتة — خاصة بـ " + esc((planScopeMosque() || {}).name || "مسجدك");
+}
+/* قائمةُ اختيار المسجد — لمدير النظام وحده. reopen: اسمُ دالّة اللوحة */
+function planMqPicker(reopen, pid) {
+  if (!isTopAdmin()) return "";
+  const ms = (Array.isArray(DB.mosques) ? DB.mosques : []).filter(m => m && m.id);
+  if (!ms.length) return "";
+  return `<div class="sp-field" style="margin-top:8px;max-width:340px">
+      <label for="plMqPick">الخطة المعروضة</label>
+      <select id="plMqPick" class="sp-sel"
+        onchange="window.planPickMq(this.value,'${jsAttr(reopen)}','${jsAttr(pid || "")}')">
+        <option value=""${PLAN_ADMIN_MQ ? "" : " selected"}>الخطة العامة — كل المساجد</option>
+        ${ms.map(m => `<option value="${esc(String(m.id))}"${String(m.id) === String(PLAN_ADMIN_MQ) ? " selected" : ""}>${
+          esc(m.name || "—")}${(m.planCfg && Object.keys(m.planCfg).length) ? " · لها خطة خاصة" : ""}</option>`).join("")}
+      </select>
+    </div>`;
+}
+window.planPickMq = function (id, reopen, pid) {
+  if (!isTopAdmin()) return;
+  PLAN_ADMIN_MQ = String(id || "");
+  const f = window[reopen];
+  if (typeof f === "function") { if (pid) f(pid); else f(); }
+};
+/* يُقرأ ركنُ الخطة لطالبٍ بعينه: طبقةُ مسجده عند الجميع */
+function planForStudent(studentId, fn) {
+  if (!studentId) return fn();          /* بلا طالب: يبقى السياقُ القائم */
+  const prev = PLAN_MQ_CTX;
+  PLAN_MQ_CTX = planStudentMosqueId(studentId) || "-";
+  try { return fn(); } finally { PLAN_MQ_CTX = prev; }
 }
 /* مسجدُ الطالب: من سجلّه، وإلّا من مسجد حلقته */
 function planStudentMosqueId(studentId) {
@@ -13621,8 +13679,8 @@ window.plSave = function (pid) {
 
   /* مديرُ المسجد: سجلُّ مسجده. والنتيجةُ تُنتظر قبل إعلان الحفظ — قاعدةُ
      الخادم قد تردّ الكتابة، فلا يُقال «حُفظت» وهي لم تُحفظ. */
-  if (!isTopAdmin()) {
-    const m = planScopeMosque();
+  if (!isTopAdmin() || planAdminMq()) {
+    const m = planSaveMosque();
     if (!m) { showToast("لا مسجد مرتبط بحسابك", "warn"); return; }
     m.planCfg = Object.assign({}, m.planCfg || {});
     m.planCfg[String(pid)] = out;
@@ -13844,10 +13902,9 @@ function sardSetup() {
             <div class="sp-chips">
               <span class="sp-chip">خريطة الأركان وعلاقاتها</span>
               <span class="sp-chip">برنامج سرد المحفوظ</span>
-              <span class="sp-chip">${isTopAdmin()
-                ? "مثبتة — تسري على الجميع"
-                : "غير مثبتة — خاصة بـ " + esc((planScopeMosque() || {}).name || "مسجدك")}</span>
+              <span class="sp-chip">${planScopeChip()}</span>
             </div>
+            ${planMqPicker("sysPrgSetup", SARD_ID)}
           </div>
         </div>
         <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
@@ -13948,8 +14005,8 @@ window.sardSave = function () {
   };
 
   /* مديرُ المسجد يكتب في سجلّ مسجده لا في الإعدادات */
-  if (!isTopAdmin()) {
-    const m = planScopeMosque();
+  if (!isTopAdmin() || planAdminMq()) {
+    const m = planSaveMosque();
     if (!m) { showToast("لا مسجد مرتبط بحسابك", "warn"); return; }
     m.planCfg = Object.assign({}, m.planCfg || {});
     m.planCfg[SARD_ID] = out;
@@ -14251,7 +14308,8 @@ window.sysPrgEmpty = function (pid) {
         <div class="sp-id">
           <div class="avatar sp-avatar">${ic("settings", 24)}</div>
           <div class="sp-idtext"><h2>خطة التسميع الافتراضية</h2>
-            <div class="sp-chips"><span class="sp-chip">${esc((pr && pr.name) || "")}</span></div></div>
+            <div class="sp-chips"><span class="sp-chip">${esc((pr && pr.name) || "")}</span><span class="sp-chip">${planScopeChip()}</span></div>
+            ${planMqPicker("sysPrgEmpty", pid)}</div>
         </div>
         <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
       </div>
@@ -14363,8 +14421,8 @@ window.sysOptSave = function (pid) {
   });
 
   /* الطريقُ نفسُه في plSave: مديرُ المسجد سجلُّ مسجده، والمديرُ الإعدادات */
-  if (!isTopAdmin()) {
-    const m = planScopeMosque();
+  if (!isTopAdmin() || planAdminMq()) {
+    const m = planSaveMosque();
     if (!m) { showToast("لا مسجد مرتبط بحسابك", "warn"); return; }
     m.planCfg = Object.assign({}, m.planCfg || {});
     m.planCfg[String(pid)] = out;
@@ -14424,10 +14482,9 @@ window.sysPrgSetup = function (pid) {
             <div class="sp-chips">
               <span class="sp-chip">خريطة الأركان وعلاقاتها</span>
               <span class="sp-chip">${esc(pr.name || "")}</span>
-              <span class="sp-chip">${isTopAdmin()
-                ? "مثبتة — تسري على الجميع"
-                : "غير مثبتة — خاصة بـ " + esc((planScopeMosque() || {}).name || "مسجدك")}</span>
+              <span class="sp-chip">${planScopeChip()}</span>
             </div>
+            ${planMqPicker("sysPrgSetup", pid)}
           </div>
         </div>
         ${PL_RETURN
@@ -17357,6 +17414,14 @@ function hwBlockedBy(k) {
 }
 
 /* عدد دروس التثبيت لطالب: ما حدّده له المعلّم، وإلا الافتراضي */
+/* دروسُ التثبيت من خطة مسجد الطالب عند الجميع */
+fixLessonsFor = (function (orig) {
+  return function (studentId) {
+    const self = this, args = arguments;
+    return planForStudent(studentId, () => orig.apply(self, args));
+  };
+})(fixLessonsFor);
+
 function fixLessonsFor(studentId) {
   const pl = (cur("plans") || []).find(p => String(p.studentId) === String(studentId));
   const n = pl && pl.fixLessons != null ? Number(pl.fixLessons) : NaN;
@@ -17888,11 +17953,11 @@ window.manuAssignDo = function () {
       else {
         const kb = String(MANU.kind || "").replace("_makeup", "");
         const isR = kb === "rev" || kb === "tilawah";
-        const ps = (typeof pillarStartOf === "function") ? pillarStartOf(kb) : 0;
+        const ps = (typeof pillarStartOf === "function") ? planForStudent(sid, () => pillarStartOf(kb)) : 0;
         if (isR && plan && Number(plan.revFromS) > 0) {
           rec.fromS = Number(plan.revFromS); rec.fromA = Number(plan.revFromA) || 1;
         } else if (isR && ps > 0) {
-          rec.fromS = ps; rec.fromA = pillarStartAyahOf(kb) || (rec.direction === "backward" ? 0 : 1);
+          rec.fromS = ps; rec.fromA = planForStudent(sid, () => pillarStartAyahOf(kb)) || (rec.direction === "backward" ? 0 : 1);
         } else if (plan && plan.hifzFromS) {
           rec.fromS = plan.hifzFromS; rec.fromA = plan.hifzFromA || 1;
         }
@@ -20015,6 +20080,14 @@ function asgAyahShown(s, a, isStart) {
 }
 window.asgAyahShown = asgAyahShown;
 
+/* بدايةُ الحفظ من خطة مسجد الطالب عند الجميع — انظر planForStudent */
+nextHifzFrom = (function (orig) {
+  return function (plan) {
+    const self = this, args = arguments;
+    return planForStudent(plan && plan.studentId, () => orig.apply(self, args));
+  };
+})(nextHifzFrom);
+
 function nextHifzFrom(plan, forDate) {
   /* من الفترة النشطة: بعد الترحيل يبدأ الطالب من نقطة انطلاقٍ محدَّدة
      في خطته لا من حيث انتهى في دورةٍ مؤرشفة. */
@@ -21162,6 +21235,15 @@ window.asgClose = function (asgIdStr, score, recitationId) {
   }
   return a;
 };
+/* حدُّ الاجتياز وما يُفعل عند الإخفاق من خطة مسجد الطالب عند الجميع */
+window.asgClose = (function (orig) {
+  return function (asgIdStr) {
+    const self = this, args = arguments;
+    const a = (Array.isArray(DB.assignments) ? DB.assignments : [])
+      .find(x => x && String(x.id) === String(asgIdStr));
+    return planForStudent(a && a.studentId, () => orig.apply(self, args));
+  };
+})(window.asgClose);
 
 /* ترحيل واجبات يومٍ فات: يُنادى عند فتح يومٍ جديد */
 function rollForward(studentId, fromDate, toDate) {
