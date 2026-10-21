@@ -13324,6 +13324,34 @@ function planScopeMosque() {
 }
 
 /* =========================================================================
+   طبقةُ المسجد تتبع الطالبَ لا الحساب
+   -------------------------------------------------------------------------
+   كانت sysPrgCfg تقرأ طبقةَ المسجد من planScopeMosque — أي من حساب من
+   فتح الشاشة. فمديرُ النظام لا مسجدَ له فيُولِّد واجباتِ طالبِ المسجد من
+   الخطة المثبَّتة، ومديرُ المسجد والمعلّم يولّدانها من خطة المسجد: الطالبُ
+   نفسُه يأخذ واجباً مختلفاً بحسب من فتح النظام. فحين يُولَّد واجبُ طالبٍ
+   يُضبط PLAN_MQ_CTX على مسجده، فتُقرأ الطبقةُ نفسُها عند الجميع. وما عدا
+   ذلك (شاشةُ الضبط وحفظُها) يبقى على planScopeMosque كما كان. */
+let PLAN_MQ_CTX = "";
+function planCfgMosque() {
+  if (PLAN_MQ_CTX) {
+    return (Array.isArray(DB.mosques) ? DB.mosques : [])
+      .find(m => m && String(m.id) === String(PLAN_MQ_CTX)) || null;
+  }
+  return planScopeMosque();
+}
+/* مسجدُ الطالب: من سجلّه، وإلّا من مسجد حلقته */
+function planStudentMosqueId(studentId) {
+  const st = (Array.isArray(DB.students) ? DB.students : [])
+    .find(x => x && String(x.id) === String(studentId));
+  if (!st) return "";
+  if (st.mosqueId) return String(st.mosqueId);
+  const c = (Array.isArray(DB.circles) ? DB.circles : [])
+    .find(x => x && String(x.id) === String(st.circleId || ""));
+  return c && c.mosqueId ? String(c.mosqueId) : "";
+}
+
+/* =========================================================================
    إعداداتُ كلّ مسجدٍ مستقلّة
    -------------------------------------------------------------------------
    المواصفات: «جدول الإعدادات وجدول دليل الإجراءات يجب أن يكونا مرتبطين
@@ -13548,8 +13576,10 @@ function sysPrgCfg(pid) {
     }, v);
   });
 
-  /* طبقةُ المسجد: ما ضبطه مديرُ المسجد يعلو المثبَّت لمن ينتمي إليه */
-  const mq = planScopeMosque();
+  /* طبقةُ المسجد: ما ضبطه مديرُ المسجد يعلو المثبَّت لمن ينتمي إليه.
+     وحين يُولَّد واجبُ طالبٍ تُقرأ طبقةُ مسجدِ الطالب لا مسجدِ من فتح
+     الشاشة — انظر planCfgMosque */
+  const mq = planCfgMosque();
   const ov = mq ? ((mq.planCfg || {})[String(pid)] || null) : null;
   if (ov) {
     if (ov.commit) out.commit = ov.commit;
@@ -20400,6 +20430,19 @@ function sardDutyOf(plan, st, studentId, dateISO) {
   };
   return [exists ? asgPlanMerge(exists, rec) : rec];
 }
+
+/* المحرّكُ يقرأ خطةَ مسجدِ الطالب أيّاً كان من فتح النظام — انظر
+   planCfgMosque. «-» طالبٌ بلا مسجد: الخطةُ المثبَّتة وحدها عند الجميع.
+   الدالّةُ تُغلَّف هنا لا في جسمها: لها مخارجُ كثيرة، والإسنادُ يجري بعد
+   رفع التصريح فيحلّ محلّه في كلّ استدعاء. */
+generateAssignments = (function (orig) {
+  return function (studentId, dateISO) {
+    const prev = PLAN_MQ_CTX;
+    PLAN_MQ_CTX = planStudentMosqueId(studentId) || "-";
+    try { return orig.apply(this, arguments); }
+    finally { PLAN_MQ_CTX = prev; }
+  };
+})(generateAssignments);
 
 function generateAssignments(studentId, dateISO) {
   const st = (cur("students") || []).find(x => String(x.id) === String(studentId));
