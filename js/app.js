@@ -20257,9 +20257,33 @@ function stuPillarToggle(plan, k) {
   } catch (e) { return null; }
 }
 
+/* =========================================================================
+   برنامجُ المراجعة: مراجعةٌ فقط
+   -------------------------------------------------------------------------
+   «في المراجعة يعرض لي المراجعة فقط — لا يوجد بها حفظ». البرنامجُ الذي
+   اسمُه مراجعة لا يُولَّد فيه حفظٌ جديد ولا ما يتفرّع من الحفظ (التثبيت
+   وتلاوة الدرس الجديد)، وبطاقةُ الطالب تعرض قسمَ المراجعة وحدَه. ولا يُحذف
+   من إعدادات الحفظ شيء: تُخفى، وتعود إن انتقل الطالبُ إلى برنامجٍ آخر.
+   ========================================================================= */
+function progIsRev(name) {
+  const n = String(name || "").trim();
+  if (!n || n === "—") return false;
+  if (typeof spIsSardProg === "function" && spIsSardProg(n)) return false;
+  return n.indexOf("مراجع") > -1;
+}
+function planIsRevOnly(plan) {
+  if (!plan) return false;
+  try {
+    const st = (Array.isArray(DB.students) ? DB.students : [])
+      .find(x => x && String(x.id) === String(plan.studentId));
+    return progIsRev((st && st.program) || plan.program);
+  } catch (e) { return false; }
+}
+
 function planHasPillar(plan, kind) {
   if (!plan) return false;
   const k = String(kind || "").replace("_makeup", "");
+  if (k !== "rev" && planIsRevOnly(plan)) return false;   /* برنامجُ مراجعة: لا غيرها */
   const tg = stuPillarToggle(plan, k);
   if (tg === false) return false;                 /* مطفأٌ في بطاقة الطالب */
   if (tg === true && k === "fix") return true;     /* التثبيتُ مفعَّلٌ فيها */
@@ -20590,6 +20614,7 @@ function asgTilFollow(list) {
 
 function asgTilNew(out, plan, st, studentId, dateISO) {
   if (!plan || plan.tilNew !== true) return;
+  if (planIsRevOnly(plan)) return;            /* برنامجُ مراجعة: لا تلاوةَ لحفظٍ لا يُولَّد */
   const h = out.find(x => x && String(x.kind || "") === "hifz");
   const id = asgId(dateISO, studentId, "tilawah");
   const exists = asgFind(dateISO, studentId, "tilawah");
@@ -20807,7 +20832,9 @@ function asgSkipWhy(studentId, dateISO) {
     const day = typeof dayNameOf === "function" ? dayNameOf(dateISO) : "";
     const lock = hifzLocked(studentId, dateISO);
 
+    const revOnly = planIsRevOnly(plan);
     hwTypes().forEach(t => {
+      if (revOnly && t.k !== "rev") return;               /* برنامجُ مراجعة: لا يُسأل عن غيرها */
       if (asgFind(dateISO, studentId, t.k)) return;      /* مولَّدٌ فعلاً */
       /* وبالحارس نفسِه الذي في المولّد: ركنٌ لم يُضبط لهذا الطالب.
          والتثبيتُ المطفأُ صراحةً يُقال بلفظه كما كان، فلا يختلط المُطفأُ
@@ -49107,6 +49134,8 @@ function panelStudent(id, keepDraft) {
      باقيةٌ في ملفّ الطالب وتعود إن رجع إلى برنامجٍ آخر.
      ======================================================================= */
   const spSard = spIsSardProg(s.program);
+  /* برنامجُ المراجعة: قسمُ المراجعة وحدَه — والحفظُ يُخفى ولا يُحذف */
+  const spRevOnly = !spSard && progIsRev(s.program);
   const sardRow = (pfx, label, sura, ayah) => `
     <div class="sp-start">
       <label>${ic("target", 13)} ${esc(label)} — السورة والآية</label>
@@ -49268,6 +49297,7 @@ function panelStudent(id, keepDraft) {
 
     ${secSard}
     ${spSard ? `<div style="display:none">` : ""}
+    ${spRevOnly ? `<div style="display:none">` : ""}
     <div class="sp-ghead sp-wide2">${ic("doc", 17)}<h3>الحفظ</h3></div>
 
     <section class="sp-card sp-wide2 sp-hifz${pl.hifzOn ? "" : " sp-off"}">
@@ -49306,6 +49336,7 @@ function panelStudent(id, keepDraft) {
       </div>
     </section>
 
+    ${spRevOnly ? `</div>` : ""}
     <div class="sp-ghead sp-wide2 g-rev">${ic("refresh", 17)}<h3>المراجعة</h3></div>
 
     <section class="sp-card sp-wide2 sp-rev${pl.revOn ? "" : " sp-off"}">
@@ -56940,7 +56971,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261021-0100";
+  var APP_BUILD = "20261021-0730";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
