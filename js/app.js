@@ -34559,6 +34559,7 @@ function tstuPlanBox(st) {
       ${startRow("spRev", (posR && posR.sura) || sp.revSura,
                  (posR && posR.ayah) || sp.revAyah, "spRevDir", pl.revDir, posR && posR.sidx)}
     </section>
+    ${spLevelDutiesHtml(st, false)}
 
     <!-- التلاوةُ في بطاقتها هي — لا داخل بطاقة التثبيت -->
     <section class="sp-card sp-til">
@@ -49719,6 +49720,7 @@ function panelStudent(id, keepDraft) {
       </div>
       ${startRow("spRev", (spRevPos && spRevPos.sura) || (s.plan || {}).revSura, (spRevPos && spRevPos.ayah) || (s.plan || {}).revAyah, "spRevDir", pl.revDir, spRevPos && spRevPos.sidx)}
     </section>
+    ${spLevelDutiesHtml(s, true)}
 
     ${spSard ? `</div>` : ""}
 
@@ -50586,6 +50588,50 @@ window.spProgLevelFill = function (curId, curName) {
       x.qty ? " — " + toArabicDigits(x.qty) + " " + esc(x.unit || "وجه") : ""}</option>`;
   }).join("");
 };
+
+/* =========================================================================
+   واجباتُ المستوى المضافة في بطاقة الطالب («مراجعة رقم 2» …)
+   -------------------------------------------------------------------------
+   «يظهر كلُّ شكلها الذي في الإعدادات»: البطاقةُ كانت تعرض الحفظَ والتثبيتَ
+   والمراجعةَ وحدها، فالواجبُ المضاف في المستوى لا يراه المعلّمُ ولا المدير
+   في بطاقة الطالب. يُعرض هنا كما ضُبط في المستوى — مداه ومقدارُه واتجاهُه —
+   ويُضبط من صفحة البرنامج لا من البطاقة. وإن لم يُطبَّق المستوى على خطة
+   الطالب بعد قيل ذلك صراحةً. */
+function spLevelDutiesHtml(st, wide) {
+  if (!st || !st.levelId) return "";
+  const lv = (Array.isArray(DB.levels) ? DB.levels : []).find(x => x && String(x.id) === String(st.levelId));
+  if (!lv || !lv.pillars) return "";
+  const keys = typeof prgCustomDutyKeys === "function" ? prgCustomDutyKeys() : [];
+  const on = keys.filter(k => lv.pillars[k] && lv.pillars[k].on === true);
+  if (!on.length) return "";
+  const pl = typeof planOfStudent === "function" ? planOfStudent(st) : null;
+  const nm = i => (typeof lvbSurahName === "function" ? lvbSurahName(i) : String(i));
+  const dirH = d => ((typeof PRG_DIRS !== "undefined" ? PRG_DIRS : []).find(x => String(x.k) === String(d)) || {}).h || "—";
+  return on.map(k => {
+    const v = lv.pillars[k];
+    const d = (typeof prgCustomDuty === "function" ? prgCustomDuty(k) : null) || {};
+    const applied = !!(pl && pl.lvScope && pl.lvScope[k]);
+    const q = (typeof qtyIsNum === "function" && qtyIsNum(v.qtyType))
+      ? toArabicDigits(Number(v.qty) || 1) + " " + (QTY_NUM_LABEL[v.qtyType] || v.qtyType)
+      : String(v.qty || "—");
+    return `<div class="sp-ghead${wide ? " sp-wide2" : ""}">${ic("refresh", 17)}<h3>${esc(d.name || "واجب")}</h3></div>
+    <section class="sp-card${wide ? " sp-wide2" : ""} sp-lvduty"${d.color ? ` style="--lvd:${esc(d.color)}"` : ""}>
+      <div class="sp-plrow">
+        <span class="sp-pldot"></span><b>${esc(d.name || "واجب")}</b>
+        <span class="sp-plsum">${esc(q)} · ${esc(dirH(v.dir))}</span>
+      </div>
+      <div class="sp-lvd-grid">
+        <div><small>يبدأ من</small><strong>${esc(nm(v.fromS))} : ${toArabicDigits(Number(v.fromA) || 1)}</strong></div>
+        <div><small>ينتهي بـ</small><strong>${esc(nm(v.toS))} : ${toArabicDigits(Number(v.toA) || 1)}</strong></div>
+        <div><small>المقدار</small><strong>${esc(q)}</strong></div>
+        <div><small>الاتجاه</small><strong>${esc(dirH(v.dir))}</strong></div>
+      </div>
+      <p class="sp-lvd-note${applied ? "" : " warn"}">${applied
+        ? "من إعدادات المستوى «" + esc(lv.name || "") + "» — يُعدَّل من صفحة البرنامج"
+        : "لم يُطبَّق على خطة الطالب بعد — اضغط «تغيير» في البرنامج والمستوى ثمّ «حفظ»"}</p>
+    </section>`;
+  }).join("");
+}
 
 /* =========================================================================
    المستوى يُطبَّق على الطالب كما ضُبط في الإعدادات
