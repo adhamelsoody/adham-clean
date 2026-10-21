@@ -20202,6 +20202,18 @@ function pillarQtyOf(hwKey) {
 function planQtyOf(plan, hwKey) {
   if (!plan) return 0;
   const k = String(hwKey || "");
+  /* مقدارُ البرنامج الثابت يعلو ما في البطاقة لركن الحفظ */
+  if (k === "hifz") {
+    let pn = String(plan.program || "");
+    try {
+      const st0 = (Array.isArray(DB.students) ? DB.students : [])
+        .find(x => x && String(x.id) === String(plan.studentId));
+      if (st0 && st0.program) pn = String(st0.program);
+    } catch (e) {}
+    const fq = prgFixedQty(pn);
+    const fn = fq && typeof PLAN_QTY_NUM !== "undefined" ? Number(PLAN_QTY_NUM[fq]) : 0;
+    if (fn > 0) return fn;
+  }
   const n = (k === "hifz") ? Number(plan.hifzQtyNum)
           : (k === "rev" || k === "tilawah") ? Number(plan.revQtyNum)
           : 0;
@@ -20271,6 +20283,24 @@ function progIsRev(name) {
   if (typeof spIsSardProg === "function" && spIsSardProg(n)) return false;
   return n.indexOf("مراجع") > -1;
 }
+/* =========================================================================
+   برنامجٌ مقدارُه في اسمه — «برنامج نصف وجه مقاديرُه نصفُ وجهٍ فقط»
+   -------------------------------------------------------------------------
+   إن حمل اسمُ البرنامج مقداراً من قائمة الكميات (نصف وجه · وجه · وجهان …)
+   فذاك مقدارُ الحفظ فيه لا غير: بطاقةُ الطالب لا تعرض غيرَه، والمحرّكُ لا
+   يولّد غيرَه — عند الإدارة والمعلّم والطالب سواء. والأطولُ مطابقةً يُقدَّم
+   («نصف وجه» لا «وجه»). وما لم يحمل اسمُه مقداراً يبقى كما كان.
+   ========================================================================= */
+function prgFixedQty(name) {
+  let n = String(name || "").replace(/(^|\s)نص(\s+وجه)/g, "$1نصف$2");
+  if (!n || n === "—") return "";
+  let best = "";
+  (typeof PLAN_QTY !== "undefined" ? PLAN_QTY : []).forEach(q => {
+    if (n.indexOf(q) > -1 && q.length > best.length) best = q;
+  });
+  return best;
+}
+
 function planIsRevOnly(plan) {
   if (!plan) return false;
   try {
@@ -34105,6 +34135,9 @@ function tstuPlanBox(st) {
   }
   const pl = bplOf(st);
   const sp = st.plan || {};
+  /* برنامجٌ مقدارُه ثابت: لا يُعرض غيرُه */
+  const _fxQ = prgFixedQty(st.program);
+  if (_fxQ) { pl.hifzType = PLAN_QTY_TYPE[0]; pl.hifzQty = _fxQ; }
 
   /* الموضعُ الحيُّ من سجلّ المحرّك — كما تقرؤه بطاقةُ الإدارة */
   const livePos = (which) => {
@@ -34165,8 +34198,8 @@ function tstuPlanBox(st) {
       </div>
       <div class="sp-grid">
         <div class="sp-field"><label>نوع الكمية</label>${qtySel("spHifzType", pl.hifzType,
-          PLAN_QTY_TYPE, "window.tstuQtyType(this,'spHifzQty')")}</div>
-        <div class="sp-field" id="spHifzQtyBox">${spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div>
+          _fxQ ? [PLAN_QTY_TYPE[0]] : PLAN_QTY_TYPE, _fxQ ? "" : "window.tstuQtyType(this,'spHifzQty')")}</div>
+        <div class="sp-field" id="spHifzQtyBox">${_fxQ ? spQtyFixed("spHifzQty", _fxQ) : spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div>
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
       ${startRow("spHifz", (posH && posH.sura) || sp.hifzSura,
@@ -48627,6 +48660,13 @@ function spQtyCtl(id, val, type) {
       ${list.map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
 }
 
+/* مقدارُ البرنامج الثابت: خيارٌ واحدٌ لا غير */
+function spQtyFixed(id, q) {
+  return `<label for="${id}">الكمية</label>
+    <select id="${id}" class="sp-sel"><option selected>${esc(q)}</option></select>
+    <small class="muted" style="font-size:11px">مقدارُ البرنامج — لا يتغيّر</small>`;
+}
+
 /* تغييرُ النوع يُعيد بناء حقل الكمية وحدَه — لا البطاقة كلَّها */
 window.spQtyType = function (sel, qtyId) {
   const box = document.getElementById(qtyId + "Box");
@@ -49052,6 +49092,9 @@ function panelStudent(id, keepDraft) {
 
   /* ---- تبويب المستوى وخطة التسميع ---- */
   const pl = bplOf(s);
+  /* برنامجٌ مقدارُه ثابت: لا يُعرض غيرُه */
+  const _fxQ = prgFixedQty(s.program);
+  if (_fxQ) { pl.hifzType = PLAN_QTY_TYPE[0]; pl.hifzQty = _fxQ; }
   /* المعروضُ هو المحكومُ به: stuDutyDays تُرجّح أيامَ الخطة المحفوظة ثمّ
      أيامَه ثمّ أيامَ حلقته — فلا تُضيء البطاقةُ يوماً يقول المحرّكُ إنّه
      ليس يومَ دوامه. */
@@ -49309,9 +49352,9 @@ function panelStudent(id, keepDraft) {
         <input type="hidden" id="spHifzOn" value="${pl.hifzOn ? 1 : 0}">
       </div>
       <div class="sp-grid">
-        <div class="sp-field"><label>نوع الكمية</label>${qtySel("spHifzType", pl.hifzType, PLAN_QTY_TYPE,
-          "window.spQtyType(this,'spHifzQty')")}</div>
-        <div class="sp-field" id="spHifzQtyBox">${spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div>
+        <div class="sp-field"><label>نوع الكمية</label>${qtySel("spHifzType", pl.hifzType,
+          _fxQ ? [PLAN_QTY_TYPE[0]] : PLAN_QTY_TYPE, _fxQ ? "" : "window.spQtyType(this,'spHifzQty')")}</div>
+        <div class="sp-field" id="spHifzQtyBox">${_fxQ ? spQtyFixed("spHifzQty", _fxQ) : spQtyCtl("spHifzQty", pl.hifzQty, pl.hifzType)}</div>
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
       ${startRow("spHifz", (spHifzPos && spHifzPos.sura) || (s.plan || {}).hifzSura, (spHifzPos && spHifzPos.ayah) || (s.plan || {}).hifzAyah, "spHifzDir", pl.hifzDir)}
@@ -50244,6 +50287,9 @@ window.spProgLevelSave = function () {
 
   s.program = prog;
   if (lvId) { s.levelId = lvId; s.level = lvName; }
+  /* برنامجٌ مقدارُه في اسمه: مقدارُ حفظ الطالب يتبعه */
+  { const _fq = prgFixedQty(prog);
+    if (_fq) s.plan = Object.assign({}, s.plan || {}, { hifzType: PLAN_QTY_TYPE[0], hifzQty: _fq }); }
   persistSet("students", s);
 
   /* الخطةُ نفسُها تتبع الاختيار — لا تبقى على مستوىً هُجر */
@@ -56971,7 +57017,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261021-0730";
+  var APP_BUILD = "20261021-0800";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
