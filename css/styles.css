@@ -13970,3 +13970,62 @@ th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-c
 .rlb-final .req { color: #e04b4b; }
 .rlb-btns { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-top: 8px; }
 .rlb-btns .btn { padding: 14px; justify-content: center; font-size: 16px; }
+
+/* =========================================================================
+   محرِّرُ المستويات — أزرارٌ أوضح
+   -------------------------------------------------------------------------
+   «الأزرار لا تعمل بكفاءة وشكلُ بعضها ليس أحسن شيء»:
+   • مفتاحُ الركن كان مقبضاً أبيضَ على خلفيةٍ بيضاءَ شفّافة، فيبدو مطفأً
+     وهو مفعَّل. صار المفعَّلُ أبيضَ بمقبضٍ بلون الركن، والمطفأُ داكناً.
+     ومفتاحُ «التلاوة تسبق الحفظ» في جسمٍ أبيض كان لا يُرى أصلاً.
+   • سهما الترتيب كانا أيقونتين بلا حدودٍ ولا حالة: صارا زرّين، ويُعطَّل
+     الأعلى في أوّل مستوى والأسفلُ في آخره.
+   • زرُّ الطيّ سهمٌ يدور، والحذفُ سلّةٌ حمراءُ عند المرور.
+   • تنبيهُ المدى المعكوس في الاتجاه المختار.
+   ========================================================================= */
+.lvb-sw { background: rgba(0, 0, 0, .22); transition: background .18s ease; }
+.lvb-sw.on { background: #fff; }
+.lvb-sw span { box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transition: inset-inline-start .18s ease, background .18s ease; }
+.lvb-sw.on span { background: #0f6f72; }
+.lvb-rev .lvb-sw.on span { background: #f59c1a; }
+.lvb-til .lvb-sw.on span { background: #4f8fa3; }
+.lvb-oth .lvb-sw.on span { background: #4a6b6c; }
+.lvb-p[style*="--lvb-tone"] .lvb-sw.on span { background: var(--lvb-tone); }
+.lvb-sw:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.lvb-ahead .lvb-sw { background: #cfdcdc; }
+.lvb-ahead .lvb-sw.on { background: #3b82c4; }
+.lvb-ahead .lvb-sw.on span { background: #fff; }
+
+.lvb-ord { gap: 3px; }
+.lvb-ord button {
+  width: 26px; height: 22px; border-radius: 7px;
+  background: #f2f7f7; color: #4a6b6c; line-height: 0;
+  transition: background .12s, color .12s;
+}
+.lvb-ord button:hover:not(:disabled) { background: #e0efef; color: #0f6f72; }
+.lvb-ord button:disabled { opacity: .35; cursor: default; }
+.lvb-ord span { font-size: 12.5px; min-width: 18px; text-align: center; }
+
+.lvb-acts button { width: 36px; height: 36px; transition: background .12s, color .12s; }
+.lvb-acts button:focus-visible, .lvb-ord button:focus-visible { outline: 2px solid #0f6f72; outline-offset: 1px; }
+.lvb-cfgbtn.on { background: #0f6f72; color: #fff; }
+.lvb-cfgbtn.on:hover { background: #0c5d60; }
+.lvb-foldbtn svg { transition: transform .18s ease; }
+.lvb-foldbtn.on svg { transform: rotate(180deg); }
+.lvb-delbtn:hover { background: #fdecec !important; color: #c0392b; }
+.lvb-step button { transition: background .12s; }
+.lvb-step button:hover { background: #e7f2f2; }
+.lvb-step button:active { background: #d7eaea; }
+
+.lvb-warn {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+  background: #fdf2e2; color: #8a5a0b; font-size: 12.5px; font-weight: 700;
+  border: 1px solid #f3d9a9;
+}
+.lvb-warn button {
+  margin-inline-start: auto; display: inline-flex; align-items: center; gap: 5px;
+  border: 0; cursor: pointer; padding: 6px 12px; border-radius: 8px;
+  background: #b07914; color: #fff; font-family: var(--ff); font-size: 12px; font-weight: 800;
+}
+.lvb-warn button:hover { background: #8a5a0b; }

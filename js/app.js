@@ -15857,7 +15857,9 @@ function lvbPillar(row, k) {
       const c = typeof sysPillarCfg === "function" ? sysPillarCfg(LVB.pid, k) : null;
       on = !!(c && c.on);
     } catch (e) { on = false; }
-    row.pillars[k] = { on: on, fromS: 1, fromA: 1, toS: 1, toA: 1, kids: {} };
+    /* البدايةُ الافتراضيّة أوّلُ سورةٍ في اتجاه البرنامج: «من الناس» تبدأ بالناس */
+    const s0 = String(lvbPrgOf().direction || "") === "backward" ? 114 : 1;
+    row.pillars[k] = { on: on, fromS: s0, fromA: 1, toS: s0, toA: 1, kids: {} };
   }
   const v = row.pillars[k];
   if (!v.kids) v.kids = {};
@@ -15909,6 +15911,65 @@ function lvbRangeChip(v) {
          " ← " + esc(lvbSurahName(v.toS)) + " : " + toArabicDigits(v.toA || 1);
 }
 
+/* =========================================================================
+   التصاعديّ والتنازليّ في المدى
+   -------------------------------------------------------------------------
+   «من الفاتحة» (تنازلي) تمضي السورُ صعوداً في أرقامها، و«من الناس»
+   (تصاعدي) تمضي نزولاً — وفي السورة الواحدة الآياتُ بترتيبها في الحالين،
+   كما يمشي المحرّك. فالبدايةُ يجب أن تسبق النهايةَ في الاتجاه المختار:
+   كان الاتجاهُ يُغيَّر والمدى على حاله، فيُحفظ مستوىً «من الناس» بدايتُه
+   الفاتحة ونهايتُه الناس فلا يولّد المحرّكُ منه شيئاً صحيحاً. */
+function lvbPosKey(dir, sIdx, aIdx) {
+  const sn = Number(sIdx) || 1, an = Number(aIdx) || 1;
+  return (String(dir) === "backward" ? (115 - sn) : sn) * 1000 + an;
+}
+function lvbRangeBad(o, dir) {
+  if (!o || (String(dir) !== "forward" && String(dir) !== "backward")) return false;
+  return lvbPosKey(dir, o.fromS, o.fromA) > lvbPosKey(dir, o.toS, o.toA);
+}
+function lvbRangeSwap(o) {
+  const fs = o.fromS, fa = o.fromA;
+  o.fromS = o.toS; o.fromA = o.toA; o.toS = fs; o.toA = fa;
+}
+/* بطاقةُ الركن بـ data-k — لونُ الركن (lvb-oth) قد يتكرّر بين ركنين */
+function lvbChipEl(rid, k) {
+  return document.querySelector('[data-lvb="' + rid + '"] .lvb-p[data-k="' + k + '"] .lvb-chip');
+}
+/* تنبيهُ المدى المعكوس — وزرُّ تبديلٍ بنقرة */
+function lvbRangeWarn(rid, k, kid, o) {
+  if (!lvbRangeBad(o, o.dir)) return "";
+  const dh = ((typeof PRG_DIRS !== "undefined" ? PRG_DIRS : [])
+    .find(x => String(x.k) === String(o.dir)) || {}).h || "";
+  return `<div class="lvb-warn" role="alert">${ic("alert", 14)}
+      <span>البداية تأتي بعد النهاية في اتجاه «${esc(dh)}» — بدّلهما أو غيّر الاتجاه</span>
+      <button type="button" onclick="window.lvbSwap('${jsAttr(rid)}','${jsAttr(k)}','${jsAttr(kid || "")}')">
+        ${ic("swap", 13)} تبديل البداية والنهاية</button></div>`;
+}
+window.lvbSwap = function (rid, k, kid) {
+  const r = lvbRow(rid);
+  const o = lvbCfgOf(r, k, kid || "");
+  lvbRangeSwap(o);
+  if (k === "hifz" && !kid) lvbSyncAhead(r);
+  r.saved = false;
+  lvbRedraw();
+};
+/* أوّلُ مدىً معكوسٍ في المستوى — يُمنع الحفظُ به */
+function lvbRangeIssue(row) {
+  const defs = lvbPillarDefs();
+  for (let i = 0; i < defs.length; i++) {
+    const d = defs[i];
+    if (d.k === "tathbit") continue;
+    const v = (row.pillars || {})[d.k];
+    if (!v || !v.on) continue;
+    if (!(d.k === "tilawah" && lvbAheadOn(row)) && lvbRangeBad(v, v.dir)) return d.h || d.k;
+    const kc = v.kidsCfg || {};
+    const bad = Object.keys(kc).find(kid => v.kids && v.kids[kid] &&
+      kc[kid].mode !== "link" && kid === "reviewExtra" && lvbRangeBad(kc[kid], kc[kid].dir));
+    if (bad) return (d.h || d.k) + " · المراجعة الإضافية";
+  }
+  return "";
+}
+
 /* صفوفُ المحرِّر: تُبنى مرّةً لكلّ برنامجٍ من سجلّاته المحفوظة */
 function lvbLoad(pid, lvls) {
   if (LVB.loaded === String(pid)) return;
@@ -15925,7 +15986,8 @@ function lvbLoad(pid, lvls) {
 }
 
 function lvbAyahBox(rid, k, side) {
-  const v = lvbPillar(lvbRow(rid), k);
+  /* lvbCfgOf لا lvbPillar: يُضبط الاتجاهُ قبل الرسم فتُرتَّب السورُ به */
+  const v = lvbCfgOf(lvbRow(rid), k, "");
   const sur = side === "from" ? v.fromS : v.toS;
   const ay  = side === "from" ? (v.fromA || 1) : (v.toA || 1);
   const id  = "lvb_" + rid + "_" + k + "_" + side;
@@ -15936,7 +15998,7 @@ function lvbAyahBox(rid, k, side) {
       <span>${side === "from" ? "يبدأ من" : "ينتهي بـ"}</span></div>
     <div class="lvb-posrow">
       <div class="lvb-f"><label>السورة</label>
-        <select id="${id}_s" data-lvbsur="1"
+        <select id="${id}_s" data-lvbsur="1" data-dir="${esc(v.dir || "")}"
           onfocus="window.lvbFillSur(this)"
           onchange="window.lvbSet('${jsAttr(rid)}','${k}','${side}S',this.value)">
           ${list.length
@@ -15992,7 +16054,11 @@ window.lvbCfgSet = function (rid, k, kid, field, val) {
     c.qty = qtyIsNum(c.qtyType) ? 1 : (qtyListFor(c.qtyType)[0] || "");
   } else if (field === "qty") {
     c.qty = qtyIsNum(c.qtyType) ? Math.max(1, Number(val) || 1) : String(val || "");
-  } else if (field === "dir") c.dir = String(val || "forward");
+  } else if (field === "dir") {
+    c.dir = String(val || "forward");
+    /* المدى يتبع الاتجاه: إن صارت البدايةُ بعد النهاية بُدِّلتا */
+    if (lvbRangeBad(c, c.dir)) lvbRangeSwap(c);
+  }
   else if (field === "lessons") c.lessons = Math.max(1, Number(val) || 1);
   else if (field === "mode")  c.mode  = String(val || "range");
   else if (field === "linkK") c.linkK = String(val || "");
@@ -16021,8 +16087,7 @@ window.lvbLessonsSet = function (rid, k, val) {
   const r = lvbRow(rid); const v = lvbPillar(r, k);
   v.lessons = Math.max(1, Number(val) || 1);
   r.saved = false;
-  const chip = document.querySelector('[data-lvb="' + rid + '"] .lvb-p.' +
-    lvbToneOf(k) + ' .lvb-chip');
+  const chip = lvbChipEl(rid, k);
   if (chip) chip.textContent = toArabicDigits(v.lessons) + " دروس";
 };
 window.lvbLessons = function (rid, k, d) {
@@ -16057,7 +16122,7 @@ function lvbQtyDir(rid, k, kid) {
       ${num ? `<div class="lvb-step">
           <button type="button" onclick="window.lvbCfgNum('${a}','${k}','${kk}',1)">+</button>
           <input type="number" min="1" dir="ltr" value="${esc(Number(c.qty) || 1)}"
-            oninput="window.lvbCfgSet('${a}','${k}','${kk}','qty',this.value)">
+            onchange="window.lvbCfgSet('${a}','${k}','${kk}','qty',this.value)">
           <button type="button" onclick="window.lvbCfgNum('${a}','${k}','${kk}',-1)">−</button>
         </div>`
         : `<select onchange="window.lvbCfgSet('${a}','${k}','${kk}','qty',this.value)">
@@ -16127,7 +16192,9 @@ function lvbAheadCalc(row) {
   const h = lvbPillar(row, "hifz");
   const mx = lvxSurahAyahs(h.toS) || 0;
   let s = Number(h.toS) || 1, a = (Number(h.toA) || 1) + 1;
-  if (mx && a > mx) { a = 1; s = Math.min(114, s + 1); }
+  /* السورةُ التالية في اتجاه الحفظ: «من الناس» ينزل رقمُها */
+  const back = String(h.dir || "") === "backward";
+  if (mx && a > mx) { a = 1; s = back ? Math.max(1, s - 1) : Math.min(114, s + 1); }
   return { fromS: s, fromA: a, qtyType: h.qtyType || "كمية مرنة", qty: h.qty };
 }
 
@@ -16184,7 +16251,7 @@ function lvbKidAyahBox(rid, k, kid, side) {
       <span>${side === "from" ? "يبدأ من" : "ينتهي بـ"}</span></div>
     <div class="lvb-posrow">
       <div class="lvb-f"><label>السورة</label>
-        <select id="${id}_s" data-lvbsur="1" onfocus="window.lvbFillSur(this)"
+        <select id="${id}_s" data-lvbsur="1" data-dir="${esc(c.dir || "")}" onfocus="window.lvbFillSur(this)"
           onchange="window.lvbCfgSet('${a}','${k}','${kk}','${side}S',this.value)">
           <option value="${esc(sur)}" selected>${esc(toArabicDigits(sur || 1) + " · " +
             lvbSurahName(sur))}</option>
@@ -16209,7 +16276,7 @@ function lvbKidLessons(rid, k, kid, title) {
       <div class="lvb-step">
         <button type="button" onclick="window.lvbKidLessonStep('${a}','${k}','${kk}',1)">+</button>
         <input type="number" min="1" dir="ltr" value="${esc(Number(c.lessons) || 1)}"
-          oninput="window.lvbCfgSet('${a}','${k}','${kk}','lessons',this.value)">
+          onchange="window.lvbCfgSet('${a}','${k}','${kk}','lessons',this.value)">
         <button type="button" onclick="window.lvbKidLessonStep('${a}','${k}','${kk}',-1)">−</button>
       </div>
       <small class="muted">كم درساً سابقاً يُعاد تثبيتُه مع درس اليوم</small></div>
@@ -16258,7 +16325,7 @@ function lvbKidScope(rid, k, kid, title) {
           ${lvbKidAyahBox(rid, k, kid, "from")}
           <span class="lvb-arrow">${ic("arrowLeft", 16)}</span>
           ${lvbKidAyahBox(rid, k, kid, "to")}
-        </div>`}
+        </div>${lvbRangeWarn(rid, k, kid, c)}`}
     ${lvbQtyDir(rid, k, kid)}
   </div>`;
 }
@@ -16271,12 +16338,12 @@ function lvbPillarCard(rid, def) {
   /* التثبيتُ إعادةُ ما حُفظ: لا مدى له ولا مقدار — عددُ دروسٍ وحسب */
   if (def.k === "tathbit") {
     if (v.lessons === undefined || v.lessons === null) v.lessons = 1;
-    return `<div class="lvb-p ${def.tone}${v.on ? " on" : ""}">
+    return `<div class="lvb-p ${def.tone}${v.on ? " on" : ""}" data-k="${esc(def.k)}">
       <div class="lvb-phead"${def.color ? ` style="background:${esc(def.color)}"` : ""}>
         <span class="lvb-pico">${ic(def.icon, 16)}</span>
         <strong>${esc(def.h || "تثبيت")}</strong>
         <button type="button" class="lvb-sw${v.on ? " on" : ""}"
-          title="${v.on ? "إلغاء التفعيل" : "تفعيل"}"
+          title="${v.on ? "إلغاء التفعيل" : "تفعيل"}" role="switch" aria-checked="${v.on ? "true" : "false"}"
           onclick="window.lvbPTog('${jsAttr(rid)}','${def.k}')"><span></span></button>
         ${v.on ? `<span class="lvb-chip">${toArabicDigits(Number(v.lessons) || 1)} دروس</span>` : ""}
       </div>
@@ -16309,6 +16376,7 @@ function lvbPillarCard(rid, def) {
         <span class="lvb-arrow">${ic("arrowLeft", 16)}</span>
         ${lvbAyahBox(rid, def.k, "to")}
       </div>
+      ${ahead ? "" : lvbRangeWarn(rid, def.k, "", lvbCfgOf(row, def.k, ""))}
       <div class="${ahead ? "lvb-locked" : ""}">${lvbQtyDir(rid, def.k, "")}</div>
       ${def.kids.length ? `<div class="lvb-kids">
         <span class="lvb-kidlbl">${ic("plan", 13)} تُفعل تلقائياً مع ${esc(def.kidsOf)}:</span>
@@ -16331,13 +16399,13 @@ function lvbPillarCard(rid, def) {
             ${lvbQtyDir(rid, def.k, kd[0])}
           </div>`).join("")}` : ""}
     </div>`;
-  return `<div class="lvb-p ${def.tone}${v.on ? " on" : ""}"${def.color
+  return `<div class="lvb-p ${def.tone}${v.on ? " on" : ""}" data-k="${esc(def.k)}"${def.color
       ? ` style="--lvb-tone:${esc(def.color)}"` : ""}>
     <div class="lvb-phead"${def.color ? ` style="background:${esc(def.color)}"` : ""}>
       <span class="lvb-pico">${ic(def.icon, 16)}</span>
       <strong>${esc(def.h || "واجب")}</strong>
       <button type="button" class="lvb-sw${v.on ? " on" : ""}"
-        title="${v.on ? "إلغاء التفعيل" : "تفعيل"}"
+        title="${v.on ? "إلغاء التفعيل" : "تفعيل"}" role="switch" aria-checked="${v.on ? "true" : "false"}"
         onclick="window.lvbPTog('${jsAttr(rid)}','${def.k}')"><span></span></button>
       ${v.on && def.k !== "tathbit" ? `<span class="lvb-chip">${lvbRangeChip(v)}</span>` : ""}
     </div>
@@ -16475,24 +16543,29 @@ function lvbRow(rid) {
 }
 
 function lvbCard(row, n) {
+  const last = LVB.rows.length - 1;
   const open = String(LVB.open) === String(row.id);
   const cfgOn = open && String(LVB.cfg) === String(row.id);
   return `<div class="lvb-card${open ? " open" : ""}" data-lvb="${esc(row.id)}">
     <div class="lvb-head">
       <div class="lvb-ord">
-        <button type="button" onclick="window.lvbMove('${jsAttr(row.id)}',-1)">${ic("arrowUp", 12)}</button>
-        <span>${toArabicDigits(n + 1)}</span>
-        <button type="button" onclick="window.lvbMove('${jsAttr(row.id)}',1)">${ic("arrowDown", 12)}</button>
+        <button type="button" title="نقل لأعلى" aria-label="نقل المستوى لأعلى"${n === 0 ? " disabled" : ""}
+          onclick="window.lvbMove('${jsAttr(row.id)}',-1)">${ic("arrowUp", 13)}</button>
+        <span title="ترتيب المستوى">${toArabicDigits(n + 1)}</span>
+        <button type="button" title="نقل لأسفل" aria-label="نقل المستوى لأسفل"${n === last ? " disabled" : ""}
+          onclick="window.lvbMove('${jsAttr(row.id)}',1)">${ic("arrowDown", 13)}</button>
       </div>
       <strong class="lvb-title">${esc(row.name || "مستوى بدون اسم")}</strong>
       ${row.saved ? "" : `<span class="lvb-unsaved">غير محفوظ</span>`}
       <div class="lvb-acts">
         <button type="button" class="lvb-cfgbtn${cfgOn ? " on" : ""}"
-          onclick="window.lvbCfg('${jsAttr(row.id)}')"
+          onclick="window.lvbCfg('${jsAttr(row.id)}')" aria-label="إعدادات هذا المستوى"
           title="إعدادات هذا المستوى">${ic("settings", 15)}</button>
-        <button type="button" onclick="window.lvbOpen('${jsAttr(row.id)}')"
-          title="${open ? "طيّ" : "فتح"}">${ic(open ? "arrowUp" : "arrowDown", 15)}</button>
-        <button type="button" onclick="window.lvbDel('${jsAttr(row.id)}')" title="حذف">${ic("x", 15)}</button>
+        <button type="button" class="lvb-foldbtn${open ? " on" : ""}" onclick="window.lvbOpen('${jsAttr(row.id)}')"
+          aria-label="${open ? "طيّ المستوى" : "فتح المستوى"}"
+          title="${open ? "طيّ" : "فتح"}">${ic("arrowDown", 15)}</button>
+        <button type="button" class="lvb-delbtn" onclick="window.lvbDel('${jsAttr(row.id)}')"
+          aria-label="حذف المستوى" title="حذف المستوى">${ic("trash", 15)}</button>
       </div>
     </div>
     ${open ? `<div class="lvb-body">
@@ -16580,7 +16653,9 @@ window.lvbFillSur = function (el) {
   /* الفهرسُ لم يصل بعد: يُطلب ثمّ تُملأ القائمةُ نفسُها حين يصل */
   if (!list.length) { lvbEnsureSurahs(function () { lvbRedraw(); }); return; }
   const cur2 = String(el.value || "");
-  el.innerHTML = list.map(x => lvbSurOpt(x, cur2)).join("");
+  /* «من الناس» تُعرض السورُ معكوسةً كما يمضي الحفظ */
+  const ord = el.dataset.dir === "backward" ? list.slice().reverse() : list;
+  el.innerHTML = ord.map(x => lvbSurOpt(x, cur2)).join("");
   el.value = cur2;
   el.dataset.full = "1";
 };
@@ -16591,10 +16666,18 @@ function lvbRedraw() {
      كلفةٌ لا داعيَ لها عند إضافة مستوى، ومعها يقفز التمرير إلى أعلى. */
   const sec = document.querySelector("#panelRoot .lvb-sec");
   if (sec && LVB.pid && String(LVB.loaded) === String(LVB.pid)) {
+    /* موضعُ التمرير يُحفظ ويُستعاد: كلُّ نقرةٍ كانت تُرجع اللوحةَ إلى أعلاها
+       حين يتغيّر طولُ القسم */
+    const scr = sec.closest(".panel-body") || sec.closest(".side-panel");
+    const top = scr ? scr.scrollTop : 0;
     const box = document.createElement("div");
     box.innerHTML = lvbSection(LVB.pid, []);
     const fresh = box.firstElementChild;
-    if (fresh) { sec.parentNode.replaceChild(fresh, sec); prgvFolds(); return; }
+    if (fresh) {
+      sec.parentNode.replaceChild(fresh, sec); prgvFolds();
+      if (scr) scr.scrollTop = top;
+      return;
+    }
   }
   if (typeof window.lvlView === "function" && LVB.pid) { window.lvlView(LVB.pid); return; }
   if (typeof mount === "function") mount();
@@ -16621,7 +16704,8 @@ window.lvbMove = function (rid, d) {
   const j = i + d;
   if (i < 0 || j < 0 || j >= LVB.rows.length) return;
   const t = LVB.rows[i]; LVB.rows[i] = LVB.rows[j]; LVB.rows[j] = t;
-  LVB.rows.forEach(r => { r.saved = false; });
+  /* الترتيبُ تغيّر في الاثنين وحدهما — لا يُوسَم الباقي «غير محفوظ» */
+  LVB.rows[i].saved = false; LVB.rows[j].saved = false;
   lvbRedraw();
 };
 /* حذفُ مستوىً ينقص العددَ في الجدول كذلك */
@@ -16650,6 +16734,7 @@ window.lvbKid = function (rid, k, kid) {
 };
 window.lvbSet = function (rid, k, field, val) {
   const r = lvbRow(rid); const v = lvbPillar(r, k);
+  const bad0 = lvbRangeBad(v, v.dir);
   if (/A$/.test(field)) {
     /* الآيةُ لا تتجاوز آياتِ سورتها مهما كُتب */
     const mx = lvxSurahAyahs(field === "fromA" ? v.fromS : v.toS) || 0;
@@ -16668,12 +16753,14 @@ window.lvbSet = function (rid, k, field, val) {
     lvbRedraw();
     return;
   }
-  const chip = document.querySelector('[data-lvb="' + rid + '"] .lvb-p.' +
-    lvbToneOf(k) + ' .lvb-chip');
+  /* صار المدى معكوساً أو عاد سليماً: يُرسم ليظهر التنبيهُ أو يختفي */
+  if (lvbRangeBad(v, v.dir) !== bad0) { lvbRedraw(); return; }
+  const chip = lvbChipEl(rid, k);
   if (chip) chip.innerHTML = lvbRangeChip(v);
 };
 window.lvbAyah = function (rid, k, side, d) {
   const v = lvbPillar(lvbRow(rid), k);
+  const bad0 = lvbRangeBad(v, v.dir);
   const f = side + "A";
   const max = lvxSurahAyahs(side === "from" ? v.fromS : v.toS) || 9999;
   v[f] = Math.min(max, Math.max(1, (Number(v[f]) || 1) + d));
@@ -16684,8 +16771,9 @@ window.lvbAyah = function (rid, k, side, d) {
     if (inp.tagName === "SELECT") window.lvbFillAyah(inp);
     inp.value = v[f];
   }
-  const chip = document.querySelector('[data-lvb="' + rid + '"] .lvb-p.' +
-    lvbToneOf(k) + ' .lvb-chip');
+  if (k === "hifz") lvbSyncAhead(lvbRow(rid));   /* كما في lvbSet */
+  if (lvbRangeBad(v, v.dir) !== bad0) { lvbRedraw(); return; }
+  const chip = lvbChipEl(rid, k);
   if (chip) chip.innerHTML = lvbRangeChip(v);
 };
 
@@ -16694,6 +16782,8 @@ window.lvbAyah = function (rid, k, side, d) {
 window.lvbSaveLevel = function (rid) {
   const r = lvbRow(rid);
   if (!String(r.name || "").trim()) { showToast("اكتب اسم المستوى أوّلاً", "warn"); return; }
+  const iss = lvbRangeIssue(r);
+  if (iss) { showToast("«" + iss + "»: البداية بعد النهاية في الاتجاه المختار — صحّحها قبل الحفظ", "warn"); return; }
   r.saved = true; LVB.open = "";
   showToast("أُضيف «" + r.name + "» — اضغط «حفظ وإنهاء» لحفظه", "success");
   lvbRedraw();
@@ -16702,6 +16792,12 @@ window.lvbSaveLevel = function (rid) {
 window.lvbSaveAll = function () {
   const bad = LVB.rows.find(r => !String(r.name || "").trim());
   if (bad) { showToast("كل مستوى يحتاج اسماً", "warn"); LVB.open = bad.id; lvbRedraw(); return; }
+  const inv = LVB.rows.find(r => lvbRangeIssue(r));
+  if (inv) {
+    showToast("«" + inv.name + "» · «" + lvbRangeIssue(inv) +
+      "»: البداية بعد النهاية في الاتجاه المختار — صحّحها قبل الحفظ", "warn");
+    LVB.open = inv.id; lvbRedraw(); return;
+  }
   let n = 0;
   LVB.rows.forEach(function (r, i) {
     const rec = r.rec || { id: r.id, programId: LVB.pid, program: (recByName
