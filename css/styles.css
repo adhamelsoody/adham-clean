@@ -14029,3 +14029,10 @@ th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-c
   background: #b07914; color: #fff; font-family: var(--ff); font-size: 12px; font-weight: 800;
 }
 .lvb-warn button:hover { background: #8a5a0b; }
+
+/* زرّا − و + في عدّادات المستويات: كان الرمزُ ينزاح عن منتصف الزرّ لأنّ
+   ارتفاعَ سطر الخطّ العربيّ أكبرُ من الزرّ. يُوسَّط بالشبكة وسطرٍ بارتفاع ١ */
+.lvb-step button {
+  display: grid; place-items: center; padding: 0;
+  line-height: 1; font-family: Arial, Helvetica, sans-serif; font-size: 18px;
+}

@@ -17285,8 +17285,43 @@ const HW_DEFAULTS = [
 ];
 
 /* نوعٌ واحد: المعرَّف في الإعدادات إن وُجد، وإلا الافتراضي */
+/* =========================================================================
+   واجباتُ البرنامج المضافة («مراجعة رقم 2» …) أنواعُ واجباتٍ في المحرّك
+   -------------------------------------------------------------------------
+   «خانة المراجعة 2 لا تظهر للمعلّم ولا للطالب»: الواجبُ يُضاف في «واجبات
+   البرنامج» بمفتاحٍ مولَّد (d…)، ويُضبط مداه في المستوى — والمحرّكُ لا
+   يعرف إلّا أنواعَ hwTypes، فلا يولّده لأحد. ومن سُئل عنه hwType وجد
+   الحفظَ مكانه. فصار نوعاً باسمه ولونه، ولا يُولَّد إلّا لطالبٍ في مستوىً
+   فُعِّل فيه (lvApplyToStudent تكتب له أيامَه ومداه ومقدارَه واتجاهَه). */
+const PRG_DUTY_CORE_KEYS = ["hifz", "review", "tathbit", "tilawah"];
+function prgCustomDuty(k) {
+  const ps = Array.isArray(DB.programs) ? DB.programs : [];
+  for (let i = 0; i < ps.length; i++) {
+    const d = (Array.isArray(ps[i] && ps[i].duties) ? ps[i].duties : [])
+      .find(x => x && String(x.k) === String(k));
+    if (d && PRG_DUTY_CORE_KEYS.indexOf(String(d.k)) < 0) return d;
+  }
+  return null;
+}
+function prgCustomDutyKeys() {
+  const out = [];
+  (Array.isArray(DB.programs) ? DB.programs : []).forEach(pg =>
+    (Array.isArray(pg && pg.duties) ? pg.duties : []).forEach(d => {
+      const k = String((d && d.k) || "");
+      if (k && PRG_DUTY_CORE_KEYS.indexOf(k) < 0 && out.indexOf(k) < 0) out.push(k);
+    }));
+  return out;
+}
+function prgDutyAsHw(k) {
+  const d = prgCustomDuty(k);
+  if (!d) return null;
+  return { k: String(k), h: d.name || "واجب", unit: "وجه", qty: 1,
+           days: HW_DEFAULTS[0].days, order: 10 + (Number(d.order) || 0),
+           color: d.color || "#888888", prgDuty: true };
+}
+
 function hwType(k) {
-  const d = HW_DEFAULTS.find(x => x.k === k) || HW_DEFAULTS[0];
+  const d = HW_DEFAULTS.find(x => x.k === k) || prgDutyAsHw(k) || HW_DEFAULTS[0];
   const saved = ((DB.settings || {}).hwTypes || {})[k] || {};
   return Object.assign({}, d, saved, {
     k,
@@ -17436,7 +17471,9 @@ function hwTypes(includeOff) {
   const keys = HW_DEFAULTS.map(x => x.k);
   const extra = Object.keys((DB.settings || {}).hwTypes || {})
     .filter(k => keys.indexOf(k) === -1);
-  return keys.concat(extra).map(hwType)
+  /* وواجباتُ البرامج المضافة — لا تُولَّد إلّا لمن كُتبت له أيامُها */
+  const fromPrg = prgCustomDutyKeys().filter(k => keys.indexOf(k) === -1 && extra.indexOf(k) === -1);
+  return keys.concat(extra, fromPrg).map(hwType)
     .filter(t => includeOff || t.on)
     .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
 }
@@ -19704,7 +19741,14 @@ function hifzLocked(studentId, dateISO) {
 /* =========================================================================
    الارتباط بنطاق: مراجعة تدور في مدى فإذا بلغت آخره عادت إلى أوّله
    ========================================================================= */
+/* مدى الواجب من مستوى الطالب (plan.lvScope) — يُضبط أثناء التوليد */
+let PLAN_SCOPE_CTX = null;
 function scopeOf(kind) {
+  const lv = PLAN_SCOPE_CTX && PLAN_SCOPE_CTX[kind];
+  if (lv && Number(lv.fromS) && Number(lv.toS)) {
+    return { fromS: Number(lv.fromS), fromA: Number(lv.fromA) || 1,
+             toS: Number(lv.toS), toA: Number(lv.toA) || 0 };
+  }
   const t = hwType(kind);
   if (!t.scopeFrom || !t.scopeTo) return null;
   return {
@@ -20371,6 +20415,8 @@ function defPillar(hwKey) {
    ========================================================================= */
 function planDirOf(plan, hwKey) {
   if (!plan) return "forward";
+  /* واجبُ برنامجٍ مضاف: اتجاهُه من مستوى الطالب */
+  if (plan.lvDir && plan.lvDir[hwKey]) return dirOf(plan.lvDir[hwKey]);
   /* المراجعةُ والتلاوةُ لهما اتجاهُهما إن ضُبط */
   if (plan.revDirection && (hwKey === "rev" || hwKey === "tilawah")) {
     return dirOf(plan.revDirection);
@@ -20436,6 +20482,8 @@ function pillarQtyOf(hwKey) {
 function planQtyOf(plan, hwKey) {
   if (!plan) return 0;
   const k = String(hwKey || "");
+  /* واجبُ برنامجٍ مضاف: مقدارُه من مستوى الطالب */
+  if (plan.lvQty && Number(plan.lvQty[k]) > 0) return Number(plan.lvQty[k]);
   /* مقدارُ البرنامج الثابت يعلو ما في البطاقة لركن الحفظ */
   if (k === "hifz") {
     let pn = String(plan.program || "");
@@ -20606,10 +20654,16 @@ function sardDutyOf(plan, st, studentId, dateISO) {
    رفع التصريح فيحلّ محلّه في كلّ استدعاء. */
 generateAssignments = (function (orig) {
   return function (studentId, dateISO) {
-    const prev = PLAN_MQ_CTX;
+    const prev = PLAN_MQ_CTX, prevSc = PLAN_SCOPE_CTX;
     PLAN_MQ_CTX = planStudentMosqueId(studentId) || "-";
+    try {
+      const st0 = (Array.isArray(DB.students) ? DB.students : [])
+        .find(x => x && String(x.id) === String(studentId));
+      const pl0 = st0 && typeof planOfStudent === "function" ? planOfStudent(st0) : null;
+      PLAN_SCOPE_CTX = (pl0 && pl0.lvScope) || null;
+    } catch (e) { PLAN_SCOPE_CTX = null; }
     try { return orig.apply(this, arguments); }
-    finally { PLAN_MQ_CTX = prev; }
+    finally { PLAN_MQ_CTX = prev; PLAN_SCOPE_CTX = prevSc; }
   };
 })(generateAssignments);
 
@@ -20742,7 +20796,8 @@ function generateAssignments(studentId, dateISO) {
       /* النهاية تُحسب من جدول المصحف بعد التوليد — fillAsgRanges */
     } else {
       /* النطاق أوّلاً: مراجعةٌ تدور في مدى تعود إلى أوّله إذا بلغت آخره */
-      const planDir = dirOf(plan.direction);
+      /* واجبُ البرنامج المضاف يمشي باتجاه مستواه (plan.lvDir)، وما عداه كما كان */
+      const planDir = plan.lvDir && plan.lvDir[t.k] ? dirOf(plan.lvDir[t.k]) : dirOf(plan.direction);
       const scNext = scopeNext(t.k, null, null, planDir) ? (function () {
         const lastSc = asgTermOf(studentId)
           .filter(a => String(a.kind).replace("_makeup", "") === t.k &&
@@ -20757,7 +20812,7 @@ function generateAssignments(studentId, dateISO) {
 
       if (jump) {
         rec.fromS = jump.surah; rec.fromA = jump.ayah;
-        rec.direction = dirOf(plan.direction);
+        rec.direction = planDir;
         if (jump.looped) rec.note = "عاد من بداية نطاقه";
         revClampStart(rec, plan);          /* لا تتجاوز المراجعةُ ما حُفظ */
         out.push(exists ? asgPlanMerge(exists, rec) : rec);
@@ -50532,9 +50587,98 @@ window.spProgLevelFill = function (curId, curName) {
   }).join("");
 };
 
+/* =========================================================================
+   المستوى يُطبَّق على الطالب كما ضُبط في الإعدادات
+   -------------------------------------------------------------------------
+   «أريد كلَّ هذه البيانات حين أحدّد للطالب خطةَ الحفاظ — يظهر كلُّ شكلها
+   الذي في الإعدادات». كان اختيارُ المستوى يكتب اسمَه ومعرّفَه وحسب، وأركانُه
+   المضبوطة في محرِّر المستويات (المدى والمقدار والاتجاه والتثبيت والمراجعة
+   والواجبات المضافة) لا يقرؤها شيءٌ في النظام. فتُكتب الآن في خطة الطالب
+   بالحقول نفسِها التي تكتبها بطاقتُه، ثمّ يترجمها spSyncEnginePlan للمحرّك
+   كما يترجم البطاقة — فيراها المعلّمُ والطالبُ والإدارةُ سواءً.
+   ما لم يُضبط في المستوى لا يُمسّ من خطة الطالب. */
+function lvQtyFaces(type, qty) {
+  const t = String(type || ""), n = Number(qty);
+  if (typeof qtyIsNum === "function" && qtyIsNum(t)) {
+    if (!(n > 0)) return 0;
+    if (t === "أسطر") return n / 15;
+    if (t === "أجزاء") return n * 20;
+    return n;                                   /* عدد أوجه */
+  }
+  return (typeof PLAN_QTY_NUM !== "undefined" && Number(PLAN_QTY_NUM[String(qty || "")])) || 0;
+}
+function lvApplyToStudent(st, lv) {
+  if (!st || !lv || !lv.pillars) return false;
+  const P = lv.pillars;
+  const dirTxt = d => d === "backward" ? PLAN_DIR[1] : d === "forward" ? PLAN_DIR[0] : "";
+  const nm = i => (typeof surahName === "function" ? surahName(i) : "") || "";
+  const plan = Object.assign({}, st.plan || {});
+  const setMain = (v, pre) => {
+    plan[pre + "On"] = v.on === true;
+    if (v.on !== true) return;
+    if (v.qtyType) plan[pre + "Type"] = String(v.qtyType);
+    if (v.qty !== undefined && v.qty !== null && v.qty !== "") plan[pre + "Qty"] = String(v.qty);
+    const dt = dirTxt(String(v.dir || "")); if (dt) plan[pre + "Dir"] = dt;
+    const sn = nm(v.fromS);
+    if (sn) { plan[pre + "Sura"] = sn; plan[pre + "Ayah"] = Math.max(1, Number(v.fromA) || 1); }
+  };
+  if (P.hifz) {
+    setMain(P.hifz, "hifz");
+    const kids = P.hifz.kids || {}, kc = P.hifz.kidsCfg || {};
+    if (P.hifz.on === true) {
+      plan.tatOn = !!kids.tathbit;
+      if (kids.tathbit && kc.tathbit && Number(kc.tathbit.lessons) > 0) plan.tatCount = Number(kc.tathbit.lessons);
+      plan.tilOn = !!kids.tilawahNext;
+    }
+  }
+  /* التثبيتُ ركناً مستقلّاً في المستوى (عددُ دروس) */
+  if (P.tathbit && P.tathbit.on === true) {
+    plan.tatOn = true;
+    if (Number(P.tathbit.lessons) > 0) plan.tatCount = Number(P.tathbit.lessons);
+  }
+  if (P.review) setMain(P.review, "rev");
+  st.plan = plan;
+  return true;
+}
+/* الواجباتُ المضافة: أيامُها ومداها ومقدارُها واتجاهُها في سجلّ الخطة */
+function lvApplyCustom(rec, st, lv) {
+  if (!rec) return;
+  const P = (lv && lv.pillars) || {};
+  const keys = typeof prgCustomDutyKeys === "function" ? prgCustomDutyKeys() : [];
+  const days = Array.isArray((st.plan || {}).days) && st.plan.days.length
+    ? st.plan.days.slice() : null;
+  rec.hwDays = Object.assign({}, rec.hwDays || {});
+  rec.lvScope = Object.assign({}, rec.lvScope || {});
+  rec.lvQty = Object.assign({}, rec.lvQty || {});
+  rec.lvDir = Object.assign({}, rec.lvDir || {});
+  keys.forEach(k => {
+    const v = P[k];
+    if (v && v.on === true) {
+      rec.hwDays[k] = days || (hwType(k).days || []).slice();
+      rec.lvScope[k] = { fromS: Number(v.fromS) || 1, fromA: Number(v.fromA) || 1,
+                         toS: Number(v.toS) || 1, toA: Number(v.toA) || 0 };
+      const f = lvQtyFaces(v.qtyType, v.qty);
+      if (f > 0) rec.lvQty[k] = f; else delete rec.lvQty[k];
+      if (v.dir === "forward" || v.dir === "backward") rec.lvDir[k] = v.dir; else delete rec.lvDir[k];
+    } else {
+      /* ليس في هذا المستوى (أو أُطفئ): لا يبقى من مستوىً سابق */
+      delete rec.hwDays[k]; delete rec.lvScope[k]; delete rec.lvQty[k]; delete rec.lvDir[k];
+    }
+  });
+}
+
 window.spProgLevelSave = function () {
   const s = DB.students.find(x => x.id == val("#pgl_sid"));
   if (!s) return;
+  /* أسماءُ السور تلزم لكتابة الابتداء: يُحمَّل الفهرسُ أوّلاً مرّةً واحدة */
+  if ((typeof QSURAHS === "undefined" || !QSURAHS) && !window.__pglSurWait &&
+      window.Quran && typeof Quran.surahs === "function") {
+    window.__pglSurWait = true;
+    Quran.surahs().then(function (l) { QSURAHS = l; })
+      .catch(function () {})
+      .then(function () { window.spProgLevelSave(); window.__pglSurWait = false; });
+    return;
+  }
   const prog = val("#pgl_prog", "");
   const lvId = val("#pgl_level", "");
   const lvEl = document.getElementById("pgl_level");
@@ -50558,6 +50702,8 @@ window.spProgLevelSave = function () {
 
   s.program = prog;
   if (lvId) { s.levelId = lvId; s.level = lvName; }
+  const _lv = lvId ? (DB.levels || []).find(x => String(x.id) === String(lvId)) : null;
+  const _applied = _lv ? lvApplyToStudent(s, _lv) : false;
   /* برنامجٌ مقدارُه في اسمه: مقدارُ حفظ الطالب يتبعه */
   { const _fq = prgFixedQty(prog);
     if (_fq) s.plan = Object.assign({}, s.plan || {}, { hifzType: PLAN_QTY_TYPE[0], hifzQty: _fq }); }
@@ -50569,12 +50715,16 @@ window.spProgLevelSave = function () {
     if (rec && lvId) {
       rec.levelId = lvId; rec.level = lvName;
       delete rec.levelDoneCarry;                 /* رصيدُ مستوىً آخر لا يُحسب هنا */
+      lvApplyCustom(rec, s, _lv);
       persistSet("plans", rec);
     }
   } catch (e) { console.warn("spProgLevel:", e); }
 
   closeModal();
-  showToast("حُفظ البرنامج والمستوى", "success");
+  showToast(_applied ? "حُفظ البرنامج والمستوى — وطُبِّقت إعداداتُه على خطة الطالب"
+                     : "حُفظ البرنامج والمستوى", "success");
+  /* مسوّدةُ البطاقة القديمة لا تغطّي ما طُبِّق من المستوى */
+  try { stuDraftReset(String(s.id)); } catch (e) {}
   panelStudent(s.id, true);
 };
 
