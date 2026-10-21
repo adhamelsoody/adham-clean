@@ -489,6 +489,41 @@ function idByName(coll, name) {
   return rec ? String(rec.id) : "";
 }
 
+/* =========================================================================
+   حلقةُ الطالب في قائمة الاختيار — حلقتُه هو لا أوّلُ القائمة
+   -------------------------------------------------------------------------
+   «عدمُ التطابق بين المعلّم والمدير»: قائمةُ الحلقات في بطاقة الطالب تُبنى
+   من حلقات نطاق العرض (cur)، فإن لم تكن حلقةُ الطالب فيه — مجمّعٌ آخرُ
+   مختارٌ في الأعلى مثلاً — لم تُعلَّم، فظهرت أوّلُ حلقةٍ في القائمة مختارةً
+   («النور» والطالبُ في «الإخلاص»)، والبطاقةُ تقول «٠ حلقات». فإن حُفظت
+   البطاقةُ نُقل الطالبُ إلى تلك الحلقة بلا قصد — وذلك نقلٌ تلقائيٌّ ممنوع.
+
+   فحلقتُه تُضاف إلى القائمة إن غابت، وتُعلَّم بمعرّفها لا باسمها (فلا
+   يلتبس اسمان متشابهان في مسجدين). ومن لا حلقةَ له يُعرض له «— بلا
+   حلقة —» مختاراً، فلا يُسند إلى أوّل حلقةٍ بحفظ البطاقة.
+   ========================================================================= */
+function stuCircleOpts(st) {
+  const list = (cur("circles") || []).slice();
+  const own = st && st.circleId
+    ? (Array.isArray(DB.circles) ? DB.circles : []).find(c => String(c.id) === String(st.circleId)) : null;
+  if (own && !list.some(c => String(c.id) === String(own.id))) list.unshift(own);
+  const isSel = c => own ? String(c.id) === String(own.id)
+                         : !!(st && st.circle && st.circle !== "—" && c.name === st.circle);
+  const any = list.some(isSel);
+  return (any ? "" : `<option value="—" selected>— بلا حلقة —</option>`) +
+    list.map(c => `<option${isSel(c) ? " selected" : ""}>${esc(c.name)}</option>`).join("");
+}
+
+/* سجلُّ الحلقة المختارة باسمها — حلقةُ الطالب نفسُه أوّلاً إن كان الاسمُ اسمَها */
+function stuCircleRec(st, name) {
+  const n = String(name == null ? "" : name).trim();
+  if (!n || n === "—") return null;
+  const own = st && st.circleId
+    ? (Array.isArray(DB.circles) ? DB.circles : []).find(c => String(c.id) === String(st.circleId)) : null;
+  if (own && String(own.name || "").trim() === n) return own;
+  return (cur("circles") || []).find(c => String(c.name || "").trim() === n) || recByName("circles", n);
+}
+
 /* =========================================================
    ADMIN — 0. COMPLEXES
    ========================================================= */
@@ -47848,7 +47883,7 @@ function modalEditStudent(id) {
           toArabicDigits(ageFromBirth(s.birth) ?? "—")} سنة</small>` : ""}</div>
       ${phoneBox("رقم ولي الأمر", "es_parent", s.parent === "—" ? "" : s.parent, s.parentCC, "field")}
       ${facTwoFields("es_cx", "es_mosque", s.complexId || "", s.mosqueId || "")}
-      <div class="field"><label>الحلقة</label><select id="es_circle">${cur("circles").length ? cur("circles").map(c => `<option ${c.name === s.circle ? "selected" : ""}>${esc(c.name)}</option>`).join("") : `<option>—</option>`}</select></div>
+      <div class="field"><label>الحلقة</label><select id="es_circle">${stuCircleOpts(s)}</select></div>
       <div class="field"><label>نوع الدوام</label><select id="es_attType"><option ${s.attType === "دوام كامل" ? "selected" : ""}>دوام كامل</option><option ${s.attType === "دوام جزئي" ? "selected" : ""}>دوام جزئي</option></select></div>
       <div class="field"><label>حلقات إضافية</label>
         <select id="es_circles" multiple size="3">
@@ -48907,8 +48942,12 @@ function panelStudent(id, keepDraft) {
   s.plan = Object.assign({}, rec.plan || {}, d.plan);
 
   const tab = stuTab();
-  const circlesN = (cur("circles") || []).filter(c =>
-    String(c.id) === String(s.circleId) || (s.circle && c.name === s.circle)).length;
+  /* من السجلّ كلِّه لا من نطاق العرض: حلقتُه في مجمّعٍ غيرِ المختار تُعدّ */
+  const circlesN = (function () {
+    const ids = new Set((typeof studentCircleIds === "function" ? studentCircleIds(s) : [])
+      .concat(s.circleId ? [String(s.circleId)] : []).map(String));
+    return (Array.isArray(DB.circles) ? DB.circles : []).filter(c => ids.has(String(c.id))).length;
+  })();
 
   const chip = (icon, text) => text
     ? `<span class="sp-chip">${ic(icon, 14)}${esc(String(text))}</span>` : "";
@@ -49256,10 +49295,7 @@ function panelStudent(id, keepDraft) {
         <div><h3>الحلقة</h3><p>حلقةُ الطالب وحلقاتُه الإضافية ووضعُ تسجيله</p></div></div>
       <div class="sp-grid">
         <div class="field"><label for="sp_circle">الحلقة</label>
-          <select id="sp_circle">${(cur("circles") || []).length
-            ? (cur("circles") || []).map(c =>
-                `<option${c.name === s.circle ? " selected" : ""}>${esc(c.name)}</option>`).join("")
-            : `<option>—</option>`}</select></div>
+          <select id="sp_circle">${stuCircleOpts(s)}</select></div>
         <div class="field"><label for="sp_attType2">نوع الدوام</label>
           <select id="sp_attType2">${["دوام كامل", "دوام جزئي"].map(o =>
             `<option${o === (s.attType || "دوام كامل") ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>
@@ -50434,7 +50470,8 @@ window.stuSave = function (id) {
        — بطاقةُ الطالب — أوسعُها استعمالاً ولم يكن عليه حارس. فيُنقل الطالبُ
        إلى حلقةٍ مكتملةٍ من حيث لا يمرّ.
        ===================================================================== */
-    const _newCid = idByName("circles", s.circle) || "";
+    const _cRec0 = stuCircleRec(before || s, s.circle);
+    const _newCid = _cRec0 ? String(_cRec0.id) : "";
     if (_newCid && String(_newCid) !== String(s.circleId || "") &&
         typeof circleCapBlock === "function" && circleCapBlock(_newCid, s.id)) {
       /* ويُردُّ السجلُّ إلى ما كان: اسمُ الحلقة كُتب في الذاكرة قبل الحارس،
@@ -50446,8 +50483,8 @@ window.stuSave = function (id) {
       try { mount(); } catch (e) {}
       return false;                       /* الرسالةُ قيلت في الحارس */
     }
-    s.circleId = idByName("circles", s.circle) || s.circleId || "";
-    const cRec = recByName("circles", s.circle);
+    s.circleId = _newCid || s.circleId || "";
+    const cRec = _cRec0;
     if (cRec) {
       if (cRec.teacher) s.teacher = cRec.teacher;
       if (cRec.teacherId) s.teacherId = String(cRec.teacherId);
@@ -53310,14 +53347,15 @@ document.addEventListener("click", (e) => {
          ممتلئةٍ يُردّ، ومن هو فيها أصلاً يُحفظ كما كان */
       {
         const _newCir = val("#es_circle", s.circle);
-        const _newId  = idByName("circles", _newCir) || "";
+        const _esRec0 = stuCircleRec(s, _newCir);
+        const _newId  = _esRec0 ? String(_esRec0.id) : "";
         if (_newId && String(_newId) !== String(s.circleId || "") &&
             typeof circleCapBlock === "function" && circleCapBlock(_newId, s.id)) break;
       }
+      const esCircleRec = stuCircleRec(s, val("#es_circle", s.circle));
       s.circle = val("#es_circle", s.circle);
       /* مزامنة معرّف الحلقة مع الاسم الجديد — بدونها يتناقض الاثنان */
-      s.circleId = idByName("circles", s.circle) || s.circleId || "";
-      const esCircleRec = recByName("circles", s.circle);
+      s.circleId = esCircleRec ? String(esCircleRec.id) : (s.circleId || "");
       if (esCircleRec) {
         if (esCircleRec.teacher)   s.teacher   = esCircleRec.teacher;
         if (esCircleRec.teacherId) s.teacherId = String(esCircleRec.teacherId);
@@ -57017,7 +57055,7 @@ if (typeof window !== "undefined") {
      والمقارنةُ الآن بين البناء العاملِ فعلاً ورقمِ الخادم، فيصل التنبيهُ
      إلى من حُبس على القديم من أوّل فحص.
      ======================================================================= */
-  var APP_BUILD = "20261021-0800";
+  var APP_BUILD = "20261021-0830";
 
   var CURRENT = APP_BUILD, SHOWN = false;
   window.APP_BUILD = APP_BUILD;      /* لتشخيصٍ سريع من الطرفيّة عند العميل */
