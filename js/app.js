@@ -17411,6 +17411,31 @@ function hwDaysFor(kind, plan) {
   return hwType(kind).days || [];
 }
 
+/* =========================================================================
+   أيامُ الركن في المحرّك: جدولةُ خطة الطالب وحدَها
+   -------------------------------------------------------------------------
+   «الخطةُ الافتراضيةُ ليس بها جدولة»: بطاقةُ الطالب لا تضبط لكلّ ركنٍ
+   أيّاماً، وكان المحرّكُ يرجع حينئذٍ إلى أيام النظام الافتراضية (الحفظُ
+   السبت–الأربعاء) فيُسقط حفظَ الخميس ويقول «ليس يومَه في جدولة هذا
+   الطالب» — وهو لم يُجدَوَل له شيء. فصار: ما ضُبط للركن في خطته
+   (plan.hwDays) يُطاع كما كان، وإلّا فأيامُ دوام الطالب نفسِه، وإلّا
+   فأيامُ الدراسة في النظام كلُّها. ولا يُحذف
+   شيءٌ من إعدادات النظام ولا من hwDaysFor — تبقى للعرض والضبط.
+   ========================================================================= */
+function planPillarDays(kind, plan, studentId) {
+  const own = plan && plan.hwDays && plan.hwDays[kind];
+  if (Array.isArray(own)) return own;
+  const sid = studentId != null ? studentId : (plan && plan.studentId);
+  const st = (DB.students || []).find(x => String(x.id) === String(sid));
+  const sd = (st && typeof stuDutyDays === "function") ? (stuDutyDays(st) || []) : [];
+  if (sd.length) return sd;
+  /* ولا أيامَ دوامٍ له: فأيامُ الدراسة في النظام كلُّها (جامعُ أيام الأنواع)
+     — الركنُ يُولَّد في كلّ يوم دراسة، ولا يُولَّد في يومٍ لا دراسةَ فيه */
+  const all = new Set();
+  (typeof hwTypes === "function" ? hwTypes() : []).forEach(t => (t.days || []).forEach(d => all.add(d)));
+  return [...all];
+}
+
 window.planDaysSet = function (planId, kind, day, on) {
   const p = (cur("plans") || []).find(x => String(x.id) === String(planId));
   if (!p) return;
@@ -20816,7 +20841,7 @@ function generateAssignments(studentId, dateISO) {
        بقي القفل قائماً بلا سبيلٍ إلى فكّه: مراجعةٌ يومَ الخميس تُترك،
        فيُقفل الحفظ بقيّة الأسبوع ولا تُتاح مراجعةٌ تُغلق الدَّين. */
     /* جدولة الخطة تُرجَّح: طالبٌ متقدّم يحفظ ستّة أيام وآخر ثلاثة */
-    const myDays = hwDaysFor(t.k, plan);
+    const myDays = planPillarDays(t.k, plan, studentId);
     const offDay = myDays && myDays.length && day && myDays.indexOf(day) === -1;
     const owed = lock && t.critical;
     if (offDay && !owed) return;
@@ -21289,7 +21314,7 @@ function asgSkipWhy(studentId, dateISO) {
           : "لم يُضبط هذا الركنُ في خطة الطالب" });
         return;
       }
-      const myDays = hwDaysFor(t.k, plan);
+      const myDays = planPillarDays(t.k, plan, studentId);
       const offDay = myDays && myDays.length && day && myDays.indexOf(day) === -1;
       if (offDay && !(lock && t.critical)) {
         out.push({ h: t.h, why: "ليس يومَه في جدولة هذا الطالب" }); return;
@@ -33668,7 +33693,7 @@ function asgProjectStarts(list, sid, dateISO, saved) {
       .sort((x, y) => String(y.date).localeCompare(String(x.date)) ||
                       (Number(y.ts) || 0) - (Number(x.ts) || 0))[0];
 
-    const days = (typeof hwDaysFor === "function") ? (hwDaysFor(k, plan) || []) : [];
+    const days = (typeof planPillarDays === "function") ? (planPillarDays(k, plan, sid) || []) : [];
     const cnt = function (fromISO, incl) {
       /* أيّامُ هذا الركن من fromISO إلى day — الأوّلُ داخلٌ إن incl */
       let m = 0, g = 0;
@@ -57609,7 +57634,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261021-2100";
+    return "20261022-1430";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
