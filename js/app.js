@@ -3306,6 +3306,14 @@ window.bulkAssignDo = function () {
       }
     } catch (e) {}
 
+    /* الخطةُ المُسنَدة منهجُه: موضعُها هو القولُ الأحدث، وبطاقتُه تتبعها —
+       فلا تُرجعه سورتُه القديمةُ في البطاقة عند حفظها التالي */
+    if (Number(rec.hifzFromS) > 0) {
+      stuCurriculumWins(rec, null);
+      persistSet("plans", rec);
+      stuCardFollowPlan(st, rec);
+    }
+
     /* سجل الطالب يتبع خطته */
     if (rec.levelId) {
       st.levelId = rec.levelId; st.level = rec.level;
@@ -9546,9 +9554,12 @@ window.blkApply = function () {
     }
 
     const lid = BLK.level[sid];
+    const lvChg = lid && String(st.levelId || "") !== String(lid);
     if (lid) { st.levelId = lid; st.level = lvNameById(lid); }
 
     persistSet("students", st);
+    /* المستوى المُسنَد منهجُه: تُطبَّق إعداداتُه ويبدأ من ابتدائه */
+    if (lvChg && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
     done++;
   });
 
@@ -10494,6 +10505,8 @@ window.jzmApply = function () {
     persistSet("students", st);
     /* سجلُّ الخطة يتبع ملفَّ الطالب (البرنامج والمستوى) بالطريق القائم نفسِه */
     if (moved && typeof spSyncEnginePlan === "function") { try { spSyncEnginePlan(st); } catch (e) {} }
+    /* والمستوى المُسنَد منهجُه: تُطبَّق إعداداتُه ويبدأ من ابتدائه */
+    if (st.levelId && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
     done++;
   });
   JZM.to = {}; JZM.lv = {};
@@ -29772,6 +29785,8 @@ window.reglRegisterNew = function () {
     if (u.parentWhatsapp && (!st.parent || st.parent === "—")) st.parent = u.parentWhatsapp;
     st.status = "نشط";
     persistSet("students", st);
+    /* المستوى الذي سُجّل فيه منهجُه من أوّل يوم */
+    if (lv && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
     done++;
   });
   showToast("سُجِّل " + toArabicDigits(done) + " طالباً" + (miss.length ? " · " + toArabicDigits(miss.length) + " بلا حلقة لم يُسجَّلوا" : ""),
@@ -37716,10 +37731,12 @@ window.tstuEditSave = function () {
   const pr = val("#tse_parent", "");
   if (pr) st.parent = pr;
   const lv = val("#tse_level", "");
+  const lvChg = !!lv && String(st.levelId || "") !== String(lv);
   st.levelId = lv; st.level = lv ? lvNameById(lv) : (st.level || "");
   st.status = val("#tse_status", "نشط");
   st.active = st.status === "نشط";
   persistSet("students", st);
+  if (lvChg && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
   closeModal();
   showToast("حُفظت بياناتُ «" + nm + "»", "success");
   mount();
@@ -50882,6 +50899,9 @@ window.spProgLevelSave = function () {
     return;
   }
 
+  /* تغيّر البرنامجُ أو المستوى؟ فهو منهجُه الجديد (stuCurriculumWins) */
+  const _chg = String(s.program || "") !== String(prog || "") ||
+               (lvId && String(s.levelId || "") !== String(lvId));
   s.program = prog;
   if (lvId) { s.levelId = lvId; s.level = lvName; }
   const _lv = lvId ? (DB.levels || []).find(x => String(x.id) === String(lvId)) : null;
@@ -50898,6 +50918,7 @@ window.spProgLevelSave = function () {
       rec.levelId = lvId; rec.level = lvName;
       delete rec.levelDoneCarry;                 /* رصيدُ مستوىً آخر لا يُحسب هنا */
       lvApplyCustom(rec, s, _lv);
+      if (_chg) stuCurriculumWins(rec, _lv);
       persistSet("plans", rec);
     }
   } catch (e) { console.warn("spProgLevel:", e); }
@@ -50909,6 +50930,77 @@ window.spProgLevelSave = function () {
   try { stuDraftReset(String(s.id)); } catch (e) {}
   panelStudent(s.id, true);
 };
+
+/* =========================================================================
+   المنهجُ المُسنَد هو ما يمشي عليه الطالب
+   -------------------------------------------------------------------------
+   «عايز لما أضيف لأيّ طالبٍ خطةً أو برنامجاً يكون هذا منهجَه — وإن كان
+   مرتبطاً بسورةٍ دون خطةٍ أو برنامج تُلغى ويمشي على المُسنَد له».
+
+   كان المحرّكُ يقدّم آخرَ ما سمّعه الطالبُ (أو عدّله المعلّم) على موضع
+   الخطة ما لم يتغيّر رقمُ الموضع نفسُه. فمن أُسند له مستوىً أو خطةٌ مضى
+   على سورته القديمة. وكان الإسنادُ من غير نافذة «البرنامج والمستوى»
+   (التعديل الجماعيّ · نقلُ الأجزاء · تعديلُ بيانات الطالب · اعتمادُ
+   التسجيل) يكتب اسمَ المستوى وحدَه ولا يطبّق إعداداتِه.
+
+   فصار الإسنادُ الصريحُ — وحدَه، حين يتغيّر فعلاً — يطبّق إعداداتِ المستوى
+   ويجعل ابتداءَه هو القولَ الأحدث: يبدأ منه الطالبُ وما سمّعه بعدُ يمضي
+   به كالعادة. وما لم يضبطه المستوى (لا سورةَ ابتداءٍ فيه) لا يُمسّ، فلا
+   يُرَدّ طالبٌ إلى الوراء. ولا يُغيَّر حلقةٌ ولا مسجدٌ ولا ارتباط.
+   ========================================================================= */
+function stuCurriculumWins(rec, lv) {
+  if (!rec) return;
+  const P = (lv && lv.pillars) || null, now = Date.now();
+  const has = v => !!(v && v.on === true && Number(v.fromS) > 0);
+  /* بلا مستوى (خطةٌ منسوخة): موضعُها هو المُسنَد */
+  if (P ? has(P.hifz) : Number(rec.hifzFromS) > 0) rec.hifzPosTs = now;
+  if (P ? has(P.review) : Number(rec.revFromS) > 0) rec.revPosTs = now;
+}
+/* بطاقةُ الطالب تتبع موضعَ الخطة المُسنَدة — وأسماءُ السور من فهرس المصحف */
+function stuCardFollowPlan(st, rec, _waited) {
+  if (!st || !rec || !(Number(rec.hifzFromS) > 0)) return;
+  const nmS = typeof surahName === "function" ? surahName(Number(rec.hifzFromS)) : "";
+  if (!nmS) {
+    if (!_waited && window.Quran && typeof Quran.surahs === "function") {
+      Quran.surahs().then(function (l) { QSURAHS = l; }).catch(function () {})
+        .then(function () { stuCardFollowPlan(st, rec, true); });
+    }
+    return;
+  }
+  st.plan = Object.assign({}, st.plan || {}, {
+    hifzOn: true, hifzSura: nmS, hifzAyah: Math.max(1, Number(rec.hifzFromA) || 1),
+    hifzDir: rec.direction === "backward" ? PLAN_DIR[1] : PLAN_DIR[0] });
+  persistSet("students", st);
+  try { stuDraftReset(String(st.id)); } catch (e) {}
+}
+function stuAdoptLevel(s, _waited) {
+  if (!s || s.attOnly || !s.levelId) return;
+  if (typeof spIsSardProg === "function" && spIsSardProg(s.program)) return;
+  const lv = (DB.levels || []).find(x => String(x.id) === String(s.levelId));
+  if (!lv || !lv.pillars) return;
+  /* أسماءُ السور تلزم لكتابة الابتداء — كما في spProgLevelSave */
+  if (!_waited && (typeof QSURAHS === "undefined" || !QSURAHS) &&
+      window.Quran && typeof Quran.surahs === "function") {
+    Quran.surahs().then(function (l) { QSURAHS = l; }).catch(function () {})
+      .then(function () { stuAdoptLevel(s, true); });
+    return;
+  }
+  try {
+    lvApplyToStudent(s, lv);
+    const fq = prgFixedQty(s.program);
+    if (fq) s.plan = Object.assign({}, s.plan || {}, { hifzType: PLAN_QTY_TYPE[0], hifzQty: fq });
+    persistSet("students", s);
+    const rec = spSyncEnginePlan(s);
+    if (rec) {
+      rec.levelId = String(s.levelId); rec.level = s.level || rec.level;
+      delete rec.levelDoneCarry;
+      lvApplyCustom(rec, s, lv);
+      stuCurriculumWins(rec, lv);
+      persistSet("plans", rec);
+    }
+    try { stuDraftReset(String(s.id)); } catch (e) {}
+  } catch (e) { console.warn("stuAdoptLevel:", e); }
+}
 
 /* =========================================================================
    رقمُ الهوية هو هويةُ الدخول — فتغييرُه يلزمه تغييرُ الحساب
@@ -53937,10 +54029,12 @@ document.addEventListener("click", (e) => {
         if (selEl) s.circleIds = [].slice.call(selEl.selectedOptions).map(o => String(o.value));
       } catch (e) {}
       s.days = val("#es_days", "") || circleDaysOf(s.circle) || s.days;
+      const esPrg0 = String(s.program || ""), esLv0 = String(s.levelId || "");
       s.program = val("#es_program", s.program);
       /* المستوى بمعرّفه: تغيير اسمه لاحقاً يصل الطالب */
       const esLv = val("#es_level", "");
       if (esLv) { s.levelId = esLv; s.level = lvNameById(esLv) || s.level; }
+      const esChg = String(s.program || "") !== esPrg0 || String(s.levelId || "") !== esLv0;
       s.status = val("#es_status", s.status);
 
       /* البيانات الشخصية */
@@ -53954,6 +54048,8 @@ document.addEventListener("click", (e) => {
       s.health = val("#es_health", s.health || "");
 
       persistSet("students", s);
+      /* برنامجٌ أو مستوىً أُسند هنا: منهجُه الذي يمشي عليه */
+      if (esChg && typeof stuAdoptLevel === "function") stuAdoptLevel(s);
       closeModal(); mount();
       showToast("تم حفظ تعديلات الطالب");
       break;
@@ -57638,7 +57734,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261022-1500";
+    return "20261022-2030";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
