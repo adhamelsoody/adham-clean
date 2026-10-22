@@ -21300,6 +21300,10 @@ function asgSkipWhy(studentId, dateISO) {
     hwTypes().forEach(t => {
       if (revOnly && t.k !== "rev") return;               /* برنامجُ مراجعة: لا يُسأل عن غيرها */
       if (asgFind(dateISO, studentId, t.k)) return;      /* مولَّدٌ فعلاً */
+      /* «المراجعة 2 موجودةٌ في البرامج لا في الخطة الافتراضية»: واجبُ برنامجٍ
+         مضافٌ لم يُطبَّق مستواه على هذا الطالب ليس من خطته أصلاً — فلا يُذكر
+         عنده «لم يُضبط». ويُذكر سببُه إن كان من خطته (له أيامٌ فيها). */
+      if (t.prgDuty && !(plan.hwDays && Array.isArray(plan.hwDays[t.k]))) return;
       /* وبالحارس نفسِه الذي في المولّد: ركنٌ لم يُضبط لهذا الطالب.
          والتثبيتُ المطفأُ صراحةً يُقال بلفظه كما كان، فلا يختلط المُطفأُ
          بما لم يُضبط أصلاً. */
@@ -57634,7 +57638,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261022-1430";
+    return "20261022-1500";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
