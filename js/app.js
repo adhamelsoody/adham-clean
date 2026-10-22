@@ -19900,7 +19900,7 @@ function asgFind(dateISO, studentId, kind) {
 }
 
 /* آخر دروس الحفظ المنجزة — «الدرس» جلسة يومٍ واحد سُمّعت بنجاح */
-function lastLessons(studentId, n) {
+function lastLessons(studentId, n, keep) {
   const cfg = planEngineCfg();
   const want = Math.max(1, Number(n) || 5);
 
@@ -19909,7 +19909,7 @@ function lastLessons(studentId, n) {
      يُولَّد له تثبيتٌ أسبوعاً حتى تتراكم خمسةٌ جديدة. */
   const done = asgOf(studentId)
     .filter(a => String(a.kind).indexOf("hifz") === 0 && a.status === "done" &&
-                 Number(a.score) >= cfg.redo)
+                 Number(a.score) >= cfg.redo && (!keep || keep(a)))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
   /* الدرس يومٌ لا واجب — نصّ المواصفات: «كلّ مقدارٍ رُصد وسُمّع بنجاح في
@@ -19931,30 +19931,134 @@ function lastLessons(studentId, n) {
   return byDay;
 }
 
-/* مدى التثبيت: من أوّل آيةٍ في أقدم الدروس إلى آخر آيةٍ في أحدثها */
-function fixRangeFor(studentId) {
-  const lessons = lastLessons(studentId, fixLessonsFor(studentId));
-  if (!lessons.length) return null;
+/* =========================================================================
+   التثبيتُ يلحق الحفظ ولا يسبقه — دروسٌ قبل موضع الحفظ مباشرةً
+   -------------------------------------------------------------------------
+   «إذا حدّدنا ٤ دروس والحفظُ من الهمزة يكون التثبيتُ: العصر · التكاثر ·
+   القارعة · العاديات. وإذا غيّرنا الحفظَ إلى سورةٍ أخرى يكون التثبيتُ على
+   حسب مقداره قبل الحفظ مباشرةً.»
 
-  /* الترتيب بالموضع لا بالتاريخ: الدروس قد تُرصد بغير ترتيب المصحف
-     (تعويضٌ متأخر أو تصحيحُ تاريخ)، فيخرج مدىً مقلوب «من ٢:٦ إلى ٢:٥».
-     الأدنى موضعاً بداية والأعلى نهاية مهما كان تاريخ رصدهما. */
+   والدرسُ ما سُمِّع فعلاً في يوم. فالتثبيتُ يُبنى من موضع الحفظ إلى الوراء:
+   الآيةُ التي قبل الحفظ مباشرةً، فالدرسُ المنجزُ الذي يحويها، فالآيةُ التي
+   قبل أوّله، فالدرسُ الذي يحويها … حتى يتمّ العدد. فلا يقع فيه شيءٌ بعد
+   الحفظ، ولا درسٌ بعيدٌ عنه لا يتّصل به.
+
+   فإن لم يتّصل بالحفظ درسٌ منجز (غُيِّرت السورة) فبالمقدار: عددُ الدروس ×
+   مقدارُ الحفظ اليوميّ، يُقاس بالأوجه من الآية التي قبل الحفظ مباشرةً —
+   بمحرّك المصحف نفسِه (rangeEnd)، ويُعاد الرسمُ حين يصل الحساب.
+
+   «قبل» في جهة سير الحفظ: التصاعديُّ ما قبله في ترتيب المصحف، والتنازليُّ
+   ما بعده — كما تمضي stepFrom في الجهتين.
+   ========================================================================= */
+function fixUpTo(studentId, dateISO) {
+  try {
+    const plan = typeof planOfStudent === "function" ? planOfStudent({ id: studentId }) : null;
+    if (!plan || typeof nextHifzFrom !== "function") return null;
+    const f = nextHifzFrom(plan, dateISO || todayISO());
+    return f && Number(f.s) > 0 ? { s: Number(f.s), a: Number(f.a) || 1, dir: f.dir || planDirOf(plan, "hifz"),
+      qty: planQtyOf(plan, "hifz") || pillarQtyOf("hifz") || 1 } : null;
+  } catch (e) { return null; }
+}
+
+/* الآيةُ التي قبل (s,a) في جهة السير — أو null عند طرف المصحف أو قبل وصول الفهرس */
+function fixPrevAyah(s, a, back) {
+  s = Number(s) || 0; a = Number(a) || 0;
+  if (!(s > 0)) return null;
+  /* فهرسُ السور لم يصل: يُطلب، ويُعاد الرسمُ حين يصل (reciteLoadSurahs) */
+  if (!(Number(ayahCountOf(s)) > 0)) {
+    try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {}
+  }
+  if (!back) {                                   /* التصاعديّ: ما قبلها في المصحف */
+    if (a > 1) return { s, a: a - 1 };
+    if (s <= 1) return null;
+    const c = Number(ayahCountOf(s - 1)) || 0;
+    return c > 0 ? { s: s - 1, a: c } : null;
+  }
+  const c = Number(ayahCountOf(s)) || 0;         /* التنازليّ: ما بعدها في المصحف */
+  if (!(c > 0)) return null;
+  if (a < c) return { s, a: a + 1 };
+  if (s >= 114) return null;
+  return { s: s + 1, a: 1 };
+}
+
+const FIX_BY_AMOUNT = {};
+
+function fixRangeFor(studentId, upTo) {
+  const up = upTo === undefined ? fixUpTo(studentId) : upTo;
+  const want = Math.max(1, Number(fixLessonsFor(studentId)) || 1);
   const rank = (sv, av) => (Number(sv) || 0) * 1000 + (Number(av) || 0);
-
-  let lo = null, hi = null;
-  lessons.forEach(x => {
-    if (!x.fromS || !x.toS) return;
-    const a = rank(x.fromS, x.fromA), b = rank(x.toS, x.toA);
-    if (lo === null || a < lo.r) lo = { r: a, s: x.fromS, a: x.fromA };
-    if (hi === null || b > hi.r) hi = { r: b, s: x.toS, a: x.toA };
-  });
-  if (!lo || !hi) return null;
-
-  return {
-    fromS: lo.s, fromA: lo.a,
-    toS: hi.s, toA: hi.a,
-    lessons: lessons.length
+  const span = list => {
+    let lo = null, hi = null;
+    list.forEach(x => {
+      if (!x.fromS || !x.toS) return;
+      const a = rank(x.fromS, x.fromA), b = rank(x.toS, x.toA);
+      const l = a <= b ? { r: a, s: x.fromS, a: x.fromA } : { r: b, s: x.toS, a: x.toA };
+      const h = a <= b ? { r: b, s: x.toS, a: x.toA } : { r: a, s: x.fromS, a: x.fromA };
+      if (lo === null || l.r < lo.r) lo = l;
+      if (hi === null || h.r > hi.r) hi = h;
+    });
+    return lo && hi ? { fromS: lo.s, fromA: lo.a, toS: hi.s, toA: hi.a } : null;
   };
+
+  /* بلا موضع حفظٍ معلوم: آخرُ الدروس المنجزة كما كان */
+  if (!up || !(Number(up.s) > 0)) {
+    const lessons = lastLessons(studentId, want);
+    const r = lessons.length ? span(lessons) : null;
+    return r ? Object.assign(r, { lessons: lessons.length }) : null;
+  }
+
+  const back = dirOf(up.dir) === "backward";
+  /* ترتيبُ السير: التنازليُّ عكسُ ترتيب المصحف */
+  const pr = (sv, av) => (back ? -1 : 1) * rank(sv, av);
+  let P = fixPrevAyah(up.s, up.a || 1, back);
+  if (!P) return null;
+
+  /* ١) الدروسُ المنجزةُ المتّصلةُ بالحفظ إلى الوراء */
+  const pool = lastLessons(studentId, 100000);
+  const used = new Set(), days = new Set(), picked = [];
+  let guard = 0;
+  while (P && days.size < want && guard++ < 400) {
+    const pp = pr(P.s, P.a);
+    const L = pool.find(x => {
+      if (!x || used.has(x) || !(Number(x.fromS) > 0) || !(Number(x.toS) > 0)) return false;
+      const a = pr(x.fromS, x.fromA), b = pr(x.toS, x.toA);
+      return Math.min(a, b) <= pp && pp <= Math.max(a, b);
+    });
+    if (!L) break;
+    used.add(L); picked.push(L); days.add(String(L.date));
+    const fa = pr(L.fromS, L.fromA) <= pr(L.toS, L.toA)
+      ? { s: L.fromS, a: L.fromA } : { s: L.toS, a: L.toA };     /* أوّلُه في جهة السير */
+    P = fixPrevAyah(fa.s, fa.a, back);
+  }
+  const start = fixPrevAyah(up.s, up.a || 1, back);
+  if (picked.length) {
+    const r = span(picked);
+    if (r) {
+      /* ولا يتجاوز الحفظ: درسٌ قديمٌ يمتدّ إلى ما بعد موضعه يُقصّ عند الآية التي قبله */
+      if (!back && rank(r.toS, r.toA) > rank(start.s, start.a)) { r.toS = start.s; r.toA = start.a; }
+      if (back && rank(r.fromS, r.fromA) < rank(start.s, start.a)) { r.fromS = start.s; r.fromA = start.a; }
+      return Object.assign(r, { lessons: days.size });
+    }
+  }
+
+  /* ٢) لا درسَ متّصلٌ بالحفظ: بالمقدار — الدروسُ × مقدارِ الحفظ، قبل الحفظ مباشرةً */
+  const total = want * (Number(up.qty) || 1);
+  const key = [start.s, start.a, total, back ? "b" : "f"].join("|");
+  if (Object.prototype.hasOwnProperty.call(FIX_BY_AMOUNT, key)) {
+    const c = FIX_BY_AMOUNT[key];
+    return c ? Object.assign({}, c, { lessons: want, byAmount: true }) : null;
+  }
+  FIX_BY_AMOUNT[key] = null;                      /* قيدَ الحساب */
+  if (typeof rangeEnd === "function") {
+    Promise.resolve(rangeEnd(start.s, start.a, total, "وجه", back ? "forward" : "backward"))
+      .then(function (e) {
+        if (!e || !(Number(e.surah) > 0)) { FIX_BY_AMOUNT[key] = 0; return; }
+        FIX_BY_AMOUNT[key] = span([{ fromS: Number(e.surah), fromA: Number(e.ayah) || 1, toS: start.s, toA: start.a }]);
+        if (typeof mount === "function") mount();
+      })
+      .catch(function () { FIX_BY_AMOUNT[key] = 0; });
+  }
+  return null;
 }
 
 /* موضع الحفظ التالي: من حيث انتهى آخر حفظٍ منجز، وإلا من بداية الخطة */
@@ -20774,13 +20878,16 @@ function generateAssignments(studentId, dateISO) {
     if (t.fromLessons) {
       /* قاعدة «التثبيت يلحق الحفظ» معطَّلة: لا يُولَّد */
       if (!planRuleOn(plan.id, "fixation")) return;
-      /* التثبيت: مداه من آخر الدروس لا من مقدارٍ ثابت */
-      const r = fixRangeFor(studentId);
+      /* التثبيت: مداه من آخر الدروس لا من مقدارٍ ثابت — ما قبل حفظ هذا اليوم */
+      const _h = out.find(x => x && String(x.kind || "") === "hifz" && Number(x.fromS) > 0);
+      const r = fixRangeFor(studentId, _h
+        ? { s: Number(_h.fromS), a: Number(_h.fromA) || 1, dir: _h.direction, qty: Number(_h.qty) || 1 }
+        : fixUpTo(studentId, dateISO));
       if (!r) return;                          /* لا دروس بعد: لا تثبيت */
       rec.fromS = r.fromS; rec.fromA = r.fromA;
       rec.toS = r.toS; rec.toA = r.toA;
       rec.lessons = r.lessons;
-      rec.note = "من آخر " + r.lessons + " دروس";
+      rec.note = r.byAmount ? ("بمقدار " + r.lessons + " دروس قبل الحفظ") : ("من آخر " + r.lessons + " دروس");
     } else if (t.k === "hifz") {
       const from = nextHifzFrom(plan, dateISO);
       rec.fromS = from.s; rec.fromA = from.a;
@@ -21197,7 +21304,7 @@ function asgSkipWhy(studentId, dateISO) {
         if (!planRuleOn(plan.id, "fixation")) {
           out.push({ h: t.h, why: "قاعدةُ «التثبيت يلحق الحفظ» مُطفأةٌ في خطته" }); return;
         }
-        if (!fixRangeFor(studentId)) {
+        if (!fixRangeFor(studentId, fixUpTo(studentId, dateISO))) {
           out.push({ h: t.h, why: "لا دروسَ حفظٍ منجَزةٍ بعدُ يُشتقُّ منها مداه" }); return;
         }
       }
@@ -57502,7 +57609,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261021-1326";
+    return "20261021-2100";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
