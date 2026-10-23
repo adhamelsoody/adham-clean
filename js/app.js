@@ -18126,7 +18126,7 @@ window.manuAssignDo = function () {
         if (isR && plan && Number(plan.revFromS) > 0) {
           rec.fromS = Number(plan.revFromS); rec.fromA = Number(plan.revFromA) || 1;
         } else if (isR && ps > 0) {
-          rec.fromS = ps; rec.fromA = planForStudent(sid, () => pillarStartAyahOf(kb)) || (rec.direction === "backward" ? 0 : 1);
+          rec.fromS = ps; rec.fromA = planForStudent(sid, () => pillarStartAyahOf(kb)) || 1;
         } else if (plan && plan.hifzFromS) {
           rec.fromS = plan.hifzFromS; rec.fromA = plan.hifzFromA || 1;
         }
@@ -19086,12 +19086,27 @@ function rangeEndFaceFrac(fromS, fromA, n, d) {
 }
 
 /* موضع النهاية من البداية والمقدار — وعدٌ لأن جدول المصحف يُجلب */
-function rangeEnd(fromS, fromA, qty, unit, dir) {
+function rangeEnd(fromS, fromA, qty, unit, dir, rev) {
   const n = Number(qty) || 1;
   const d = dirOf(dir) === "backward" ? -1 : 1;
   const u = unitQ(unit);
 
   if (typeof Quran === "undefined" || !Quran.advance) return Promise.resolve(null);
+
+  /* «من الناس»: السورُ تنازلاً والآياتُ في السورة تصاعداً (descWalk).
+     والمشيُ العكسيُّ في ترتيب المصحف (rev) باقٍ لمن يمشي إلى الوراء في
+     التصاعديّ — كالتثبيت قبل الحفظ. */
+  if (d === -1 && !rev) {
+    if (u === "ayah" || u === "surah") return descWalk(fromS, fromA, n, u, false);
+    /* ما بقي داخل سورة الابتداء يُقاس كالتصاعديّ بصفحاته (الآياتُ فيها
+       تصاعدٌ في الجهتين)، وما عبرها يُمشى على الأسطر إلى التي قبلها */
+    return rangeEnd(fromS, fromA, n, unit, "forward").then(function (e) {
+      /* داخلَ السورة حقّاً: لا عند آخرها (فقد يكون المشيُ وقف عند آخر المصحف) */
+      const c0 = Number(ayahCountOf(fromS)) || 0;
+      if (e && Number(e.surah) === Number(fromS) && c0 > 0 && Number(e.ayah) < c0) return e;
+      return descWalk(fromS, fromA, n, u, false);
+    }).catch(function () { return descWalk(fromS, fromA, n, u, false); });
+  }
 
   /* =======================================================================
      السطرُ وحدةٌ قائمةٌ بنفسها — من quran/lines.json
@@ -19190,6 +19205,137 @@ function rangeEnd(fromS, fromA, qty, unit, dir) {
    هنا تقدّمٌ متزامنٌ يحترم الاتجاه داخل السورة، وعبورُها يُصحَّح لاحقاً
    في fillAsgRanges حين يُجلب الجدول.
    ========================================================================= */
+/* =========================================================================
+   اتجاهُ «من الناس»: السورُ تنازلاً، والآياتُ في كلّ سورةٍ من أوّلها
+   -------------------------------------------------------------------------
+   «الطالبُ يقرأ كلَّ سورةٍ من أوّلها إلى آخرها، وينتقل منها إلى التي قبلها
+   في المصحف»: حفظُ وجهٍ ونصفٍ من المرسلات ١ هو المرسلاتُ ١ ← ٥٠ ثمّ
+   الإنسانُ ١ ← ٤، والتلاوةُ بعده من الإنسان ٥. وكان المحرّكُ يمشي في
+   «من الناس» عكسَ المصحف آيةً آية (المرسلاتُ ١ ثمّ الإنسانُ ٣١ نزولاً)،
+   وهو ما لا يقرؤه أحد. وجدولُ مستويات البرنامج كان على الترتيب الصحيح
+   أصلاً (lvbOrd)، فاتّفق المحرّكُ معه.
+
+   progRank ترتيبُ الموضع في جهة السير، وprogPrev ما قبله فيها، وdescWalk
+   المشيُ بالمقدار على أسطر المصحف (quran/lines.json) في هذا الترتيب.
+   ========================================================================= */
+function progRank(s, a, dir) {
+  const sv = Number(s) || 0, av = Number(a) || 0;
+  return (dirOf(dir) === "backward" ? (115 - sv) : sv) * 1000 + av;
+}
+function progPrev(s, a, dir) {
+  s = Number(s) || 0; a = Number(a) || 0;
+  if (!(s > 0)) return null;
+  if (a > 1) return { s: s, a: a - 1 };
+  const back = dirOf(dir) === "backward";
+  const ps = back ? s + 1 : s - 1;
+  if (ps < 1 || ps > 114) return null;
+  const c = Number(ayahCountOf(ps)) || 0;
+  if (!(c > 0)) {
+    try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {}
+    return null;
+  }
+  return { s: ps, a: c };
+}
+
+/* أسطرُ كلّ سورةٍ بترتيبها في المصحف — تُبنى مرّةً من quran/lines.json */
+let QL_BY_SURAH = null;
+function qlBySurah() {
+  if (QL_BY_SURAH) return QL_BY_SURAH;
+  if (typeof QLINES === "undefined" || !QLINES || !Object.keys(QLINES).length) return null;
+  const out = {};
+  for (let p = 1; p <= 604; p++) {
+    qTextLines(p).forEach(function (segs) {
+      const by = {};
+      segs.forEach(function (g) { const k = Number(g[0]); (by[k] = by[k] || []).push(g); });
+      Object.keys(by).forEach(function (k) { (out[k] = out[k] || []).push({ segs: by[k], p: p }); });
+    });
+  }
+  QL_BY_SURAH = out;
+  return out;
+}
+
+/* المشيُ في «من الناس» بمقدار — إلى الأمام (back=false) أو إلى الوراء.
+   يُرجِع طرفَ المدى البعيد {surah, ayah}، مُسوّىً إلى حدّ آية. */
+function descWalk(fromS, fromA, n, u, back) {
+  const s0 = Number(fromS) || 0, a0 = Math.max(1, Number(fromA) || 1);
+  if (!(s0 > 0)) return Promise.resolve(null);
+  const cnt = function (sv) {
+    return Promise.resolve(typeof Quran !== "undefined" && Quran.ayahCount ? Quran.ayahCount(sv) : ayahCountOf(sv))
+      .then(function (c) { return Number(c) || 0; }).catch(function () { return 0; });
+  };
+  /* بالآية: تُعدّ آيةً آية في جهة السير */
+  if (u === "ayah") {
+    let s = s0, a = a0, left = Math.max(0, Math.round(n) - 1);
+    const step = function () {
+      if (left <= 0) return Promise.resolve({ surah: s, ayah: a });
+      left--;
+      if (!back) {
+        return cnt(s).then(function (c) {
+          if (c && a < c) a++;
+          else if (s > 1) { s--; a = 1; }
+          else { left = 0; }
+          return step();
+        });
+      }
+      if (a > 1) { a--; return step(); }
+      if (s >= 114) { left = 0; return step(); }
+      s++;
+      return cnt(s).then(function (c) { a = c || 1; return step(); });
+    };
+    return step();
+  }
+  /* بالسورة: إلى آخر السورة المستهدفة (أو أوّلِها إلى الوراء) */
+  if (u === "surah") {
+    const k = Math.max(1, Math.round(n));
+    const ts = back ? Math.min(114, s0 + (k - 1)) : Math.max(1, s0 - (k - 1));
+    return back ? Promise.resolve({ surah: ts, ayah: 1 })
+                : cnt(ts).then(function (c) { return { surah: ts, ayah: c || 1 }; });
+  }
+  const per = u === "line" ? 1 : u === "quarter" ? 37.5 : u === "hizb" ? 150 : u === "juz" ? 300 : 15;
+  const want = Math.max(1, Math.round(n * per));
+  return qlinesReady().then(function () {
+    const by = qlBySurah();
+    if (!by) return null;
+    /* تيّارُ الأسطر في جهة المشي: سورةُ الابتداء من سطر آيتها، ثمّ ما يليها */
+    const flat = [];
+    let s = s0, first = true;
+    while (s >= 1 && s <= 114 && flat.length < want + 60) {
+      const L = (by[s] || []).slice();
+      if (back) L.reverse();
+      let k0 = 0;
+      if (first) {
+        k0 = L.findIndex(function (ln) { return ln.segs.some(function (g) { return Number(g[1]) === a0; }); });
+        if (k0 < 0) return null;
+      }
+      for (let i = k0; i < L.length; i++) {
+        /* سطرُ الابتداء يحمل ما قبل الآية (أو بعدها إلى الوراء): لا يُحسب منها */
+        const segs = first && i === k0
+          ? L[i].segs.filter(function (g) { return back ? Number(g[1]) <= a0 : Number(g[1]) >= a0; })
+          : L[i].segs;
+        flat.push({ segs: segs, p: L[i].p });
+      }
+      first = false;
+      s = back ? s + 1 : s - 1;
+    }
+    if (!flat.length) return null;
+    const last = Math.min(want - 1, flat.length - 1);
+    /* طرفُ كلّ آيةٍ في التيّار: آخرُ سطرٍ يحملها في جهة المشي */
+    const endAt = {};
+    flat.forEach(function (ln, i) { ln.segs.forEach(function (g) { endAt[g[0] + ":" + g[1]] = i; }); });
+    let pre = null, post = null;
+    flat.forEach(function (ln, i) {
+      ln.segs.forEach(function (g) {
+        const e = endAt[g[0] + ":" + g[1]];
+        if (e !== i) return;
+        if (i <= last) { if (!pre || i >= pre.at) pre = { surah: Number(g[0]), ayah: Number(g[1]), at: i }; }
+        else if (!post) post = { surah: Number(g[0]), ayah: Number(g[1]), at: i };
+      });
+    });
+    const r = !pre ? post : !post ? pre : ((last - pre.at) <= (post.at - last) ? pre : post);
+    return r ? { surah: r.surah, ayah: r.ayah } : null;
+  }).catch(function () { return null; });
+}
+
 function stepFrom(toS, toA, dir) {
   const back = dirOf(dir) === "backward";
   const s = Number(toS) || 0;
@@ -19218,11 +19364,15 @@ function stepFrom(toS, toA, dir) {
     return { s, a: a + 1, needEnd: true };       /* يُصحَّح حين يصل الفهرس */
   }
 
-  /* تنازلي: ما قبلها، فإن كانت أوّل السورة فالتي قبلها — ورقمُ آيتها
-     يُصحَّح عند جلب الجدول، والصفر علامةٌ على ذلك. */
-  if (a > 1) return { s, a: a - 1 };
-  if (s <= 1) return { s: 1, a: 1 };          /* بلغ الفاتحة: يقف */
-  return { s: s - 1, a: 0, needEnd: true };
+  /* «من الناس»: الآيةُ التالية في السورة، فإن تمّت فأوّلُ السورة التي
+     قبلها في المصحف. وبلا فهرسٍ تُعلَّم needEnd كالتصاعديّ (fixForwardStarts). */
+  const cb = (typeof ayahCountOf === "function") ? Number(ayahCountOf(s)) || 0 : 0;
+  if (cb > 0) {
+    if (a < cb) return { s, a: a + 1 };
+    if (s <= 1) return { s: 1, a: cb };         /* بلغ الفاتحة: يقف */
+    return { s: s - 1, a: 1 };
+  }
+  return { s, a: a + 1, needEnd: true };
 }
 
 /* =========================================================================
@@ -19233,8 +19383,7 @@ function stepFrom(toS, toA, dir) {
    fixBackwardStarts في الجهة الأخرى.
    ========================================================================= */
 window.fixForwardStarts = function (list) {
-  const need = (list || []).filter(a => a && a.fromS && Number(a.fromA) > 0 &&
-                                        dirOf(a.direction) !== "backward");
+  const need = (list || []).filter(a => a && a.fromS && Number(a.fromA) > 0);
   if (!need.length || typeof Quran === "undefined" || !Quran.ayahCount) {
     return Promise.resolve(0);
   }
@@ -19242,8 +19391,10 @@ window.fixForwardStarts = function (list) {
     Promise.resolve(Quran.ayahCount(a.fromS)).then(c => {
       const cnt = Number(c) || 0;
       if (!cnt || Number(a.fromA) <= cnt) return 0;
-      if (Number(a.fromS) >= 114) { a.fromA = cnt; }
-      else { a.fromS = Number(a.fromS) + 1; a.fromA = 1; }
+      /* «من الناس» تعبر إلى السورة التي قبلها، والتصاعديُّ إلى التي بعدها */
+      const bk = dirOf(a.direction) === "backward";
+      if (bk ? Number(a.fromS) <= 1 : Number(a.fromS) >= 114) { a.fromA = cnt; }
+      else { a.fromS = Number(a.fromS) + (bk ? -1 : 1); a.fromA = 1; }
       /* والمدى يُعاد حسابُه من الموضع المصحَّح */
       a.toS = null; a.toA = null;
       persistSet("assignments", a);
@@ -19259,9 +19410,11 @@ window.fixBackwardStarts = function (list) {
     return Promise.resolve(0);
   }
 
+  /* الصفرُ علامةٌ قديمةٌ على «آخر السورة» في المشي العكسيّ. و«من الناس»
+     تبدأ السورةَ من أوّلها — فيصير آيتَها الأولى */
   return Promise.all(need.map(a =>
-    Quran.ayahCount(a.fromS).then(c => {
-      a.fromA = Number(c) || 1;
+    Promise.resolve().then(() => {
+      a.fromA = 1;
       persistSet("assignments", a);
       return 1;
     }).catch(() => 0)
@@ -19272,8 +19425,8 @@ function nextAfter(toS, toA, dir) {
   const d = dirOf(dir) === "backward" ? -1 : 1;
 
   if (typeof Quran === "undefined" || !Quran.ayahCount) {
-    /* بلا جدول المصحف: تقدّم بسيط داخل السورة */
-    return Promise.resolve({ surah: Number(toS), ayah: Number(toA) + d });
+    /* بلا جدول المصحف: تقدّم بسيط داخل السورة — والآياتُ تصاعدٌ في الجهتين */
+    return Promise.resolve({ surah: Number(toS), ayah: Number(toA) + 1 });
   }
 
   if (d === 1) {
@@ -19284,12 +19437,12 @@ function nextAfter(toS, toA, dir) {
     }).catch(() => ({ surah: Number(toS), ayah: Number(toA) + 1 }));
   }
 
-  /* تنازلي: إلى ما قبله، فإن كان أول السورة فآخر التي قبلها */
-  if (Number(toA) > 1) return Promise.resolve({ surah: Number(toS), ayah: Number(toA) - 1 });
-  if (Number(toS) <= 1) return Promise.resolve({ surah: 1, ayah: 1 });
-  return Quran.ayahCount(Number(toS) - 1)
-    .then(c => ({ surah: Number(toS) - 1, ayah: c }))
-    .catch(() => ({ surah: Number(toS) - 1, ayah: 1 }));
+  /* «من الناس»: الآيةُ التالية في السورة، فإن تمّت فأوّلُ التي قبلها */
+  return Quran.ayahCount(toS).then(c => {
+    if (Number(toA) < c) return { surah: Number(toS), ayah: Number(toA) + 1 };
+    return Number(toS) > 1 ? { surah: Number(toS) - 1, ayah: 1 }
+                           : { surah: Number(toS), ayah: c };
+  }).catch(() => ({ surah: Number(toS), ayah: Number(toA) + 1 }));
 }
 
 /* =========================================================================
@@ -19360,9 +19513,11 @@ function asgCapToSurah(a, end) {
    كما ضبطتها الإدارة (طالبٌ ملتحقٌ بمحفوظٍ سابق). ولا تُكتب بياناتٌ هنا
    ولا يُمَسُّ ارتباط: حسابٌ محض.
    ========================================================================= */
-function hifzSpanOf(studentId) {
+function hifzSpanOf(studentId, dir) {
   const list = (typeof asgOf === "function") ? asgOf(studentId) : [];
   let lo = null, hi = null;
+  /* الطرفان في جهة السير: «من الناس» السورُ تنازلاً والآياتُ تصاعداً */
+  const R = p => progRank(p[0], p[1], dir || "forward");
   (list || []).forEach(function (a) {
     if (!a || String(a.kind || "").replace("_makeup", "") !== "hifz") return;
     if (a.status !== "done") return;
@@ -19370,8 +19525,8 @@ function hifzSpanOf(studentId) {
     const tS = Number(a.toS) || fS,  tA = Number(a.toA) || fA;
     [[fS, fA], [tS, tA]].forEach(function (p) {
       if (!(p[0] > 0)) return;
-      if (!lo || p[0] < lo[0] || (p[0] === lo[0] && p[1] < lo[1])) lo = p;
-      if (!hi || p[0] > hi[0] || (p[0] === hi[0] && p[1] > hi[1])) hi = p;
+      if (!lo || R(p) < R(lo)) lo = p;
+      if (!hi || R(p) > R(hi)) hi = p;
     });
   });
   return (lo && hi) ? { lo: { s: lo[0], a: lo[1] }, hi: { s: hi[0], a: hi[1] } } : null;
@@ -19412,37 +19567,35 @@ function revFixBound(a) {
 /* الحدُّ في جهة السير: التصاعديُّ يقف عند أبعد ما حُفظ، والتنازليُّ عند
    أقربِه — و«أوّلُ المحفوظ» هو الطرفُ الآخر، إليه يعود الدوران. */
 function hifzLimitFor(a) {
-  const sp = hifzSpanOf(a && a.studentId);
+  const dir = dirOf(a && a.direction) === "backward" ? "backward" : "forward";
+  const sp = hifzSpanOf(a && a.studentId, dir);
   if (!sp) return null;
-  const back = dirOf(a && a.direction) === "backward";
-  let lim = back ? sp.lo : sp.hi;
+  const back = dir === "backward";
+  const R = q => progRank(q.s, q.a, dir);
+  let lim = sp.hi;                      /* أبعدُ ما حُفظ في جهة السير */
   let excl = false;                     /* حدٌّ مستثنىً: يُوقَف قبلَه لا عندَه */
   const fx = revFixBound(a);
   if (fx && Number(fx.fromS) > 0 && Number(fx.toS) > 0) {
-    /* طرفُ التثبيت الذي يستقبل المراجعة: مبتدؤه في التصاعديّ ومنتهاه في التنازليّ */
-    const p = back ? { s: Number(fx.toS), a: Number(fx.toA) || 1 }
-                   : { s: Number(fx.fromS), a: Number(fx.fromA) || 1 };
-    const nearer = back ? (p.s > lim.s || (p.s === lim.s && p.a > lim.a))
-                        : (p.s < lim.s || (p.s === lim.s && p.a < lim.a));
+    /* طرفُ التثبيت الذي يستقبل المراجعة: أوّلُه في جهة السير */
+    const e1 = { s: Number(fx.fromS), a: Number(fx.fromA) || 1 };
+    const e2 = { s: Number(fx.toS), a: Number(fx.toA) || 1 };
+    const p = R(e1) <= R(e2) ? e1 : e2;
+    const nearer = R(p) < R(lim);
     /* وما لم يتجاوز المحفوظُ مدى التثبيت بعدُ فلا موضعَ قبله تُراجَع فيه:
        يُترك حدُّ التثبيت ويعود الحدُّ إلى منتهى الحفظ، فلا تسقط المراجعةُ
        عن المبتدئ ولا تدور في الفراغ. */
-    const home0 = back ? sp.hi : sp.lo;
-    const room = back ? (home0.s > p.s || (home0.s === p.s && home0.a > p.a))
-                      : (home0.s < p.s || (home0.s === p.s && home0.a < p.a));
+    const room = R(sp.lo) < R(p);
     if (nearer && room) { lim = p; excl = true; }
   }
-  return { lim: lim, excl: excl, home: back ? sp.hi : sp.lo, back: back };
+  return { lim: lim, excl: excl, home: sp.lo, back: back, dir: dir };
 }
 
 /* أبلغَ الموضعُ حدَّه؟ — والمستثنى يُعدّ بالغاً ببلوغه لا بتجاوزه */
 function revPastLimit(L, s, a) {
   if (!L || !(Number(s) > 0)) return false;
-  const y = Number(a) || 1;
-  if (L.back) {
-    return s < L.lim.s || (s === L.lim.s && (L.excl ? y <= L.lim.a : y < L.lim.a));
-  }
-  return s > L.lim.s || (s === L.lim.s && (L.excl ? y >= L.lim.a : y > L.lim.a));
+  const dir = L.dir || (L.back ? "backward" : "forward");
+  const r = progRank(s, Number(a) || 1, dir), l = progRank(L.lim.s, L.lim.a, dir);
+  return L.excl ? r >= l : r > l;
 }
 
 function asgCapToHifz(a, end) {
@@ -19462,8 +19615,9 @@ function asgCapToHifz(a, end) {
   }
   /* حدُّ التثبيت لا يُبلَغ: يقف الموضعُ قبله بآية */
   a.note = "وقف قبل التثبيت — المراجعةُ لا تبلغ التثبيت";
-  const back0 = typeof stepFrom === "function"
-    ? stepFrom(L.lim.s, L.lim.a, L.back ? "forward" : "backward") : null;
+  /* الآيةُ التي قبل الحدّ في جهة السير */
+  const back0 = typeof progPrev === "function"
+    ? progPrev(L.lim.s, L.lim.a, L.dir || (L.back ? "backward" : "forward")) : null;
   if (!back0 || !(Number(back0.s) > 0)) {
     return Promise.resolve({ surah: L.lim.s, ayah: L.lim.a, capped: "fix" });
   }
@@ -19665,18 +19819,18 @@ function asgStepEdge(plan, asg, hwKey) {
      فالترتيب: اختيارُ الإدارة الصريحُ لخطته (dirSet) حكمٌ لا يُنازَع، ثمّ
      جهةُ المدى المسمَّع، ثمّ حقلُ اتجاه الواجب، ثمّ اتجاهُ الخطة.
      ======================================================================= */
-  const rangeDir = (fS && tS && !(tS === fS && tA === fA))
-    ? ((tS > fS || (tS === fS && tA > fA)) ? "forward" : "backward")
-    : "";
+  /* وفي السورة الواحدة الآياتُ تصاعدٌ في الجهتين («من الناس» تقرأ السورةَ
+     من أوّلها) — فلا تدلّ على جهة. وتدلّ السورتان: الأكبرُ رقماً أوّلاً «من الناس» */
+  const rangeDir = (fS && tS && tS !== fS) ? (tS > fS ? "forward" : "backward") : "";
   const dir = (plan && plan.dirSet) ? planDir
     : (rangeDir
        || (String((asg && asg.direction) || "").trim() ? dirOf(asg.direction) : "")
        || (String((plan && plan.direction) || "").trim() ? dirOf(plan.direction) : "")
        || planDir);
-  /* جهةُ المدى المسمَّع: مبتدؤه قبل منتهاه أم بعده */
-  const ranFwd = !fS ? true : (tS > fS || (tS === fS && tA >= fA));
-  const goFwd = dir !== "backward";
-  const edge = (!fS || goFwd === ranFwd) ? { s: tS, a: tA } : { s: fS, a: fA };
+  /* طرفُ الاستئناف: منتهى المدى في جهة السير — إلّا أن يكون المدى مكتوباً
+     بالمقلوب فيُؤخذ أبعدُ طرفيه فيها */
+  const edge = (!fS || progRank(tS, tA, dir) >= progRank(fS, fA, dir))
+    ? { s: tS, a: tA } : { s: fS, a: fA };
   return { s: edge.s, a: edge.a, dir: dir };
 }
 
@@ -19806,11 +19960,13 @@ function scopeNext(kind, lastToS, lastToA, dir) {
      وكان يبدأ بالبقرة ويلفّ عند المائدة في الحالين: فالطالبُ التنازليّ
      يبدأ من أوّل النطاق ثمّ يمضي إلى ما قبله فيخرج منه أوّلَ يومٍ ولا
      يعود إليه أبداً. */
+  /* «من الناس»: يبدأ النطاقُ من أوّل سورته الأخيرة في المصحف ويلفّ عند آخر
+     الأولى — السورُ تنازلاً والآياتُ تصاعداً */
   const back = dirOf(dir) === "backward";
   const startS = back ? sc.toS : sc.fromS;
-  const startA = back ? (Number(sc.toA) || 0) : sc.fromA;   /* الصفر: تُجلب آخر آية */
+  const startA = back ? 1 : sc.fromA;
   const endS = back ? sc.fromS : sc.toS;
-  const endA = back ? Number(sc.fromA || 1) : (Number(sc.toA) || 0);
+  const endA = back ? 0 : (Number(sc.toA) || 0);
 
   /* لا موضع سابق: يبدأ من مبتدأ النطاق بحسب اتجاهه */
   if (!lastToS) return { surah: startS, ayah: startA, looped: false };
@@ -19818,10 +19974,11 @@ function scopeNext(kind, lastToS, lastToA, dir) {
   /* بلغ منتهاه: يعود من مبتدئه.
      المقارنة بالسورة حين لا تُحدَّد آية النهاية — إذ لا يُعرف عدد آياتها
      هنا، وأخذُ ٩٩٩ يجعل الشرط لا يتحقّق أبداً فلا يلفّ. */
-  const reached = back
-    ? (endA ? rank(lastToS, lastToA) <= rank(endS, endA)
-            : Number(lastToS) <= Number(endS))
-    : (endA ? rank(lastToS, lastToA) >= rank(endS, endA)
+  const reached = endA
+    ? progRank(lastToS, lastToA, dir) >= progRank(endS, endA, dir)
+    : (back ? Number(lastToS) < Number(endS) ||
+              (Number(lastToS) === Number(endS) && Number(ayahCountOf(endS)) > 0 &&
+               Number(lastToA) >= Number(ayahCountOf(endS)))
             : Number(lastToS) >= Number(endS));
 
   if (reached) return { surah: startS, ayah: startA, looped: true };
@@ -19855,10 +20012,7 @@ function linkedNext(kind, studentId, dir) {
      مراجعتُه الكبرى عند «الناس» ومراجعته القريبة عند «البقرة» يُحسب لاحقاً
      لها — ورقمُه أكبر — وهو لم يبلغها بعد، فتعود من بدايتها كلّ يوم ولا
      تتقدّم أبداً. في التنازليّ الأصغرُ رقماً هو الأسبقُ موضعاً. */
-  const back = dirOf(dir) === "backward";
-  const rMine = rank(mine.toS, mine.toA);
-  const rOther = rank(other.toS, other.toA);
-  const caught = back ? (rMine <= rOther) : (rMine >= rOther);
+  const caught = progRank(mine.toS, mine.toA, dir) >= progRank(other.toS, other.toA, dir);
 
   if (caught) {
     const first = asgTermOf(studentId)
@@ -20004,20 +20158,34 @@ function fixPrevAyah(s, a, back) {
   if (!(Number(ayahCountOf(s)) > 0)) {
     try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {}
   }
-  if (!back) {                                   /* التصاعديّ: ما قبلها في المصحف */
-    if (a > 1) return { s, a: a - 1 };
-    if (s <= 1) return null;
-    const c = Number(ayahCountOf(s - 1)) || 0;
-    return c > 0 ? { s: s - 1, a: c } : null;
-  }
-  const c = Number(ayahCountOf(s)) || 0;         /* التنازليّ: ما بعدها في المصحف */
-  if (!(c > 0)) return null;
-  if (a < c) return { s, a: a + 1 };
-  if (s >= 114) return null;
-  return { s: s + 1, a: 1 };
+  /* ما قبلها في جهة السير — و«من الناس» تعود في السورة آيةً آية ثمّ إلى
+     آخر السورة التي بعدها في المصحف (progPrev) */
+  return progPrev(s, a, back ? "backward" : "forward");
 }
 
 const FIX_BY_AMOUNT = {};
+
+/* =========================================================================
+   «التثبيتُ دائماً قبل الحفظ الجديد بسورة»
+   -------------------------------------------------------------------------
+   كان التثبيتُ يبدأ من الآية التي قبل الحفظ مباشرةً — فيقع في سورة الحفظ
+   نفسِها («الحفظ من المرسلات ١، والتثبيت من المرسلات ٢ إلى ٤٨»). فصار
+   يبدأ من آخر ما قبل سورة الحفظ في جهة السير: التصاعديُّ آخرُ السورة التي
+   قبلها في المصحف، والتنازليُّ أوّلُ السورة التي بعدها — ثمّ يمضي إلى
+   الوراء بدروسه أو بمقداره كما كان.
+   ========================================================================= */
+function fixSurahBefore(s, back) {
+  s = Number(s) || 0;
+  if (!(s > 0)) return null;
+  const ps = back ? s + 1 : s - 1;
+  if (ps < 1 || ps > 114) return null;
+  const c = Number(ayahCountOf(ps)) || 0;
+  if (!(c > 0)) {
+    try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {}
+    return null;
+  }
+  return { s: ps, a: c };
+}
 
 function fixRangeFor(studentId, upTo) {
   const up = upTo === undefined ? fixUpTo(studentId) : upTo;
@@ -20044,9 +20212,22 @@ function fixRangeFor(studentId, upTo) {
   }
 
   const back = dirOf(up.dir) === "backward";
-  /* ترتيبُ السير: التنازليُّ عكسُ ترتيب المصحف */
-  const pr = (sv, av) => (back ? -1 : 1) * rank(sv, av);
-  let P = fixPrevAyah(up.s, up.a || 1, back);
+  /* ترتيبُ السير (progRank): «من الناس» السورُ تنازلاً والآياتُ تصاعداً */
+  const pr = (sv, av) => progRank(sv, av, back ? "backward" : "forward");
+  /* المدى من أوّله في جهة السير إلى آخره */
+  const spanP = list => {
+    let lo = null, hi = null;
+    list.forEach(x => {
+      if (!x.fromS || !x.toS) return;
+      [[x.fromS, x.fromA], [x.toS, x.toA]].forEach(q => {
+        const r = pr(q[0], q[1]);
+        if (lo === null || r < lo.r) lo = { r: r, s: q[0], a: q[1] };
+        if (hi === null || r > hi.r) hi = { r: r, s: q[0], a: q[1] };
+      });
+    });
+    return lo && hi ? { fromS: lo.s, fromA: lo.a, toS: hi.s, toA: hi.a } : null;
+  };
+  let P = fixSurahBefore(up.s, back);
   if (!P) return null;
 
   /* ١) الدروسُ المنجزةُ المتّصلةُ بالحفظ إلى الوراء */
@@ -20066,13 +20247,12 @@ function fixRangeFor(studentId, upTo) {
       ? { s: L.fromS, a: L.fromA } : { s: L.toS, a: L.toA };     /* أوّلُه في جهة السير */
     P = fixPrevAyah(fa.s, fa.a, back);
   }
-  const start = fixPrevAyah(up.s, up.a || 1, back);
+  const start = fixSurahBefore(up.s, back);
   if (picked.length) {
-    const r = span(picked);
+    const r = spanP(picked);
     if (r) {
-      /* ولا يتجاوز الحفظ: درسٌ قديمٌ يمتدّ إلى ما بعد موضعه يُقصّ عند الآية التي قبله */
-      if (!back && rank(r.toS, r.toA) > rank(start.s, start.a)) { r.toS = start.s; r.toA = start.a; }
-      if (back && rank(r.fromS, r.fromA) < rank(start.s, start.a)) { r.fromS = start.s; r.fromA = start.a; }
+      /* ولا يتجاوز ما قبل سورة الحفظ: درسٌ يمتدّ إلى ما بعده يُقصّ عنده */
+      if (pr(r.toS, r.toA) > pr(start.s, start.a)) { r.toS = start.s; r.toA = start.a; }
       return Object.assign(r, { lessons: days.size });
     }
   }
@@ -20086,10 +20266,13 @@ function fixRangeFor(studentId, upTo) {
   }
   FIX_BY_AMOUNT[key] = null;                      /* قيدَ الحساب */
   if (typeof rangeEnd === "function") {
-    Promise.resolve(rangeEnd(start.s, start.a, total, "وجه", back ? "forward" : "backward"))
+    /* إلى الوراء في جهة السير: التصاعديُّ عكسُ المصحف، و«من الناس» تعود
+       في السورة ثمّ إلى التي بعدها (descWalk إلى الوراء) */
+    Promise.resolve(back ? descWalk(start.s, start.a, total, "face", true)
+                         : rangeEnd(start.s, start.a, total, "وجه", "backward", true))
       .then(function (e) {
         if (!e || !(Number(e.surah) > 0)) { FIX_BY_AMOUNT[key] = 0; return; }
-        FIX_BY_AMOUNT[key] = span([{ fromS: Number(e.surah), fromA: Number(e.ayah) || 1, toS: start.s, toA: start.a }]);
+        FIX_BY_AMOUNT[key] = spanP([{ fromS: Number(e.surah), fromA: Number(e.ayah) || 1, toS: start.s, toA: start.a }]);
         if (typeof mount === "function") mount();
       })
       .catch(function () { FIX_BY_AMOUNT[key] = 0; });
@@ -20234,8 +20417,8 @@ function repeatNext(plan, lastAsg) {
 
     /* يعود إلى مبتدأ السورة بحسب الاتجاه: التصاعديّ إلى أوّلها، والتنازليّ
        إلى آخرها — والصفر علامةُ أن رقم الآية يُجلب من جدول المصحف. */
-    const back = dirOf(plan.direction) === "backward";
-    return { s: Number(lastAsg.toS), a: back ? 0 : 1, repeat: true,
+    /* «من الناس» تقرأ السورةَ من أوّلها كذلك */
+    return { s: Number(lastAsg.toS), a: 1, repeat: true,
              round: done, of: cfg.times,
              note: "إعادة " + toArabicDigits(done) + " من " + toArabicDigits(cfg.times) };
   }
@@ -20261,7 +20444,7 @@ function repeatNext(plan, lastAsg) {
 
     /* مبتدأ الإعادة يحترم آيةَ البداية المحدَّدة للمستوى */
     const _st = lvStartPos(lv);
-    const startA = backLv ? 0 : ((_st && _st.a) || 1);
+    const startA = backLv ? 1 : ((_st && _st.a) || 1);
     return { s: startS, a: startA, repeat: true,
              round: done, of: cfg.times,
              note: "إعادة المستوى " + toArabicDigits(done) + " من " + toArabicDigits(cfg.times) };
@@ -21007,7 +21190,7 @@ function generateAssignments(studentId, dateISO) {
           ? { s: Number(plan.revFromS), a: Number(plan.revFromA) || 1 } : null;
         if (cp && cp.s) { rec.fromS = cp.s; rec.fromA = cp.a || 1; }
         else if (rv) { rec.fromS = rv.s; rec.fromA = rv.a; }
-        else if (ps) { rec.fromS = ps; rec.fromA = pillarStartAyahOf(t.k) || (rec.direction === "backward" ? 0 : 1); }
+        else if (ps) { rec.fromS = ps; rec.fromA = pillarStartAyahOf(t.k) || 1; }
         else if (plan.hifzFromS) { rec.fromS = plan.hifzFromS; rec.fromA = plan.hifzFromA || 1; }
       }
       revClampStart(rec, plan);            /* لا تتجاوز المراجعةُ ما حُفظ */
@@ -21040,11 +21223,15 @@ function generateAssignments(studentId, dateISO) {
    ========================================================================= */
 const TIL_AHEAD = {};
 
-function tilAheadRange(h) {
-  if (!h || !(Number(h.fromS) > 0) || !(Number(h.fromA) > 0) || !(Number(h.qty) > 0)) return null;
+function tilAheadRange(h, qty) {
+  /* «التلاوةُ بعد الحفظ على نفس المقدار الموضوع له في خطة الطالب»: تبدأ بعد
+     منتهى الحفظ كما هو في الواجب (إن كان له منتهًى)، ومقدارُها مقدارُ خطته */
+  const q = Number(qty) > 0 ? Number(qty) : Number(h && h.qty);
+  if (!h || !(Number(h.fromS) > 0) || !(Number(h.fromA) > 0) || !(q > 0)) return null;
   if (typeof rangeEnd !== "function" || typeof stepFrom !== "function") return null;
   const dir = dirOf(h.direction);
-  const key = [h.fromS, h.fromA, h.qty, h.unit || "", dir].join("|");
+  const hasEnd = Number(h.toS) > 0 && Number(h.toA) > 0;
+  const key = [h.fromS, h.fromA, hasEnd ? h.toS + ":" + h.toA : "", h.qty, q, h.unit || "", dir].join("|");
   if (Object.prototype.hasOwnProperty.call(TIL_AHEAD, key)) return TIL_AHEAD[key] || null;
   TIL_AHEAD[key] = null;                              /* قيدَ الحساب */
   const qAy = function (nx) {
@@ -21053,7 +21240,8 @@ function tilAheadRange(h) {
     return Promise.resolve(Quran.ayahCount(Number(nx.s))).then(function (c) {
       return Number(c) > 0 ? { s: Number(nx.s), a: Number(c) } : null; });
   };
-  Promise.resolve(rangeEnd(Number(h.fromS), Number(h.fromA), Number(h.qty), h.unit, dir))
+  Promise.resolve(hasEnd ? { surah: Number(h.toS), ayah: Number(h.toA) }
+                         : rangeEnd(Number(h.fromS), Number(h.fromA), Number(h.qty), h.unit, dir))
     .then(function (e) {
       if (!e || !(Number(e.surah) > 0)) return null;
       const nx = stepFrom(Number(e.surah), Number(e.ayah), dir);
@@ -21061,7 +21249,7 @@ function tilAheadRange(h) {
     })
     .then(function (st0) {
       if (!st0) { TIL_AHEAD[key] = 0; return null; }
-      return Promise.resolve(rangeEnd(st0.s, st0.a, Number(h.qty), h.unit, dir)).then(function (e2) {
+      return Promise.resolve(rangeEnd(st0.s, st0.a, q, h.unit, dir)).then(function (e2) {
         TIL_AHEAD[key] = [st0.s, st0.a,
           e2 && Number(e2.surah) > 0 ? Number(e2.surah) : 0,
           e2 && Number(e2.surah) > 0 ? Number(e2.ayah) : 0];
@@ -21081,8 +21269,13 @@ function asgTilFollow(list) {
     if (a.status && a.status !== "pending") return;   /* ما سُمِّع لا يُمَسّ */
     if (a.edited) return;                              /* ولا ما عدّله المعلّم */
     if (!h) return;
-    const r = tilAheadRange(h);
-    a.qty = Number(h.qty) || a.qty; a.unit = h.unit || a.unit; a.direction = h.direction || a.direction;
+    let pq = 0;
+    try {
+      const pl = typeof planOfStudent === "function" ? planOfStudent({ id: a.studentId || h.studentId }) : null;
+      pq = pl ? Number(planQtyOf(pl, "hifz")) || 0 : 0;
+    } catch (e) { pq = 0; }
+    const r = tilAheadRange(h, pq);
+    a.qty = pq || Number(h.qty) || a.qty; a.unit = h.unit || a.unit; a.direction = h.direction || a.direction;
     if (r) { a.fromS = r[0]; a.fromA = r[1]; if (r[2]) { a.toS = r[2]; a.toA = r[3]; } delete a.pendingAhead; }
   });
 }
@@ -21180,14 +21373,13 @@ function asgEditStale(a) {
     if (t > last) last = t;
   });
   if (!(last > ed)) return false;
-  const span = (typeof hifzSpanOf === "function") ? hifzSpanOf(a.studentId) : null;
+  const _dir = dirOf(a.direction) === "backward" ? "backward" : "forward";
+  const span = (typeof hifzSpanOf === "function") ? hifzSpanOf(a.studentId, _dir) : null;
   if (!span) return false;
-  const fwd = dirOf(a.direction) !== "backward";
-  const edge = fwd ? span.hi : span.lo;
+  const edge = span.hi;                  /* أبعدُ ما حُفظ في جهة السير */
   if (!(edge && Number(edge.s) > 0)) return false;
   /* مبتدأُ الواجب داخلَ ما حُفظ أو على طرفه: التعديلَ سبقه الواقع */
-  return fwd ? (edge.s > fS || (edge.s === fS && Number(edge.a) >= fA))
-             : (edge.s < fS || (edge.s === fS && Number(edge.a) <= fA));
+  return progRank(edge.s, Number(edge.a) || 1, _dir) >= progRank(fS, fA, _dir);
 }
 
 /* =========================================================================
@@ -39120,10 +39312,7 @@ function reciteSave() {
        ================================================================= */
     if (asg && asg.status !== "pending" && rec.toS) {
       const rank = (sv, av) => (Number(sv) || 0) * 1000 + (Number(av) || 0);
-      const back = String(asg.direction) === "backward";
-      const ahead = back
-        ? rank(rec.toS, rec.toA) < rank(asg.toS, asg.toA)
-        : rank(rec.toS, rec.toA) > rank(asg.toS, asg.toA);
+      const ahead = progRank(rec.toS, rec.toA, asg.direction) > progRank(asg.toS, asg.toA, asg.direction);
       if (ahead) {
         asg.toS = rec.toS; asg.toA = rec.toA;
         asg.extraSessions = (Number(asg.extraSessions) || 0) + 1;
@@ -41298,7 +41487,12 @@ function reciteNorm(pos, dir) {
   const cnt = s2 => { const x = list && list.find(q => q.i === Number(s2)); return x ? Number(x.a) : 0; };
   let s2 = Number(pos.s), a2 = Number(pos.a) || 0;
   if (dirOf(dir) === "backward") {
-    if (!a2) a2 = cnt(s2) || 1;
+    /* «من الناس»: بعد آخر السورة أوّلُ التي قبلها */
+    if (!a2) a2 = 1;
+    if (cnt(s2) && a2 > cnt(s2)) {
+      if (s2 <= 1) return { s: 1, a: cnt(1) };
+      s2 -= 1; a2 = 1;
+    }
   } else if (cnt(s2) && a2 > cnt(s2)) {
     if (s2 >= 114) return { s: 114, a: cnt(114) };
     s2 += 1; a2 = 1;
@@ -43709,13 +43903,20 @@ function qmpDone(st) {
        وتخمينُها هنا يزعم للطالب إنجازاً لم يتمّه. */
     if (!s1 || !s2 || !e2) return;
 
-    /* الصفرُ في أوّل الآية علامةُ «آخر السورة» في السير التنازليّ */
-    const back = dirOf(a.direction) === "backward";
-    const e1 = Number(a.fromA) || (back ? (qmpAyahs(s1) || 1) : 1);
-
-    /* يُقلب الطرفان في السير التنازليّ ليصير المدى من أوّله إلى آخره */
+    const e1 = Number(a.fromA) || 1;
+    /* «من الناس»: المدى من سورةٍ إلى ما قبلها — أوّلُها من آيتها إلى آخرها،
+       وما بينهما كاملاً، والأخيرةُ من أوّلها إلى آيتها */
+    if (s1 > s2) {
+      for (let s = s1; s >= s2; s--) {
+        const n = qmpAyahs(s); if (!n) continue;
+        const from = s === s1 ? Math.max(1, e1) : 1;
+        const to   = s === s2 ? Math.min(n, e2) : n;
+        if (to >= from) (cov[s] = cov[s] || []).push([from, to]);
+      }
+      return;
+    }
     let bs = s1, ba = e1, es = s2, ea = e2;
-    if (s1 > s2 || (s1 === s2 && e1 > e2)) { bs = s2; ba = e2; es = s1; ea = e1; }
+    if (s1 === s2 && e1 > e2) { ba = e2; ea = e1; }
 
     for (let s = bs; s <= es; s++) {
       const n = qmpAyahs(s); if (!n) continue;
@@ -57837,7 +58038,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261023-2000";
+    return "20261023-2330";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
