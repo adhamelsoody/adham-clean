@@ -14178,3 +14178,121 @@ html[data-theme="dark"] .st-pro .stp-head-ic, html[data-theme="dark"] .st-pro .s
   .st-pro .stp-foot { padding: 14px; }
   .st-pro .stp-save { width: 100%; }
 }
+
+/* =========================================================================
+   «الإجراءات التدرّجية» — شكلٌ احترافيّ
+   -------------------------------------------------------------------------
+   بطاقاتٌ برأسٍ واضح (أيقونةٌ ملوّنةٌ للمسار وعددُ خطواته وزرُّ إضافةٍ
+   بنصّه)، وخطواتٌ على سُلَّمٍ مرقّمٍ يصلها خطٌّ رأسيّ، وحقولٌ بلا إطارٍ أسود.
+   كلُّه تحت .pr-pro فلا يمسّ لوحةً أخرى.
+   ========================================================================= */
+.pr-pro { display: grid; gap: 18px; }
+.pr-pro .pr-note {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 16px; border-radius: 12px;
+  background: #eef8f8; border: 1px solid #d3ecec; color: #24605f;
+}
+.pr-pro .pr-note svg { flex: none; margin-top: 2px; }
+.pr-pro .pr-note p { margin: 0; font-size: 13px; line-height: 1.8; }
+
+.pr-pro .pr-card {
+  background: #fff; border: 1px solid #e6eded; border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(16, 60, 60, .04); overflow: hidden;
+}
+.pr-pro .pr-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 20px; border-bottom: 1px solid #eef2f2;
+}
+.pr-pro .pr-ic {
+  width: 40px; height: 40px; border-radius: 12px; flex: none;
+  display: grid; place-items: center; background: #e3f5f5; color: #128c90;
+}
+.pr-pro .pr-adm .pr-ic { background: #fff1e3; color: #c26a12; }
+.pr-pro .pr-ttl { min-width: 0; }
+.pr-pro .pr-ttl h3 { margin: 0; font-size: 15.5px; font-weight: 800; color: #17393a; }
+.pr-pro .pr-ttl p { margin: 3px 0 0; font-size: 12.5px; color: #6d8586; }
+.pr-pro .pr-count {
+  margin-inline-start: auto; padding: 4px 10px; border-radius: 999px;
+  background: #f1f6f6; color: #4d6667; font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.pr-pro .pr-add {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 38px; padding: 0 14px; border-radius: 10px; cursor: pointer;
+  border: 1px solid #15a2a7; background: #15a2a7; color: #fff;
+  font-family: var(--ff); font-size: 13.5px; font-weight: 700; white-space: nowrap;
+  transition: background .15s ease;
+}
+.pr-pro .pr-add:hover { background: #0f7f83; }
+
+.pr-pro .pr-steps { list-style: none; margin: 0; padding: 16px 20px 18px; display: grid; gap: 10px; }
+.pr-pro .pr-step { position: relative; display: grid; grid-template-columns: 34px 1fr 38px; gap: 12px; align-items: center; }
+/* الخطُّ الواصلُ بين الخطوات: التدرّجُ مرئيّ */
+.pr-pro .pr-step:not(:last-child)::after {
+  content: ""; position: absolute; top: 34px; bottom: -10px; inset-inline-start: 16px;
+  width: 2px; background: #dcebeb;
+}
+.pr-pro .pr-n {
+  position: relative; z-index: 1;
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: #15a2a7; color: #fff; font-size: 14px; font-weight: 800;
+}
+.pr-pro .pr-adm .pr-n { background: #e08a2c; }
+.pr-pro .pr-adm .pr-step:not(:last-child)::after { background: #f3e1cc; }
+.pr-pro .pr-in {
+  height: 44px; width: 100%; box-sizing: border-box; padding: 0 14px;
+  border: 1.5px solid #e2e9e9; border-radius: 10px; background: #fbfdfd;
+  font-family: var(--ff); font-size: 14.5px; color: #1f3536; outline: 0;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.pr-pro .pr-in:hover { border-color: #c4d7d7; }
+.pr-pro .pr-in:focus { background: #fff; border-color: #15a2a7; box-shadow: 0 0 0 3px rgba(21,162,167,.14); }
+.pr-pro .pr-del {
+  width: 38px; height: 38px; border-radius: 10px; cursor: pointer;
+  display: grid; place-items: center;
+  border: 1px solid transparent; background: transparent; color: #a3b2b3;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.pr-pro .pr-del:hover { background: #fdecea; color: #c64a4a; border-color: #f3c9c4; }
+.pr-pro .pr-empty { padding: 14px; text-align: center; color: #8a9d9e; font-size: 13px; border: 1.5px dashed #dbe6e6; border-radius: 10px; }
+
+.pr-pro .pr-conds { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; padding: 18px 20px; }
+.pr-pro .pr-cond { display: grid; gap: 6px; align-content: start; }
+.pr-pro .pr-cond label { font-size: 13px; font-weight: 700; color: #3d5a5b; }
+.pr-pro .pr-num {
+  display: flex; align-items: center; height: 44px; box-sizing: border-box;
+  border: 1.5px solid #e2e9e9; border-radius: 10px; background: #fbfdfd; overflow: hidden;
+}
+.pr-pro .pr-num:focus-within { border-color: #15a2a7; box-shadow: 0 0 0 3px rgba(21,162,167,.14); background: #fff; }
+.pr-pro .pr-num input {
+  flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent;
+  padding: 0 12px; font-family: var(--ff); font-size: 15px; color: #1f3536;
+}
+.pr-pro .pr-num span { padding: 0 12px; height: 100%; display: grid; place-items: center; background: #f1f6f6; color: #5f7a7b; font-size: 12.5px; font-weight: 700; border-inline-start: 1px solid #e2e9e9; }
+.pr-pro .pr-cond small { font-size: 11.5px; color: #8a9d9e; line-height: 1.6; }
+.pr-pro .pr-foot { display: flex; justify-content: flex-end; padding: 14px 20px; border-top: 1px solid #eef2f2; background: #fafcfc; }
+.pr-pro .pr-save {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 44px; padding: 0 24px; border: 0; border-radius: 10px; cursor: pointer;
+  background: #15a2a7; color: #fff; font-family: var(--ff); font-size: 14.5px; font-weight: 700;
+  transition: background .15s ease;
+}
+.pr-pro .pr-save:hover { background: #0f7f83; }
+
+html[data-theme="dark"] .pr-pro .pr-card { background: var(--surface); border-color: var(--border); }
+html[data-theme="dark"] .pr-pro .pr-head, html[data-theme="dark"] .pr-pro .pr-foot { border-color: var(--border); background: var(--surface); }
+html[data-theme="dark"] .pr-pro .pr-ttl h3, html[data-theme="dark"] .pr-pro .pr-cond label { color: var(--text-main); }
+html[data-theme="dark"] .pr-pro .pr-in, html[data-theme="dark"] .pr-pro .pr-num { background: var(--surface-2); border-color: var(--border); color: var(--text-main); }
+html[data-theme="dark"] .pr-pro .pr-num input { color: var(--text-main); }
+html[data-theme="dark"] .pr-pro .pr-num span, html[data-theme="dark"] .pr-pro .pr-count { background: var(--surface-3); color: var(--text-main); }
+html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-color: var(--border); color: var(--text-main); }
+
+@media (max-width: 640px) {
+  .pr-pro .pr-head { flex-wrap: wrap; padding: 14px; }
+  .pr-pro .pr-count { margin-inline-start: 0; }
+  .pr-pro .pr-add { margin-inline-start: auto; }
+  .pr-pro .pr-steps, .pr-pro .pr-conds { padding: 14px; }
+  .pr-pro .pr-step { grid-template-columns: 30px 1fr 36px; gap: 8px; }
+  .pr-pro .pr-n { width: 30px; height: 30px; font-size: 13px; }
+  .pr-pro .pr-step:not(:last-child)::after { inset-inline-start: 14px; top: 30px; }
+}

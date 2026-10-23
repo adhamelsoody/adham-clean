@@ -23092,56 +23092,63 @@ window.procSave = function () {
 function setPanelProcedures() {
   const cfg = alertCfg();
 
-  const track = (t, name, hint) => `<div class="card" style="margin-bottom:18px">
-    <div class="fac-toolbar">
-      <div><strong style="font-size:15px">${name}</strong>
-        <div class="muted" style="font-size:11.5px;margin-top:2px">${hint}</div></div>
-      <button class="fac-tbtn add" onclick="window.procAdd('${t}')" title="إضافة إجراء"
-        style="margin-inline-start:auto">+</button>
-    </div>
-    <div style="padding:0 16px 14px">
-      ${procList(t).map((p, i) => `<div class="proc-edit">
-        <span class="proc-n">${toArabicDigits(p.n)}</span>
-        <input value="${esc(p.h)}" onchange="window.procSet('${t}',${i},this.value)">
-        <button class="row-btn cp-danger" onclick="window.procDel('${t}',${i})"
-          title="حذف">${ic("trash", 14)}</button>
-      </div>`).join("")}
-    </div>
-  </div>`;
+  /* =======================================================================
+     «خلّي الشكل بروفيشنال أكتر»: كلُّ مسارٍ بطاقةٌ برأسٍ (أيقونةٌ وعنوانٌ
+     ووصفٌ وعددُ الخطوات وزرُّ «إضافة إجراء» بنصّه)، والخطواتُ سُلَّمٌ مرقّمٌ
+     متّصلٌ يقول إنّها تدرّج. والدوالُّ كما هي: procAdd · procSet · procDel ·
+     procSaveAll، ومعرّفاتُ شروط التنبيه كما هي (al_*).
+     ======================================================================= */
+  const track = (t, name, hint, icon, tone) => {
+    const list = procList(t);
+    return `<section class="pr-card pr-${tone}">
+    <header class="pr-head">
+      <span class="pr-ic">${ic(icon, 19)}</span>
+      <div class="pr-ttl"><h3>${name}</h3><p>${hint}</p></div>
+      <span class="pr-count">${toArabicDigits(list.length)} خطوات</span>
+      <button type="button" class="pr-add" onclick="window.procAdd('${t}')">${ic("plus", 15)}<span>إضافة إجراء</span></button>
+    </header>
+    <ol class="pr-steps">
+      ${list.length ? list.map((p, i) => `<li class="pr-step">
+        <span class="pr-n">${toArabicDigits(p.n)}</span>
+        <input class="pr-in" value="${esc(p.h)}" aria-label="الإجراء ${toArabicDigits(p.n)}"
+          onchange="window.procSet('${t}',${i},this.value)">
+        <button type="button" class="pr-del" onclick="window.procDel('${t}',${i})"
+          title="حذف الإجراء" aria-label="حذف الإجراء">${ic("trash", 15)}</button>
+      </li>`).join("") : `<li class="pr-empty">لا إجراءات بعد — أضف أوّل خطوة</li>`}
+    </ol>
+  </section>`;
+  };
+  const cond = (id, label, v, unit, hint) => `<div class="pr-cond">
+      <label for="${id}">${label}</label>
+      <div class="pr-num"><input id="${id}" type="number" min="1" value="${esc(v)}"><span>${unit}</span></div>
+      ${hint ? `<small>${hint}</small>` : ""}
+    </div>`;
 
-  return `<div class="lv-wrap">
-    ${noteCard(`الترتيب هو التدرّج: لا يستطيع المشرف اختيار إجراءٍ سبق اتخاذه مع
-      الطالب نفسه، فينتقل النظام به إلى الخطوة التالية تلقائياً.`)}
+  return `<div class="lv-wrap pr-pro">
+    <div class="pr-note">${ic("info", 17)}<p>الترتيب هو التدرّج: لا يستطيع المشرف اختيار إجراءٍ سبق اتخاذه مع
+      الطالب نفسه، فينتقل النظام به إلى الخطوة التالية تلقائياً.</p></div>
 
-    ${track("edu", "الإجراءات التعليمية", "تعثّر التسميع — يتّخذها المشرف التعليمي")}
-    ${track("adm", "الإجراءات الإدارية", "الغياب والانضباط — يتّخذها المشرف الإداري")}
+    ${track("edu", "الإجراءات التعليمية", "تعثّر التسميع — يتّخذها المشرف التعليمي", "book", "edu")}
+    ${track("adm", "الإجراءات الإدارية", "الغياب والانضباط — يتّخذها المشرف الإداري", "shield", "adm")}
 
-    <div class="card">
-      <div class="fac-toolbar"><div><strong style="font-size:15px">شروط التنبيه</strong>
-        <div class="muted" style="font-size:11.5px;margin-top:2px">
-          متى يولّد النظام بطاقة تنبيه</div></div></div>
-      <div class="form-grid" style="padding:0 16px 16px">
-        <div class="field"><label>أيام حضورٍ بلا تسميع</label>
-          <input id="al_nr" type="number" min="1" value="${esc(cfg.noReciteDays)}"></div>
-        <div class="field"><label>جلسات ناقصة متتالية</label>
-          <input id="al_pt" type="number" min="1" value="${esc(cfg.partialDays)}"></div>
-        <div class="field"><label>مرات عدم التسميع شهرياً</label>
-          <input id="al_mm" type="number" min="1" value="${esc(cfg.monthMisses)}"></div>
-        <div class="field"><label>أيام غياب متتالية</label>
-          <input id="al_ar" type="number" min="1" value="${esc(cfg.absRun)}"></div>
-        <div class="field"><label>أيام غياب متفرّقة</label>
-          <input id="al_as" type="number" min="1" value="${esc(cfg.absSpread)}"></div>
-        <div class="field"><label>خلال كم يوماً</label>
-          <input id="al_sd" type="number" min="1" value="${esc(cfg.spreadDays)}"></div>
-        <div class="field"><label>مؤقّت المتابعة (ساعة)</label>
-          <input id="al_tm" type="number" min="1" value="${esc(cfg.timerHours)}">
-          <small style="font-size:11px;color:var(--text-faint)">
-            بعدها يُعدّ التنبيه متأخّراً ويظهر للإدارة العليا</small></div>
+    <section class="pr-card">
+      <header class="pr-head">
+        <span class="pr-ic">${ic("bell", 19)}</span>
+        <div class="pr-ttl"><h3>شروط التنبيه</h3><p>متى يولّد النظام بطاقة تنبيه</p></div>
+      </header>
+      <div class="pr-conds">
+        ${cond("al_nr", "أيام حضورٍ بلا تسميع", cfg.noReciteDays, "يوم")}
+        ${cond("al_pt", "جلسات ناقصة متتالية", cfg.partialDays, "جلسة")}
+        ${cond("al_mm", "مرات عدم التسميع شهرياً", cfg.monthMisses, "مرة")}
+        ${cond("al_ar", "أيام غياب متتالية", cfg.absRun, "يوم")}
+        ${cond("al_as", "أيام غياب متفرّقة", cfg.absSpread, "يوم")}
+        ${cond("al_sd", "خلال كم يوماً", cfg.spreadDays, "يوم")}
+        ${cond("al_tm", "مؤقّت المتابعة", cfg.timerHours, "ساعة", "بعدها يُعدّ التنبيه متأخّراً ويظهر للإدارة العليا")}
       </div>
-      <div style="display:flex;gap:8px;padding:0 16px 16px">
-        <button class="btn btn-primary btn-sm" onclick="window.procSaveAll()">حفظ الكل</button>
-      </div>
-    </div>
+      <footer class="pr-foot">
+        <button type="button" class="pr-save" onclick="window.procSaveAll()">${ic("check", 17)}<span>حفظ الكل</span></button>
+      </footer>
+    </section>
   </div>`;
 }
 
@@ -58112,7 +58119,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261024-0050";
+    return "20261024-0105";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
