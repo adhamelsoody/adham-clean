@@ -3001,7 +3001,7 @@ function planActiveTab() {
   if (!DB.plans.length) {
     return `<div class="tab-panel"><div class="card">${emptyState("لا توجد خطط بعد", "أنشئ أول خطة من تبويب «باني الخطة». يلزم وجود طالب واحد وبرنامج واحد على الأقل.")}</div></div>`;
   }
-  const rows = DB.plans.map(p => {
+  const rows = DB.plans.filter(p => p && p.superseded !== true).map(p => {
     const pl = getPlan(p.id);
     const h = HEALTH[pl.ext.health];
     return `<tr>
@@ -3308,11 +3308,9 @@ window.bulkAssignDo = function () {
 
     /* الخطةُ المُسنَدة منهجُه: موضعُها هو القولُ الأحدث، وبطاقتُه تتبعها —
        فلا تُرجعه سورتُه القديمةُ في البطاقة عند حفظها التالي */
-    if (Number(rec.hifzFromS) > 0) {
-      stuCurriculumWins(rec, null);
-      persistSet("plans", rec);
-      stuCardFollowPlan(st, rec);
-    }
+    stuCurriculumWins(rec, null);
+    persistSet("plans", rec);
+    stuCardFollowPlan(st, rec);
 
     /* سجل الطالب يتبع خطته */
     if (rec.levelId) {
@@ -13854,7 +13852,7 @@ window.sardFinishDo = function (studentId) {
     st.sardFinishedAt = Date.now();
     persistSet("students", st);
 
-    const pl = (DB.plans || []).find(x => String(x.studentId) === String(studentId));
+    const pl = (DB.plans || []).find(x => x && x.superseded !== true && String(x.studentId) === String(studentId));
     if (pl) {
       pl.program = target;
       pl.programId = ((cur("programs") || []).find(x => String(x.name) === target) || {}).id || "";
@@ -33634,6 +33632,30 @@ function asgMergeByKind(saved, gen) {
   return add.length ? out.concat(add) : out;
 }
 
+/* =========================================================================
+   واجبٌ بكرٌ وُلِّد من الخطة القديمة قبل إسناد الجديدة لا يُعرض
+   -------------------------------------------------------------------------
+   مراجعةٌ خُزّنت اليومَ من الخطة القديمة ثمّ أُسند للطالب برنامجٌ لا مراجعةَ
+   فيه: كانت تبقى ظاهرةً. فما كان معلَّقاً لم يُمسّ (لا تعديلَ معلّمٍ ولا
+   تسميعَ ولا تقسيم)، وليس يدوياً، وخُزّن قبل وقت الإسناد، ولا يولّد
+   المنهجُ الجديدُ نوعَه — لا يُعرض. ولا يُحذف من السجلّ شيء.
+   ========================================================================= */
+function asgDropOldPlan(sid, saved, gen) {
+  try {
+    const plan = typeof planOfStudent === "function" ? planOfStudent({ id: sid }) : null;
+    const at = Number(plan && plan.assignedAt) || 0;
+    if (!at || !(saved || []).length) return saved;
+    const kinds = {};
+    (gen || []).forEach(function (g) { if (g) kinds[String(g.kind || "")] = 1; });
+    return saved.filter(function (a) {
+      if (!a || a.manual || a.status !== "pending") return true;
+      if (kinds[String(a.kind || "")]) return true;
+      if (!((Number(a.ts) || 0) > 0 && Number(a.ts) < at)) return true;
+      return !(typeof asgFollowsPlan === "function" && asgFollowsPlan(a));
+    });
+  } catch (e) { return saved; }
+}
+
 function dutiesOfDay(sid, d) {
   const day = d || (typeof attDate === "function" ? attDate() : todayISO());
   const saved = (cur("assignments") || []).filter(a => a &&
@@ -33642,7 +33664,7 @@ function dutiesOfDay(sid, d) {
   if (String(day) < String(todayISO())) return saved;
   let gen = [];
   try { gen = generateAssignments(sid, day) || []; } catch (e) { gen = []; }
-  const out = asgMergeByKind(saved, gen);
+  const out = asgMergeByKind(asgDropOldPlan(sid, saved, gen), gen);
   /* ورصفُ الأيّام القادمة: ما لم يُخزَّن يُقاس من مرجعه مضافاً إليه ما
      بينهما من أيّام ركنه — للعرض وحدَه، بلا كتابةٍ في السجلّ. */
   try { asgProjectStarts(out, sid, day, saved); } catch (e) { console.warn("asgProjectStarts:", e); }
@@ -41596,9 +41618,10 @@ function planOfStudent(st) {
   if (!st) return null;
   /* تُسوّى الهمزات والمسافات كذلك — لا يكفي تسوية المسافات وحدها */
   const sid = String(st.id), sname = nameKey(st.name);
-  const p = (Array.isArray(DB.plans) ? DB.plans : []).find(x =>
+  /* الخطةُ المستبدَلة (superseded) ليست خطتَه — آخرُ ما أُسند هو المعتمَد */
+  const p = (Array.isArray(DB.plans) ? DB.plans : []).find(x => x && x.superseded !== true && (
     (x.studentId != null && String(x.studentId) === sid) ||
-    (sname && nameKey(x.student) === sname)) || null;
+    (sname && nameKey(x.student) === sname))) || null;
 
   /* =======================================================================
      قراءةٌ محضة — لا ترميمَ ولا كتابة
@@ -50836,6 +50859,9 @@ function lvApplyToStudent(st, lv) {
     if (Number(P.tathbit.lessons) > 0) plan.tatCount = Number(P.tathbit.lessons);
   }
   if (P.review) setMain(P.review, "rev");
+  /* وما ليس في المستوى لا يبقى من الخطة القديمة: يمشي على ما في البرنامج وحدَه */
+  if (!P.hifz) { plan.hifzOn = false; if (!(P.tathbit && P.tathbit.on === true)) plan.tatOn = false; plan.tilOn = false; }
+  if (!P.review) plan.revOn = false;
   st.plan = plan;
   return true;
 }
@@ -50887,11 +50913,16 @@ window.spProgLevelSave = function () {
   /* برنامجُ سرد المحفوظ بلا مستويات: لا يبقى عليه مستوى برنامجٍ سابق.
      وواجبُه يُضبط في بطاقة الطالب مكانَ أقسام الخطة الافتراضية. */
   if (spIsSardProg(prog)) {
+    const _sdChg = String(s.program || "") !== String(prog || "");
     s.program = prog; s.levelId = ""; s.level = "";
     persistSet("students", s);
     try {
       const rec = spSyncEnginePlan(s);
-      if (rec) { rec.levelId = ""; rec.level = ""; delete rec.levelDoneCarry; persistSet("plans", rec); }
+      if (rec) {
+        rec.levelId = ""; rec.level = ""; delete rec.levelDoneCarry;
+        if (_sdChg) planAssigned(rec);
+        persistSet("plans", rec);
+      }
     } catch (e) { console.warn("spProgLevel/sard:", e); }
     closeModal();
     showToast("حُفظ البرنامج — اضبط واجبَ السرد في خطة الطالب", "success");
@@ -50948,9 +50979,77 @@ window.spProgLevelSave = function () {
    به كالعادة. وما لم يضبطه المستوى (لا سورةَ ابتداءٍ فيه) لا يُمسّ، فلا
    يُرَدّ طالبٌ إلى الوراء. ولا يُغيَّر حلقةٌ ولا مسجدٌ ولا ارتباط.
    ========================================================================= */
+/* «شيل أيَّ خطةٍ قديمة واعتمد آخرَ خطةٍ أو برنامجٍ وضعتُه»: ما سواها من
+   خطط الطالب يُوسَم «مستبدَلة» ولا يُحذف — فلا يقرؤه المحرّكُ ولا الشاشات،
+   ويبقى في قاعدة البيانات أثراً يُرجَع إليه. */
+function planSupersedeOthers(rec) {
+  if (!rec || rec.studentId == null || !Array.isArray(DB.plans)) return;
+  const sid = String(rec.studentId), now = Date.now();
+  DB.plans.forEach(function (o) {
+    if (!o || String(o.id) === String(rec.id) || o.superseded === true) return;
+    if (String(o.studentId == null ? "" : o.studentId) !== sid) return;
+    o.superseded = true; o.supersededBy = String(rec.id); o.supersededAt = now;
+    if (typeof PLAN_EXTRA !== "undefined" && PLAN_EXTRA[o.id] && typeof persistPlan === "function") persistPlan(o.id);
+    else persistSet("plans", o);
+  });
+}
+function planAssigned(rec) {
+  if (!rec) return;
+  rec.assignedAt = Date.now();          /* وقتُ الإسناد: ما قبله من واجباتٍ بكرٍ لا يُعرض */
+  delete rec.superseded; delete rec.supersededBy; delete rec.supersededAt;
+  planSupersedeOthers(rec);
+}
+/* خطةٌ من «باني الخطة» منهجُ الطالب: موضعُها ومقدارُها وأيامُ حفظها
+   حقولاً يقرؤها المحرّك، وبطاقتُه تتبعها، وما ليس فيها من القديم يُطفأ */
+function builderAdopt(st, rec, B, _waited) {
+  if (!st || !rec || !B) return;
+  const fS = typeof spSurahIdx === "function" ? spSurahIdx(B.startS) : 0;
+  /* فهرسُ السور لم يصل (شاشةُ الخطط لا تحمّله): يُطلب من المصحف ثمّ يُعاد */
+  if (!fS && B.startS && !_waited && window.Quran && typeof Quran.surahs === "function") {
+    const B2 = JSON.parse(JSON.stringify(B));
+    Quran.surahs().then(function (l) { QSURAHS = l; }).catch(function () {})
+      .then(function () {
+        builderAdopt(st, rec, B2, true);
+        if (typeof persistPlan === "function") persistPlan(rec.id);
+      });
+    return;
+  }
+  const tS = typeof spSurahIdx === "function" ? spSurahIdx(B.endS) : 0;
+  if (fS) {
+    rec.hifzFromS = fS; rec.hifzFromA = Math.max(1, Number(B.startA) || 1);
+    rec.direction = (tS && tS < fS) ? "backward" : "forward"; rec.dirSet = true;
+  }
+  const q = Number((typeof PLAN_QTY_NUM !== "undefined" && PLAN_QTY_NUM[String(B.amount || "")]) || 0);
+  if (q > 0) { rec.hifzQtyNum = q; rec.amountText = String(B.amount); }
+  const sch = B.sched || {}, map = { "حفظ جديد": "hifz", "تثبيت": "fix" };
+  rec.hwDays = Object.assign({}, rec.hwDays || {});
+  Object.keys(map).forEach(function (h) {
+    const d = typeof daysToArray === "function" ? daysToArray(sch[h] || []) : [];
+    if (d.length) rec.hwDays[map[h]] = d;
+  });
+  if (B.levelId) rec.levelId = String(B.levelId);
+  /* بصمةُ المنشأة عند الإنشاء من سجلّ الطالب نفسِه — وإلّا لم يرَ الخطةَ معلّمُه */
+  if (!rec.mosqueId && st.mosqueId) rec.mosqueId = st.mosqueId;
+  if (!rec.circleId && st.circleId) rec.circleId = st.circleId;
+  if (!rec.complexId && st.complexId) rec.complexId = st.complexId;
+  stuCurriculumWins(rec, null);
+  /* الطالبُ يتبع خطتَه: برنامجُها ومستواها، وبطاقتُه على موضعها ومقدارها */
+  if (B.program) st.program = B.program;
+  if (B.levelId) { st.levelId = String(B.levelId); st.level = B.level || st.level; }
+  const sp = Object.assign({}, st.plan || {});
+  sp.revOn = false;                     /* لا مراجعةَ في هذه الخطة: لا تبقى من القديمة */
+  if (B.rules && B.rules.fixation === false) sp.tatOn = false;
+  if (q > 0 && typeof PLAN_QTY !== "undefined" && PLAN_QTY.indexOf(String(B.amount)) > -1) {
+    sp.hifzType = PLAN_QTY_TYPE[0]; sp.hifzQty = String(B.amount);
+  }
+  st.plan = sp;
+  persistSet("students", st);
+  stuCardFollowPlan(st, rec);
+}
 function stuCurriculumWins(rec, lv) {
   if (!rec) return;
   const P = (lv && lv.pillars) || null, now = Date.now();
+  planAssigned(rec);
   const has = v => !!(v && v.on === true && Number(v.fromS) > 0);
   /* بلا مستوى (خطةٌ منسوخة): موضعُها هو المُسنَد */
   if (P ? has(P.hifz) : Number(rec.hifzFromS) > 0) rec.hifzPosTs = now;
@@ -54508,6 +54607,8 @@ document.addEventListener("click", (e) => {
           requests: [], today: preview.ext.today, tomorrow: preview.ext.tomorrow
         };
 
+        /* الخطةُ الجديدةُ منهجُه، والقديمةُ تُستبدل */
+        try { builderAdopt(st, DB.plans.find(x => x.id === id), B); } catch (e) { console.warn("builderAdopt:", e); }
         persistPlan(id);
         prgSeedPlanRules(id, B.program);
         /* توجيلاتُ الباني تعلو افتراضيَّ البرنامج: كانت تُحفظ في الذاكرة
@@ -56979,6 +57080,8 @@ function cur(coll) {
 
 function archiveFilter(coll, list) {
   if (ARCHIVE_VIEW) return list;
+  /* الخطةُ المستبدَلة بخطةٍ أُسندت بعدها لا تُقرأ — تبقى في السجلّ ولا تُحذف */
+  if (coll === "plans") return list.filter(x => !x || x.superseded !== true);
   if (coll !== "students" && coll !== "teachers") return list;
   return list.filter(x => !x || x.archived !== true);
 }
@@ -57734,7 +57837,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261022-2030";
+    return "20261023-2000";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
