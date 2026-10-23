@@ -185,6 +185,29 @@ service cloud.firestore {
 
     function d0() { return request.resource.data; }
 
+    /* =====================================================================
+       والسجلُّ القائمُ نفسُه داخلَ النطاق — لا ما سيصير إليه وحدَه
+       ---------------------------------------------------------------------
+       scopeOk تفحص السجلَّ بعد التعديل. فكان مديرُ مسجدٍ يعدّل سجلاً يتبع
+       مسجداً آخر بأن يكتبه بلا مسجدٍ ولا مجمّع، أو باسم مسجده هو — فيستولي
+       عليه. فالتعديلُ والحذفُ يشترطان الطرفين: ما كان، وما سيكون.
+       ===================================================================== */
+    function oldScopeOk() {
+      return unscoped()
+        || (resource.data.get('mosqueId', '') == '' && resource.data.get('complexId', '') == '')
+        || inScope(resource.data);
+    }
+
+    /* حقولٌ لا يكتبها صاحبُ التسجيل الذاتيّ في ملفّه: النطاقُ والصلاحياتُ
+       والارتباط. كانت القاعدةُ تفحص الدورَ والتفعيلَ وحدَهما، فيدسّ المسجِّلُ
+       نطاقاً وصلاحياتٍ من عنده تبقى له بعد اعتماده — أو لا يكتب نطاقاً
+       فيُعامَل بلا حدّ. */
+    function privilegedUserKeys() {
+      return ['mosqueId', 'complexId', 'mosqueIds', 'complexIds', 'circleId', 'circleIds',
+              'perms', 'teacherId', 'studentId', 'studentIds', 'kids', 'admin', 'owner',
+              'approvedBy', 'approvedAt'];
+    }
+
 
     /* ---------------- ملفات المستخدمين ---------------- */
     match /users/{uid} {
@@ -221,7 +244,8 @@ service cloud.firestore {
       allow create: if signedIn()
                     && request.auth.uid == uid
                     && request.resource.data.role in selfRoles()
-                    && request.resource.data.active == false;
+                    && request.resource.data.active == false
+                    && !request.resource.data.keys().hasAny(privilegedUserKeys());
 
       /* تعديل ذاتي: حقول العرض فقط — لا role ولا active ولا نطاق. */
       allow update: if signedIn()
@@ -234,10 +258,13 @@ service cloud.firestore {
            • دورُ الحساب قبل التعديل وبعده كلاهما تحت سقفِ منحه
              — فلا يمسّ مديراً ولا يمنح دوراً أعلى منه
          والحذفُ والإنشاءُ يبقيان لمدير النظام وحده. */
+      /* وبياناتُ الدخول (الجوالُ والبريدُ ورقمُ الهوية) لمدير النظام وحده:
+         الجوالُ يُستعاد به الحسابُ برسالة SMS، فمن غيّره إلى جواله أخذ الحساب. */
       allow update: if isManager()
                     && request.auth.uid != uid
                     && resource.data.role in grantableRoles()
-                    && request.resource.data.role in grantableRoles();
+                    && request.resource.data.role in grantableRoles()
+                    && !changed().hasAny(['phone', 'email', 'loginEmail', 'username', 'uid']);
 
       /* المدير وحده يُنشئ الحسابات ويغيّر الأدوار والحالة ويحذف. */
       allow create, update, delete: if isAdmin();
@@ -247,7 +274,8 @@ service cloud.firestore {
     /* ---------------- البيانات التشغيلية ---------------- */
     match /{coll}/{docId} {
       allow read: if coll in operational() && canRead();
-      allow create, update: if coll in operational() && canWrite() && scopeOk();
+      allow create: if coll in operational() && canWrite() && scopeOk();
+      allow update: if coll in operational() && canWrite() && scopeOk() && oldScopeOk();
       allow delete: if coll in operational() && canWrite()
                     && (unscoped() || inScope(resource.data))
                     /* الفتراتُ لها قاعدةُ حذفٍ خاصّةٌ أدناه: لا تُحذف إلّا
@@ -264,7 +292,7 @@ service cloud.firestore {
     match /terms/{docId} {
       allow read:   if canRead();
       allow create: if canWrite() && scopeOk();
-      allow update: if canWrite() && scopeOk();
+      allow update: if canWrite() && scopeOk() && oldScopeOk();
       /* الحصرُ هنا كما في الإنشاء والتعديل سواءً بسواء (scopeOk): سجلُّ
          الفترة بلا مسجدٍ ولا مجمّع، فلو اشتُرط inScope وحدَه لما حذف
          مديرُ منشأةٍ فترةً قطّ — ويُقبل طلبُه في الواجهة ويردّه الخادمُ
@@ -314,7 +342,7 @@ service cloud.firestore {
     match /plans/{docId} {
       allow read: if canRead();
       allow create: if teacherMay('plan_edit', true) && scopeOk();
-      allow update: if teacherMay('plan_edit', true) && scopeOk()
+      allow update: if teacherMay('plan_edit', true) && scopeOk() && oldScopeOk()
                     && (canWrite() || !changed().hasAny(linkFields()));
       /* الحذف للإدارة وحدها: إزالة خطة طالب أخطر من تعديلها،
          والمعلّم يملك التجميد وتعديل المسار وهما يكفيان عمله. */
@@ -336,7 +364,7 @@ service cloud.firestore {
     match /assignments/{docId} {
       allow read: if canRead();
       allow create: if teacherMay('plan_edit', true) && scopeOk();
-      allow update: if teacherMay('plan_edit', true) && scopeOk()
+      allow update: if teacherMay('plan_edit', true) && scopeOk() && oldScopeOk()
                     && (canWrite() || !changed().hasAny(linkFields()));
       allow delete: if canWrite();
     }
@@ -377,13 +405,15 @@ service cloud.firestore {
     match /recitations/{docId} {
       allow read: if canRead();
       /* الإنشاء عمل يومي، والتعديل على محفوظ صلاحية خاصة */
-      allow create: if canWrite() || isTeacher();
-      allow update, delete: if teacherMay('recite_edit', true);
+      /* وداخلَ النطاق: لا يكتب المعلّمُ تسميعاً لطالبٍ في منشأةٍ أخرى ولا يعدّله */
+      allow create: if (canWrite() || isTeacher()) && scopeOk();
+      allow update: if teacherMay('recite_edit', true) && scopeOk() && oldScopeOk();
+      allow delete: if teacherMay('recite_edit', true) && oldScopeOk();
     }
 
     match /mushafMarks/{docId} {
       allow read: if canRead();
-      allow create: if canWrite() || isTeacher();
+      allow create: if (canWrite() || isTeacher()) && scopeOk();
       /* تأشير اليوم عمل عادي، وتعديل تأشير يوم مضى صلاحية خاصة.
          resource.data.date هو تاريخ التأشير المحفوظ. */
       allow update, delete: if canWrite()
@@ -419,16 +449,16 @@ service cloud.firestore {
            التاريخ محفوظ بصيغة النظام لا بطابع زمني، فلا تستطيع القاعدة
            مقارنته بوقت الخادم. لإغلاقه على الخادم أضف حقل ts رقمياً
            إلى سجل الحضور ثم قارنه بـ request.time هنا. */
-      allow create: if (canWrite() || isTeacher())
+      allow create: if (canWrite() || isTeacher()) && scopeOk()
                     && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
                     && request.resource.data.date is string
                     && request.resource.data.studentId is string;
-      allow update: if teacherMay('attend_edit', true)
+      allow update: if teacherMay('attend_edit', true) && scopeOk() && oldScopeOk()
                     && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
                     && request.resource.data.date is string
                     && request.resource.data.studentId is string;
       /* سجل خاطئ يجب أن يُحذف لا أن يُترك — بنفس صلاحية التعديل */
-      allow delete: if teacherMay('attend_edit', true);
+      allow delete: if teacherMay('attend_edit', true) && oldScopeOk();
     }
 
 

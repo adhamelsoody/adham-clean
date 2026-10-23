@@ -21,3 +21,7 @@ npm-debug.log*
 
 # إعدادات Claude Code المحليّة — شخصيةٌ لكلّ جهاز، لا تُشارَك
 .claude/settings.local.json
+
+# مفاتيحُ حسابات الخدمة لا تُرفع ولا تُنشر أبداً
+serviceAccountKey*.json
+*adminsdk*.json

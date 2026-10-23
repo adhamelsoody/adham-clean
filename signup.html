@@ -334,7 +334,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="js/firebase-config.js?v=20261024-0105"></script>
+<script src="js/firebase-config.js?v=20261024-0200"></script>
 <script>
 (function () {
   "use strict";
@@ -888,20 +888,17 @@
           phone: v("facPhone").replace(/[\s-]/g, ""),
           cxName: facKind === "mosque" ? v("facCx") : ""
         } : null,
+        /* الأبناءُ المطلوبُ ربطُهم في الكتابة الأولى نفسِها: الكتابةُ الثانية
+           كانت تعديلاً ذاتيّاً بحقولٍ لا تملكها القواعد (kidsRequested ·
+           studentIds) فتُردّ — فيصل طلبُ وليّ الأمر بلا أبنائه */
+        kidsRequested: role === "parent" ? readKids() : [],
         createdAt: Date.now()
       }, { merge: true });
 
       /* الأبناء المطلوب ربطهم: تُقرأ في شاشة اعتماد المستخدمين، وتُربط
          الإدارةُ كلَّ اسمٍ بطالبه ثمّ تفتح الحساب. */
-      if (role === "parent") {
-        var kidsReq = readKids();
-        if (kidsReq.length) {
-          await db.collection("users").doc(uid).set({
-            kidsRequested: kidsReq,
-            studentIds: []
-          }, { merge: true });
-        }
-      }
+      /* الأبناءُ كُتبوا مع الطلب أعلاه (kidsRequested) — وربطُهم بطلابهم
+         (studentIds) للإدارة عند الاعتماد */
 
       /* لا يُترك مسجّلاً دخولاً: الحساب موقوف ولا فائدة من الجلسة */
       try { await auth.signOut(); } catch (e) {}

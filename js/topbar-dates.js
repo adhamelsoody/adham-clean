@@ -440,7 +440,19 @@
     if (window.CURRENT_USER) return window.CURRENT_USER;
     try { return (window.STATE && window.STATE.user) || null; } catch (e) { return null; }
   }
-  function ESC(s) { return typeof window.esc === "function" ? window.esc(s) : String(s == null ? "" : s); }
+  /* التعطيلُ لا يتوقّف على وجود esc في الصفحة: بدونها كان النصُّ يُدرج كما هو */
+  function ESC(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  /* رابطُ المرفق: http(s) أو صورةٌ مضمَّنة أو blob أو مسارٌ داخليّ — لا javascript: */
+  function SAFEURL(u) {
+    if (typeof window.safeUrl === "function") return window.safeUrl(u);
+    var v = String(u == null ? "" : u).trim();
+    if (/^(https?:|blob:)/i.test(v) || /^data:image\/(png|jpe?g|gif|webp);/i.test(v)) return v;
+    return /^[a-z][a-z0-9+.-]*:/i.test(v) ? "" : v;
+  }
   function IC(n, s) { return typeof window.ic === "function" ? window.ic(n, s) : ""; }
   function INI(n) { return typeof window.initials === "function" ? window.initials(n) : String(n || "").charAt(0); }
   function CUR(c) { return typeof window.cur === "function" ? window.cur(c) : ((window.DB && window.DB[c]) || []); }
@@ -523,12 +535,12 @@
              "\" style=\"height:32px;max-width:100%;margin-top:8px\"></audio>";
     }
     if (m.image) {
-      out += "<a href=\"" + ESC(m.image) + "\" target=\"_blank\" rel=\"noopener\"" +
-             " style=\"display:block;margin-top:8px\"><img src=\"" + ESC(m.image) +
+      out += "<a href=\"" + ESC(SAFEURL(m.image)) + "\" target=\"_blank\" rel=\"noopener\"" +
+             " style=\"display:block;margin-top:8px\"><img src=\"" + ESC(SAFEURL(m.image)) +
              "\" alt=\"صورة\" style=\"max-width:100%;border-radius:10px\"></a>";
     }
     if (m.file) {
-      out += "<a href=\"" + ESC(m.file) + "\" download=\"" +
+      out += "<a href=\"" + ESC(SAFEURL(m.file)) + "\" download=\"" +
              ESC(m.fileName || "مرفق") + "\"" +
              " style=\"display:inline-flex;gap:6px;align-items:center;margin-top:8px;" +
              "font-size:12.5px\">" + IC("clip", 14) + ESC(m.fileName || "مرفق") + "</a>";

@@ -3613,7 +3613,7 @@ function planRulesCard(pl) {
       <div class="rule-text"><strong>${esc(x.h)}</strong><small>${esc(x.d)}</small></div>
       ${canEdit
         ? `<label class="switch"><input type="checkbox"${on[x.k] ? " checked" : ""}
-            onchange="window.planRuleToggle('${jsAttr(pl.id)}','${esc(x.k)}',this.checked)">
+            onchange="window.planRuleToggle('${jsAttr(pl.id)}','${jsAttr(x.k)}',this.checked)">
            <span class="slider"></span></label>`
         : `<span class="badge ${on[x.k] ? "b-green" : "b-gray"} no-dot">${
             on[x.k] ? "مفعّلة" : "معطّلة"}</span>`}
@@ -3734,7 +3734,7 @@ function dailyDutiesContent(pl) {
 function planRequests(pl) {
   if (!pl.ext.requests.length) return `<div class="card">${emptyState("لا توجد طلبات", "لم يتقدّم المعلم بأي طلب لتعديل هذه الخطة.")}</div>`;
   const sb = { pending: ["قيد الانتظار", "b-amber"], approved: ["مقبول", "b-green"], rejected: ["مرفوض", "b-red"] };
-  return `<div class="grid" style="gap:11px">${pl.ext.requests.map((r, i) => `<div class="req-card ${r.status}">
+  return `<div class="grid" style="gap:11px">${pl.ext.requests.map((r, i) => `<div class="req-card ${esc(r.status)}">
     <div class="req-top">
       <div style="display:flex;gap:10px;align-items:center"><div class="mini-avatar">${initials(r.by)}</div>
         <div><strong style="font-size:13.5px">${esc(r.by)}</strong><div class="muted" style="font-size:11.5px">${esc(r.role)} · ${esc(r.dt)}</div></div></div>
@@ -7313,7 +7313,7 @@ function adminExamsLog() {
     </div>`;
 
   const photo = stu && stu.photo
-    ? `<img src="${esc(stu.photo)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'lg-initials',textContent:'${esc(initials(stu.name || "?"))}'}))">`
+    ? `<img src="${esc(stu.photo)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'lg-initials',textContent:'${jsAttr(initials(stu.name || "?"))}'}))">`
     : `<span class="lg-initials">${stu ? esc(initials(stu.name || "?")) : "—"}</span>`;
 
   return `<div class="page">
@@ -8678,11 +8678,11 @@ function xsPanelBoards() {
         </td>
         <td class="xcm-n">
           <input class="xcm-in" value="${esc(r.name)}" placeholder="اسم اللجنة"
-            oninput="window.xcmName('${r.id}', this.value)">
+            oninput="window.xcmName('${jsAttr(r.id)}', this.value)">
         </td>
         <td>
           <div class="xcm-sel">
-            <select onchange="window.xcmAddMember('${r.id}', this.value); this.value=''">
+            <select onchange="window.xcmAddMember('${jsAttr(r.id)}', this.value); this.value=''">
               <option value="">إختر الاعضاء</option>
               ${pool.filter(p2 => r.members.indexOf(p2.id) === -1)
                     .map(p2 => `<option value="${esc(p2.id)}">${esc(p2.name)}</option>`).join("")}
@@ -8789,13 +8789,13 @@ function xsPanelAuto() {
           <button type="button" class="xau-del" onclick="window.xauDel('${jsAttr(r.id)}')" title="حذف الصف">${TR}</button>
         </td>
         <td class="xcm-n">
-          <div class="xcm-sel"><select onchange="window.xauFac('${r.id}', this.value)">
+          <div class="xcm-sel"><select onchange="window.xauFac('${jsAttr(r.id)}', this.value)">
             <option value="">${facs.length ? "إختر المنشأة" : "لا توجد منشآت"}</option>
             ${facs.map(f => `<option value="${f.id}"${String(f.id) === String(r.facId) ? " selected" : ""}>${esc(f.name || "—")}</option>`).join("")}
           </select>${CH}</div>
         </td>
         <td>
-          <div class="xcm-sel"><select onchange="window.xauAddSup('${r.id}', this.value); this.value=''">
+          <div class="xcm-sel"><select onchange="window.xauAddSup('${jsAttr(r.id)}', this.value); this.value=''">
             <option value="">${sups.length ? "إختر المشرفين" : "لا يوجد مشرفون"}</option>
             ${sups.filter(x => r.supers.indexOf(x.id) === -1)
                   .map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}
@@ -14159,10 +14159,10 @@ function plQtyCtl(k, val, type) {
   if (qtyIsNum(type)) {
     return `<label for="${esc(id)}">${esc(qtyNumLabel(type))}</label>
       <div class="pl-step">
-        <button type="button" onclick="window.plNum('${esc(id)}', 1)">+</button>
+        <button type="button" onclick="window.plNum('${jsAttr(id)}', 1)">+</button>
         <input id="${esc(id)}" type="number" min="0" value="${esc(v.replace(/\D+/g, "")) || 0}"
           oninput="window.plDirty()">
-        <button type="button" onclick="window.plNum('${esc(id)}', -1)">−</button>
+        <button type="button" onclick="window.plNum('${jsAttr(id)}', -1)">−</button>
       </div>`;
   }
   const list = qtyListFor(type).slice();
@@ -14178,7 +14178,7 @@ function sysFields(pid, def) {
   const has = f => (def.fields || []).indexOf(f) > -1;
   const seg = (id, cur2, opts) => `<div class="pl-seg">${opts.map(o =>
     `<button type="button" class="pl-segb${o === cur2 ? " on" : ""}"
-      onclick="window.plSeg(this,'${esc(id)}','${esc(o)}')">${esc(o)}</button>`).join("")}
+      onclick="window.plSeg(this,'${jsAttr(id)}','${jsAttr(o)}')">${esc(o)}</button>`).join("")}
     <input type="hidden" id="${esc(id)}" value="${esc(cur2)}"></div>`;
 
   return `<div class="pl-fields">
@@ -14302,7 +14302,7 @@ window.sysPrgEmpty = function (pid) {
       ${types(val).map(o => `<option${o === val ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
   const dirBtns = (id, val) => `<div class="sp-seg">
       ${PLAN_DIR.map(o => `<button type="button" class="sp-segb${spDirText(val) === o ? " on" : ""}"
-        onclick="window.spDir(this,'${id}','${esc(o)}')">${esc(o)}${
+        onclick="window.spDir(this,'${jsAttr(id)}','${jsAttr(o)}')">${esc(o)}${
           planDirHint(o) ? ` <small>(${esc(planDirHint(o))})</small>` : ""}</button>`).join("")}
       <input type="hidden" id="${id}" value="${esc(val || PLAN_DIR[0])}">
     </div>`;
@@ -14327,12 +14327,12 @@ window.sysPrgEmpty = function (pid) {
     </div>`;
   };
   const tog = (id, on, label) => `<button type="button" class="bpl-tog${on ? " on" : ""}"
-      onclick="window.spTog(this,'${id}')"><span class="bpl-knob"></span>${label ? `<b>${esc(label)}</b>` : ""}</button>
+      onclick="window.spTog(this,'${jsAttr(id)}')"><span class="bpl-knob"></span>${label ? `<b>${esc(label)}</b>` : ""}</button>
     <input type="hidden" id="${id}" value="${on ? 1 : 0}">`;
   const step = (id, v, unit) => `<div class="sp-step">
-      <button type="button" onclick="window.spNum('${id}', 1)">+</button>
+      <button type="button" onclick="window.spNum('${jsAttr(id)}', 1)">+</button>
       <input id="${id}" type="number" min="0" value="${Number(v) || 0}">
-      <button type="button" onclick="window.spNum('${id}', -1)">−</button>
+      <button type="button" onclick="window.spNum('${jsAttr(id)}', -1)">−</button>
     </div><span class="muted" style="font-size:12.5px">${esc(unit)}</span>`;
   const sum = (q, d) => esc(q || "—") + " · " + esc(spDirText(d || PLAN_DIR[0]));
 
@@ -14759,7 +14759,7 @@ function prgLiveFields(p2, sess) {
   const pid = String(p2.id);
   const sel = (label, id, opts, curk, hint) => `
     <div class="sp-field"><label for="${id}">${esc(label)}</label>
-      <select id="${id}" class="sp-sel" onchange="window.prgLiveSet('${jsAttr(pid)}','${id}')">
+      <select id="${id}" class="sp-sel" onchange="window.prgLiveSet('${jsAttr(pid)}','${jsAttr(id)}')">
         ${opts.map(o => `<option value="${esc(o.k)}"${String(o.k) === String(curk)
           ? " selected" : ""}>${esc(o.h)}</option>`).join("")}
       </select>${hint ? `<small class="muted" style="font-size:11px">${esc(hint)}</small>` : ""}</div>`;
@@ -15008,11 +15008,11 @@ function prgDutiesCardHtml(p2) {
         <div class="pdu-schedrow"><label>أيام الواجب</label>
           <div class="pdu-chips">${DOW.map(n => `<button type="button"
             class="prg-sess${(d.days || DOW).indexOf(n) > -1 ? " on" : ""}"
-            onclick="window.prgDutyDay('${pid}','${k}','${esc(n)}',this)">${esc(n)}</button>`).join("")}</div></div>
+            onclick="window.prgDutyDay('${pid}','${k}','${jsAttr(n)}',this)">${esc(n)}</button>`).join("")}</div></div>
         <div class="pdu-schedrow"><label>فتراته</label>
           <div class="pdu-chips">${PRG_SESSIONS.map(n => `<button type="button"
             class="prg-sess${(d.sess || prgSessionsOf(p2)).indexOf(n) > -1 ? " on" : ""}"
-            onclick="window.prgDutySess('${pid}','${k}','${esc(n)}',this)">${esc(n)}</button>`).join("")}</div></div>
+            onclick="window.prgDutySess('${pid}','${k}','${jsAttr(n)}',this)">${esc(n)}</button>`).join("")}</div></div>
       </div>
       ${sc ? `<div class="pdu-scope">
         <div class="pdu-f"><label>يبدأ من</label>
@@ -16543,7 +16543,7 @@ function lvbTransBox(row) {
     <div class="lvb-segs">
       ${trans.map(t => `<button type="button" class="lvb-seg${cur2 === String(t.k) ? " on" : ""}"
         data-t="${esc(t.k)}"
-        onclick="window.lvbOvrSet('${jsAttr(rid)}','defTransition','${esc(t.k)}')"
+        onclick="window.lvbOvrSet('${jsAttr(rid)}','defTransition','${jsAttr(t.k)}')"
         >${esc(t.h)}</button>`).join("")}
     </div>
     ${d ? `<small class="muted">${esc(d)}</small>` : ""}
@@ -17523,13 +17523,13 @@ function planSchedulePanel(pl) {
             <span class="psch-dot" style="background:${esc(t.color || "#4bdee4")}"></span>
             <strong>${esc(t.h)}</strong>
             ${own ? `<button class="psch-reset"
-              onclick="window.planDaysReset('${jsAttr(pl.id)}','${esc(t.k)}')">
+              onclick="window.planDaysReset('${jsAttr(pl.id)}','${jsAttr(t.k)}')">
               خاصّ — عُد للنظام</button>` : `<span class="psch-inherit">من النظام</span>`}
           </div>
           <div class="hw-days">${WEEK_DAYS.map(d =>
             `<label class="hw-day${days.has(d) ? " on" : ""}">
               <input type="checkbox"${days.has(d) ? " checked" : ""}
-                onchange="window.planDaysSet('${jsAttr(pl.id)}','${esc(t.k)}','${esc(d)}',this.checked);
+                onchange="window.planDaysSet('${jsAttr(pl.id)}','${jsAttr(t.k)}','${jsAttr(d)}',this.checked);
                           this.closest('.hw-day').classList.toggle('on',this.checked)">
               <span>${esc(d.replace(/^ال/, "").slice(0, 3))}</span></label>`).join("")}</div>
         </div>`;
@@ -17764,43 +17764,43 @@ function hwTypesPanel() {
       <!-- الترتيب: يُفرز به صفُّ اليوم — التلاوةُ ثمّ الحفظُ ثمّ التثبيت.
            كان يُقرأ في hwTypes ولا سبيل إلى ضبطه. -->
       <td><input type="number" min="0" max="99" value="${esc(Number(t.order) || 0)}" style="width:56px"
-        onchange="window.hwCfgSet('${esc(t.k)}','order',this.value); mount()"></td>
+        onchange="window.hwCfgSet('${jsAttr(t.k)}','order',this.value); mount()"></td>
 
       <td><input value="${esc(t.h)}" style="width:110px"
-        onchange="window.hwCfgSet('${esc(t.k)}','h',this.value)"></td>
+        onchange="window.hwCfgSet('${jsAttr(t.k)}','h',this.value)"></td>
 
-      <td><select onchange="window.hwCfgSet('${esc(t.k)}','unit',this.value)">
+      <td><select onchange="window.hwCfgSet('${jsAttr(t.k)}','unit',this.value)">
         ${HW_UNITS.map(u => `<option value="${esc(u.k)}"${
           t.unit === u.k ? " selected" : ""}>${esc(u.h)}</option>`).join("")}</select></td>
 
       <td>${t.fromLessons
         ? `<span class="muted" style="font-size:11.5px">من آخر
             <input type="number" min="1" max="30" value="${esc(t.lessonsDefault || 5)}" style="width:52px"
-              onchange="window.hwCfgSet('${esc(t.k)}','lessonsDefault',this.value)"> دروس</span>`
+              onchange="window.hwCfgSet('${jsAttr(t.k)}','lessonsDefault',this.value)"> دروس</span>`
         : `<input type="number" min="0" step="0.5" value="${esc(t.qty)}" style="width:72px"
-            onchange="window.hwCfgSet('${esc(t.k)}','qty',this.value)">`}</td>
+            onchange="window.hwCfgSet('${jsAttr(t.k)}','qty',this.value)">`}</td>
 
       <td><div class="hw-days">${WEEK_DAYS.map(d =>
         `<label class="hw-day${days.has(d) ? " on" : ""}" title="${esc(d)}">
           <input type="checkbox"${days.has(d) ? " checked" : ""}
-            onchange="window.hwDaysToggle('${esc(t.k)}','${esc(d)}',this.checked);
+            onchange="window.hwDaysToggle('${jsAttr(t.k)}','${jsAttr(d)}',this.checked);
                       this.closest('.hw-day').classList.toggle('on',this.checked)">
           <span>${esc(d.replace(/^ال/, "").slice(0, 3))}</span></label>`).join("")}</div></td>
 
       <td><label class="switch"><input type="checkbox"${t.on ? " checked" : ""}
-        onchange="window.hwCfgSet('${esc(t.k)}','on',this.checked)">
+        onchange="window.hwCfgSet('${jsAttr(t.k)}','on',this.checked)">
         <span class="slider"></span></label></td>
 
       <!-- المواصفات: «عند إضافة الواجب يظهر له خياران: مرتبط بواجب آخر،
            أو مرتبط بنطاق ويختار سور النطاق» -->
-      <td><select onchange="window.hwLinkMode('${esc(t.k)}',this.value)">
+      <td><select onchange="window.hwLinkMode('${jsAttr(t.k)}',this.value)">
         <option value=""${!t.loopOf && !t.scopeFrom ? " selected" : ""}>بلا ارتباط</option>
         <option value="task"${t.loopOf ? " selected" : ""}>مرتبط بواجب</option>
         <option value="scope"${t.scopeFrom ? " selected" : ""}>مرتبط بنطاق</option>
       </select>
 
       ${t.loopOf !== undefined && t.loopOf ? `<div style="margin-top:6px">
-        <select onchange="window.hwCfgSet('${esc(t.k)}','loopOf',this.value)">
+        <select onchange="window.hwCfgSet('${jsAttr(t.k)}','loopOf',this.value)">
           ${hwTypes(true).filter(x => x.k !== t.k).map(x =>
             `<option value="${esc(x.k)}"${t.loopOf === x.k ? " selected" : ""}>${
               esc(x.h)}</option>`).join("")}
@@ -17808,39 +17808,39 @@ function hwTypesPanel() {
 
       ${t.scopeFrom ? `<div class="hw-scope">
         <select data-surah="" data-val="${esc(t.scopeFrom)}"
-          onchange="window.hwCfgSet('${esc(t.k)}','scopeFrom',this.value)">
+          onchange="window.hwCfgSet('${jsAttr(t.k)}','scopeFrom',this.value)">
           ${(typeof QSURAHS !== "undefined" && QSURAHS ? QSURAHS : []).map(x =>
             `<option value="${x.i}"${Number(t.scopeFrom) === x.i ? " selected" : ""}>${
               esc(x.n)}</option>`).join("")}
         </select>
         <input type="number" min="1" max="286" style="width:56px" title="آية البداية"
           value="${esc(Number(t.scopeFromA) || 1)}"
-          onchange="window.hwCfgSet('${esc(t.k)}','scopeFromA',this.value)">
+          onchange="window.hwCfgSet('${jsAttr(t.k)}','scopeFromA',this.value)">
         <span>→</span>
         <select data-surah="" data-val="${esc(t.scopeTo)}"
-          onchange="window.hwCfgSet('${esc(t.k)}','scopeTo',this.value)">
+          onchange="window.hwCfgSet('${jsAttr(t.k)}','scopeTo',this.value)">
           ${(typeof QSURAHS !== "undefined" && QSURAHS ? QSURAHS : []).map(x =>
             `<option value="${x.i}"${Number(t.scopeTo) === x.i ? " selected" : ""}>${
               esc(x.n)}</option>`).join("")}
         </select>
         <input type="number" min="0" max="286" style="width:56px" title="آية النهاية — صفرٌ يعني آخر السورة"
           value="${esc(Number(t.scopeToA) || 0)}"
-          onchange="window.hwCfgSet('${esc(t.k)}','scopeToA',this.value)">
+          onchange="window.hwCfgSet('${jsAttr(t.k)}','scopeToA',this.value)">
         </div>` : ""}
       </td>
 
       <!-- الواجب المصيري: تركه يقفل حفظ الغد -->
       <td><label class="switch"><input type="checkbox"${t.critical ? " checked" : ""}
-        onchange="window.hwCfgSet('${esc(t.k)}','critical',this.checked); mount()">
+        onchange="window.hwCfgSet('${jsAttr(t.k)}','critical',this.checked); mount()">
         <span class="slider"></span></label></td>
 
       <!-- يقبل التقسيم على جلسات: يظهر للمعلّم زرّ + -->
       <td><label class="switch"><input type="checkbox"${t.split ? " checked" : ""}
-        onchange="window.hwCfgSet('${esc(t.k)}','split',this.checked)">
+        onchange="window.hwCfgSet('${jsAttr(t.k)}','split',this.checked)">
         <span class="slider"></span></label></td>
 
       <!-- يسبقه: لا يُرصد هذا حتى يُسمَّع ذاك. المفتاح كان يُقرأ ولا يُكتب -->
-      <td><select onchange="window.hwCfgSet('${esc(t.k)}','after',this.value)">
+      <td><select onchange="window.hwCfgSet('${jsAttr(t.k)}','after',this.value)">
         <option value="">— لا شيء —</option>
         ${hwTypes(true).filter(x => x.k !== t.k).map(x =>
           `<option value="${esc(x.k)}"${t.after === x.k ? " selected" : ""}>${
@@ -17848,7 +17848,7 @@ function hwTypesPanel() {
       </select></td>
 
       <td>${t.custom ? `<button class="row-btn cp-danger"
-        onclick="window.hwDelType('${esc(t.k)}')" title="حذف">${ic("trash", 14)}</button>`
+        onclick="window.hwDelType('${jsAttr(t.k)}')" title="حذف">${ic("trash", 14)}</button>`
         : `<span class="muted" style="font-size:11px">أساسي</span>`}</td>
     </tr>`;
   }).join("");
@@ -18709,7 +18709,7 @@ function asgCard(studentId, dateISO, forTeacher) {
         (a.toS ? ` — ${esc(surahName(a.toS))} ${toArabicDigits(asgAyahShown(a.toS, a.toA))}` : "")
       : "";
 
-    return `<div class="asg-row ${a.status}">
+    return `<div class="asg-row ${esc(a.status)}">
       <span class="asg-dot" style="background:${esc(t.color || "#4bdee4")}"></span>
       <div class="asg-body">
         <strong>${esc(a.kindName || t.h)}</strong>
@@ -23215,7 +23215,7 @@ window.ptsGrant = function (studentId) {
     `<input type="hidden" id="pg_sid" value="${esc(st.id)}">
      <div class="pts-reasons">
        ${PTS_REASONS.map(r => `<button type="button" class="pts-reason"
-         onclick="window.ptsPick('${esc(r.k)}',${r.v},this)">
+         onclick="window.ptsPick('${jsAttr(r.k)}',${r.v},this)">
          <strong>${esc(r.h)}</strong>${r.v ? `<span>+${toArabicDigits(r.v)}</span>` : ""}
        </button>`).join("")}
      </div>
@@ -25668,7 +25668,10 @@ window.msgSendWa = function (id) {
   const m = (cur("msgOutbox") || []).find(x => String(x.id) === String(id));
   if (!m) return;
   if (!m.wa) { showToast("لا رقم جوال مسجَّل لهذه الجهة", "warn"); return; }
-  window.open(m.wa, "_blank", "noopener");
+  /* الرابطُ من السجلّ: http(s) وحدَه يُفتح — لا javascript: */
+  const waUrl = safeUrl(m.wa);
+  if (!/^https?:/i.test(waUrl)) { showToast("رابط الواتساب غير صالح", "warn"); return; }
+  window.open(waUrl, "_blank", "noopener");
   window.msgMarkSent(id);
 };
 
@@ -25975,13 +25978,13 @@ function setPanelMessages() {
             إلى ${esc(TO_AR[e.to] || e.to)}</div></div>
         <label class="switch" style="margin-inline-start:auto">
           <input type="checkbox"${e.on ? " checked" : ""}
-            onchange="window.msgEvSet('${esc(e.k)}','on',this.checked);
+            onchange="window.msgEvSet('${jsAttr(e.k)}','on',this.checked);
                       this.closest('.msg-ev').classList.toggle('off',!this.checked)">
           <span class="slider"></span></label>
       </div>
       <div style="padding:0 16px 16px">
         <textarea class="msg-body" rows="2"
-          onchange="window.msgEvSet('${esc(e.k)}','body',this.value)">${esc(e.body)}</textarea>
+          onchange="window.msgEvSet('${jsAttr(e.k)}','body',this.value)">${esc(e.body)}</textarea>
       </div>
     </div>`).join("")}
 
@@ -32741,12 +32744,12 @@ function msgMediaHTML(m) {
   }
 
   if (m.image) {
-    out += `<a class="msg-img" href="${esc(m.image)}" target="_blank"
-      rel="noopener" title="فتحُ الصورة"><img src="${esc(m.image)}" alt="صورة"></a>`;
+    out += `<a class="msg-img" href="${esc(safeUrl(m.image))}" target="_blank"
+      rel="noopener" title="فتحُ الصورة"><img src="${esc(safeUrl(m.image))}" alt="صورة"></a>`;
   }
 
   if (m.file) {
-    out += `<a class="msg-file" href="${esc(m.file)}"
+    out += `<a class="msg-file" href="${esc(safeUrl(m.file))}"
       download="${esc(m.fileName || "مرفق")}">${ic("clip", 15)}
       <span><strong>${esc(m.fileName || "مرفق")}</strong>${
         m.fileSize ? `<i>${esc(msgSizeText(m.fileSize))}</i>` : ""}</span>${
@@ -34884,7 +34887,7 @@ function tstuPlanBox(st) {
   /* اللفظُ على الزرّ بعُرف صاحب النظام، والقيمةُ المخزَّنةُ كما هي */
   const dirBtns = (name, v, opts) => `<div class="sp-seg">
       ${opts.map(o => `<button type="button" class="sp-segb${o === v ? " on" : ""}"
-        onclick="window.tstuDirSet(this,'${name}','${esc(o)}')">${esc(o)}${
+        onclick="window.tstuDirSet(this,'${name}','${jsAttr(o)}')">${esc(o)}${
           planDirHint(o) ? ` <small>(${esc(planDirHint(o))})</small>` : ""}</button>`).join("")}
       <input type="hidden" id="${name}" value="${esc(v)}">
     </div>`;
@@ -38828,7 +38831,7 @@ function teacherAttendance() {
 
     return `<tr class="${isDraft ? "att-unsaved" : ""}${duty ? "" : " att-offduty"}">
       <td class="pt-check"><button class="pt-box ${on ? "on" : ""}"
-        onclick="window.attToggleSel('${esc(String(s.id))}')" aria-label="تحديد">${CHK}</button></td>
+        onclick="window.attToggleSel('${jsAttr(String(s.id))}')" aria-label="تحديد">${CHK}</button></td>
       <td><div class="td-name"><div class="mini-avatar">${initials(s.name)}</div>
         <div><div class="td-strong">${esc(s.name)}${duty ? "" :
           ` <span class="att-tag">ليس يوم دوامه</span>`}</div>
@@ -38849,7 +38852,7 @@ function teacherAttendance() {
             title="${cs.leftAt ? "غادر " + esc(cs.leftAt) : "رصد مغادرة"}">${
             ic("clock", 14)}</button>` : ""}${cs
         ? `<button class="row-btn" title="حذف تحضير اليوم"
-            onclick="window.attClear('${esc(String(s.id))}')">${ic("trash", 14)}</button>`
+            onclick="window.attClear('${jsAttr(String(s.id))}')">${ic("trash", 14)}</button>`
         : ""}</td>
     </tr>`;
   };
@@ -39531,13 +39534,13 @@ function musCfgPanel() {
       <td><strong>${esc(k)}</strong>
         <div class="muted" style="font-size:11px">${esc(d.h)}</div></td>
       <td><input value="${esc(c.h)}" style="width:100%"
-        onchange="window.musCfgSet('${esc(k)}','h',this.value)"></td>
+        onchange="window.musCfgSet('${jsAttr(k)}','h',this.value)"></td>
       <td><input type="color" value="${esc(c.color)}" class="mus-color"
-        onchange="window.musCfgSet('${esc(k)}','color',this.value)"></td>
+        onchange="window.musCfgSet('${jsAttr(k)}','color',this.value)"></td>
       <td><input type="number" min="0" max="50" value="${esc(c.weight)}" style="width:72px"
-        onchange="window.musCfgSet('${esc(k)}','weight',this.value)"></td>
+        onchange="window.musCfgSet('${jsAttr(k)}','weight',this.value)"></td>
       <td><label class="switch"><input type="checkbox"${c.on ? " checked" : ""}
-        onchange="window.musCfgSet('${esc(k)}','on',this.checked)">
+        onchange="window.musCfgSet('${jsAttr(k)}','on',this.checked)">
         <span class="slider"></span></label></td>
     </tr>`;
   }).join("");
@@ -40307,7 +40310,7 @@ function muspRow(k, h, d) {
   return `<label class="msp-row">
     <span class="msp-t"><strong>${esc(h)}</strong>${d ? `<small>${esc(d)}</small>` : ""}</span>
     <span class="sy-sw"><input type="checkbox"${on ? " checked" : ""}
-      onchange="window.muspSet('${esc(k)}', this.checked)"><span></span></span>
+      onchange="window.muspSet('${jsAttr(k)}', this.checked)"><span></span></span>
   </label>`;
 }
 
@@ -41509,7 +41512,24 @@ function mushafPage() {
 /* أرقام الآيات بالأرقام العربية الهندية كما في المصحف */
 function toArabicDigits(n) {
   const d = "٠١٢٣٤٥٦٧٨٩";
-  return String(n).replace(/[0-9]/g, c => d[Number(c)]);
+  /* تُدرج نتيجتُها في الصفحة مباشرةً في أكثر من خمسمئة موضع، وكثيرٌ منها
+     حقولٌ من السجلّ (المقدار والدرجة ودقائق التأخّر) يكتبها المعلّم. فقيمةٌ
+     نصّيّةٌ فيها وسمٌ تُنفَّذ في متصفّح المدير. فتُعطَّل رموزُ HTML هنا —
+     والأرقامُ والتواريخُ والأوقاتُ لا تحمل شيئاً منها فلا يتغيّر عرضُها. */
+  return String(n).replace(/[0-9]/g, c => d[Number(c)])
+    .replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* رابطُ مرفقٍ أو صورة: http(s) أو صورةٌ مضمَّنة (data:image) أو blob أو
+   مسارٌ داخليّ — وما سواه (javascript: ونحوه) يُرفض فلا يُنفَّذ بالنقر */
+function safeUrl(u) {
+  const v = String(u == null ? "" : u).trim();
+  if (!v) return "";
+  if (/^(https?:|blob:)/i.test(v)) return v;
+  if (/^data:image\/(png|jpe?g|gif|webp);/i.test(v)) return v;
+  if (/^data:(audio|application\/pdf)[^,]*,/i.test(v)) return v;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return "";
+  return v;                                   /* مسارٌ نسبيّ */
 }
 
 /* =========================================================================
@@ -41745,9 +41765,9 @@ function teacherRecite() {
       <div style="flex:1">
         <strong style="font-size:13.5px">${esc(r.student)}</strong>
         <div class="muted" style="font-size:12px">
-          ${esc(r.kind)} — ${esc(r.fromName)} ${r.fromA} إلى ${esc(r.toName)} ${r.toA}
+          ${esc(r.kind)} — ${esc(r.fromName)} ${toArabicDigits(r.fromA)} إلى ${esc(r.toName)} ${toArabicDigits(r.toA)}
           ${r.faces ? " · " + r.faces + " وجه" : ""}
-          ${r.errors || r.tajweed ? " · أخطاء " + (r.errors || 0) + "/" + (r.tajweed || 0) : ""}
+          ${r.errors || r.tajweed ? " · أخطاء " + toArabicDigits(r.errors || 0) + "/" + toArabicDigits(r.tajweed || 0) : ""}
         </div>
         ${r.note ? `<div class="muted" style="font-size:11.5px">${esc(r.note)}</div>` : ""}
       </div>
@@ -42753,7 +42773,7 @@ function teacherTomorrow() {
 
     return `<tr class="${isTom ? "" : "row-todo"}">
       <td class="pt-check"><button class="pt-box ${on ? "on" : ""}"
-        onclick="window.dutyToggle('${esc(String(x.id))}')" aria-label="تحديد">${DCHK}</button></td>
+        onclick="window.dutyToggle('${jsAttr(String(x.id))}')" aria-label="تحديد">${DCHK}</button></td>
 
       <td><div class="td-name"><div class="mini-avatar">${initials(x.name)}</div>
         <div><div class="td-strong">${esc(x.name)}</div>
@@ -42847,7 +42867,7 @@ function teacherDuties() {
     const on = !!dutySel()[String(x.id)];
     return `<tr class="${p ? "" : "row-todo"}">
       <td class="pt-check"><button class="pt-box ${on ? "on" : ""}"
-        onclick="window.dutyToggle('${esc(String(x.id))}')" aria-label="تحديد">${DCHK}</button></td>
+        onclick="window.dutyToggle('${jsAttr(String(x.id))}')" aria-label="تحديد">${DCHK}</button></td>
       <td><div class="td-name"><div class="mini-avatar">${initials(x.name)}</div>
         <div><div class="td-strong">${esc(x.name)}</div>
         <div class="muted" style="font-size:11.5px">${esc(x.circle || "—")}</div></div></div></td>
@@ -42959,7 +42979,7 @@ function teacherPlans() {
   const rows = studs.map(x => {
     const px = planOfStudent(x);
     const on = st && String(st.id) === String(x.id);
-    return `<button type="button" class="tp-row ${on ? "on" : ""}" onclick="window.tpPick('${esc(String(x.id))}')">
+    return `<button type="button" class="tp-row ${on ? "on" : ""}" onclick="window.tpPick('${jsAttr(String(x.id))}')">
       <span class="mini-avatar">${initials(x.name)}</span>
       <span class="tp-name">${esc(x.name)}
         <span class="tp-sub">${px ? esc(px.current || "بلا موضع محدَّد") : "بلا خطة"}</span></span>
@@ -43372,7 +43392,7 @@ function kidSwitcher() {
   return `<div class="kid-bar">
     <span class="kid-lbl">الابن</span>
     ${list.map(s => `<button type="button" class="kid-chip ${cur2 && String(cur2.id) === String(s.id) ? "on" : ""}"
-      onclick="window.pickKid('${esc(String(s.id))}')">
+      onclick="window.pickKid('${jsAttr(String(s.id))}')">
       <span class="kid-av">${initials(s.name)}</span>${esc(s.name)}</button>`).join("")}
   </div>`;
 }
@@ -48207,12 +48227,12 @@ function photoField(id, current, label) {
         <button type="button" class="btn btn-ghost btn-sm"
           onclick="document.getElementById('${id}_input').click()">${ic("plus", 15)} اختر صورة</button>
         <button type="button" class="btn btn-ghost btn-sm" id="${id}_del"
-          onclick="window.photoClear('${id}')" ${src ? "" : 'style="display:none"'}>${ic("x", 15)} إزالة</button>
+          onclick="window.photoClear('${jsAttr(id)}')" ${src ? "" : 'style="display:none"'}>${ic("x", 15)} إزالة</button>
         <div class="muted" style="font-size:11.5px">JPG أو PNG — تُصغَّر تلقائياً</div>
       </div>
     </div>
     <input type="file" id="${id}_input" accept="image/*" style="display:none"
-      onchange="window.photoPick(this, '${id}')">
+      onchange="window.photoPick(this, '${jsAttr(id)}')">
   </div>`;
 }
 
@@ -49409,9 +49429,9 @@ function spQtyCtl(id, val, type) {
   if (qtyIsNum(type)) {
     return `<label for="${id}">${esc(qtyNumLabel(type))}</label>
       <div class="sp-step">
-        <button type="button" onclick="window.spNum('${id}', 1)">+</button>
+        <button type="button" onclick="window.spNum('${jsAttr(id)}', 1)">+</button>
         <input id="${id}" type="number" min="0" value="${esc(v.replace(/\D+/g, "")) || 0}">
-        <button type="button" onclick="window.spNum('${id}', -1)">−</button>
+        <button type="button" onclick="window.spNum('${jsAttr(id)}', -1)">−</button>
       </div>`;
   }
   const list = qtyListFor(type).slice();
@@ -49889,7 +49909,7 @@ function panelStudent(id, keepDraft) {
 
   const DAYS = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
   const dayBtns = DAYS.map(d => `<button type="button" class="sp-day${days.indexOf(d) > -1 ? " on" : ""}"
-      onclick="window.spDay(this,'${esc(d)}')">${esc(d)}</button>`).join("");
+      onclick="window.spDay(this,'${jsAttr(d)}')">${esc(d)}</button>`).join("");
 
   const qtySel = (id, val, opts, onch) => `<select id="${id}" class="sp-sel"${
       onch ? ` onchange="${onch}"` : ""}>
@@ -49898,7 +49918,7 @@ function panelStudent(id, keepDraft) {
   /* اللفظُ على الزرّ بعُرف صاحب النظام، والقيمةُ المخزَّنةُ كما هي */
   const dirBtns = (name, val, opts) => `<div class="sp-seg">
       ${opts.map(o => `<button type="button" class="sp-segb${o === val ? " on" : ""}"
-        onclick="window.spDir(this,'${name}','${esc(o)}')">${esc(o)}${
+        onclick="window.spDir(this,'${name}','${jsAttr(o)}')">${esc(o)}${
           planDirHint(o) ? ` <small>(${esc(planDirHint(o))})</small>` : ""}</button>`).join("")}
       <input type="hidden" id="${name}" value="${esc(val)}">
     </div>`;
@@ -52542,7 +52562,7 @@ function qaRowsHTML(rid) {
         title="المفضّلة" onclick="window.qaFavToggle('${jsAttr(rid)}',${s.surahNumber})">
         ${ic("star", 15)}</button>
       ${QA_ALLOW_DOWNLOAD ? `<a class="qa-rdl" title="تحميل" download
-        href="${esc(s.audioUrl)}">${ic("download", 15)}</a>` : ""}
+        href="${esc(safeUrl(s.audioUrl))}">${ic("download", 15)}</a>` : ""}
     </div>`;
   }).join("");
 }
@@ -53338,7 +53358,7 @@ function attExcuseAsk(studentId, forSelected) {
         <input id="attReason" value="${esc(prev)}" placeholder="مثال: ظرف عائلي · مراجعة طبية"></div>
       <div class="field full"><div class="chip-list">
         ${["ظرف عائلي", "مراجعة طبية", "سفر", "عذر دراسي"].map(r =>
-          `<button type="button" class="chip" onclick="document.getElementById('attReason').value='${esc(r)}'">${esc(r)}</button>`).join("")}
+          `<button type="button" class="chip" onclick="document.getElementById('attReason').value='${jsAttr(r)}'">${esc(r)}</button>`).join("")}
       </div></div>
     </div>`,
     `<button class="btn btn-primary" data-action="att-excuse-save" data-ids="${esc(ids.join(","))}">${ic("check", 16)} تسجيل الاستئذان</button>
@@ -58119,7 +58139,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261024-0105";
+    return "20261024-0200";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
