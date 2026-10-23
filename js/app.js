@@ -12653,8 +12653,10 @@ window.setLogoPick = function (input) {
   const r = new FileReader();
   r.onerror = function () { showToast("تعذّرت قراءة الملف", "warn"); };
   r.onload = function () {
-    const cx = cur("complexes").find(c => String(c.id) === String(STATE.complexId)) || cur("complexes")[0];
-    if (cx) { cx.photo = r.result; persistSet("complexes", cx); showToast("حُدِّث الشعار", "success"); mount(); }
+    /* الشعارُ للمنشأة المعروضة نفسِها (setFacRec) — لا لأوّل مجمّعٍ في القائمة */
+    const fac = setFacRec(), cx = fac.rec;
+    if (!cx) { showToast("حسابك غير مرتبط بمنشأة — لا يُحفظ الشعار", "warn"); return; }
+    cx.photo = r.result; persistSet(fac.coll, cx); showToast("حُدِّث الشعار", "success"); mount();
   };
   r.readAsDataURL(f);
 };
@@ -12719,29 +12721,62 @@ function setPanelMain() {
   const cal = (DB.settings || {}).calendar || "هجري";
   const CAM = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A1.5 1.5 0 014.5 7h2.7l1.2-2h6.2l1.2 2h2.7A1.5 1.5 0 0120 8.5v9A1.5 1.5 0 0118.5 19h-14A1.5 1.5 0 013 17.5z"/><circle cx="11.5" cy="12.6" r="3.4"/></svg>';
 
-  return `<div class="st-panel">
-    <div class="st-bar">بيانات الفرع</div>
-
-    <div class="st-logo-wrap">
-      <div class="st-logo">${cx.photo ? `<img src="${esc(cx.photo)}" alt="">`
-        : `<span class="st-logo-empty">${ic("mosque", 40)}</span>`}</div>
-      <button type="button" class="st-cam" onclick="window.setLogo()" title="تغيير الشعار">${CAM}</button>
-      <input type="file" id="stLogoFile" accept="image/*" hidden onchange="window.setLogoPick(this)">
+  /* =======================================================================
+     «خلّي بيانات الفرع بروفيشنال»: هويةُ الفرع في بطاقةٍ واحدة — الشعارُ
+     بجوار الاسم والمدير — والتقويمُ اختيارٌ مقطّعٌ بدل قائمةٍ منسدلة كانت
+     تظهر رماديّةً بسهمٍ مكسور. والمعرّفاتُ كما هي (stName · stManager ·
+     stCal · stLogoFile) فلا يتغيّر الحفظ.
+     ======================================================================= */
+  const calBtn = v => `<button type="button" role="radio" aria-checked="${cal === v}"
+      class="stp-segb${cal === v ? " on" : ""}" onclick="window.stpCal(this,'${v}')">${esc(v)}</button>`;
+  return `<div class="st-panel st-pro">
+    <div class="stp-head">
+      <span class="stp-head-ic">${ic("building", 20)}</span>
+      <div><h2>بيانات الفرع</h2><p>اسمُ الفرع وشعارُه ومديرُه، والتقويمُ الذي تُعرض به التواريخ</p></div>
     </div>
 
-    <div class="st-grid">
-      ${setField("اسم الفرع", "stName", cx.name || "")}
-      ${setField("مدير الفرع", "stManager", cx.manager || "")}
-    </div>
+    <section class="stp-card stp-identity">
+      <div class="stp-logo-col">
+        <div class="st-logo">${cx.photo ? `<img src="${esc(cx.photo)}" alt="شعار الفرع">`
+          : `<span class="st-logo-empty">${ic("mosque", 40)}</span>`}</div>
+        <button type="button" class="stp-logo-btn" onclick="window.setLogo()">${CAM}<span>${cx.photo ? "تغيير الشعار" : "رفع الشعار"}</span></button>
+        <small>صورة PNG أو JPG — حتى ٩٠٠ ك.ب</small>
+        <input type="file" id="stLogoFile" accept="image/*" hidden onchange="window.setLogoPick(this)">
+      </div>
+      <div class="stp-fields">
+        <div class="stp-field">
+          <label for="stName">اسم الفرع <b>*</b></label>
+          <input id="stName" type="text" value="${esc(cx.name || "")}" placeholder="مثال: مجمّع الإخلاص" autocomplete="off">
+        </div>
+        <div class="stp-field">
+          <label for="stManager">مدير الفرع</label>
+          <input id="stManager" type="text" value="${esc(cx.manager || "")}" placeholder="اسم المسؤول عن الفرع" autocomplete="off">
+        </div>
+      </div>
+    </section>
 
-    <div class="st-bar">التقويم السنوي</div>
-    <div class="st-grid one">
-      ${setField("نوع التقويم", "stCal", cal, "select", ["هجري", "ميلادي"])}
-    </div>
+    <section class="stp-card">
+      <div class="stp-sec-h">
+        <span class="stp-sec-ic">${ic("calendar", 18)}</span>
+        <div><h3>التقويم السنوي</h3><p>يُعرض به التاريخ في الحضور والتقارير</p></div>
+      </div>
+      <div class="stp-seg" role="radiogroup" aria-label="نوع التقويم">${calBtn("هجري")}${calBtn("ميلادي")}</div>
+      <input type="hidden" id="stCal" value="${esc(cal)}">
+    </section>
 
-    <button type="button" class="st-save" onclick="window.setSave()">حفظ التعديلات</button>
+    <div class="stp-foot">
+      <button type="button" class="st-save stp-save" onclick="window.setSave()">${ic("check", 18)}<span>حفظ التعديلات</span></button>
+    </div>
   </div>`;
 }
+window.stpCal = function (btn, v) {
+  const h = document.getElementById("stCal");
+  if (h) h.value = v;
+  const box = btn && btn.parentElement;
+  if (box) box.querySelectorAll(".stp-segb").forEach(b => {
+    const on = b === btn; b.classList.toggle("on", on); b.setAttribute("aria-checked", on ? "true" : "false");
+  });
+};
 
 
 /* =========================================================================
@@ -58077,7 +58112,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261024-0030";
+    return "20261024-0050";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;

@@ -14078,3 +14078,103 @@ th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-c
 .sh-tools .rc-ic svg { width: 21px; height: 21px; }
 .rc-ic.crd:hover { background: #43e2e8; }
 html[data-theme="dark"] .sh-ic { background: var(--surface-2); border-color: var(--border); }
+
+/* =========================================================================
+   «بيانات الفرع» — شكلٌ احترافيّ
+   -------------------------------------------------------------------------
+   رأسٌ بعنوانٍ ووصف بدل الشريطين العريضين، وبطاقةُ هويةٍ واحدة: الشعارُ
+   بجوار الاسم والمدير، والتقويمُ اختيارٌ مقطّع، وزرُّ الحفظ في تذييلٍ ثابت
+   الحدّ. كلُّه تحت .st-pro فلا يمسّ لوحاتِ الإعدادات الأخرى.
+   ========================================================================= */
+.st-pro { padding: 0; }
+.st-pro .stp-head {
+  display: flex; align-items: center; gap: 14px;
+  padding: 20px 24px; border-bottom: 1px solid #edf1f1;
+  background: linear-gradient(180deg, #f7fbfb, #fff);
+}
+.st-pro .stp-head-ic, .st-pro .stp-sec-ic {
+  width: 42px; height: 42px; border-radius: 12px; flex: none;
+  display: grid; place-items: center; background: #e3f5f5; color: #128c90;
+}
+.st-pro .stp-sec-ic { width: 36px; height: 36px; border-radius: 10px; }
+.st-pro h2 { margin: 0; font-size: 18px; font-weight: 800; color: #17393a; }
+.st-pro h3 { margin: 0; font-size: 15px; font-weight: 700; color: #17393a; }
+.st-pro .stp-head p, .st-pro .stp-sec-h p { margin: 3px 0 0; font-size: 12.5px; color: #6d8586; }
+
+.st-pro .stp-card {
+  margin: 20px 24px 0; padding: 20px;
+  border: 1px solid #e6eded; border-radius: 14px; background: #fff;
+}
+.st-pro .stp-identity { display: grid; grid-template-columns: 180px 1fr; gap: 26px; align-items: start; }
+.st-pro .stp-logo-col { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.st-pro .st-logo {
+  width: 150px; height: 150px; border-radius: 16px;
+  background: #f6fafa; border: 1.5px dashed #c9dcdc;
+}
+.st-pro .st-logo img { padding: 10px; }
+.st-pro .stp-logo-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 38px; padding: 0 14px; border-radius: 10px;
+  border: 1px solid #cfe3e3; background: #fff; color: #128c90;
+  font-family: var(--ff); font-size: 13.5px; font-weight: 700; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.st-pro .stp-logo-btn:hover { background: #eef8f8; border-color: #15a2a7; }
+.st-pro .stp-logo-col small { font-size: 11.5px; color: #8a9d9e; }
+
+.st-pro .stp-fields { display: grid; gap: 18px; padding-top: 6px; }
+.st-pro .stp-field { display: grid; gap: 7px; }
+.st-pro .stp-field label { font-size: 13px; font-weight: 700; color: #3d5a5b; }
+.st-pro .stp-field label b { color: #d64541; font-weight: 700; }
+.st-pro .stp-field input {
+  height: 48px; padding: 0 14px; box-sizing: border-box; width: 100%;
+  border: 1.5px solid #dfe6e6; border-radius: 10px; background: #fff;
+  font-family: var(--ff); font-size: 15px; color: #1f3536; outline: 0;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.st-pro .stp-field input::placeholder { color: #a7b6b7; }
+.st-pro .stp-field input:hover { border-color: #bcd2d2; }
+.st-pro .stp-field input:focus { border-color: #15a2a7; box-shadow: 0 0 0 3px rgba(21,162,167,.14); }
+
+.st-pro .stp-sec-h { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.st-pro .stp-seg {
+  display: inline-flex; padding: 4px; gap: 4px;
+  background: #f1f6f6; border: 1px solid #e2ebeb; border-radius: 12px;
+}
+.st-pro .stp-segb {
+  min-width: 120px; height: 40px; padding: 0 18px; border: 0; border-radius: 9px;
+  background: transparent; color: #4d6667; cursor: pointer;
+  font-family: var(--ff); font-size: 14.5px; font-weight: 700;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.st-pro .stp-segb:hover { color: #128c90; }
+.st-pro .stp-segb.on { background: #15a2a7; color: #fff; box-shadow: 0 2px 6px rgba(21,162,167,.28); }
+
+.st-pro .stp-foot {
+  display: flex; justify-content: flex-end; margin-top: 22px;
+  padding: 16px 24px; border-top: 1px solid #edf1f1; background: #fafcfc;
+}
+.st-pro .stp-save {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  margin: 0; min-width: 200px; height: 46px; padding: 0 24px; border-radius: 10px;
+}
+
+html[data-theme="dark"] .st-pro .stp-head, html[data-theme="dark"] .st-pro .stp-foot { background: var(--surface-2); border-color: var(--border); }
+html[data-theme="dark"] .st-pro .stp-card { background: var(--surface); border-color: var(--border); }
+html[data-theme="dark"] .st-pro h2, html[data-theme="dark"] .st-pro h3, html[data-theme="dark"] .st-pro .stp-field label { color: var(--text-main); }
+html[data-theme="dark"] .st-pro .stp-field input, html[data-theme="dark"] .st-pro .stp-logo-btn,
+html[data-theme="dark"] .st-pro .st-logo { background: var(--surface-2); border-color: var(--border); color: var(--text-main); }
+html[data-theme="dark"] .st-pro .stp-seg { background: var(--surface-2); border-color: var(--border); }
+html[data-theme="dark"] .st-pro .stp-segb { color: var(--text-main); }
+html[data-theme="dark"] .st-pro .stp-segb.on { color: #fff; }
+html[data-theme="dark"] .st-pro .stp-head-ic, html[data-theme="dark"] .st-pro .stp-sec-ic { background: var(--surface-3); }
+
+@media (max-width: 760px) {
+  .st-pro .stp-identity { grid-template-columns: 1fr; }
+  .st-pro .stp-card { margin-inline: 14px; padding: 16px; }
+  .st-pro .stp-head { padding: 16px 14px; }
+  .st-pro .stp-seg { display: flex; }
+  .st-pro .stp-segb { flex: 1; min-width: 0; }
+  .st-pro .stp-foot { padding: 14px; }
+  .st-pro .stp-save { width: 100%; }
+}
