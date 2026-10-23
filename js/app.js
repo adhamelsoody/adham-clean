@@ -2856,7 +2856,7 @@ function adminStudents() {
             data-action="toggle-student" data-id="${p2.id}"
             title="${active ? "إيقاف مؤقت" : "تفعيل"}">${ic(active ? "pause" : "play", 14)}</button>
           <button class="row-btn rb-edit" data-action="edit-student" data-id="${p2.id}" title="تعديل">${ic("edit", 14)}</button>
-          <button class="row-btn rb-del" data-action="delete-student" data-id="${p2.id}" title="حذف">${ic("x", 14)}</button></td>` }
+          <button class="row-btn rb-del" data-action="delete-student" data-id="${p2.id}" title="حذف">${ic("trash", 14)}</button></td>` }
     ]
   });
 }
@@ -49638,8 +49638,8 @@ function panelStudent(id, keepDraft) {
       ${badgeMay()
         ? `<button class="sp-act" title="شارات الطالب — المنح اليدويّ"
             onclick="window.spBadges('${jsAttr(s.id)}')">${ic("trophy", 17)}</button>` : ""}
-      <button class="sp-act" title="حذف الطالب"
-        data-action="delete-student" data-id="${s.id}">${ic("x", 17)}</button>
+      <button class="sp-act sp-act-del" title="حذف الطالب" aria-label="حذف الطالب"
+        data-action="delete-student" data-id="${s.id}">${ic("trash", 17)}</button>
       <button class="sp-act" title="نقل الطالب"
         onclick="window.spMove('${jsAttr(s.id)}')">${ic("swap", 17)}</button>
       <button class="sp-act" title="مراسلة ولي الأمر"
@@ -54372,7 +54372,7 @@ document.addEventListener("click", (e) => {
       if (!s) { showToast("الطالب غير موجود", "warn"); break; }
       openModal("حذف الطالب", "تأكيد الحذف",
         `${noteCard("سيتم حذف الطالب <strong>" + esc(s.name) + "</strong> نهائياً من قاعدة البيانات. لا يمكن التراجع.")}`,
-        `<button class="btn btn-danger" data-action="delete-student-confirm" data-id="${s.id}">${ic("x", 16)} نعم، احذف الطالب</button>
+        `<button class="btn btn-danger" data-action="delete-student-confirm" data-id="${s.id}">${ic("trash", 16)} نعم، احذف الطالب</button>
          <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
       break;
     }
@@ -58038,7 +58038,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261023-2330";
+    return "20261023-2350";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
