@@ -7221,8 +7221,8 @@ function adminExamsSheet() {
     <div class="sh-row1">
       <button type="button" class="sh-btn pdf"  onclick="window.sheetExport('print')">تحميل${PDFI}</button>
       <button type="button" class="sh-btn send" onclick="window.sheetSend()">إرسال${SEND}</button>
-      <button type="button" class="sh-ic xls"   onclick="window.sheetExport('csv')" title="تصدير Excel">${XLS}</button>
-      <button type="button" class="sh-ic doc"   onclick="window.sheetExport('copy')" title="نسخ الكشف">${DOC}</button>
+      <button type="button" class="sh-ic xls"   onclick="window.sheetExport('csv')" title="تصدير Excel" aria-label="تصدير Excel">${XLS}</button>
+      <button type="button" class="sh-ic doc"   onclick="window.sheetExport('copy')" title="نسخ الكشف" aria-label="نسخ الكشف">${DOC}</button>
     </div>
 
     <div class="sh-row2">
@@ -7240,7 +7240,7 @@ function adminExamsSheet() {
       <button type="button" class="rc-ic xls" onclick="window.sheetExport('csv')" title="Excel">${XLS}</button>
       <button type="button" class="rc-ic cpy" onclick="window.sheetExport('copy')" title="نسخ">${CPY}</button>
       <button type="button" class="rc-ic cpy" onclick="window.sheetCert('download')" title="شهادات">${DOC}</button>
-      <button type="button" class="rc-ic card" onclick="window.sheetExport('csv')" title="بطاقات">${CARD}</button>
+      <button type="button" class="rc-ic crd" onclick="window.sheetExport('csv')" title="بطاقات" aria-label="بطاقات">${CARD}</button>
       <span class="sh-count">${all.length} سجل</span>
     </div>
 
@@ -58077,7 +58077,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261024-0015";
+    return "20261024-0030";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;

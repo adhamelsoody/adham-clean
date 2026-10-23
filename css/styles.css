@@ -14052,3 +14052,29 @@ th .bdd-btn.bdd-row.bdd-hrow:hover { background: rgba(255,255,255,.14); border-c
 /* زرُّ حذف الطالب في رأس بطاقته: سلّةٌ بلون التحذير — يُميَّز عن سائر الأزرار */
 .sp-act.sp-act-del { color: #c0392b; }
 .sp-act.sp-act-del:hover { background: #fdecea; color: #a93226; border-color: #f3c2bc; }
+
+/* =========================================================================
+   كشف اختبارات الطلاب — ضبطُ الأزرار
+   -------------------------------------------------------------------------
+   «ضبط الأزرار التي في الصفحة»: كانت الأزرارُ بأطوالٍ مختلفة (٥٠ و٤٥ و٤٢)،
+   وزرّا Excel والنسخ في الصفّ الأوّل بلا إطارٍ بجوار أزرارٍ مؤطّرة، وزرُّ
+   «بطاقات» في شريط الجدول يحمل الصنفَ العامّ card فيرث شكلَ البطاقة
+   (خلفيةٌ وظلٌّ وانحناء) فيظهر فقاعةً بيضاء ناتئة — صار صنفُه crd.
+   فصارت كلُّها بارتفاعٍ واحد (٤٦) وإطارٍ واحد، والأيقوناتُ مربّعاتٍ متساوية.
+   ========================================================================= */
+.sh-row1, .sh-row2 { gap: 10px; }
+.sh-btn { height: 46px; padding: 0 18px; box-sizing: border-box; line-height: 1; }
+.sh-btn.pdf svg { width: 22px; height: 22px; }
+.sh-ic {
+  width: 46px; height: 46px; box-sizing: border-box;
+  background: #fff; border: 1px solid #e2ecec;
+}
+.sh-ic svg { width: 22px; height: 22px; }
+.sh-search { height: 46px; box-sizing: border-box; }
+.sh-search input { padding: 0; height: 100%; }
+.sh-tools { gap: 6px; }
+.sh-tools .rc-ic { width: 40px; height: 40px; border: 1px solid transparent; }
+.sh-tools .rc-ic:hover { border-color: #e2ecec; }
+.sh-tools .rc-ic svg { width: 21px; height: 21px; }
+.rc-ic.crd:hover { background: #43e2e8; }
+html[data-theme="dark"] .sh-ic { background: var(--surface-2); border-color: var(--border); }
