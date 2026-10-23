@@ -2706,10 +2706,10 @@ function modalEditCircle(id) {
 
       <div class="field" id="ec_fixedA"${c.anchor ? ' style="display:none"' : ""}>
         <label>وقت البداية</label><input id="ec_start" inputmode="numeric" maxlength="5"
-        value="${esc(c.start)}" oninput="let v=this.value.replace(/[^0-9]/g,'').slice(0,4);this.value=v.length>2?v.slice(0,2)+':'+v.slice(2):v"></div>
+        value="${esc(c.start)}" oninput="window.clockMask(this)" onblur="window.clockMask(this, true)"></div>
       <div class="field" id="ec_fixedB"${c.anchor ? ' style="display:none"' : ""}>
         <label>وقت النهاية</label><input id="ec_end" inputmode="numeric" maxlength="5"
-        value="${esc(c.end)}" oninput="let v=this.value.replace(/[^0-9]/g,'').slice(0,4);this.value=v.length>2?v.slice(0,2)+':'+v.slice(2):v"></div>
+        value="${esc(c.end)}" oninput="window.clockMask(this)" onblur="window.clockMask(this, true)"></div>
 
       <div class="field" id="ec_anchA"${c.anchor ? "" : ' style="display:none"'}>
         <label>تبدأ بعد</label>
@@ -46664,7 +46664,7 @@ function formField(label, type, opts, id) {
   if (type === "select") return `<div class="field"><label>${esc(label)}</label><select${idAttr}>${opts.map(o => `<option>${esc(o)}</option>`).join("")}</select></div>`;
   if (type === "full") return `<div class="field full"><label>${esc(label)}</label><input${idAttr} placeholder="${esc(opts || "")}"></div>`;
   if (type === "tel") return `<div class="field"><label>${esc(label)}</label><input${idAttr} type="tel" inputmode="numeric" placeholder="${esc(opts || "")}" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>`;
-  if (type === "time") return `<div class="field"><label>${esc(label)}</label><input${idAttr} inputmode="numeric" maxlength="5" placeholder="${esc(opts || "")}" oninput="let v=this.value.replace(/[^0-9]/g,'').slice(0,4);this.value=v.length>2?v.slice(0,2)+':'+v.slice(2):v"></div>`;
+  if (type === "time") return `<div class="field"><label>${esc(label)}</label><input${idAttr} inputmode="numeric" maxlength="5" placeholder="${esc(opts || "")}" oninput="window.clockMask(this)" onblur="window.clockMask(this, true)"></div>`;
   return `<div class="field"><label>${esc(label)}</label><input${idAttr} placeholder="${esc(opts || "")}"></div>`;
 }
 
@@ -47081,6 +47081,32 @@ window.fetchPrayerTimes = function (dateISO, force) {
 };
 
 /* دقائق من "HH:MM" */
+/* =========================================================================
+   وقتُ الساعة المنطقيّ — «حدّد الوقت المنطقيّ للساعة»
+   -------------------------------------------------------------------------
+   خانتا وقت البداية والنهاية كانتا تقبلان أيَّ أربعة أرقام، فكُتب «51:56».
+   فصارت الساعةُ من 00 إلى 23 والدقيقةُ من 00 إلى 59 أثناء الكتابة:
+   رقمُ ساعةٍ لا يصحّ بعده رقمٌ ثانٍ (3 فما فوق، أو 24 فما فوق) يُفهم ساعةً
+   من رقمٍ واحد (5 ← 05)، ورقمُ دقيقةٍ أوّلُه فوق 5 لا يُقبل. وعند مغادرة
+   الخانة يُكمَل الوقتُ بصيغة HH:MM.
+   ========================================================================= */
+window.clockMask = function (el, done) {
+  if (!el) return;
+  const d = String(el.value || "").replace(/[^0-9]/g, "");
+  let h = "", rest = "";
+  if (d.length) {
+    if (Number(d[0]) > 2) { h = "0" + d[0]; rest = d.slice(1); }
+    else if (d.length >= 2 && Number(d.slice(0, 2)) > 23) { h = "0" + d[0]; rest = d.slice(1); }
+    else { h = d.slice(0, 2); rest = d.slice(2); }
+  }
+  if (rest && Number(rest[0]) > 5) rest = rest.slice(1);
+  const m = rest.slice(0, 2);
+  let v = h.length === 2 && (m.length || d.length > 2) ? h + ":" + m : h;
+  if (done && h) v = ("0" + Number(h)).slice(-2) + ":" + ("0" + (Number(m) || 0)).slice(-2);
+  el.value = v;
+};
+function clockValid(t) { return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t || "")); }
+
 function hhmmToMin(t) {
   const m = String(t || "").match(/^(\d{1,2}):(\d{2})/);
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
@@ -54157,6 +54183,13 @@ document.addEventListener("click", (e) => {
       if (!c) { showToast("الحلقة غير موجودة", "warn"); break; }
       const name = val("#ec_name", c.name);
       if (!name) { showToast("اسم الحلقة مطلوب", "warn"); break; }
+      /* الوقتُ الثابت ساعةٌ صحيحة: 00:00 إلى 23:59 */
+      if (val("#ec_mode", c.anchor ? "anchor" : "fixed") !== "anchor") {
+        const _s = val("#ec_start", ""), _e = val("#ec_end", "");
+        if ((_s && !clockValid(_s)) || (_e && !clockValid(_e))) {
+          showToast("الوقت غير صحيح — الساعة من 00 إلى 23 والدقائق من 00 إلى 59", "warn"); break;
+        }
+      }
       const ecOldName = c.name;
       c.name = name;
       c.photo = photoVal("ec_photo", c.photo || "");   /* شعارُ الحلقة */
@@ -54535,6 +54568,12 @@ document.addEventListener("click", (e) => {
       const cFac     = facTwoValue("c_cx", "c_mosque");
       const cTeacher = val("#c_teacher", (DB.teachers[0] || {}).name || "—");
       if (!cFac.complexId) { showToast("اختر مسجداً أو مجمعاً للحلقة", "warn"); break; }
+      if (val("#c_mode") !== "anchor") {
+        const _s = val("#c_start", ""), _e = val("#c_end", "");
+        if ((_s && !clockValid(_s)) || (_e && !clockValid(_e))) {
+          showToast("الوقت غير صحيح — الساعة من 00 إلى 23 والدقائق من 00 إلى 59", "warn"); break;
+        }
+      }
       const o = { id: Date.now(), complexId: cFac.complexId, name,
         mosque: cFac.mosque, mosqueId: cFac.mosqueId,
         teacher: cTeacher, teacherId: idByName("teachers", cTeacher),
@@ -58038,7 +58077,7 @@ if (typeof window !== "undefined") {
         if (/\/js\/app\.js(\?|$)/.test(src) && (m = re.exec(src))) return m[1];
       }
     } catch (e) {}
-    return "20261023-2350";
+    return "20261024-0015";
   })();
 
   var CURRENT = APP_BUILD, SHOWN = false;
