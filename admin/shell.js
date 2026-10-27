@@ -1063,6 +1063,8 @@ window.SHELL_MODE = true;
           return;
         }
         const d = snap.data() || {};
+        /* ما قرأته البوّابةُ يُسلَّم لـ loadAllData فلا يُقرأ مرّةً ثانية (٤٢٥) */
+        try { window.__ZAT_PROFILE = { uid: user.uid, t: Date.now(), d: d }; } catch (e) {}
         /* الأدوار الإدارية الأربعة — كانت البوابة تعرف دورين فيُطرد
            مديرُ المجمّع ومديرُ المسجد إلى index.html بلا سبب ظاهر. */
         var ADMIN_ROLES = ["admin", "owner", "supervisor", "complexManager", "mosqueManager"];

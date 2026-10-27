@@ -25387,7 +25387,43 @@ function audTime(ts) {
          d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+/* سجلُّ العمليات يُحمَّل عند فتح صفحته فقط (٤٢٥) — لم يعد ضمن التحميل
+   العامّ في loadAllData. يُدمج مع ما أُضيف في الذاكرة أثناء الجلسة بلا
+   تكرار، ثمّ يُعاد الرسم. */
+const AUD_LZ = { busy: false, done: false, err: "" };
+function audLazyLoad() {
+  if (AUD_LZ.busy || AUD_LZ.done) return;
+  const db = FDB();
+  if (!db) { AUD_LZ.done = true; return; }
+  AUD_LZ.busy = true;
+  db.collection("auditLog").get().then(snap => {
+    const seen = new Set();
+    const arr = [];
+    snap.forEach(d => {
+      const data = d.data() || {};
+      const idNum = Number(d.id);
+      const rec = Object.assign({ id: Number.isNaN(idNum) ? d.id : idNum }, data);
+      seen.add(String(rec.id));
+      arr.push(rec);
+    });
+    (Array.isArray(DB.auditLog) ? DB.auditLog : []).forEach(x => {
+      if (x && !seen.has(String(x.id))) arr.push(x);
+    });
+    arr.sort((a, b) => (a._o != null ? a._o : 0) - (b._o != null ? b._o : 0));
+    DB.auditLog = arr;
+    AUD_LZ.err = "";
+  }).catch(e => {
+    console.warn("auditLog:", e && e.code);
+    AUD_LZ.err = (e && e.code) === "permission-denied"
+      ? "لا صلاحية لقراءة سجل العمليات." : "تعذّر تحميل سجل العمليات.";
+  }).then(() => {
+    AUD_LZ.busy = false; AUD_LZ.done = true;
+    try { mount(); } catch (e) {}
+  });
+}
+
 function adminAudit() {
+  audLazyLoad();
   const all = audRows();
   const size = 50;
   const pages = Math.max(1, Math.ceil(all.length / size));
@@ -25408,7 +25444,9 @@ function adminAudit() {
     <td class="aud-by">${esc(r.by || "—")}</td>
   </tr>`).join("")
     : `<tr><td colspan="5" style="text-align:center;padding:30px" class="muted">
-        ${(cur("auditLog") || []).length ? "لا نتائج لهذه الفلترة."
+        ${!AUD_LZ.done ? "جارٍ تحميل السجل…"
+          : AUD_LZ.err ? esc(AUD_LZ.err)
+          : (cur("auditLog") || []).length ? "لا نتائج لهذه الفلترة."
           : "لم تُرصد حركات بعد. يبدأ السجل من أول تعديل بعد تفعيله."}</td></tr>`;
 
   return `<div class="page">
@@ -46568,11 +46606,14 @@ function mount() {
     html = mountCard("الصفحة غير متاحة", "لا توجد شاشةٌ بهذا المفتاح. ارجع للوحة التحكم.");
   } else {
     try {
+      CUR_MEMO = {};             /* حفظُ القراءة أثناء بناء الشاشة (٤٢٥) */
       html = fn() || "";
     } catch (e) {
       console.error("mount:" + fnKey, e);
       html = mountCard("تعذّر رسم الصفحة",
         "وقع خطأٌ أثناء بناء هذه الشاشة: " + esc(String((e && e.message) || e)));
+    } finally {
+      CUR_MEMO = null;
     }
     if (!String(html).trim()) {
       html = mountCard("الصفحة فارغة",
@@ -55052,9 +55093,12 @@ async function loadAllData(source) {
   const _r = ((STATE && STATE.user) || {}).role || "";
   const _adminOnly = ["users", "userRequests", "dutyTypes", "certTemplates",
                       "examSupervisors", "examCommittees", "examRouting", "rewardRules"];
-  const _cols = (_r && _r !== "admin" && !isMgrRole(_r))
+  /* سجلُّ العمليات لا يُنزَّل مع الباقي (٤٢٥): يكبر مع كلّ حفظٍ ولا يقرؤه
+     إلّا صفحتُه، فكان يُنزَّل كاملاً مع كلّ فتحةٍ لأيّ صفحة. يُحمَّل عند
+     فتح صفحته وحدَها — انظر audLazyLoad. */
+  const _cols = ((_r && _r !== "admin" && !isMgrRole(_r))
     ? COLLECTIONS.filter(c => _adminOnly.indexOf(c) === -1)
-    : COLLECTIONS;
+    : COLLECTIONS).filter(c => c !== "auditLog");
 
   /* =====================================================================
      مستندُ صاحب الجلسة
@@ -55068,7 +55112,13 @@ async function loadAllData(source) {
   if (_r && _r !== "admin" && !isMgrRole(_r)) {
     const _me = String(((STATE && STATE.user) || {}).uid ||
                        ((STATE && STATE.user) || {}).id || "");
-    if (_me) {
+    /* قراءةٌ واحدةٌ بدل اثنتين (٤٢٥): بوّابةُ الدخول قرأت هذا المستندَ
+       نفسَه للتوّ، فكان يُقرأ مرّةً ثانيةً هنا (وثالثةً مع جولة الخادم).
+       يُؤخذ ما قرأته البوّابةُ إن لم يمضِ عليه دقيقة، وإلّا قُرئ كما كان. */
+    const _pf = (typeof window !== "undefined") ? window.__ZAT_PROFILE : null;
+    if (_me && _pf && String(_pf.uid) === _me && _pf.d && (Date.now() - Number(_pf.t || 0)) < 60000) {
+      DB.users = [Object.assign({ id: _me }, _pf.d)];
+    } else if (_me) {
       try {
         const snap = await db.collection("users").doc(_me).get(opts);
         if (snap && snap.exists) {
@@ -55134,6 +55184,16 @@ async function loadAllData(source) {
     DB[c] = arr;
   });
 
+  /* وقتُ آخر تنزيلٍ ناجحٍ من الخادم لهذا الحساب — يقرؤه loadDataFast
+     فلا يُعيد التنزيلَ عند التنقّل بين الصفحات خلال دقيقة (٤٢٥).
+     لا يُسجَّل إن فشلت المجموعاتُ كلُّها (انقطاع الشبكة). */
+  if (source === "server" && results.some(r => r.snap)) {
+    try {
+      const _u = String(((STATE && STATE.user) || {}).uid || "");
+      if (_u) localStorage.setItem("zat.srvAt." + _u, String(Date.now()));
+    } catch (e) {}
+  }
+
   await loadSettings(db, source);
 
   PLAN_EXTRA = {};
@@ -55182,11 +55242,26 @@ async function loadDataFast(onData) {
     /* لا كاش على هذا الجهاز بعد — نمضي إلى السيرفر */
   }
 
+  /* لا إعادةَ تنزيلٍ من الخادم خلال دقيقة (٤٢٥): صفحاتُ الإدارة ملفّاتٌ
+     منفصلة، فكلُّ نقرةٍ في القائمة كانت تُنزّل المجموعاتِ كلَّها من الخادم
+     من جديد. إن رُسمت الشاشةُ من المخزن المحلّيّ وكان آخرُ تنزيلٍ لهذا
+     الحساب قبل أقلّ من دقيقة اكتُفي بالمخزن. وما يكتبه المستخدمُ نفسُه
+     في المخزن أصلاً، وزرُّ «تحديث» يتجاوز هذا ويقرأ من الخادم دائماً. */
+  let fresh = false;
   try {
-    await loadAllData("server");
-  } catch (err) {
-    console.warn("Firestore load failed:", err);
-    if (!painted) { FB_READY = false; FB_LOADED = true; }
+    const _u = String(((STATE && STATE.user) || {}).uid || "");
+    const _t = _u ? Number(localStorage.getItem("zat.srvAt." + _u) || 0) : 0;
+    const _age = Date.now() - _t;
+    fresh = painted && _t > 0 && _age >= 0 && _age < 60000;
+  } catch (e) { fresh = false; }
+
+  if (!fresh) {
+    try {
+      await loadAllData("server");
+    } catch (err) {
+      console.warn("Firestore load failed:", err);
+      if (!painted) { FB_READY = false; FB_LOADED = true; }
+    }
   }
 
   /* تطبيق الواجبات التي عَلِقت في طابور الاعتماد قبل إلغائه — وإلا بقيت
@@ -55972,6 +56047,7 @@ function linkGuard(coll, obj) {
 }
 
 function persistSet(coll, obj) {
+  if (CUR_MEMO) CUR_MEMO = {};   /* الحفظُ يُبطل ما حُفظ من قراءات الرسم (٤٢٥) */
   const db = FDB(); if (!db || obj == null) return Promise.resolve(false);
 
   /* حفظُ مدير المسجد للإعدادات يُكتب في طبقة مسجده لا في العامّ */
@@ -56048,6 +56124,7 @@ function persistPlan(id) {
     .catch(err => persistFail("persistPlan", "plans", err));
 }
 function persistDelete(coll, id) {
+  if (CUR_MEMO) CUR_MEMO = {};   /* والحذفُ كذلك (٤٢٥) */
   const db = FDB(); if (!db) return;
 
   try {
@@ -57373,11 +57450,29 @@ function levelFilter(coll, list) {
    ترمي خطأً لو استُدعيت cur أثناء تحميل الملف. */
 var ARCHIVE_VIEW = false;
 
+/* حفظُ نتائج القراءة أثناء الرسم (٤٢٥): الشاشةُ الواحدةُ تستدعي cur على
+   المجموعة نفسِها مئاتِ المرّات، وكلُّ نداءٍ يُعيد الترشيحَ كلَّه.
+   يُفعَّل أثناء بناء الشاشة في mount وحدَه، ويُفرَّغ مع كلّ حفظٍ أو حذف،
+   ويُعاد الحسابُ إن تبدّلت المجموعةُ أو طولُها أو وضعُ الأرشيف.
+   ويُردّ نسخةً لا الأصل، فلا يُفسد نداءٌ يرتّب نتيجتَه ما يأخذه غيرُه. */
+var CUR_MEMO = null;
+
 function cur(coll) {
   const raw = Array.isArray(DB[coll]) ? DB[coll] : [];
+  if (CUR_MEMO) {
+    const m = CUR_MEMO[coll];
+    if (m && m.raw === raw && m.n === raw.length && m.av === ARCHIVE_VIEW) {
+      return m.same ? raw : m.copy.slice();
+    }
+  }
   /* termViewFilter: الحضور والتسميع بالفترة المعروضة — لا تختلط الفترات */
-  return personFilter(coll, facilityFilter(coll, levelFilter(coll, archiveFilter(coll,
+  const out = personFilter(coll, facilityFilter(coll, levelFilter(coll, archiveFilter(coll,
     typeof termViewFilter === "function" ? termViewFilter(coll, raw) : raw))));
+  if (CUR_MEMO && Array.isArray(out)) {
+    const same = out === raw;
+    CUR_MEMO[coll] = { raw, n: raw.length, av: ARCHIVE_VIEW, same, copy: same ? null : out.slice() };
+  }
+  return out;
 }
 
 function archiveFilter(coll, list) {
