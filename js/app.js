@@ -4884,14 +4884,70 @@ window.ptSend = function (kind) {
   showToast(`تم الإرسال إلى ${people.length} مستخدم`, "success");
 };
 
-window.ptDelete = function () {
-  const ids = ptSelected();
-  ids.forEach(id => {
-    const i = (DB.users || []).findIndex(x => String(x.id) === String(id));
-    if (i > -1) { DB.users.splice(i, 1); persistDelete("users", id); }
-  });
+/* =========================================================================
+   حذفُ المستخدم — المستندُ وحسابُ الدخول معاً (٤٣٠)
+   -------------------------------------------------------------------------
+   كان يُحذف مستندُ users وحدَه ويبقى حسابُ الدخول في Authentication قائماً،
+   فإذا دخل به صاحبُه لم تجد صفحةُ الدخول له ملفّاً فأنشأت طلبَ انضمامٍ جديداً
+   — فيعود المحذوفُ إلى قائمة الطلبات.
+
+   فيُحذف عبر الدالّة السحابية deleteUserFully (للمدير وحدَه): تحذف الحسابَ
+   والمستندَ معاً، وتمنع حذفَ آخر مدير وحذفَ المرءِ نفسَه. فإن لم تكن منشورةً
+   أو تعذّر بلوغُها حُذف المستندُ كما كان، ويُبلَّغ المديرُ أنّ حسابَ الدخول
+   باقٍ. وما ترفضه الدالّةُ رفضاً صريحاً لا يُحذف من طريقٍ آخر.
+   ========================================================================= */
+const PT_DEL_HARD_REFUSE = ["functions/permission-denied", "permission-denied",
+                            "functions/failed-precondition", "failed-precondition",
+                            "functions/invalid-argument", "invalid-argument",
+                            "functions/unauthenticated", "unauthenticated"];
+
+window.ptDelete = async function () {
+  const ids = ptSelected().filter(id => (DB.users || []).some(x => String(x.id) === String(id)));
   closeModal();
-  showToast(`تم حذف ${ids.length} مستخدم`, "success");
+  if (!ids.length) { showToast("لم يُحدَّد مستخدمٌ للحذف", "warn"); return; }
+
+  const me = (STATE && STATE.user) || {};
+  const canFn = (me.role === "admin" || me.role === "owner") && typeof spCallFn === "function";
+  let full = 0, docOnly = 0;
+  const refused = [];
+
+  for (const id of ids) {
+    const u = (DB.users || []).find(x => String(x.id) === String(id));
+    if (!u) continue;
+    const uid = String(u.uid || u.id);
+    let viaFn = false;
+    if (canFn) {
+      try {
+        await spCallFn("deleteUserFully", { uid: uid });
+        viaFn = true;
+      } catch (e) {
+        const code = String((e && e.code) || "");
+        if (PT_DEL_HARD_REFUSE.indexOf(code) > -1) {
+          refused.push((u.name || uid) + ": " + ((e && e.message) || code));
+          continue;                       /* رفضٌ صريح: لا يُحذف من طريقٍ آخر */
+        }
+        console.warn("deleteUserFully:", e);
+      }
+    }
+    const i = (DB.users || []).findIndex(x => String(x.id) === String(id));
+    if (i > -1) DB.users.splice(i, 1);
+    if (viaFn) {
+      full++;
+      /* الدالّةُ حذفت users/{uid}؛ ويُحذف المستندُ بمعرّفه إن اختلف عن uid */
+      if (String(id) !== uid) persistDelete("users", id);
+      else { try { if (typeof auditDrop === "function") auditDrop("users", id); } catch (e) {} }
+    } else {
+      docOnly++;
+      persistDelete("users", id);
+    }
+  }
+
+  if (full) showToast(`حُذف ${toArabicDigits(full)} مستخدم مع حساب الدخول`, "success");
+  if (docOnly) {
+    showToast(`حُذف ${toArabicDigits(docOnly)} مستخدم من النظام — وحسابُ الدخول باقٍ في ` +
+              "Authentication: يُحذف من Firebase Console أو بنشر الدوالّ السحابية", "warn");
+  }
+  if (refused.length) showToast("لم يُحذف: " + refused.join(" · "), "warn");
   mount();
 };
 
@@ -5206,6 +5262,39 @@ function authErrMsg(err) {
 
    وتُكتب studentId في حساب المستخدم ليصير الربط بالمعرّف لا بالاسم.
    ========================================================================= */
+/* =========================================================================
+   معرّفٌ رقميٌّ لا يتكرّر (٤٣٠)
+   -------------------------------------------------------------------------
+   كان السجلُّ الجديد يأخذ Date.now() وحدَه. والمزامنةُ تُنشئ عدّةَ سجلّاتٍ
+   في حلقةٍ واحدة، فيقع اثنان في الملّي ثانية نفسِها ويأخذان الرقمَ نفسَه،
+   فيُكتب الثاني فوق الأوّل في المستند ذاته ويضيع سجلّ صاحبه.
+
+   فيُضمن هنا أن يكون كلُّ رقمٍ أكبرَ من سابقه في الجلسة، وألّا يطابق
+   معرّفاً قائماً في المجموعة. يبقى رقماً كما كان فلا يتغيّر شكلُ المعرّفات.
+   ========================================================================= */
+/* معرّفُ المستند كما يُقرأ: كان Number(d.id) يحوّل كلَّ نصٍّ رقميّ، فـ"0123"
+   يصير 123 و"1e3" يصير 1000 و"" يصير 0 — ثمّ يُكتب السجلُّ إلى مستندٍ غير
+   مستنده فيتكرّر. يُحوَّل هنا الرقمُ الصريحُ وحدَه (بلا أصفارٍ بادئة، وفي
+   حدود الدقّة)، وما سواه يبقى نصّاً كما هو في الخادم (٤٣٠). */
+function docIdOf(raw) {
+  const s = String(raw);
+  if (/^(0|[1-9][0-9]{0,15})$/.test(s)) {
+    const n = Number(s);
+    if (Number.isSafeInteger(n) && String(n) === s) return n;
+  }
+  return raw;
+}
+
+let FRESH_ID_LAST = 0;
+function freshNumId(coll) {
+  let n = Date.now();
+  if (n <= FRESH_ID_LAST) n = FRESH_ID_LAST + 1;
+  const list = coll && Array.isArray(DB[coll]) ? DB[coll] : [];
+  while (list.some(x => x && String(x.id) === String(n))) n++;
+  FRESH_ID_LAST = n;
+  return n;
+}
+
 function syncStudentRecord(u) {
   if (!u || u.role !== "student") return null;
   if (!Array.isArray(DB.students)) DB.students = [];
@@ -5270,7 +5359,7 @@ function syncStudentRecord(u) {
   } else {
     /* طالب جديد بلا حلقة — تُسنده الإدارة لاحقاً من صفحة الطلاب */
     st = Object.assign({
-      id: Date.now(), circle: "—", circleId: "", teacher: "—", teacherId: "",
+      id: freshNumId("students"), circle: "—", circleId: "", teacher: "—", teacherId: "",
       age: "—", parent: "—", attType: "دوام كامل", days: "يومياً",
       program: "—", level: "—", progress: 0, delays: 0, points: 0
     }, fields);
@@ -5374,7 +5463,7 @@ function syncTeacherRecord(u) {
     if (!Object.keys(patch).length) return t;
     Object.assign(t, patch);
   } else {
-    t = Object.assign({ id: Date.now(), circle: "—", circleId: "", students: 0,
+    t = Object.assign({ id: freshNumId("teachers"), circle: "—", circleId: "", students: 0,
                         session: "لم تعتمد", attDone: false, recite: 0, late: 0 }, fields);
     DB.teachers.push(t);
   }
@@ -11330,7 +11419,7 @@ window.urqDecide = function (to, ids) {
               if (!Array.isArray(DB.complexes)) DB.complexes = [];
               let cx = DB.complexes.find(x => x && nameKey(x.name) === nameKey(_rf.name));
               if (!cx) {
-                cx = { id: Date.now(), name: _rf.name,
+                cx = { id: freshNumId("complexes"), name: _rf.name,
                        region: _rf.region || "—", manager: u.name || "—",
                        phone: _rf.phone || "—", status: "نشط" };
                 DB.complexes.push(cx);
@@ -11345,7 +11434,7 @@ window.urqDecide = function (to, ids) {
                 const cxHit = _rf.cxName
                   ? (DB.complexes || []).find(x => x && nameKey(x.name) === nameKey(_rf.cxName))
                   : null;
-                mq = { id: Date.now(), complexId: cxHit ? String(cxHit.id) : "",
+                mq = { id: freshNumId("mosques"), complexId: cxHit ? String(cxHit.id) : "",
                        name: _rf.name, region: _rf.region || "—",
                        manager: u.name || "—", phone: _rf.phone || "—",
                        status: "نشط", attendance: 0, plan: 0 };
@@ -12990,7 +13079,41 @@ window.prgSave = function () {
                    return o;
                  })() };
   if (id) {
+    if (prev && String(prev.name || "").trim() !== name &&
+        DB.programs.some(x => x !== prev && String(x.name).trim() === name)) {
+      showToast("اسم البرنامج مستخدم بالفعل", "warn"); return;
+    }
+    const pgOldName = prev ? String(prev.name || "") : "";
     if (prev) { Object.assign(prev, data); persistSet("programs", prev); }
+    /* =================================================================
+       الطالبُ يحمل برنامجَه اسماً (٤٣٠)
+       -----------------------------------------------------------------
+       فكان تغييرُ اسم البرنامج يفصل طلابَه عنه: يبقى عندهم الاسمُ القديم
+       ولا برنامجَ بهذا الاسم. فيُحدَّث الاسمُ عند من يحمله بعينه، بشرط أن
+       يكون ارتباطُه بهذا البرنامج يقيناً: بمعرّفه programId إن وُجد، أو —
+       إن غاب المعرّف — ألّا يشاركه في الاسم القديم برنامجٌ آخرُ يصلح له.
+       فلا يُنقل أحدٌ إلى برنامجٍ لم يكن فيه.
+       ================================================================= */
+    if (prev && pgOldName && pgOldName !== String(prev.name || "")) {
+      const others = DB.programs.filter(x => x !== prev && String(x.name || "") === pgOldName);
+      const isMine = r => {
+        if (String(r.program || "") !== pgOldName) return false;
+        if (r.programId) return String(r.programId) === String(prev.id);
+        /* بلا معرّف: البرنامجُ الآخرُ بالاسم نفسِه يُشكِل إن كان عامّاً أو
+           لمسجد صاحب السجلّ */
+        return !others.some(x => !x.mosqueId || !r.mosqueId ||
+                                  String(x.mosqueId) === String(r.mosqueId));
+      };
+      window.linkChange(function () {
+        ["students", "plans", "circles"].forEach(cl => {
+          (DB[cl] || []).forEach(r => {
+            if (!r || !isMine(r)) return;
+            r.program = prev.name;
+            persistSet(cl, r);
+          });
+        });
+      });
+    }
     showToast("حُفظ البرنامج", "success");
   } else {
     if (DB.programs.some(x => String(x.name).trim() === name)) { showToast("اسم البرنامج مستخدم بالفعل", "warn"); return; }
@@ -25399,8 +25522,7 @@ function audLazyLoad() {
     const arr = [];
     snap.forEach(d => {
       const data = d.data() || {};
-      const idNum = Number(d.id);
-      const rec = Object.assign({ id: Number.isNaN(idNum) ? d.id : idNum }, data);
+      const rec = Object.assign({ id: docIdOf(d.id) }, data);
       seen.add(String(rec.id));
       arr.push(rec);
     });
@@ -46488,7 +46610,12 @@ function runPeriodicScans(force) {
   const now = Date.now();
   if (!force && now - SCAN_AT < SCAN_EVERY) return;
   SCAN_AT = now;
-
+  /* الفحوصُ الدوريةُ كلُّها تلقائية: كانت مزامنةُ النطاق وحدَها محاطةً بـ
+     linkAuto، والبقيّةُ تمرّ من حارس الارتباط إن جرت خلال ثوانٍ من نقرةٍ
+     عابرة. فتُحاط كلُّها: لا يمسّ فحصٌ دوريٌّ ارتباطاً أبداً (٤٣٠). */
+  return linkAuto(function () { runPeriodicScansBody(); });
+}
+function runPeriodicScansBody() {
   try { if (typeof scanAlerts === "function") scanAlerts(); } catch (e) {}
 
   try {
@@ -49273,7 +49400,7 @@ function panelMosque(id) {
           <div class="kv"><span>رقم التواصل</span><strong dir="ltr">${esc(m.phone || "—")}</strong></div>
         </div>
         <div class="panel-block"><h4>${ic("book", 15)} حلقات المسجد</h4>
-          ${DB.circles.filter(c => c.mosque === m.name).map(c => `<div class="kv"><span>${esc(c.name)}</span><strong>${toArabicDigits(circleCount(c))} طالب</strong></div>`).join("") || '<div class="muted">لا توجد حلقات.</div>'}
+          ${DB.circles.filter(c => c.mosqueId ? String(c.mosqueId) === String(m.id) : c.mosque === m.name).map(c => `<div class="kv"><span>${esc(c.name)}</span><strong>${toArabicDigits(circleCount(c))} طالب</strong></div>`).join("") || '<div class="muted">لا توجد حلقات.</div>'}
         </div>
         <div class="panel-block"><div class="panel-actions">
           <button class="btn btn-ghost btn-sm" data-action="edit-mosque" data-id="${m.id}">${ic("edit", 15)} تعديل البيانات</button>
@@ -49286,7 +49413,10 @@ function panelMosque(id) {
 function panelCircle(id) {
   const c = DB.circles.find(x => x.id == id);
   if (!c) return;
-  const studs = DB.students.filter(s => s.circle === c.name);
+  /* بالمعرّف أوّلاً — والاسمُ لسجلٍّ قديمٍ بلا معرّف (٤٣٠) */
+  const studs = DB.students.filter(s => s.circleId
+    ? String(s.circleId) === String(c.id)
+    : s.circle === c.name);
   openPanel(`<div class="panel-back" data-action="close-panel"></div>
     <aside class="side-panel" data-stop>
       <div class="panel-head"><div><h3>${esc(c.name)}</h3><div class="ph-sub">${esc(c.mosque)} — ${esc(c.teacher)}</div></div>
@@ -54341,6 +54471,7 @@ document.addEventListener("click", (e) => {
       if (!m) { showToast("المسجد غير موجود", "warn"); break; }
       const name = val("#ecx_name", m.name);
       if (!name) { showToast("اسم المسجد مطلوب", "warn"); break; }
+      const emOldName = m.name;
       m.name = name;
       m.manager = val("#ecx_manager", m.manager || "");
       m.facType = val("#ecx_factype", m.facType || "");
@@ -54351,6 +54482,25 @@ document.addEventListener("click", (e) => {
       m.phone = val("#ecx_phone", m.phone || "");
       m.status = val("#ecx_status", m.status);
       persistSet("mosques", m);
+      /* =================================================================
+         الاسمُ المكرَّرُ يتبع الأصل (٤٣٠)
+         -----------------------------------------------------------------
+         الحلقاتُ والطلابُ والمعلّمون يحملون اسمَ مسجدهم نصّاً بجوار
+         معرّفه، وكان تغييرُ الاسم يُبقيه قديماً فيها — وبعضُ اللوحات تطابق
+         بالاسم. فيُحدَّث النصُّ وحدَه لمن ارتبط بهذا المسجد بمعرّفه وكان
+         يحمل اسمَه القديم بعينه؛ والمعرّفُ mosqueId لا يُمسّ — كما في
+         تغيير اسم الحلقة.
+         ================================================================= */
+      if (String(emOldName || "") !== String(m.name || "")) {
+        ["circles", "students", "teachers"].forEach(cl => {
+          (DB[cl] || []).forEach(r => {
+            if (!r || String(r.mosqueId || "") !== String(m.id)) return;
+            if (String(r.mosque || "") !== String(emOldName || "")) return;
+            r.mosque = m.name;
+            persistSet(cl, r);
+          });
+        });
+      }
       /* وفهرسُ صفحة التسجيل يتبع الاسمَ والحالة */
       try { if (window.pubMosqueIndexSync) window.pubMosqueIndexSync(); } catch (e) {}
       closeModal(); mount();
@@ -55268,8 +55418,7 @@ async function loadAllData(source) {
         const arr = [];
         snap.forEach(d => {
           const data = d.data() || {};
-          const idNum = Number(d.id);
-          arr.push(Object.assign({ id: Number.isNaN(idNum) ? d.id : idNum }, data));
+          arr.push(Object.assign({ id: docIdOf(d.id) }, data));
         });
         arr.sort((a, b) => (a._o != null ? a._o : 0) - (b._o != null ? b._o : 0));
         DB[c] = arr;
@@ -55284,8 +55433,7 @@ async function loadAllData(source) {
     const arr = [];
     snap.forEach(d => {
       const data = d.data() || {};
-      const idNum = Number(d.id);
-      arr.push(Object.assign({ id: Number.isNaN(idNum) ? d.id : idNum }, data));
+      arr.push(Object.assign({ id: docIdOf(d.id) }, data));
     });
     arr.sort((a, b) => (a._o != null ? a._o : 0) - (b._o != null ? b._o : 0));
     DB[c] = arr;
@@ -55728,17 +55876,79 @@ function swUpdateBar(reg) {
 const OFFQ_KEY = "mirath_offq";
 let OFFQ_BUSY = false;
 
+/* =========================================================================
+   الطابورُ لصاحبه (٤٣٠)
+   -------------------------------------------------------------------------
+   كان الطابورُ واحداً للجهاز كلّه ولا يُمسح عند الخروج: فإن كتب معلّمٌ بلا
+   اتصالٍ ثمّ خرج ودخل غيرُه على الجهاز نفسِه، رُفعت تغييراتُ الأوّل بحساب
+   الثاني وصلاحياته. فصار كلُّ قيدٍ يحمل uid كاتبِه، ولا يُرفع ولا يُعَدّ
+   إلّا لصاحبه — ويبقى قيدُ غيره محفوظاً حتى يعود.
+   والقيدُ القديم بلا uid (من قبل هذا الإصدار) يتبنّاه أوّلُ من يرفع.
+
+   وكان الحدُّ ٥٠٠ يُسقط الأقدمَ بصمت؛ فرُفع، ويُنبَّه المستخدمُ إن بلغه.
+   ========================================================================= */
+const OFFQ_MAX = 2000;
+const OFFQ_REJ_KEY = "mirath_offq_rejected";
+
+function offqUid() {
+  try {
+    const a = typeof firebase !== "undefined" && firebase.auth ? firebase.auth().currentUser : null;
+    if (a && a.uid) return String(a.uid);
+  } catch (e) {}
+  const u = (typeof STATE !== "undefined" && STATE && STATE.user) || {};
+  return String(u.uid || "");
+}
+
 function offqRead() {
-  try { return JSON.parse(localStorage.getItem(OFFQ_KEY) || "[]"); }
+  try {
+    const l = JSON.parse(localStorage.getItem(OFFQ_KEY) || "[]");
+    return Array.isArray(l) ? l : [];
+  }
   catch (e) { return []; }
 }
 
-function offqWrite(list) {
-  try { localStorage.setItem(OFFQ_KEY, JSON.stringify(list.slice(-500))); }
-  catch (e) {}                 /* امتلأ التخزين: يُهمَل الأقدم ولا يتعطّل العمل */
+/* قيودُ صاحب الجلسة — ومعها القديمُ بلا uid */
+function offqIsMine(x, uid) {
+  return !!x && (!x.uid || String(x.uid) === String(uid || ""));
 }
 
-function offqCount() { return offqRead().length; }
+let OFFQ_FULL_WARNED = false;
+function offqWrite(list) {
+  let l = list;
+  if (l.length > OFFQ_MAX) {
+    l = l.slice(-OFFQ_MAX);
+    if (!OFFQ_FULL_WARNED) {
+      OFFQ_FULL_WARNED = true;
+      try { showToast("الطابورُ المحليّ بلغ حدَّه — صِل بالإنترنت ليُرفع ما حُفظ قبل أن يضيع الأقدم", "warn"); } catch (e) {}
+    }
+  }
+  try { localStorage.setItem(OFFQ_KEY, JSON.stringify(l)); return true; }
+  catch (e) {
+    /* امتلأ التخزين: لا يُخفى — فالمستخدمُ يظنّ عمله محفوظاً */
+    try { showToast("تعذّر حفظ التغيير على الجهاز — المساحةُ ممتلئة. صِل بالإنترنت ثمّ أعد الحفظ", "warn"); } catch (e2) {}
+    return false;
+  }
+}
+
+function offqCount() {
+  const uid = offqUid();
+  return offqRead().filter(x => offqIsMine(x, uid)).length;
+}
+
+/* ما رفضه الخادمُ رفضاً دائماً يُحفظ للاطّلاع لا لإعادة المحاولة */
+function offqReject(items) {
+  if (!items.length) return;
+  try {
+    const old = JSON.parse(localStorage.getItem(OFFQ_REJ_KEY) || "[]");
+    const l = (Array.isArray(old) ? old : []).concat(items.map(x => ({
+      coll: x.coll, id: x.id, op: x.op, uid: x.uid || "", ts: x.ts, at: Date.now(), code: x._code || ""
+    })));
+    localStorage.setItem(OFFQ_REJ_KEY, JSON.stringify(l.slice(-100)));
+  } catch (e) {}
+}
+window.offqRejected = function () {
+  try { return JSON.parse(localStorage.getItem(OFFQ_REJ_KEY) || "[]"); } catch (e) { return []; }
+};
 
 /* هل نحن متصلون؟ navigator.onLine يكذب أحياناً، فيُعتمد مع نتيجة الكتابة */
 function isOnline() {
@@ -55748,11 +55958,13 @@ function isOnline() {
 /* يُنادى حين تفشل كتابة أو ينقطع الاتصال */
 function offqPush(op, coll, obj) {
   const list = offqRead();
+  const uid = offqUid();
 
-  /* آخر عمليةٍ على المستند نفسه تكفي: الحالة الأخيرة هي المرادة */
+  /* آخر عمليةٍ على المستند نفسه تكفي: الحالة الأخيرة هي المرادة —
+     لكاتبها نفسِه، فلا يمحو قيدُ مستخدمٍ قيدَ غيره */
   const id = String((obj && obj.id) || obj || "");
-  const i = list.findIndex(x => x.coll === coll && String(x.id) === id);
-  const rec = { op, coll, id, data: op === "set" ? obj : null, ts: Date.now() };
+  const i = list.findIndex(x => x.coll === coll && String(x.id) === id && offqIsMine(x, uid));
+  const rec = { op, coll, id, data: op === "set" ? obj : null, ts: Date.now(), uid };
 
   if (i > -1) list[i] = rec; else list.push(rec);
   offqWrite(list);
@@ -55770,28 +55982,55 @@ window.offqFlush = function () {
   const db = typeof FDB === "function" ? FDB() : null;
   if (!db || !isOnline()) return Promise.resolve(0);
 
+  const uid = offqUid();
+  if (!uid) return Promise.resolve(0);          /* لا يُرفع شيءٌ قبل معرفة صاحب الجلسة */
+  const mine = list.filter(x => offqIsMine(x, uid));
+  if (!mine.length) return Promise.resolve(0);
+
   OFFQ_BUSY = true;
   const left = [];
+  const rejected = [];
   let done = 0;
 
+  /* الرفضُ الدائم لا يُعاد أبداً: كان يبقى في الطابور يُحاوَل بلا نهاية */
+  const PERMANENT = ["permission-denied", "invalid-argument", "failed-precondition", "not-found"];
+
   const step = i => {
-    if (i >= list.length) {
-      offqWrite(left);
+    if (i >= mine.length) {
+      /* يُعاد بناءُ الطابور من الحالة الراهنة: ما أُضيف أثناء الرفع لا يضيع،
+         وقيودُ المستخدمين الآخرين تبقى كما هي */
+      const handled = mine.filter(x => left.indexOf(x) === -1);
+      const same = (a, b) => a.coll === b.coll && String(a.id) === String(b.id) && a.ts === b.ts;
+      const now = offqRead()
+        .filter(x => !(offqIsMine(x, uid) && handled.some(h => same(h, x))))
+        .map(x => (!x.uid ? Object.assign({}, x, { uid }) : x));
+      offqWrite(now);
+      offqReject(rejected);
       OFFQ_BUSY = false;
       try { offqBadge(); } catch (e) {}
       if (done) {
         showToast("رُفع " + toArabicDigits(done) + " تغييراً كان معلَّقاً", "success");
         mount();
       }
+      if (rejected.length) {
+        showToast("رفض الخادمُ " + toArabicDigits(rejected.length) +
+                  " تغييراً محفوظاً على الجهاز (صلاحيةٌ أو بياناتٌ غير مقبولة) — أُزيلت من الطابور", "warn");
+      }
       return Promise.resolve(done);
     }
 
-    const x = list[i];
+    const x = mine[i];
     const ref = db.collection(x.coll).doc(String(x.id));
-    const p = x.op === "delete" ? ref.delete() : ref.set(x.data);
+    /* الدمجُ لا الاستبدال: النسخةُ المحفوظةُ قديمة، والاستبدالُ بها يمحو ما
+       أضافه غيرُك إلى المستند في أثناء الانقطاع من حقولٍ لم تلمسها. */
+    const p = x.op === "delete" ? ref.delete() : ref.set(x.data, { merge: true });
 
     return p.then(() => { done++; })
-            .catch(() => { left.push(x); })   /* يبقى للمحاولة التالية */
+            .catch(err => {
+              const code = String((err && err.code) || "").replace(/^firestore\//, "");
+              if (PERMANENT.indexOf(code) > -1) { x._code = code; rejected.push(x); }
+              else left.push(x);              /* انقطاعٌ أو مهلة: يبقى للمحاولة التالية */
+            })
             .then(() => step(i + 1));
   };
 
@@ -56095,6 +56334,9 @@ function scopeStamp(coll, data) {
 const LINK_FIELDS = ["mosqueId", "complexId", "circleId", "programId",
                      "planId", "levelId", "studentId", "teacherId"];
 const LINK_COLLS  = { students: 1, teachers: 1, plans: 1, circles: 1, users: 1 };
+/* والطالبُ يحمل برنامجَه ومستواه اسماً لا معرّفاً في سجلّاتٍ كثيرة — فالاسمُ
+   عنده هو الارتباطُ نفسُه، ويُحرس كما تُحرس المعرّفات (٤٣٠). */
+const LINK_TEXT_FIELDS = { students: ["program", "level"] };
 
 let LINK_ACT = 0;      /* وقتُ آخر لمسةٍ من المستخدم */
 let LINK_OPEN = 0;     /* إجراءُ ارتباطٍ صريحٌ مفتوح */
@@ -56136,7 +56378,7 @@ function linkGuard(coll, obj) {
   if (!before) return 0;          /* سجلٌّ جديدٌ لا ارتباطَ سابقَ له يُحرس */
 
   let n = 0;
-  LINK_FIELDS.forEach(function (k) {
+  LINK_FIELDS.concat(LINK_TEXT_FIELDS[coll] || []).forEach(function (k) {
     const a = before[k], b = obj[k];
     if (a === undefined && b === undefined) return;
     const sa = String(a == null ? "" : a), sb = String(b == null ? "" : b);
@@ -56204,6 +56446,14 @@ function persistSet(coll, obj) {
 
   const data = scopeStamp(coll, Object.assign({}, obj));
   if (data._o == null) data._o = Date.now();
+  /* امتداداتُ الخطة (الحالةُ الصحية · التجميدُ وسببُه · الطلبات) تُنزع من
+     السجلّ عند التحميل إلى PLAN_EXTRA، والكتابةُ هنا set بلا دمج — فكان
+     كلُّ حفظٍ للخطة من غير persistPlan يمحوها من الخادم بصمت (٤٣٠).
+     تُعاد إلى الكتابة ما دام السجلُّ لا يحمل ext بنفسه. */
+  if (coll === "plans" && !Object.prototype.hasOwnProperty.call(obj, "ext") &&
+      typeof PLAN_EXTRA !== "undefined" && PLAN_EXTRA && PLAN_EXTRA[obj.id] != null) {
+    data.ext = PLAN_EXTRA[obj.id];
+  }
   /* تُرجِع وعداً ليتمكّن النداء من انتظار نتيجة الكتابة قبل إعلان النجاح.
      كانت الكتابة تُطلق ويُعلَن الحفظ فوراً، فيرى المعلّم «حُفظ» ولو فشلت. */
   /* بلا اتصال: يُحفظ محلياً ويُرفع حين يعود — لا يُترك المستخدم يكتب في

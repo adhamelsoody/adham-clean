@@ -148,7 +148,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
-  <script src="js/firebase-config.js?v=20261027-2100"></script>
+  <script src="js/firebase-config.js?v=20261027-2200"></script>
   <script>
   (function () {
     "use strict";
@@ -227,22 +227,56 @@
         if (!snap || !snap.exists) {
           /* لا يوجد ملف بمعرّف Firebase — نبحث عن المستخدم الذي أنشأته الإدارة
              عبر بريد الدخول أو رقم الهوية، فيأخذ دوره الصحيح (معلم/مشرف/مدير). */
+          /* =================================================================
+             الربطُ بملفٍّ قائم — بلا انتحال (٤٣٠)
+             -----------------------------------------------------------------
+             كان يكفي أن يُنشئ أحدٌ حساباً ببريدٍ جزؤه الأوّل رقمُ هويةِ طالب
+             (بأيّ نطاق)، أو ببريدِ موظّفٍ لم يُنشأ له حساب، لينسخ ملفَّ ذاك
+             إلى حسابه ويدخل بدوره. فصار:
+               • رقمُ الهوية لا يُطابَق إلّا من بريد النظام @mirath.id — وهو
+                 البريدُ الذي تُنشئه الإدارةُ لحساب رقم الهوية.
+               • الملفُّ المربوطُ بحسابٍ آخر (uid مختلف) لا يُربط ثانية.
+               • لا يُدخَل بالدور المنسوخ ما لم يُكتب الملفُّ فعلاً في الخادم:
+                 إن رفضته القواعدُ بقي الدخولُ موقوفاً حتى تربطه الإدارة.
+             ================================================================= */
           let linked = null;
-          const idFromMail = String(user.email || "").split("@")[0];
+          const mailLc = String(user.email || "").toLowerCase();
+          const idFromMail = mailLc.split("@")[0];
+          const sysMail = /@mirath\.id$/.test(mailLc);
+          const freeOrMine = doc => {
+            const v = doc && doc.data ? (doc.data() || {}) : null;
+            if (!v) return null;
+            const owner = String(v.uid || "");
+            return (!owner || owner === user.uid) ? v : null;
+          };
           try {
             let q = await db.collection("users").where("loginEmail", "==", user.email).limit(1).get();
-            if (q.empty && /^[0-9]{6,15}$/.test(idFromMail))
+            if (!q.empty) linked = freeOrMine(q.docs[0]);
+            if (!linked && sysMail && /^[0-9]{6,15}$/.test(idFromMail)) {
               q = await db.collection("users").where("username", "==", idFromMail).limit(1).get();
-            if (q.empty) q = await db.collection("users").where("email", "==", user.email).limit(1).get();
-            if (!q.empty) linked = q.docs[0].data() || null;
+              if (!q.empty) linked = freeOrMine(q.docs[0]);
+            }
+            if (!linked) {
+              q = await db.collection("users").where("email", "==", user.email).limit(1).get();
+              if (!q.empty) linked = freeOrMine(q.docs[0]);
+            }
           } catch (e) { console.warn("lookup failed:", e); }
 
           if (linked) {
-            d = linked;
             /* ننسخ الملف تحت معرّف Firebase ليُقرأ مباشرة في المرات القادمة */
+            let copied = false;
             try { await db.collection("users").doc(user.uid).set(
-              Object.assign({}, linked, { uid: user.uid, linkedAt: Date.now() }), { merge: true }); }
+              Object.assign({}, linked, { uid: user.uid, linkedAt: Date.now() }), { merge: true });
+              copied = true; }
             catch (e) { console.warn("link failed:", e); }
+            if (!copied) {
+              showErr("تعذّر ربط حسابك بملفّك. راجع الإدارة لربطه.");
+              try { await auth.signOut(); } catch (e) {}
+              routing = false;
+              btn.disabled = false; btn.textContent = "دخول";
+              return;
+            }
+            d = linked;
           } else {
             /* لا سجل مطابق: يُنشأ ملف موقوف بانتظار اعتماد الإدارة — ولا
                يُمنح أي دور إداري تلقائياً مهما كان أول حساب أو غيره.
