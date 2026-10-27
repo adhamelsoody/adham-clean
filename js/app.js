@@ -43766,9 +43766,9 @@ function parentDashboard() {
 
       <div class="kid-acts">
         <button class="btn btn-soft btn-sm"
-          onclick="window.pickKid('${jsAttr(k.id)}');window.go('parent/today')">واجب اليوم</button>
+          onclick="window.pickKid('${jsAttr(k.id)}');window.go('today')">واجب اليوم</button>
         <button class="btn btn-ghost btn-sm"
-          onclick="window.pickKid('${jsAttr(k.id)}');window.go('parent/results')">نتائجه</button>
+          onclick="window.pickKid('${jsAttr(k.id)}');window.go('results')">نتائجه</button>
       </div>
     </div>`;
   }).join("");

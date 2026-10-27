@@ -421,6 +421,17 @@ window.SHELL_MODE = true;
     }).join("");
   }
 
+  /* قائمةُ الداعم من NAV.donor في app.js — مصدرٌ واحدٌ لا نسخةٌ ثانية (٤٢٦) */
+  function donorNavHTML() {
+    var list = (typeof NAV !== "undefined" && NAV && Array.isArray(NAV.donor)) ? NAV.donor : [];
+    return list.map(function (it) {
+      var on = (typeof STATE !== "undefined" && STATE.page === it.id) ? " active" : "";
+      return '<button type="button" class="nav-item' + on + '" ' +
+             'data-action="nav" data-page="' + it.id + '">' +
+             ic(it.icon, 19) + '<span>' + it.label + '</span></button>';
+    }).join("");
+  }
+
   /* مفتاحُ الابن: قيمة p إن كان يمرّ بالموزّع، وإلا اسمُ الملف بلا امتداد */
   function childKey(file) {
     var q = String(file || "").split("?");
@@ -529,6 +540,13 @@ window.SHELL_MODE = true;
         var lo2 = document.getElementById("logoutBtn");
         if (lo2) lo2.style.display = "none";
       } catch (e) {}
+      return;
+    }
+
+    /* الداعم: صفحتاه وحدَهما (٤٢٦). لم يكن له فرعٌ هنا، فكانت تُعرض له
+       قائمةُ الإدارة كاملةً وكلُّ روابطها تردّه إلى هذه الصفحة. */
+    if (myRole() === "donor") {
+      nav.innerHTML = donorNavHTML();
       return;
     }
 

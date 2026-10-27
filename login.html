@@ -148,7 +148,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
-  <script src="js/firebase-config.js?v=20261027-1645"></script>
+  <script src="js/firebase-config.js?v=20261027-1800"></script>
   <script>
   (function () {
     "use strict";
@@ -274,7 +274,9 @@
            يُردّ بـ«دور المستخدم غير معرّف» وهو دورٌ صحيحٌ في النظام. */
         var ADMIN_ROLES = ["admin", "owner", "supervisor", "complexManager", "mosqueManager"];
         if (ADMIN_ROLES.indexOf(role) > -1) safeGo("/admin/dashboard.html", "تعذّر فتح لوحة الإدارة");
-        else if (role === "teacher" || role === "parent" || role === "student") safeGo("/index.html", "تعذّر فتح واجهتك");
+        /* الداعم واجهتُه في index.html (لوحة الداعم · لوحة الشرف) — كان يُردّ هنا
+           بـ«دور غير معرّف» وهو دورٌ قائمٌ في النظام (٤٢٦) */
+        else if (role === "teacher" || role === "parent" || role === "student" || role === "donor") safeGo("/index.html", "تعذّر فتح واجهتك");
         else {
           showErr("دور المستخدم غير معرّف. راجع الإدارة.");
           await auth.signOut(); routing = false;
