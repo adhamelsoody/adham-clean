@@ -6708,7 +6708,7 @@ function adminExamsHome() {
 
     <div class="ex-tools">
       <div class="ex-search">${SR}<input placeholder="إبحث من هنا" oninput="window.examSearch(this.value)"></div>
-      <button class="rep-pill"><span>عدد الاختبارات</span>${CH}</button>
+      <button type="button" class="rep-pill" onclick="var s=this.nextElementSibling;if(s){s.focus();try{s.showPicker&&s.showPicker()}catch(e){}}"><span>عدد الاختبارات</span>${CH}</button>
       <select class="rep-size" onchange="window.examSize(this.value)">
         ${[15, 30, 60, 120].map(n => `<option value="${n}"${n === EXAM_STATE.size ? " selected" : ""}>${n}</option>`).join("")}
       </select>
@@ -31556,7 +31556,7 @@ function repRender(cfg) {
 
   const picks = (cfg.picks || []).map(p2 => `<div class="rep-pick">
       <label>${esc(p2.label)} (${p2.count})</label>
-      <button class="rep-pill wide"><span>${esc(p2.value)}</span>${CH}</button>
+      <button type="button" class="rep-pill wide"${p2.k ? ` onclick="window.repPickOpen('${p2.k}')"` : ""}><span>${esc(p2.value)}</span>${CH}</button>
     </div>`).join("");
 
   return `<div class="page">
@@ -31729,9 +31729,71 @@ function planTally(plan) {
   return out;
 }
 
+/* =========================================================================
+   اختيارُ المنشآت والحلقات في التقارير (٤٢٧)
+   -------------------------------------------------------------------------
+   زرّا «إختر المنشأة» و«إختر الحلقة» كانا بشكل قائمةٍ منسدلة ولا يفعلان
+   شيئاً، والتقريرُ يشمل الجميعَ دائماً. يفتح كلٌّ منهما الآن قائمةً
+   بالخانات، ويُرشَّح التقريرُ بما يُختار. المحفوظُ هو المُستبعَد، فالأصلُ
+   «الكلّ» كما كان، ويعود إليه بإعادة فتح الصفحة.
+   ========================================================================= */
+const REP_PICK = { fac: {}, cir: {} };
+function repFacList() {
+  return cur("complexes").map(x => ({ k: "c:" + x.id, n: x.name }))
+    .concat(cur("mosques").map(x => ({ k: "m:" + x.id, n: x.name })));
+}
+function repCirOk(c) {
+  if (!c || REP_PICK.cir[String(c.id)]) return false;
+  const m = cur("mosques").find(x => String(x.id) === String(c.mosqueId));
+  if (m && REP_PICK.fac["m:" + m.id]) return false;
+  const cx = c.complexId || (m && m.complexId);
+  if (cx != null && cx !== "" && REP_PICK.fac["c:" + cx]) return false;
+  return true;
+}
+function repStuOk(st) {
+  const c = cur("circles").find(x => String(x.id) === String(st && st.circleId));
+  if (c) return repCirOk(c);
+  /* طالبٌ بلا حلقة يظهر ما دام لا ترشيح */
+  return !Object.keys(REP_PICK.fac).length && !Object.keys(REP_PICK.cir).length;
+}
+function repPicks(facs, cirs) {
+  const fOn = repFacList().filter(f => !REP_PICK.fac[f.k]).length;
+  const cOn = cur("circles").filter(repCirOk).length;
+  return [
+    { k: "fac", label: "إختر المنشأة", count: facs, value: "المنشآت المختارة (" + fOn + ")" },
+    { k: "cir", label: "إختر الحلقة",  count: cirs, value: "الحلقات المختارة (" + cOn + ")" }
+  ];
+}
+window.repPickOpen = function (kind) {
+  const isFac = kind === "fac";
+  const list = isFac ? repFacList()
+    : cur("circles").map(c => ({ k: String(c.id), n: c.name, off: !repCirOk(Object.assign({}, c, { id: "\u0000" })) }));
+  const hid = REP_PICK[isFac ? "fac" : "cir"];
+  const rows = list.map(it => `<label class="rep-pk-row${it.off ? " off" : ""}">
+      <input type="checkbox" data-rp-item="${esc(it.k)}"${hid[it.k] ? "" : " checked"}>
+      <span>${esc(it.n || "—")}</span>${it.off ? `<small>منشأتُها غير مختارة</small>` : ""}</label>`).join("");
+  const body = list.length
+    ? `<label class="rep-pk-row rep-pk-all"><input type="checkbox"${Object.keys(hid).length ? "" : " checked"}
+         onchange="document.querySelectorAll('[data-rp-item]').forEach(b => { b.checked = this.checked; })">
+         <span>تحديد الكل</span></label><div class="rep-pk-list">${rows}</div>`
+    : emptyState(isFac ? "لا توجد منشآت" : "لا توجد حلقات", "");
+  openModal(isFac ? "إختر المنشأة" : "إختر الحلقة", "يُرشَّح التقرير بما تختاره", body,
+    `<button type="button" class="btn btn-primary" onclick="window.repPickApply('${isFac ? "fac" : "cir"}')">تطبيق</button>
+     <button type="button" class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+window.repPickApply = function (kind) {
+  const boxes = Array.from(document.querySelectorAll("[data-rp-item]"));
+  if (boxes.length && !boxes.some(b => b.checked)) { showToast("اختر واحداً على الأقلّ", "warn"); return; }
+  const hid = {};
+  boxes.forEach(b => { if (!b.checked) hid[b.dataset.rpItem] = true; });
+  REP_PICK[kind === "fac" ? "fac" : "cir"] = hid;
+  try { closeModal(); } catch (e) {}
+  mount();
+};
+
 function repStuRows() {
   const zero = 0;
-  return cur("students").map(st => {
+  return cur("students").filter(repStuOk).map(st => {
     const c  = cur("circles").find(x => String(x.id) === String(st.circleId)) || {};
     const t  = cur("teachers").find(x => String(x.id) === String(c.teacherId)) || {};
     const fac = cur("mosques").find(m => String(m.id) === String(c.mosqueId))
@@ -31800,10 +31862,7 @@ function adminRepStudents() {
   const facs = cur("complexes").length + cur("mosques").length;
   return repRender({
     title: "تقرير الطلاب", unit: "طالب/ة", cols: REP_STU_COLS, rows: repStuRows,
-    picks: [
-      { label: "إختر المنشأة", count: facs, value: "المنشآت المختارة (" + facs + ")" },
-      { label: "إختر الحلقة",  count: cur("circles").length, value: "الحلقات المختارة (" + cur("circles").length + ")" }
-    ]
+    picks: repPicks(facs, cur("circles").length)
   });
 }
 
@@ -31861,7 +31920,7 @@ const REP_CIR_COLS = [
 
 function repCirRows() {
   const zero = 0;
-  return cur("circles").map(c => {
+  return cur("circles").filter(repCirOk).map(c => {
     const mosque = cur("mosques").find(m => String(m.id) === String(c.mosqueId));
     const cx = cur("complexes").find(x => String(x.id) === String(c.complexId || (mosque && mosque.complexId)));
     const fac = mosque || cx || {};
@@ -31921,10 +31980,7 @@ function adminRepCircles() {
   const cir = cur("circles").length;
   return repRender({
     title: "تقرير الحلقات", unit: "حلقة", cols: REP_CIR_COLS, rows: repCirRows,
-    picks: [
-      { label: "إختر المنشأة", count: facs, value: "المنشآت المختارة (" + facs + ")" },
-      { label: "إختر الحلقة",  count: cir,  value: "الحلقات المختارة (" + cir + ")" }
-    ]
+    picks: repPicks(facs, cir)
   });
 }
 
@@ -32044,7 +32100,7 @@ function repRecRows() {
   /* الفترة المختارة وحدها: كان التقرير يجمع كل الفترات فيختلط إنجاز
      فصلٍ بفصل ويظهر متوسّط لا يصف شيئاً. */
   const recs = byTerm(curAll("recitations"));
-  return cur("students").map(st => {
+  return cur("students").filter(repStuOk).map(st => {
     const pl = cur("plans").find(x => String(x.studentId) === String(st.id)) || {};
     const mine = recs.filter(r => String(r.studentId) === String(st.id));
     const pct = (d, t) => t > 0 ? Math.round((Number(d) || 0) * 100 / t) : null;
@@ -32085,10 +32141,7 @@ function adminRepRecitation() {
   const cir = cur("circles");
   return repRender({
     title: "سجل التسميع", unit: "طالب/ة", cols: REP_REC_COLS, rows: repRecRows,
-    picks: [
-      { label: "إختر المنشأة", count: facs, value: "المنشآت المختارة (" + facs + ")" },
-      { label: "إختر الحلقة",  count: cir.length, value: cir.length ? cir[0].name : "لا توجد حلقات" }
-    ]
+    picks: repPicks(facs, cir.length)
   });
 }
 
@@ -45592,6 +45645,9 @@ const PAGES = {
   /* وليّ الأمر: شاشاتُ الطالب نفسها — البياناتُ واحدة والمخاطَبُ مختلف */
   "parent/dashboard": parentDashboard,
   "parent/today": studentToday,
+  /* «واجب الغد» داخل «واجب اليوم» مشتركٌ بين الطالب ووليّ أمره، فكان عند
+     وليّ الأمر يفتح «الصفحة غير متاحة» لغياب المفتاح (٤٢٧) */
+  "parent/tomorrow": studentTomorrow,
   "parent/attendance": studentAttendance,
   "parent/results": studentResults,
   "parent/progress": studentProgress,

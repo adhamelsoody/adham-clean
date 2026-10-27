@@ -14296,3 +14296,12 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
   .pr-pro .pr-n { width: 30px; height: 30px; font-size: 13px; }
   .pr-pro .pr-step:not(:last-child)::after { inset-inline-start: 14px; top: 30px; }
 }
+
+/* قائمةُ اختيار المنشآت والحلقات في التقارير (٤٢٧) — نافذةٌ بخاناتٍ بدل زرٍّ
+   بشكل قائمةٍ منسدلةٍ لا يفعل شيئاً */
+.rep-pk-list { max-height: 50vh; overflow-y: auto; border: 1px solid var(--border-soft, #e3e8ea); border-radius: 10px; padding: 4px 0; }
+.rep-pk-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; }
+.rep-pk-row:hover { background: rgba(21, 162, 167, .06); }
+.rep-pk-row small { margin-inline-start: auto; color: #8e9aa2; font-size: 11.5px; }
+.rep-pk-row.off span { color: #8e9aa2; }
+.rep-pk-all { font-weight: 700; margin-bottom: 6px; }
