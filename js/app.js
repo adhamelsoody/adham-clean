@@ -14,7 +14,6 @@
 --------------------------------------------------------- */
 const ICONS = {
   grid: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
-  shield: 'M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3zM9 12l2 2 4-4',
   building: 'M3.5 21h17M5 21V5.6A1.6 1.6 0 016.6 4h5.8A1.6 1.6 0 0114 5.6V21M14 10.4h3.4A1.6 1.6 0 0119 12v9M7.6 7.6h3.8M7.6 11h3.8M7.6 14.4h3.8M7.6 17.8h3.8M16 13.6h1.4M16 16.8h1.4',
   doc: 'M6.4 3h11.2A1.4 1.4 0 0119 4.4v15.2a1.4 1.4 0 01-1.4 1.4H6.4A1.4 1.4 0 015 19.6V4.4A1.4 1.4 0 016.4 3zM8.6 8h6.8M8.6 12h6.8M8.6 16h4',
   exam: 'M8.6 4H6.4A1.4 1.4 0 005 5.4v14.2A1.4 1.4 0 006.4 21h11.2a1.4 1.4 0 001.4-1.4V5.4A1.4 1.4 0 0017.6 4h-2.2M9 2.6h6v3H9zM8.4 11.4l1.2 1.2 2-2M13.4 12h3M8.4 16.4l1.2 1.2 2-2M13.4 17h3',
@@ -3186,7 +3185,7 @@ function bulkRender() {
       <td class="muted">${esc(s.circle || "—")}</td>
       <td>${same ? '<span class="pt-badge on">عليها بالفعل</span>'
         : has ? `<span class="pt-badge off">له خطة: ${esc(has.program || has.level || "—")}</span>`
-        : (x.attOnly ? '<span class="chip t-blue">تحضير فقط</span>'
+        : (s.attOnly ? '<span class="chip t-blue">تحضير فقط</span>'
                      : '<span class="muted">بلا خطة</span>')}</td>
     </tr>`;
   }).join("");
@@ -16764,7 +16763,7 @@ window.lvbDel = function (rid) {
       (r.rec ? " وما فيه من إعدادات" : ""),
       function () { window.lvbDel(rid); })) return;
   LVB.rows.splice(i, 1);
-  if (r.rec) { try { persistDelete("levels", r.rec.id); } catch (e) {}
+  if (r.rec) { try { persistDelete("levels", r.rec.id); } catch (e) { console.warn("persistDelete:", e); }
     const k = (DB.levels || []).findIndex(x => String(x.id) === String(r.rec.id));
     if (k > -1) DB.levels.splice(k, 1); }
   lvbRedraw();
@@ -23596,7 +23595,6 @@ window.rwdSave = function () {
     perStudent: Number(val("#rw_per")) || 0,
     minAge: Number(val("#rw_minage")) || 0,
     maxAge: Number(val("#rw_maxage")) || 0,
-    studentIds: RWDP.picked.slice(),
     /* الطلاب المعيَّنون: إن حُدّدوا فهم وحدهم */
     studentIds: RWDP.picked.slice(),
     circleIds: [...document.querySelectorAll(".rw-circle:checked")].map(x => String(x.value)),
@@ -25352,7 +25350,7 @@ function notifyAdminsOfChange(rec, actor) {
       read: false, srcLog: rec.id
     };
     DB.notifications.push(n);
-    try { persistSet("notifications", n); } catch (e) {}
+    try { persistSet("notifications", n); } catch (e) { console.warn("persistSet:", e); }
   });
 }
 
@@ -26678,7 +26676,7 @@ window.spBadgeGrant = function (id, bid, on) {
   if (Number(on)) g[String(bid)] = { ts: Date.now(), by: u.name || u.email || "—" };
   else delete g[String(bid)];
   st.badgeAwards = g;
-  try { persistSet("students", st); } catch (e) {}
+  try { persistSet("students", st); } catch (e) { console.warn("persistSet:", e); }
   showToast(Number(on) ? "مُنحت الشارة" : "سُحب المنح", "success");
   window.spBadges(id);
 };
@@ -26856,7 +26854,7 @@ window.dutyDel = function (id) {
   if (!needDelOk("نوع الواجب «" + nm + "»",
     function () { window.dutyDel(id); })) return;
   DB.dutyTypes.splice(i, 1);
-  try { persistDelete("dutyTypes", id); } catch (e) {}
+  try { persistDelete("dutyTypes", id); } catch (e) { console.warn("persistDelete:", e); }
   showToast("حُذف " + nm, "success");
   mount();
 };
@@ -27699,6 +27697,8 @@ function trmDelBlockers(id) {
 }
 
 window.trmDelete = function (id) {
+  /* من داخل نموذج الفترة: نافذةُ التأكيد تحلّ محلّه فتضيع تعديلاته (٤٢٩) */
+  if (modalDirty()) { modalDirtyWarn(); return; }
   const r = trmRows().find(x => String(x.id) === String(id));
   if (!r) return;
   if (!trmOwn(r)) { showToast("فترات الجهات الأعلى للعرض فقط", "warn"); return; }
@@ -28060,6 +28060,8 @@ function curAll(coll) {
 
 /* إنهاء فترةٍ موازية وأرشفتها */
 window.trmEnd = function (id) {
+  /* من داخل نموذج الفترة: نافذةُ التأكيد تحلّ محلّه فتضيع تعديلاته (٤٢٩) */
+  if (modalDirty()) { modalDirtyWarn(); return; }
   const t = (DB.terms || []).find(x => String(x.id) === String(id));
   if (!t) return;
   if (!trmOwn(t) || !trmCanManage()) { showToast("الأرشفةُ لمن يملكها", "warn"); return; }
@@ -32267,6 +32269,7 @@ function adminSettings() {
       </div>
     </div>
   </div>`;
+  /* eslint-enable */
 }
 
 /* =========================================================
@@ -32676,7 +32679,7 @@ window.tchatOpen = function (kind, id) {
   tchatMsgs(kind, id).forEach(m => {
     if (!m.read && String(m.fromUid || m.fromId || "") !== me) {
       m.read = true;
-      try { persistSet("site_messages", m); } catch (e) {}
+      try { persistSet("site_messages", m); } catch (e) { console.warn("persistSet:", e); }
     }
   });
 
@@ -33226,7 +33229,7 @@ window.tchatSend = function (xtra) {
   if (TCHAT.kind === "admin") {
     const rec = Object.assign({ id: "tc" + Date.now(), toRole: "admin", toEmail: "" }, base);
     DB.site_messages.push(rec);
-    try { persistSet("site_messages", rec); } catch (e) {}
+    try { persistSet("site_messages", rec); } catch (e) { console.warn("persistSet:", e); }
     sent = 1;
 
   } else if (TCHAT.kind === "teacher") {
@@ -33238,7 +33241,7 @@ window.tchatSend = function (xtra) {
       toEmail: String((tt && tt.email) || "").toLowerCase()
     }, base);
     DB.site_messages.push(rec);
-    try { persistSet("site_messages", rec); } catch (e) {}
+    try { persistSet("site_messages", rec); } catch (e) { console.warn("persistSet:", e); }
     sent = 1;
 
   } else if (TCHAT.kind === "circle") {
@@ -33254,7 +33257,7 @@ window.tchatSend = function (xtra) {
         circleId: String(st.circleId || ""), circleMsg: true
       }, base);
       DB.site_messages.push(rec);
-      try { persistSet("site_messages", rec); } catch (e) {}
+      try { persistSet("site_messages", rec); } catch (e) { console.warn("persistSet:", e); }
       sent++;
     });
 
@@ -33271,7 +33274,7 @@ window.tchatSend = function (xtra) {
       circleId: String(st.circleId || "")
     }, base);
     DB.site_messages.push(rec);
-    try { persistSet("site_messages", rec); } catch (e) {}
+    try { persistSet("site_messages", rec); } catch (e) { console.warn("persistSet:", e); }
     sent = 1;
   }
 
@@ -33472,7 +33475,7 @@ function notifyUser(toId, kind, text, title) {
   };
   if (!Array.isArray(DB.notifications)) DB.notifications = [];
   DB.notifications.push(rec);
-  try { persistSet("notifications", rec); } catch (e) {}
+  try { persistSet("notifications", rec); } catch (e) { console.warn("persistSet:", e); }
   return rec;
 }
 
@@ -33498,13 +33501,13 @@ window.notifRead = function (id) {
   const n = (DB.notifications || []).find(x => String(x.id) === String(id));
   if (!n || n.read) return;
   n.read = true;
-  try { persistSet("notifications", n); } catch (e) {}
+  try { persistSet("notifications", n); } catch (e) { console.warn("persistSet:", e); }
   mount();
 };
 
 window.notifReadAll = function () {
   let k = 0;
-  tchNotifs().forEach(n => { if (!n.read) { n.read = true; k++; try { persistSet("notifications", n); } catch (e) {} } });
+  tchNotifs().forEach(n => { if (!n.read) { n.read = true; k++; try { persistSet("notifications", n); } catch (e) { console.warn("persistSet:", e); } } });
   if (k) showToast("عُلّمت " + toArabicDigits(k) + " تنبيهاً كمقروء", "success");
   mount();
 };
@@ -37400,7 +37403,7 @@ window.tchRateSave = function (tid) {
   if (!Array.isArray(DB.reviews)) DB.reviews = [];
   const i = DB.reviews.findIndex(x => String(x.id) === String(rec.id));
   if (i > -1) DB.reviews[i] = rec; else DB.reviews.push(rec);
-  try { persistSet("reviews", rec); } catch (e) {}
+  try { persistSet("reviews", rec); } catch (e) { console.warn("persistSet:", e); }
 
   closeModal();
   showToast("حُفظ تقييمُ " + (t.name || "المعلّم"), "success");
@@ -38539,7 +38542,7 @@ window.tchBadgeSave = function (id) {
   });
   rules.minDays = rules.att.days;
   c.badgeRules = rules;
-  try { persistSet("circles", c); } catch (e) {}
+  try { persistSet("circles", c); } catch (e) { console.warn("persistSet:", e); }
   closeModal();
   showToast("حُفظت شروطُ شارات " + (c.name || "الحلقة"), "success");
   mount();
@@ -38550,7 +38553,7 @@ window.tchBadgeClear = function (id) {
   const c = (cur("circles") || []).find(x => String(x.id) === String(id));
   if (!c) return;
   c.badgeRules = null;
-  try { persistSet("circles", c); } catch (e) {}
+  try { persistSet("circles", c); } catch (e) { console.warn("persistSet:", e); }
   closeModal();
   showToast("عادت حلقتُك إلى شروط الإدارة", "success");
   mount();
@@ -44762,7 +44765,7 @@ window.stuMailSave = function () {
   const v = String(val("#stuMail") || "").trim().toLowerCase();
   if (v && v.indexOf("@") < 1) { showToast("بريدٌ غير صحيح", "warn"); return; }
   st.email = v;
-  try { persistSet("students", st); } catch (e) {}
+  try { persistSet("students", st); } catch (e) { console.warn("persistSet:", e); }
   showToast("حُفظ بريدُك", "success");
   mount();
 };
@@ -46777,6 +46780,7 @@ function openModal(title, sub, body, foot) {
   /* نافذةٌ تُفتح فوق شاشةٍ مستثناةٍ من التحويل الهجريّ ترث استثناءها —
      فنوافذُ «دوام الموظفين» في duty-plus.js تبقى ميلاديةً بلا تعديلٍ فيه. */
   const greg = (typeof hijGregHere === "function" && hijGregHere()) ? ' data-greg="1"' : "";
+  root.removeAttribute("data-dirty");
   root.innerHTML = `<div class="modal-back"${greg} data-action="close-modal">
     <div class="modal" data-stop>
       <div class="modal-head"><div><h3>${esc(title)}</h3>${sub ? `<div class="mh-sub">${esc(sub)}</div>` : ""}</div>
@@ -46785,7 +46789,28 @@ function openModal(title, sub, body, foot) {
       ${foot ? `<div class="modal-foot">${foot}</div>` : ""}
     </div></div>`;
 }
-function closeModal() { const r = $("#modalRoot"); if (r) r.innerHTML = ""; }
+function closeModal() { const r = $("#modalRoot"); if (r) { r.innerHTML = ""; r.removeAttribute("data-dirty"); } }
+
+/* تعديلاتٌ لم تُحفظ في النافذة المفتوحة (٤٢٩): تُوسَم النافذةُ عند أوّل
+   كتابةٍ أو اختيارٍ من يد المستخدم (isTrusted)، لا ممّا يملؤه الكود.
+   ويُسأل عنها قبل الإغلاق العارض (النقر على الخلفية أو Esc) وقبل استبدال
+   النافذة بنافذة تأكيد — أمّا × و«إلغاء» فقرارٌ صريحٌ يُنفَّذ كما هو. */
+function modalDirty() {
+  const r = $("#modalRoot");
+  return !!(r && r.querySelector(".modal") && r.getAttribute("data-dirty") === "1");
+}
+function modalDirtyWarn() {
+  showToast("في النافذة تعديلاتٌ لم تُحفظ — احفظها، أو اضغط «إلغاء» أو × للخروج دون حفظ", "warn");
+}
+(function () {
+  const mark = function (e) {
+    if (!e || !e.isTrusted || !e.target || !e.target.closest) return;
+    const r = e.target.closest("#modalRoot");
+    if (r && e.target.closest(".modal") && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) r.setAttribute("data-dirty", "1");
+  };
+  document.addEventListener("input", mark, true);
+  document.addEventListener("change", mark, true);
+})();
 
 function openPanel(html) {
   const r = $("#panelRoot");
@@ -48146,6 +48171,10 @@ function honorRows() {
 }
 
 function donorHonor() {
+  /* قواعدُ الخادم لا تُجيز للداعم قراءةَ بيانات الطلاب بعد — يُقال ذلك صراحةً (٤٢٩) */
+  if ((window.__READ_DENIED || []).indexOf("students") > -1 && !(cur("students") || []).length)
+    return `<div class="page">${pageHead("لوحة الشرف", "")}<div class="card">${emptyState("لا تتوفّر البيانات لحسابك بعد",
+      "صلاحيةُ الداعم لقراءة بيانات الطلاب لم تُفعَّل في قواعد النظام. راجع الإدارة لتفعيلها.")}</div></div>`;
   const rows = honorRows();
   const mosques = donorMosques();
   const top = rows.slice(0, 3);
@@ -48218,6 +48247,10 @@ function donorHonor() {
    لوحة الداعم — نظرةٌ عامة على ثمرة إنفاقه
    ========================================================================= */
 function donorDashboard() {
+  /* قواعدُ الخادم لا تُجيز للداعم قراءةَ بيانات الطلاب بعد — يُقال ذلك صراحةً (٤٢٩) */
+  if ((window.__READ_DENIED || []).indexOf("students") > -1 && !(cur("students") || []).length)
+    return `<div class="page">${pageHead("لوحة الداعم", "")}<div class="card">${emptyState("لا تتوفّر البيانات لحسابك بعد",
+      "صلاحيةُ الداعم لقراءة بيانات الطلاب لم تُفعَّل في قواعد النظام. راجع الإدارة لتفعيلها.")}</div></div>`;
   const studs = donorStudents();
   const mosques = donorMosques();
   const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
@@ -53603,7 +53636,7 @@ window.attClear = function (studentId) {
 
   const st = (DB.students || []).find(x => String(x.id) === String(studentId));
   DB.attendance.splice(i, 1);
-  try { persistDelete("attendance", id); } catch (e) {}
+  try { persistDelete("attendance", id); } catch (e) { console.warn("persistDelete:", e); }
 
   /* المسودّة تُنظَّف أيضاً وإلا أُعيد السجل عند أول حفظ */
   const d = attDraft();
@@ -54346,7 +54379,10 @@ document.addEventListener("click", (e) => {
     case "modal-promote": modalPromote(t.dataset.id); break;
     case "plan-open": STATE.planId = +t.dataset.id; mount(); break;
     case "plan-back": STATE.planId = null; mount(); break;
-    case "close-modal": closeModal(); break;
+    case "close-modal":
+      /* النقرُ على الخلفية وحدها لا يُسقط تعديلاتٍ لم تُحفظ (٤٢٩) */
+      if (t.classList.contains("modal-back") && e.target === t && modalDirty()) { modalDirtyWarn(); break; }
+      closeModal(); break;
     case "close-panel": closePanel(); break;
     case "toast": showToast(t.dataset.msg || "تم التنفيذ", t.dataset.type || "success"); break;
 
@@ -54799,7 +54835,7 @@ document.addEventListener("click", (e) => {
       const sTeacherId = sCircleRec && sCircleRec.teacherId ? String(sCircleRec.teacherId) : idByName("teachers", sTeacher);
       /* المجمّعُ من المسجد إن وُجد، وإلا من المجمّع الحالي — والمسجدُ
          المستقلُّ يبقى بلا مجمّع، وهو صحيحٌ لا نقص. */
-      const o = { id: Date.now(), complexId: sFac.complexId || STATE.complexId || "", name, age: val("#s_age", "—"),
+      const o = { id: Date.now(), complexId: sFac.complexId || STATE.complexId || "", name,
         photo: photoVal("s_photo", ""),
         mosque: sFac.mosque, mosqueId: sFac.mosqueId,
         circle: sCircle,   circleId:  idByName("circles", sCircle),
@@ -55286,6 +55322,8 @@ async function loadAllData(source) {
   /* فحصةٌ أولى فور وصول البيانات: بدونها تتأخّر التنبيهات دقيقتين */
   try { if (typeof runPeriodicScans === "function") runPeriodicScans(true); } catch (e) {}
   if (denied.length) console.warn("مجموعات لم تُقرأ:", denied.join("، "));
+  /* ما رُفضت قراءتُه تقرؤه الشاشاتُ لتقول السببَ بدل أصفارٍ مضلِّلة (٤٢٩) */
+  window.__READ_DENIED = source === "cache" ? (window.__READ_DENIED || []) : denied.slice();
   return true;
 }
 

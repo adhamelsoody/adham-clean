@@ -31,7 +31,7 @@
    لا تنتهي، فأُزيلت. يكفي أن تُفتح الصفحةُ بعد المحو لتُجلب من الشبكة.
    هذا الملفُّ لا يُخزَّن ألبتة (firebase.json و skip أدناه)، فهو الطريقُ
    الوحيدُ المضمونُ للوصول إلى جهازٍ حُبس على نسخةٍ قديمة. */
-const SW_VERSION = "mirath-v6";
+const SW_VERSION = "mirath-v7";
 const SHELL_CACHE = SW_VERSION + "-shell";
 const QURAN_CACHE = SW_VERSION + "-quran";
 
@@ -44,10 +44,8 @@ const SHELL = [
 
   /* الملحقات: مربوطةٌ بكلّ صفحة، فتخزينُها يوفّر مئةَ كيلو في كلّ فتحة */
   "/js/clean-boot.js", "/css/clean-boot.css",
-  "/js/governance.js", "/css/governance.css",
-  "/js/duty-plus.js", "/css/duty-plus.css",
-  "/js/facilities-plus.js", "/css/facilities-plus.css",
-  "/js/manager-link.js", "/css/manager-link.css",
+  /* governance · duty-plus · facilities-plus · manager-link لا تحمّلها أيُّ صفحة —
+     أُخرجت من التخزين فلا تُنزَّل مع كلّ تنصيب (٤٢٩). الملفّاتُ باقيةٌ لم تُحذف. */
 
   /* الأصول: ٣٦٠ كيلو كانت تُحمَّل مع كلّ فتحة */
   /* hijri.js و update.js و logo-mark.png و favicon.png كانت هنا ولا وجودَ

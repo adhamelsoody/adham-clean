@@ -752,14 +752,15 @@ window.SHELL_MODE = true;
     if (btnNotif) btnNotif.addEventListener("click", function () { if (typeof openNotifPanel === "function") openNotifPanel(); });
     const btnMsg = document.getElementById("btnMsg");
     if (btnMsg) btnMsg.addEventListener("click", function () { if (typeof openMsgPanel === "function") openMsgPanel(); });
-    // التواريخ قابلة للتعديل بالنقر
-    document.querySelectorAll(".filter-date").forEach(function (el) {
-      el.style.cursor = "pointer";
-      el.addEventListener("click", function () { if (typeof openDatePicker === "function") openDatePicker(el); });
-    });
+    /* كان هنا ربطُ .filter-date بـ openDatePicker — دالّةٌ لا وجود لها، والحقلُ
+       يخفيه topbar-dates.js ويضع مكانه منتقيه. أُزيل المرجعُ الميت (٤٢٩) */
 
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") { if (typeof closeModal === "function") closeModal(); if (typeof closePanel === "function") closePanel(); }
+      if (e.key === "Escape") {
+        /* Esc لا يُسقط تعديلاتٍ لم تُحفظ في نافذة (٤٢٩) */
+        if (typeof modalDirty === "function" && modalDirty()) { if (typeof modalDirtyWarn === "function") modalDirtyWarn(); return; }
+        if (typeof closeModal === "function") closeModal(); if (typeof closePanel === "function") closePanel();
+      }
     });
     ensureLogoutButton();
   }
@@ -857,7 +858,7 @@ window.SHELL_MODE = true;
     BOOTED = true;
     if (typeof STATE !== "undefined") { STATE.iface = "admin"; STATE.page = PAGE; STATE.planId = null; }
     setTopbar(profile);
-    if (typeof loadCache === "function") { try { loadCache(); } catch (e) {} }
+    /* loadCache لا وجود لها في أيّ ملف — أُزيل مرجعُها الميت (٤٢٩) */
     ensureCollections();
     if (typeof renderComplexSelect === "function") safe(renderComplexSelect);
     buildSidebarNav();                 // القائمة تظهر فوراً
