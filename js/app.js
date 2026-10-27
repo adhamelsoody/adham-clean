@@ -7332,7 +7332,7 @@ function adminExamsLog() {
     </div>
 
     <div class="lg-header">
-      <div class="lg-logo"><img src="../logo.png" alt="" onerror="this.remove()"></div>
+      <div class="lg-logo"><img src="/logo-mark.svg" alt="" onerror="this.remove()"></div>
       <div class="lg-photo">${photo}</div>
       <div class="lg-dates">
         <strong>تاريخ بداية ونهاية التقرير</strong>
@@ -8924,7 +8924,7 @@ window.xctPreview = function (id) {
   if (!t) return;
   const w = window.open("", "_blank");
   if (!w) { showToast("اسمح بالنوافذ المنبثقة للمعاينة", "warn"); return; }
-  const logo = t.logo ? `<img src="${location.origin}/logo.png" onerror="this.remove()" style="width:90px;height:90px;object-fit:contain;margin:0 auto 8px;display:block">` : "";
+  const logo = t.logo ? `<img src="${location.origin}/logo-mark.svg" onerror="this.remove()" style="width:90px;height:90px;object-fit:contain;margin:0 auto 8px;display:block">` : "";
   w.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
     <title>معاينة — ${esc(t.name)}</title><style>
     body{font-family:"Tajawal","Segoe UI",Tahoma,sans-serif;margin:0;background:#eef1f1;padding:20px}
@@ -25830,6 +25830,8 @@ window.msgDropDo = function (id) {
 window.msgDropGroup = function (key) {
   const g = outboxGrouped().find(x => x.key === key);
   if (!g) return;
+  /* كانت تحذف المجموعة كلَّها بنقرة — تمرّ الآن ببوابة التأكيد كسائر الحذف (٤٢٨) */
+  if (!needDelOk(toArabicDigits(g.count) + " رسالة", function () { window.msgDropGroup(key); })) return;
   g.items.forEach(m => {
     const i = (DB.msgOutbox || []).findIndex(x => String(x.id) === String(m.id));
     if (i > -1) { DB.msgOutbox.splice(i, 1); persistDelete("msgOutbox", m.id); }
@@ -29031,6 +29033,15 @@ function setPanelTerms() {
            يفلت منك حقلُ البحث عند أوّل حرف. */ ""}
       <button type="button" class="lv-add tm-flt-btn" onclick="window.trmFltTog()"
         title="فرز الفترات">${ic("filter", 15)} فلتر</button>
+      ${/* فتحُ الدورات المؤرشفة مؤقّتاً (archiveOverride) كان مبنيّاً بلا زرّ يفتحه.
+           للإدارة العليا وحدها، ومتى وُجدت فترةٌ مؤرشفة (٤٢٨) */ ""}${
+        isTopAdmin() && rows.some(r => trmState(r) === "archived")
+          ? (DB.__archiveOverride === true
+              ? `<button type="button" class="lv-add" onclick="window.archiveOverride(false)"
+                  title="إعادة الدورات المؤرشفة للقراءة فقط">${ic("lock", 15)} إغلاق الفتح المؤقّت</button>`
+              : `<button type="button" class="lv-add" onclick="window.archiveOverride(true)"
+                  title="تعديل سجلات الدورات المؤرشفة في هذه الجلسة وحدها">${ic("lock", 15)} فتح المؤرشف مؤقّتاً</button>`)
+          : ""}
       <strong class="tm-title">الفترات الدراسية</strong>
     </div>
 
@@ -31185,7 +31196,7 @@ function adminStatsAll(cfg) {
     </div>
 
     <div class="stat-header">
-      <div class="sh-logo"><img src="../logo.png" alt="" onerror="this.remove()"></div>
+      <div class="sh-logo"><img src="/logo-mark.svg" alt="" onerror="this.remove()"></div>
       <div class="sh-mid"><strong>${esc(cfg.docTitle || "تقرير الإحصائية الشاملة")}</strong><span>${esc(complexName(STATE.complexId) || "كل المجمعات")}</span></div>
       <div class="sh-date"><strong>تاريخ بداية ونهاية التقرير</strong><span>${dt}</span><span>${dt}</span></div>
     </div>
@@ -49831,6 +49842,8 @@ function panelStudent(id, keepDraft) {
         onclick="window.spMsg('${jsAttr(s.id)}')">${ic("chat", 17)}</button>
       <button class="sp-act" title="${s.status === "متوقف" ? "تفعيل" : "إيقاف مؤقت"}"
         data-action="toggle-student" data-id="${s.id}">${ic(s.status === "متوقف" ? "play" : "pause", 17)}</button>
+      ${/* «سجلّ الطالب» (stuLog) كان مبنيّاً بلا زرّ يفتحه (٤٢٨) */ ""}<button class="sp-act" title="سجلّ الطالب"
+        onclick="window.stuLog('${jsAttr(s.id)}')">${ic("clock", 17)}</button>
       ${/* «شيل علامة الإعدادات في صفحة الطالب» — رُفع زرُّها. والخطةُ تُضبط من
            «الخيارات» في بطاقة الخطة الافتراضية، و spPlanSettings باقيةٌ بلا زرّ. */ ""}
       <button class="modal-close" data-action="close-panel">${ic("x", 18)}</button>
@@ -53578,6 +53591,8 @@ function attSaveAll() {
 /* حذف سجل حضور — كان يُعدَّل ولا يُحذف، فسجلٌ سُجّل بالخطأ لطالب
    ليس في الحلقة يبقى في تقاريره أبداً. */
 window.attClear = function (studentId) {
+  /* كان يحذف تحضيرَ اليوم بنقرة — يمرّ الآن ببوابة التأكيد (٤٢٨) */
+  if (!needDelOk("تحضير هذا الطالب لهذا اليوم", function () { window.attClear(studentId); })) return;
   const dateISO = attDate();
   const stC = (DB.students || []).find(x => String(x.id) === String(studentId));
   const multiC = stC && studentCircleIds(stC).length > 1;
