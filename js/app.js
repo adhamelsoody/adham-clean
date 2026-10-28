@@ -6175,6 +6175,12 @@ window.userSave = function () {
   }
 
   /* ---- إضافة: يُنشأ حساب دخول حقيقي، ومعرّف المستند = uid ---- */
+  /* مديرُ المنشأة لا يُنشئ معلّماً أو مديراً «لكلّ المنشآت» (٤٣٥): الحسابُ بلا
+     نطاقٍ يكتب في كلّ منشأة، والقاعدةُ تردّ ملفَّه — بعد أن يكون حسابُ الدخول
+     قد أُنشئ فيبقى يتيماً. فيُطلب الاختيارُ قبل الإنشاء. */
+  if (!isTopAdmin() && !scopeIds.length && ["student", "parent"].indexOf(data.role) === -1) {
+    showToast("اختر في «أماكن الإشراف» منشأةً واحدةً على الأقلّ من منشآتك", "warn"); return;
+  }
   if (DB.users.some(x => String(x.username) === uid)) { showToast("رقم الهوية مسجَّل بالفعل", "warn"); return; }
   const dup = DB.users.some(x => data.email && String(x.email).toLowerCase() === data.email.toLowerCase());
   if (dup) { showToast("البريد الإلكتروني مستخدم بالفعل", "warn"); return; }
@@ -6185,7 +6191,12 @@ window.userSave = function () {
   createAuthUser({ email: data.email, username: uid })
     .then(res => {
       const u = Object.assign({ id: res.uid, uid: res.uid, loginEmail: res.loginEmail, createdAt: Date.now() }, data);
-      DB.users.push(u); persistSet("users", u);
+      DB.users.push(u);
+      /* رفضُ الملفّ بعد إنشاء حساب الدخول يُقال بعينه (٤٣٥): يبقى حسابُ دخولٍ
+         بلا ملفّ، يحذفه مديرُ النظام من «الحسابات اليتيمة» */
+      Promise.resolve(persistSet("users", u)).then(ok => {
+        if (ok === false) showToast("أُنشئ حساب الدخول ورفض الخادمُ حفظَ ملفّه — راجع مدير النظام لحذف الحساب اليتيم", "warn");
+      });
       syncTeacherRecord(u);   /* يظهر فوراً في صفحة المعلمين وقوائم الحلقات */
       syncStudentRecord(u);   /* وكذلك الطالب في صفحة الطلاب */
       closeModal(); mount();
@@ -11724,6 +11735,20 @@ function urqApplyFacility(u) {
     }
   }
   delete u.requestedMosqueId;
+
+  /* مديرُ المنشأة يعتمد إلى منشأته (٤٣٥): من لم يطلب منشأةً ولم يختر مسجداً
+     يُسنَد إلى نطاق من اعتمده — وإلّا بقي حساباً بلا نطاقٍ يكتب في كلّ منشأة،
+     والقاعدةُ تردّه. ومديرُ النظام يُسند من بطاقة الحساب كما كان. */
+  const me = (STATE && STATE.user) || {};
+  if (!u.mosqueId && !u.complexId && !isTopAdmin(me)) {
+    if (me.mosqueId) {
+      u.mosqueId = String(me.mosqueId);
+      const mq1 = (DB.mosques || []).find(x => String(x.id) === String(me.mosqueId));
+      if (mq1) { u.mosque = mq1.name || ""; if (mq1.complexId) u.complexId = String(mq1.complexId); }
+    } else if (me.complexId) {
+      u.complexId = String(me.complexId);
+    }
+  }
 }
 
 window.urqDecide = function (to, ids, auto) {
@@ -23717,7 +23742,10 @@ window.ptsGrantDo = function () {
   /* المكتسب الكلّي لا ينقص: هو سجلّ التميّز لا رصيد الإنفاق */
   if (n > 0) st.balance = ptsTotal(st) + n;
   if (st.points < 0) st.points = 0;
-  persistSet("students", st);
+  /* الرصيدُ والمكتسبُ وحدَهما (٤٣٥): القاعدةُ تُجيز للمعلّم هذين الحقلين في
+     سجلّ الطالب لا السجلَّ كلَّه — فكان الرصيدُ يُردّ ويُكتب سجلُّ النقاط وحده */
+  if (((STATE && STATE.user) || {}).role === "teacher") persistPatch("students", st, ["points", "balance"]);
+  else persistSet("students", st);
 
   const rec = {
     id: "pt" + Date.now(), studentId: String(st.id), student: st.name || "",
@@ -56814,7 +56842,9 @@ window.offqFlush = function () {
     const ref = db.collection(x.coll).doc(String(x.id));
     /* الدمجُ لا الاستبدال: النسخةُ المحفوظةُ قديمة، والاستبدالُ بها يمحو ما
        أضافه غيرُك إلى المستند في أثناء الانقطاع من حقولٍ لم تلمسها. */
-    const p = x.op === "delete" ? ref.delete() : ref.set(x.data, { merge: true });
+    let body = x.data;
+    if (body && body.__patch) { body = Object.assign({}, body); delete body.__patch; delete body.id; }
+    const p = x.op === "delete" ? ref.delete() : ref.set(body, { merge: true });
 
     return p.then(() => { done++; })
             .catch(err => {
@@ -57330,7 +57360,9 @@ function persistPatch(coll, obj, keys) {
     }
   } catch (e) {}
 
-  const queued = Object.assign({ id: obj.id }, patch);
+  /* __patch: حقولٌ بعينها — يُرفع دمجاً بلا id، فقواعدُ الحقول المحصورة
+     (البريد والصورة · النقاط) لا تراه حقلاً زائداً فتردّه (٤٣٥) */
+  const queued = Object.assign({ id: obj.id, __patch: 1 }, patch);
   if (!isOnline()) { offqPush("set", coll, queued); return Promise.resolve(true); }
 
   return db.collection(coll).doc(String(obj.id)).set(patch, { merge: true })

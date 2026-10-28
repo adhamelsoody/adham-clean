@@ -344,6 +344,17 @@ service cloud.firestore {
             && scopeIds().hasAll(d.get('complexIds', [])));
     }
 
+    /* ما يصير إليه الحسابُ بيد مدير المنشأة (٤٣٥): الطالبُ ووليُّ الأمر
+       داخلَ نطاقه أو بلا منشأة، وما سواهما (معلّمٌ · مدير مسجد) داخلَ نطاقه
+       حتماً — من يُترك بلا نطاقٍ يكتب في كلّ منشأةٍ في النظام. */
+    function targetScopeOk(d) {
+      return d.get('role', '') in ['student', 'parent']
+        ? userScopeOk(d)
+        : (inScope(d)
+           && scopeIds().hasAll(d.get('mosqueIds', []))
+           && scopeIds().hasAll(d.get('complexIds', [])));
+    }
+
     /* الملفُّ القائمُ يحمل بريدَ هذا الحساب — انظر «ربط الحساب» في users */
     function linkMatch(d) {
       return request.auth.token.email != null && (
@@ -445,7 +456,20 @@ service cloud.firestore {
                     && request.resource.data.role in grantableRoles()
                     && !changed().hasAny(['phone', 'email', 'loginEmail', 'username', 'uid'])
                     && (unscoped() || userScopeOk(resource.data))
-                    && (unscoped() || userScopeOk(request.resource.data));
+                    && (unscoped() || targetScopeOk(request.resource.data));
+
+      /* =================================================================
+         مديرُ المنشأة يُنشئ حساباً بدورٍ تحت سقفه وداخل نطاقه (٤٣٥)
+         -----------------------------------------------------------------
+         نموذجُ «إضافة مستخدم» يُتاح لمدير المجمّع والمسجد: يُنشئ حسابَ
+         الدخول في Authentication ثمّ يكتب users/{uid} — وكانت الكتابةُ
+         للمدير العامّ وحدَه، فيبقى حسابُ دخولٍ يتيمٌ بلا ملفّ. الآن يُكتب
+         بدورٍ يملك منحه، ولا لنفسه، ولمعلّمٍ أو مدير مسجدٍ بنطاقٍ داخل نطاقه
+         لا بلا نطاق — فالحسابُ بلا نطاقٍ يكتب في كلّ منشأة. */
+      allow create: if isManager()
+                    && request.auth.uid != uid
+                    && request.resource.data.role in grantableRoles()
+                    && (unscoped() || targetScopeOk(request.resource.data));
 
       /* المدير وحده يُنشئ الحسابات ويغيّر الأدوار والحالة ويحذف. */
       allow create, update, delete: if isAdmin();
@@ -508,6 +532,13 @@ service cloud.firestore {
          لا نطاقَ ولا ارتباطَ ولا اسمَ — تلك للإدارة. */
       allow update: if ownsStudent(docId)
                     && changed().hasOnly(['email', 'photo']);
+      /* نقاطُ التحفيز يمنحها المعلّمُ لطالب نطاقه بصلاحية points (٤٣٥):
+         كان سجلُّ النقاط يُكتب ورصيدُ الطالب يُردّ، فلا يتغيّر الرصيد.
+         الرصيدُ والمكتسبُ وحدَهما، وكلُّ منحٍ موثَّقٌ في pointsLog. */
+      allow update: if isTeacher()
+                    && changed().hasOnly(['points', 'balance'])
+                    && permOf('points', 'points', true)
+                    && oldScopeOk();
     }
 
     /* =====================================================================
