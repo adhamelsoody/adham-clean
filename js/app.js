@@ -2657,10 +2657,19 @@ function modalEditCircle(id) {
       <!-- المعلم لم يكن في نموذج التعديل: لو غادر معلم الحلقة فلا سبيل
            لتغييره، وهو الحقل الذي يرثه كل طلابها -->
       <div class="field"><label>المعلم المسؤول</label>
-        <select id="ec_teacher">${(cur("teachers") || []).length
-          ? cur("teachers").map(t2 => `<option value="${esc(t2.name)}"${
-              t2.name === c.teacher ? " selected" : ""}>${esc(t2.name)}</option>`).join("")
-          : `<option>—</option>`}</select></div>
+        ${(() => {
+          /* بالمعرّف لا بالاسم، ومعها «—» (٤٣١): كانت القائمةُ بالأسماء وبلا
+             خيارٍ فارغ، فحلقةٌ لا يطابق نصُّ معلّمها اسماً في القائمة تُختار
+             لها أوّلُ معلّمٍ تلقائياً — وأيُّ حفظٍ بعدها ينقل طلابَها إليه. */
+          const tl = (cur("teachers") || []).slice();
+          const own = c.teacherId ? (DB.teachers || []).find(t2 => String(t2.id) === String(c.teacherId)) : null;
+          if (own && !tl.some(t2 => String(t2.id) === String(own.id))) tl.unshift(own);
+          const selId = own ? String(own.id)
+            : String(((c.teacher && c.teacher !== "—") ? (tl.find(t2 => t2.name === c.teacher) || {}).id : "") || "");
+          return `<select id="ec_teacher" data-orig="${esc(selId)}">
+            <option value="" ${selId ? "" : "selected"}>—</option>${tl.map(t2 =>
+              `<option value="${esc(String(t2.id))}"${String(t2.id) === selId ? " selected" : ""}>${esc(t2.name)}</option>`).join("")}</select>`;
+        })()}</div>
 
       <!-- معلّمٌ ثانٍ يعمل في الحلقة كالأصيل -->
       <div class="field"><label>المعلّمون المساعدون</label>
@@ -32497,18 +32506,26 @@ function pfSave(coll, id, data) {
   if (!rec) return;
 
   rec.photo = data || "";
-  Promise.resolve(persistSet(coll, rec)).then(ok => {
-    if (ok === false) return;              /* رُفض الحفظ: رسالتُه من persistSet */
+  /* الصورةُ وحدَها: هي ما تجيزه القواعدُ لصاحب السجلّ (٤٣٠) */
+  Promise.resolve(persistPatch(coll, rec, ["photo"])).then(ok => {
+    if (ok === false) return;              /* رُفض الحفظ: رسالتُه من persistPatch */
     showToast(data ? "حُفظت صورتك" : "أُزيلت الصورة", "success");
 
-    /* حسابُ المستخدم كذلك، فتظهر في الشريط العلويّ */
+    /* حسابُ المستخدم كذلك، فتظهر في الشريط العلويّ.
+       وكان البحثُ يلتقط حسابَ وليّ الأمر (studentIds) حين يرفع صورةَ ابنه،
+       فتصير صورةُ الابن صورةَ الوليّ — أو حسابَ غيره فتردّه القواعد. فغيرُ
+       الإدارة لا يمسّ إلّا حسابَه هو، وصاحبَ السجلّ نفسَه (٤٣٠). */
     try {
+      const me = (STATE && STATE.user) || {};
+      const admin = me.role === "admin" || me.role === "owner" || isMgrRole(me.role);
       const key = coll === "teachers" ? "teacherId" : "studentId";
-      const u = (cur("users") || []).find(x =>
-        String(x[key] || "") === String(id) ||
-        (Array.isArray(x.studentIds) && x.studentIds.indexOf(String(id)) > -1) ||
-        (x.uid && rec.uid && String(x.uid) === String(rec.uid)));
-      if (u) { u.photo = rec.photo; persistSet("users", u); }
+      const u = (cur("users") || []).find(x => {
+        const hit = String(x[key] || "") === String(id) ||
+          (x.uid && rec.uid && String(x.uid) === String(rec.uid));
+        if (!hit) return false;
+        return admin || (me.uid && String(x.uid || x.id) === String(me.uid));
+      });
+      if (u) { u.photo = rec.photo; persistPatch("users", u, ["photo"]); }
       if (window.refreshTopbarPhoto) window.refreshTopbarPhoto();
     } catch (e) {}
 
@@ -38664,10 +38681,13 @@ window.tchBadgeSave = function (id) {
   });
   rules.minDays = rules.att.days;
   c.badgeRules = rules;
-  try { persistSet("circles", c); } catch (e) { console.warn("persistSet:", e); }
-  closeModal();
-  showToast("حُفظت شروطُ شارات " + (c.name || "الحلقة"), "success");
-  mount();
+  /* حقلُ الشروط وحدَه: هو ما تجيزه القواعدُ للمعلّم في سجلّ حلقته (٤٣٠) */
+  Promise.resolve(persistPatch("circles", c, ["badgeRules"])).then(ok => {
+    if (ok === false) return;
+    closeModal();
+    showToast("حُفظت شروطُ شارات " + (c.name || "الحلقة"), "success");
+    mount();
+  });
 };
 
 window.tchBadgeClear = function (id) {
@@ -38675,10 +38695,12 @@ window.tchBadgeClear = function (id) {
   const c = (cur("circles") || []).find(x => String(x.id) === String(id));
   if (!c) return;
   c.badgeRules = null;
-  try { persistSet("circles", c); } catch (e) { console.warn("persistSet:", e); }
-  closeModal();
-  showToast("عادت حلقتُك إلى شروط الإدارة", "success");
-  mount();
+  Promise.resolve(persistPatch("circles", c, ["badgeRules"])).then(ok => {
+    if (ok === false) return;
+    closeModal();
+    showToast("عادت حلقتُك إلى شروط الإدارة", "success");
+    mount();
+  });
 };
 
 window.tchCircleInfo = function (id) {
@@ -42327,11 +42349,20 @@ function modalDuty(studentId, focus) {
       </div>`}
 
       <div class="field"><label>البرنامج</label>
-        <select id="dt_program">${(prgPickList(p.program).length ? prgPickList(p.program).map(x => x.name) : ["—"]).map(x =>
-          `<option ${x === p.program ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
+        ${(() => {
+          /* القيمةُ المحفوظةُ تبقى في القائمة ومختارةً (٤٣١): كان البرنامجُ أو
+             المستوى الذي لا يطابق خياراً يُستبدل بأوّل الخيارات عند حفظ
+             الواجب — فتتغيّر خطةُ الطالب بلا قصد. ويُكتبان عند تغييرهما فقط. */
+          const keepIn = (arr, v) => (v && arr.indexOf(v) === -1) ? [v].concat(arr) : arr;
+          const pv = String(p.program || ""), lv = String(p.level || "");
+          const prgs = keepIn(prgPickList(p.program).map(x => x.name), pv);
+          const lvls = keepIn(["المستوى الأول", "المستوى الثاني", "المستوى الثالث", "مخصص"], lv);
+          const opt = (arr, v) => (v ? "" : `<option value="" selected>—</option>`) +
+            arr.map(x => `<option ${x === v ? "selected" : ""}>${esc(x)}</option>`).join("");
+          return `<select id="dt_program" data-orig="${esc(pv)}">${opt(prgs, pv)}</select></div>
       <div class="field"><label>المستوى</label>
-        <select id="dt_level">${["المستوى الأول", "المستوى الثاني", "المستوى الثالث", "مخصص"].map(x =>
-          `<option ${x === p.level ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        <select id="dt_level" data-orig="${esc(lv)}">${opt(lvls, lv)}</select></div>`;
+        })()}
 
       <div class="field full"><label>نسبة الإنجاز (٪)</label>
         <input id="dt_progress" type="number" min="0" max="100" dir="ltr" value="${esc(String(p.progress || 0))}"></div>
@@ -42400,11 +42431,14 @@ function saveDuty() {
   const draft = {
     kind: val("#dt_kind", "حفظ جديد"),
     day: val("#dt_day", "today"),
-    program: val("#dt_program", ""),
-    level: val("#dt_level", ""),
     progress: Math.max(0, Math.min(100, Number(val("#dt_progress", 0)) || 0)),
     note: val("#dt_note", "")
   };
+  /* البرنامجُ والمستوى يُكتبان إن غيّرهما المستخدمُ وحدَه (٤٣١) */
+  ["program", "level"].forEach(k => {
+    const el = document.getElementById("dt_" + k);
+    if (el && String(el.value || "") !== String(el.dataset.orig || "")) draft[k] = String(el.value || "");
+  });
 
   if (onH) {
     draft.current = rh.text;
@@ -44887,9 +44921,13 @@ window.stuMailSave = function () {
   const v = String(val("#stuMail") || "").trim().toLowerCase();
   if (v && v.indexOf("@") < 1) { showToast("بريدٌ غير صحيح", "warn"); return; }
   st.email = v;
-  try { persistSet("students", st); } catch (e) { console.warn("persistSet:", e); }
-  showToast("حُفظ بريدُك", "success");
-  mount();
+  /* البريدُ وحدَه: القواعدُ لا تجيز للطالب ووليّه غيرَه في السجلّ، وكان
+     النجاحُ يُعلن قبل أن يُعرف مصيرُ الكتابة (٤٣٠) */
+  Promise.resolve(persistPatch("students", st, ["email"])).then(ok => {
+    if (ok === false) return;               /* رُفض: رسالتُه من persistPatch */
+    showToast("حُفظ بريدُك", "success");
+    mount();
+  });
 };
 
 /* تغييرُ كلمة المرور: بصفحة الاستعادة نفسِها التي يستعملها المعلّم */
@@ -47065,7 +47103,20 @@ function openFacEdit(item, coll) {
           <div class="ef-tags" id="ecx_ctypes"></div>
           <select class="ef-add" onchange="window.efAddType(this)"><option value="">إضافة نوع…</option>${circleTypeOpts.map(o => `<option>${o}</option>`).join("")}</select>
         </div>
-        <div class="ef-field ef-ghost"></div>
+        ${(() => {
+          /* المنطقةُ والجوالُ والحالة (٤٣١): كان الحفظُ يقرؤها من حقولٍ لا
+             وجودَ لها في النموذج، فيُبقي القديمَ ولا سبيلَ إلى تعديلها من
+             هنا. وقيمةُ الإيقاف تختلف: المجمّعُ «متوقف» والمسجدُ «متوقف
+             مؤقت» كما في زرّ التشغيل — والقيمةُ المحفوظةُ تُضاف إن خرجت عنهما. */
+          const stOpts = ["نشط", coll === "mosques" ? "متوقف مؤقت" : "متوقف"];
+          if (item.status && stOpts.indexOf(item.status) === -1) stOpts.push(item.status);
+          const curSt = item.status || "نشط";
+          const clean = v => (v && v !== "—") ? v : "";
+          return `<div class="ef-field"><label>المنطقة</label><input id="ecx_region" value="${esc(clean(item.region))}" placeholder="المنطقة"></div>
+        <div class="ef-field"><label>رقم الجوال</label><input id="ecx_phone" type="tel" dir="ltr" inputmode="tel" value="${esc(clean(item.phone))}" placeholder="05xxxxxxxx"></div>
+        <div class="ef-field"><label>الحالة</label><select id="ecx_status">${stOpts.map(o =>
+          `<option ${o === curSt ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></div>`;
+        })()}
       </div>
     </div>`,
     `<button class="btn btn-primary ef-submit" data-action="save-edit-${single}" data-id="${item.id}">تعديل</button>`);
@@ -48702,7 +48753,7 @@ function lvOptionsFor(programName, selId) {
 }
 
 /* حقل المستوى: يتبع البرنامج المختار ويُحدَّث بتغيّره */
-function levelField(id, programName, currentId, currentName) {
+function levelField(id, programName, currentId, currentName, allowNone) {
   const lv = lvOptionsFor(programName);
   if (!lv.length) {
     return `<div class="field"><label>المستوى</label>
@@ -48710,10 +48761,14 @@ function levelField(id, programName, currentId, currentName) {
       <small style="font-size:11px;color:var(--text-faint)">عرّفها من الإعدادات ← البرامج والمستويات</small>
     </div>`;
   }
+  /* في التعديل (allowNone): طالبٌ بلا مستوى يبقى «—» ولا يُسنَد إلى أوّل
+     مستوى تلقائياً بأيّ حفظ (٤٣١) */
+  const isSel = x => String(currentId) === String(x.id) ||
+                     (!currentId && String(currentName) === String(x.name));
+  const none = allowNone && !lv.some(isSel);
   return `<div class="field"><label>المستوى</label><select id="${id}">
-    ${lv.map(x => {
-      const sel = String(currentId) === String(x.id) ||
-                  (!currentId && String(currentName) === String(x.name));
+    ${none ? `<option value="" selected>—</option>` : ""}${lv.map(x => {
+      const sel = isSel(x);
       return `<option value="${esc(x.id)}"${sel ? " selected" : ""}>${esc(x.name)}${
         x.qty ? " — " + toArabicDigits(x.qty) + " " + esc(x.unit || "وجه") : ""}</option>`;
     }).join("")}</select></div>`;
@@ -48917,8 +48972,16 @@ function modalEditStudent(id) {
       <div class="field"><label>أيام الحضور</label><input id="es_days" value="${esc(s.days)}"></div>
       <div class="field"><label>البرنامج القرآني</label>
         <select id="es_program" onchange="window.stuProgChanged('es_program','es_level')">${
-          prgPickList(s.program).length ? prgPickList(s.program).map(p => `<option ${p.name === s.program ? "selected" : ""}>${esc(p.name)}</option>`).join("") : `<option>—</option>`}</select></div>
-      ${levelField("es_level", s.program, s.levelId || "", s.level || "")}
+          (() => {
+            /* برنامجُ الطالب يبقى مختاراً ولو لم يكن في القائمة، و«—» لمن لا
+               برنامجَ له (٤٣١): كان يُختار أوّلُ برنامجٍ فيُسنَد إليه بأيّ حفظ */
+            const pl = prgPickList(s.program).map(p => p.name);
+            const sv = (s.program && s.program !== "—") ? String(s.program) : "";
+            const arr = sv && pl.indexOf(sv) === -1 ? [sv].concat(pl) : pl;
+            return (sv ? "" : `<option value="—" selected>—</option>`) +
+              arr.map(n => `<option ${n === sv ? "selected" : ""}>${esc(n)}</option>`).join("");
+          })()}</select></div>
+      ${levelField("es_level", s.program, s.levelId || "", s.level || "", true)}
       <div class="field"><label>الحالة</label><select id="es_status"><option ${s.status === "نشط" ? "selected" : ""}>نشط</option><option ${s.status !== "نشط" ? "selected" : ""}>متوقف</option></select></div>
 
       <div class="field full" style="margin-top:6px">
@@ -49011,7 +49074,7 @@ function modalTeacher() {
       ${formField("اسم المعلم", "full", "مثال: الشيخ سعد العتيبي", "t_name")}
       ${formField("رقم التواصل", "tel", "05xxxxxxxx", "t_phone")}
       ${facTwoFields("t_cx", "t_mosque", "", "")}
-      ${formField("الحلقة المسؤولة", "select", cur("circles").length ? cur("circles").map(c => c.name) : ["—"], "t_circle")}
+      ${formField("الحلقة المسؤولة", "select", ["—"].concat(cur("circles").map(c => c.name)), "t_circle")}
       <div class="field">
         <label>البريد الإلكتروني <span class="req">*</span></label>
         <div style="display:flex;align-items:center;gap:0">
@@ -49068,19 +49131,38 @@ function modalTeacher() {
 function modalEditTeacher(id) {
   const t = DB.teachers.find(x => x.id == id);
   if (!t) { showToast("المعلم غير موجود", "warn"); return; }
-  const gmailUser = String(t.username || "").replace("@gmail.com", "");
+  /* البريدُ يُعرض جزؤه قبل @gmail.com إن كان جيميلاً وحدَه (٤٣١): كان يُنزع
+     اللاحقُ من أيّ بريد فيبقى «x@outlook.com» في الحقل، ثمّ يُحفظ
+     «x@outlook.com@gmail.com» — ولو لم يُلمس الحقل. وغيرُ الجيميل يُعرض
+     تحت الحقل كما هو، ويبقى محفوظاً ما لم يُكتب بدلُه. */
+  const tUser = String(t.username || "");
+  const isGmail = /@gmail\.com$/i.test(tUser);
+  const gmailUser = isGmail ? tUser.replace(/@gmail\.com$/i, "") : "";
+  const otherMail = !isGmail && tUser && tUser !== "—" ? tUser : "";
+  /* الحلقةُ بمعرّفها، ومعها «—»: كانت القائمةُ بلا خيارٍ فارغ، فمعلّمٌ بلا
+     حلقة تُختار له أوّلُ حلقةٍ تلقائياً، ويُحفظ مُسنَداً إليها بأيّ تعديلٍ
+     آخر — تغييرُ ارتباطٍ لم يقصده أحد (٤٣١). */
+  const tOwnC = (DB.circles || []).find(c => c && c.teacherId != null && c.teacherId !== "" &&
+                                         String(c.teacherId) === String(t.id));
+  const tCid = String(t.circleId ||
+    (t.circle && t.circle !== "—" ? (idByName("circles", t.circle) || "") : "") ||
+    (Array.isArray(t.circleIds) && t.circleIds.length ? t.circleIds[0] : "") ||
+    (tOwnC ? tOwnC.id : ""));
+  const tCircleOpts = `<option value="" ${tCid ? "" : "selected"}>—</option>` +
+    cur("circles").map(c => `<option value="${esc(String(c.id))}" ${String(c.id) === tCid ? "selected" : ""}>${esc(c.name)}</option>`).join("");
   openModal("تعديل بيانات المعلم", "عدّل بيانات المعلم ثم احفظ",
     `<div class="form-grid">
       ${photoField("et_photo", t.photo || "", "صورة المعلم")}
       <div class="field full"><label>اسم المعلم</label><input id="et_name" value="${esc(t.name)}"></div>
       <div class="field"><label>رقم التواصل</label><input id="et_phone" type="tel" inputmode="numeric" value="${esc(t.phone || "")}" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
       ${facTwoFields("et_cx", "et_mosque", t.complexId || "", t.mosqueId || "")}
-      <div class="field"><label>الحلقة المسؤولة</label><select id="et_circle">${cur("circles").length ? cur("circles").map(c => `<option ${c.name === t.circle ? "selected" : ""}>${esc(c.name)}</option>`).join("") : `<option>—</option>`}</select></div>
+      <div class="field"><label>الحلقة المسؤولة</label><select id="et_circle" data-orig="${esc(tCid)}">${tCircleOpts}</select></div>
       <div class="field"><label>البريد الإلكتروني</label>
         <div style="display:flex;align-items:center;gap:0">
           <input id="et_user" dir="ltr" value="${esc(gmailUser)}" placeholder="اسم الجيميل" style="border-top-left-radius:0;border-bottom-left-radius:0" oninput="this.value=this.value.replace(/[^a-zA-Z0-9._-]/g,'').toLowerCase()">
           <span style="padding:0 10px;height:40px;display:flex;align-items:center;background:var(--cream);border:1px solid var(--border,#e6eaea);border-right:none;border-top-left-radius:8px;border-bottom-left-radius:8px;color:var(--text-muted);font-size:13px;white-space:nowrap" dir="ltr">@gmail.com</span>
         </div>
+        ${otherMail ? `<small class="muted" style="display:block;margin-top:4px">المحفوظ حالياً: <span dir="ltr">${esc(otherMail)}</span> — يبقى ما لم تكتب بدلَه</small>` : ""}
       </div>
       <div class="field"><label>الحالة</label><select id="et_status"><option ${t.status === "نشط" ? "selected" : ""}>نشط</option><option ${t.status !== "نشط" ? "selected" : ""}>متوقف</option></select></div>
 
@@ -54586,12 +54668,16 @@ document.addEventListener("click", (e) => {
 
       /* تغيير معلّم الحلقة يسري على طلابها: الطالب يرث معلّمه منها،
          وتركه بلا مزامنة يُبقيهم منسوبين لمعلّم غادر. */
-      const ecT = val("#ec_teacher", "");
+      /* يُغيَّر المعلّمُ إن غيّره المستخدمُ في القائمة وحدَه، ولمعلّمٍ بعينه (٤٣١) */
+      const ecTEl = document.getElementById("ec_teacher");
+      const ecTId = ecTEl ? String(ecTEl.value || "") : "";
+      const ecTRec = ecTId ? (DB.teachers || []).find(t2 => String(t2.id) === ecTId) : null;
+      const ecT = ecTRec ? ecTRec.name : "";
       let synced = 0;
       const oldTeacherId = c.teacherId || "";
-      if (ecT && ecT !== c.teacher) {
+      if (ecTEl && ecTRec && ecTId !== String(ecTEl.dataset.orig || "")) {
         c.teacher = ecT;
-        c.teacherId = idByName("teachers", ecT) || "";
+        c.teacherId = String(ecTRec.id);
         /* المعلّم الجديد لا يبقى مساعداً لنفسه */
         if (Array.isArray(c.assistants) && c.teacherId) {
           c.assistants = c.assistants.filter(x => String(x) !== String(c.teacherId));
@@ -54614,7 +54700,11 @@ document.addEventListener("click", (e) => {
             "أُسنِدت إليك حلقةُ «" + (c.name || "") + "».");
         } catch (e) {}
         (DB.students || []).forEach(st => {
-          if (String(st.circleId) !== String(c.id) && String(st.circle) !== String(c.name)) return;
+          /* طالبُ الحلقة بمعرّفها؛ والاسمُ لمن لا معرّفَ له وحدَه — فلا يُمسّ
+             طالبٌ في حلقةٍ أخرى تحمل الاسمَ نفسَه في مسجدٍ آخر (٤٣١) */
+          const inIt = st.circleId ? String(st.circleId) === String(c.id)
+                                   : String(st.circle) === String(c.name);
+          if (!inIt) return;
           st.teacher = c.teacher; st.teacherId = c.teacherId;
           persistSet("students", st); synced++;
         });
@@ -54723,7 +54813,9 @@ document.addEventListener("click", (e) => {
       } catch (e) {}
       s.days = val("#es_days", "") || circleDaysOf(s.circle) || s.days;
       const esPrg0 = String(s.program || ""), esLv0 = String(s.levelId || "");
-      s.program = val("#es_program", s.program);
+      { const _pv = val("#es_program", s.program);
+        /* «—» لمن لا برنامجَ له يُبقي الحقلَ كما كان، فلا يُعدّ تغييراً (٤٣١) */
+        s.program = (_pv === "—" && (!esPrg0 || esPrg0 === "—")) ? esPrg0 : _pv; }
       /* المستوى بمعرّفه: تغيير اسمه لاحقاً يصل الطالب */
       const esLv = val("#es_level", "");
       if (esLv) { s.levelId = esLv; s.level = lvNameById(esLv) || s.level; }
@@ -54763,8 +54855,16 @@ document.addEventListener("click", (e) => {
     case "delete-student": {
       const s = DB.students.find(x => x.id == t.dataset.id);
       if (!s) { showToast("الطالب غير موجود", "warn"); break; }
+      /* ما يبقى بعد الحذف يُقال قبله (٤٣٠): سجلُّ الطالب وحدَه يُحذف، وخططُه
+         وحضورُه وتسميعُه تبقى سجلّاً تاريخياً، وحسابُ دخوله يبقى — فكانت
+         تبقى يتيمةً ولا يعلم بها الحاذف. والحذفُ الجماعيُّ لها لا يُفعل
+         تلقائياً. والإيقافُ بديلٌ يحفظ كلَّ شيء. */
+      const sLinks = delLinkedCounts("studentId", s.id);
+      const sAcc = (DB.users || []).filter(u => u && (String(u.studentId || "") === String(s.id) ||
+                     (s.uid && String(u.uid || u.id) === String(s.uid)))).length;
       openModal("حذف الطالب", "تأكيد الحذف",
-        `${noteCard("سيتم حذف الطالب <strong>" + esc(s.name) + "</strong> نهائياً من قاعدة البيانات. لا يمكن التراجع.")}`,
+        `${noteCard("سيتم حذف الطالب <strong>" + esc(s.name) + "</strong> نهائياً من قاعدة البيانات. لا يمكن التراجع.")}
+         ${delLinkedNote(sLinks, sAcc)}`,
         `<button class="btn btn-danger" data-action="delete-student-confirm" data-id="${s.id}">${ic("trash", 16)} نعم، احذف الطالب</button>
          <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
       break;
@@ -54786,7 +54886,10 @@ document.addEventListener("click", (e) => {
       const name = val("#et_name", tc.name);
       if (!name) { showToast("اسم المعلم مطلوب", "warn"); break; }
       const gmailUser = val("#et_user", "");
-      if (!gmailUser) { showToast("البريد الإلكتروني مطلوب", "warn"); break; }
+      /* بلا جيميل: يبقى البريدُ المحفوظ (غيرُ الجيميل أو بريدُ رقم الهوية)،
+         ولا يُمنع تعديلُ بقيّة البيانات بسببه (٤٣١). */
+      const keepMail = String(tc.username || "");
+      if (!gmailUser && (!keepMail || keepMail === "—")) { showToast("البريد الإلكتروني مطلوب", "warn"); break; }
       tc.name = name;
       tc.photo = photoVal("et_photo", tc.photo || "");
       tc.phone = val("#et_phone", tc.phone || "");
@@ -54794,10 +54897,16 @@ document.addEventListener("click", (e) => {
       tc.mosque    = etFac.mosque;
       tc.mosqueId  = etFac.mosqueId;
       tc.complexId = etFac.complexId || tc.complexId || "";
-      tc.circle = val("#et_circle", tc.circle || "");
-      /* مزامنة معرّف الحلقة مع الاسم الجديد */
-      tc.circleId = idByName("circles", tc.circle) || tc.circleId || "";
-      tc.username = gmailUser + "@gmail.com";
+      /* الحلقةُ بمعرّفها من القائمة، و«—» يرفع الإسناد صراحةً (٤٣١) */
+      /* ولا يُكتب إلّا إن غُيّر فعلاً: الحقلُ الذي لم يُلمس لا يُعيد كتابةَ ما في السجلّ */
+      { const elC = document.getElementById("et_circle");
+        if (elC && String(elC.value || "") !== String(elC.dataset.orig || "")) {
+          const cid = String(elC.value || "");
+          const cc = cid ? (DB.circles || []).find(x => String(x.id) === cid) : null;
+          tc.circleId = cc ? String(cc.id) : "";
+          tc.circle = cc ? (cc.name || "—") : "—";
+        } }
+      if (gmailUser) tc.username = gmailUser + "@gmail.com";
       tc.status = val("#et_status", tc.status);
       tc.active = tc.status === "نشط";
 
@@ -54823,8 +54932,26 @@ document.addEventListener("click", (e) => {
     case "delete-teacher": {
       const tc = DB.teachers.find(x => x.id == t.dataset.id);
       if (!tc) { showToast("المعلم غير موجود", "warn"); break; }
+      /* معلّمٌ له حلقاتٌ لا يُحذف حتى تُسند لغيره (٤٣٠): كان يُحذف فتبقى
+         حلقاتُه تشير إلى معلّمٍ لا وجود له، ويرث طلابُها معلّماً محذوفاً.
+         ولا تُفرَّغ الحلقاتُ تلقائياً — فذاك تغييرُ ارتباطٍ بلا قصد. */
+      const tCircles = (DB.circles || []).filter(c => c && c.teacherId != null && c.teacherId !== "" &&
+                         String(c.teacherId) === String(tc.id));
+      if (tCircles.length) {
+        openModal("حذف المعلم", "لا يمكن الحذف الآن",
+          noteCard("المعلم <strong>" + esc(tc.name) + "</strong> مسؤولٌ عن " +
+            toArabicDigits(tCircles.length) + " حلقة: <strong>" +
+            tCircles.map(c => esc(c.name || "—")).join("، ") +
+            "</strong>. أسنِد هذه الحلقات إلى معلّمٍ آخر من صفحة الحلقات أولاً، ثمّ احذفه — أو أوقِفه بدل حذفه."),
+          `<button class="btn btn-ghost" data-action="close-modal">حسناً</button>`);
+        break;
+      }
+      const tLinks = delLinkedCounts("teacherId", tc.id);
+      const tAcc = (DB.users || []).filter(u => u && (String(u.teacherId || "") === String(tc.id) ||
+                     (tc.uid && String(u.uid || u.id) === String(tc.uid)))).length;
       openModal("حذف المعلم", "تأكيد الحذف",
-        `${noteCard("سيتم حذف المعلم <strong>" + esc(tc.name) + "</strong> نهائياً من قاعدة البيانات. لا يمكن التراجع.")}`,
+        `${noteCard("سيتم حذف المعلم <strong>" + esc(tc.name) + "</strong> نهائياً من قاعدة البيانات. لا يمكن التراجع.")}
+         ${delLinkedNote(tLinks, tAcc)}`,
         `<button class="btn btn-danger" data-action="delete-teacher-confirm" data-id="${tc.id}">${ic("x", 16)} نعم، احذف المعلم</button>
          <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
       break;
@@ -55037,11 +55164,12 @@ document.addEventListener("click", (e) => {
       if (window.__facTeacherNeedsMosque && !tFac.mosqueId) {
         showToast("اختر المسجد الذي سيعمل فيه المعلم", "warn"); break;
       }
-      const tCircle = val("#t_circle", (DB.circles[0] || {}).name || "—");
+      /* «—» أوّلُ الخيارات: لا يُسند المعلّمُ الجديدُ إلى أوّل حلقةٍ تلقائياً (٤٣١) */
+      const tCircle = val("#t_circle", "—");
       const o = { id: Date.now(), complexId: tFac.complexId || STATE.complexId, name, phone: val("#t_phone", "—"),
         photo: photoVal("t_photo", ""),
         mosque: tFac.mosque, mosqueId: tFac.mosqueId,
-        circle: tCircle, circleId: idByName("circles", tCircle),
+        circle: tCircle, circleId: tCircle === "—" ? "" : (idByName("circles", tCircle) || ""),
         username: email, students: 0, session: "لم تعتمد", attDone: false, recite: 0, late: 0,
         status: val("#t_status", "نشط"),
         staffRole: val("#t_staffrole", "teacher"),
@@ -55964,7 +56092,11 @@ function offqPush(op, coll, obj) {
      لكاتبها نفسِه، فلا يمحو قيدُ مستخدمٍ قيدَ غيره */
   const id = String((obj && obj.id) || obj || "");
   const i = list.findIndex(x => x.coll === coll && String(x.id) === id && offqIsMine(x, uid));
-  const rec = { op, coll, id, data: op === "set" ? obj : null, ts: Date.now(), uid };
+  /* قيدٌ سابقٌ معلَّقٌ للمستند نفسِه يُدمج فيه الجديد لا يُستبدل به: حفظُ
+     حقلٍ واحد (persistPatch) لا يمحو تعديلاً كاملاً لم يُرفع بعد (٤٣٠) */
+  const prevSet = i > -1 && list[i].op === "set" && op === "set" ? list[i].data : null;
+  const rec = { op, coll, id, data: op === "set" ? (prevSet ? Object.assign({}, prevSet, obj) : obj) : null,
+                ts: Date.now(), uid };
 
   if (i > -1) list[i] = rec; else list.push(rec);
   offqWrite(list);
@@ -56482,6 +56614,68 @@ function persistPlan(id) {
   db.collection("plans").doc(String(id)).set(data)
     .catch(err => persistFail("persistPlan", "plans", err));
 }
+/* ما يرتبط بالسجلّ المحذوف ويبقى بعده — عدٌّ للعرض فقط، لا يُكتب شيء (٤٣٠) */
+const DEL_LINKED = [["plans", "خطة"], ["assignments", "واجب"], ["attendance", "سجل حضور"],
+                    ["recitations", "تسميع"], ["students", "طالب"]];
+function delLinkedCounts(key, id) {
+  const out = [];
+  DEL_LINKED.forEach(([cl, h]) => {
+    if (key === "studentId" && cl === "students") return;
+    const n = (DB[cl] || []).filter(r => r && r[key] != null && r[key] !== "" &&
+                                         String(r[key]) === String(id)).length;
+    if (n) out.push(toArabicDigits(n) + " " + h);
+  });
+  return out;
+}
+function delLinkedNote(links, accounts) {
+  const bits = links.slice();
+  if (accounts) bits.push("حساب الدخول");
+  if (!bits.length) return "";
+  return noteCard("تبقى بعد الحذف ولا تُحذف معه: <strong>" + bits.join("، ") + "</strong>" +
+    (accounts ? " — ويُحذف الحساب من صفحة المستخدمين." : ".") +
+    " إن أردتَ حفظَ كلِّ شيء فأوقِفه بدل حذفه.");
+}
+
+/* =========================================================================
+   حفظُ حقولٍ بعينها (٤٣٠)
+   -------------------------------------------------------------------------
+   persistSet يكتب السجلَّ كلَّه ويختمه بالنطاق والفترة. وهذا صوابٌ للإدارة،
+   لكنّ الطالبَ ووليَّه والمعلّمَ لا تجيز لهم القواعدُ إلّا حقولاً بعينها في
+   سجلّاتهم (البريدُ والصورةُ وشروطُ الشارات) — فأيُّ حقلٍ يُضاف معها، ولو
+   ختمُ نطاقٍ تلقائيّ، يُسقط الكتابةَ كلَّها.
+   فيُكتب هنا ما سُمّي من الحقول وحدَه، دمجاً لا استبدالاً، ويُرصد في السجلّ
+   كما يُرصد غيرُه، ويُحفظ محلياً إن انقطع الاتصال.
+   ========================================================================= */
+function persistPatch(coll, obj, keys) {
+  if (CUR_MEMO) CUR_MEMO = {};
+  const db = FDB(); if (!db || !obj || obj.id == null) return Promise.resolve(false);
+  if (typeof guardArchived === "function" && guardArchived(coll, obj)) return Promise.resolve(false);
+
+  const patch = {};
+  (keys || []).forEach(k => { patch[k] = obj[k] === undefined ? null : obj[k]; });
+
+  try {
+    if (typeof auditWrite === "function") {
+      const before = auditShadow(coll, obj.id);
+      auditWrite(coll, obj, "update", before);
+      auditKeep(coll, obj);
+    }
+  } catch (e) {}
+
+  const queued = Object.assign({ id: obj.id }, patch);
+  if (!isOnline()) { offqPush("set", coll, queued); return Promise.resolve(true); }
+
+  return db.collection(coll).doc(String(obj.id)).set(patch, { merge: true })
+    .then(() => true)
+    .catch(err => {
+      persistFail("persistPatch", coll, err, patch);
+      const denied = err && (err.code === "permission-denied" || err.code === "unauthenticated");
+      if (denied) return false;
+      offqPush("set", coll, queued);
+      return true;
+    });
+}
+
 function persistDelete(coll, id) {
   if (CUR_MEMO) CUR_MEMO = {};   /* والحذفُ كذلك (٤٢٥) */
   const db = FDB(); if (!db) return;

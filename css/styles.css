@@ -14305,3 +14305,19 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
 .rep-pk-row small { margin-inline-start: auto; color: #8e9aa2; font-size: 11.5px; }
 .rep-pk-row.off span { color: #8e9aa2; }
 .rep-pk-all { font-weight: 700; margin-bottom: 6px; }
+
+
+/* =========================================================================
+   عرضُ الجوال (٤٣١) — لا تمريرَ أفقيّاً للصفحة كلّها
+   -------------------------------------------------------------------------
+   ١) جداولُ الأشخاص: على الضيّق يصير .pt-holder عموداً، و align-items:
+      flex-start تجعل .pt-wrap بعرض محتواه لا بعرض الشاشة — فيتّسع الجدولُ
+      خارجها وتنزاح الصفحةُ كلُّها. فيمتدّ بعرض العمود، ويمرّر الجدولُ داخله.
+   ٢) تقويمُ الحضور: 1fr حدُّها الأدنى عرضُ المحتوى، ومع aspect-ratio في
+      الخلايا اتّسع الشبكةُ إلى ضعف الشاشة. minmax(0,1fr) يحصرها فيها.
+   ========================================================================= */
+@media (max-width: 900px) {
+  .pt-holder > .pt-wrap { align-self: stretch; width: 100%; max-width: 100%; }
+}
+.cal-grid, .cal-head { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-cell { min-width: 0; }

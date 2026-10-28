@@ -78,6 +78,50 @@ service cloud.firestore {
         'mosqueManager', 'supervisor', 'teacher', 'parent', 'student'];
     }
 
+    /* =====================================================================
+       الداعم (٤٣٠) — قراءةٌ محصورةٌ فيما تعرضه لوحتاه وحدَهما
+       ---------------------------------------------------------------------
+       كان خارج canRead، فتُفتح لوحةُ الداعم ولوحةُ الشرف فارغتين. ولم
+       يُضَف إلى canRead نفسِها: تلك تفتح المجموعاتِ التشغيليةَ كلَّها
+       (الرواتبَ والرسائلَ والطلبات…). فيقرأ ما تقرؤه لوحتاه فقط: المنشآتُ
+       والحلقاتُ والطلابُ والمعلّمون والتسميعُ والحضورُ والبرامجُ والمستويات
+       والفترات. ولا كتابةَ له في شيء.
+       ===================================================================== */
+    function isDonor() { return role() == "donor"; }
+    function donorColls() {
+      return ['complexes', 'mosques', 'circles', 'students', 'teachers',
+              'recitations', 'attendance', 'programs', 'levels', 'terms'];
+    }
+    function donorMay(coll) { return isDonor() && coll in donorColls(); }
+
+    /* =====================================================================
+       سجلُّ صاحب الحساب (٤٣٠)
+       ---------------------------------------------------------------------
+       الطالبُ ووليُّ أمره يحفظان البريدَ والصورة في سجلّ الطالب، والمعلّمُ
+       صورتَه في سجلّه — والقاعدةُ العامّة تشترط canWrite فكان الحفظُ يُردّ.
+       فيُعرف السجلُّ بصاحبه: معرّفُه في ملف الحساب، أو uid الحساب فيه.
+       ===================================================================== */
+    function ownsStudent(docId) {
+      return (role() == "student" &&
+                ((profile().get('studentId', '') != '' && string(profile().get('studentId', '')) == docId)
+                 || resource.data.get('uid', '') == request.auth.uid))
+          || (role() == "parent" &&
+                (docId in profile().get('studentIds', [])
+                 || docId in profile().get('kids', [])));
+    }
+    function ownsTeacher(docId) {
+      return isTeacher() &&
+        ((profile().get('teacherId', '') != '' && string(profile().get('teacherId', '')) == docId)
+         || resource.data.get('uid', '') == request.auth.uid);
+    }
+    /* حلقةُ المعلّم: في circleIds ملفه، أو معلّمُها المسجَّلُ هو */
+    function ownsCircle(docId) {
+      return isTeacher() &&
+        (docId in profile().get('circleIds', [])
+         || (profile().get('teacherId', '') != ''
+             && string(resource.data.get('teacherId', '')) == string(profile().get('teacherId', ''))));
+    }
+
     /* المجموعات التشغيلية التي يقرأها loadAllData() ويكتبها app.js.
        users و settings و site_messages مستثناة عمداً ولكلٍّ قواعده أدناه. */
     function operational() {
@@ -273,7 +317,7 @@ service cloud.firestore {
 
     /* ---------------- البيانات التشغيلية ---------------- */
     match /{coll}/{docId} {
-      allow read: if coll in operational() && canRead();
+      allow read: if coll in operational() && (canRead() || donorMay(coll));
       allow create: if coll in operational() && canWrite() && scopeOk();
       allow update: if coll in operational() && canWrite() && scopeOk() && oldScopeOk();
       allow delete: if coll in operational() && canWrite()
@@ -321,8 +365,26 @@ service cloud.firestore {
        مسموحٌ كما في teacherCan — فإن عطّلته الإدارةُ في بطاقة المعلّم
        مُنع هنا كما يُخفى الزرُّ هناك. */
     match /students/{docId} {
-      allow read: if canRead();
+      allow read: if canRead() || isDonor();
       allow create: if teacherMay('addStudent', true) && scopeOk();
+      /* الملفُّ الشخصيّ للطالب ولوليّ أمره: البريدُ والصورةُ وحدَهما (٤٣٠).
+         لا نطاقَ ولا ارتباطَ ولا اسمَ — تلك للإدارة. */
+      allow update: if ownsStudent(docId)
+                    && changed().hasOnly(['email', 'photo']);
+    }
+
+    /* صورةُ المعلّم في سجلّه — وحدَها (٤٣٠) */
+    match /teachers/{docId} {
+      allow update: if ownsTeacher(docId)
+                    && changed().hasOnly(['photo']);
+    }
+
+    /* شروطُ شارات الحلقة — يضعها معلّمُها لحلقته وحدَها، بصلاحية badgeRules
+       وافتراضُها مسموحٌ كما في teacherCan. والحقلُ badgeRules وحدَه (٤٣٠). */
+    match /circles/{docId} {
+      allow update: if ownsCircle(docId)
+                    && perm('badgeRules', true)
+                    && changed().hasOnly(['badgeRules']);
     }
 
     /* «طلب اختبار» — يرفعه المعلّم لطالبه فيصل الإدارةَ في أوّل المراحل.
@@ -465,7 +527,7 @@ service cloud.firestore {
     /* ---------------- إعدادات النظام ---------------- */
     /* مستندا general و exams — يقرأهما الجميع، ويكتبهما المدير وحده. */
     match /settings/{docId} {
-      allow read:  if canRead();
+      allow read:  if canRead() || isDonor();
       allow write: if isAdmin();
 
       /* «إدارة الصلاحيات» — فُتحت لكلّ معلّمٍ بطلبٍ صريح من الإدارة.
