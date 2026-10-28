@@ -70,7 +70,12 @@ service cloud.firestore {
     }
 
     /* من يحقّ له الكتابة في البيانات التشغيلية */
-    function canWrite() { return isAdmin() || isManager(); }
+    /* بنداءٍ واحدٍ لـ role() (٤٣٤): كان isAdmin() || isManager() يقرأ الملفّ
+       ويقيّمه مرّتين. القواعدُ تحدّ عددَ ما يُقيَّم في الطلب الواحد، وتجاوزُه
+       يُردّ رفضاً — وقد بلغته قاعدتا الخطط وتأشير المصحف في ٤٣٢. المعنى هو هو. */
+    function canWrite() {
+      return role() in ['admin', 'owner', 'complexManager', 'mosqueManager', 'supervisor'];
+    }
 
     /* من يحقّ له القراءة: أي حساب فعّال بدور معروف */
     function canRead() {
@@ -231,8 +236,15 @@ service cloud.firestore {
       return exists(tpPath())
         && get(tpPath()).data.get('teacherPerms', {}).get(alias, true) == false;
     }
+    /* تقييمٌ كسول (٤٣٤): الافتراضيُّ العامّ لا يُقرأ إلّا حين لا تضبط البطاقةُ
+       ولا الرقابةُ المفتاح — وكان يُقرأ في كلّ طلب. المعنى هو هو. */
     function permOf(key, alias, byDefault) {
-      return perms().get(alias, perms().get(key, byDefault && !globalOff(alias))) == true;
+      return permIn(perms(), key, alias, byDefault);
+    }
+    function permIn(p, key, alias, byDefault) {
+      return p.get(alias, null) != null ? p.get(alias, null) == true
+           : (p.get(key, null) != null ? p.get(key, null) == true
+              : (byDefault && !globalOff(alias)));
     }
 
     /* معلّم يملك الصلاحية — أو إداريٌّ لا تلزمه */
@@ -283,9 +295,11 @@ service cloud.firestore {
       return v != '' && (v == sv(profile(), 'complexId') || v in profile().get('complexIds', []));
     }
     function mqBound(d) { return role() == "mosqueManager" && sv(d, 'mosqueId') != ''; }
+    /* مكافئٌ لصيغة ٤٣٢ بنصف التقييم (٤٣٤): مسجدُ السجلّ إن كان لي كفى، وإلّا
+       فالمجمّعُ — إلّا لمدير المسجد في سجلٍّ يحمل مسجداً. */
     function inScope(d) {
-      return (mqBound(d) && mineMosque(sv(d, 'mosqueId')))
-          || (!mqBound(d) && (mineMosque(sv(d, 'mosqueId')) || mineComplex(sv(d, 'complexId'))));
+      return mineMosque(sv(d, 'mosqueId'))
+          || (!mqBound(d) && mineComplex(sv(d, 'complexId')));
     }
 
     /* سجل بلا منشأة لا يُحجب — كثير من السجلات القديمة بلا هذين الحقلين */
@@ -627,14 +641,19 @@ service cloud.firestore {
          قديمٌ ما دام تاريخُه لم يتغيّر — وتقرأ request.resource عند الحذف
          وهو فارغٌ فيه، فلا يُزيل المعلّمُ تأشيرَ يومه (٤٣٢).
          الآن «اليوم» بساعة الخادم لا بما يكتبه المتصفّح (anyToday). */
+      /* تأشيرُ اليوم يبقى تأشيرَ اليوم: تاريخُه لا يتغيّر، فيكفي فحصُ اليوم مرّة
+         واحدة (٤٣٤) — والانتقالُ بتأشيرٍ قديمٍ إلى اليوم تعديلٌ لماضٍ يحتاج الصلاحية. */
       allow update: if canWrite()
-                    || (isTeacher() && oldScopeOk() && scopeOk()
+                    || (isTeacher()
                         && (permOf('mushaf_past', 'editMarks', true)
-                            || (anyToday(resource.data.get('date', '')) && anyToday(request.resource.data.get('date', '')))));
+                            || (request.resource.data.get('date', '') == resource.data.get('date', '')
+                                && anyToday(resource.data.get('date', ''))))
+                        && oldScopeOk() && scopeOk());
       allow delete: if canWrite()
-                    || (isTeacher() && oldScopeOk()
+                    || (isTeacher()
                         && (permOf('mushaf_past', 'editMarks', true)
-                            || anyToday(resource.data.get('date', ''))));
+                            || anyToday(resource.data.get('date', '')))
+                        && oldScopeOk());
     }
 
     /* اعتماد جلسة الحلقة */
