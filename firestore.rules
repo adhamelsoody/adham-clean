@@ -186,21 +186,23 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
-    /* «اليوم» بساعة الخادم (٤٣٢) — التاريخُ محفوظٌ نصّاً YYYY-MM-DD بتوقيت
-       جهاز المعلّم، فيُقبل ما وقع بين تاريخ (الآن − ١٢ ساعة) وتاريخ
-       (الآن + ١٤ ساعة) بتوقيت غرينتش: يومُ المعلّم الجاري في أيّ منطقةٍ
-       زمنية، ولا يدخل فيه يومٌ مضى. */
-    function pad2(n) {
-      return ['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15',
-              '16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31'][n];
+    /* «اليوم» بساعة الخادم (٤٣٢، صُحّح في ٤٣٣) — التاريخُ محفوظٌ نصّاً
+       YYYY-MM-DD بتوقيت جهاز المعلّم، فيُقبل إن طابق تاريخَ الآن أو تاريخَ
+       (الآن − ١٢ ساعة) أو (الآن + ١٤ ساعة) بتوقيت غرينتش: يومُ المعلّم الجاري
+       في أيّ منطقةٍ زمنية، ولا يدخل فيه يومٌ مضى.
+       صيغةُ ٤٣٢ (فهرسةُ قائمةٍ ومقارنةُ نصوصٍ بـ >=) أخفقت على المحاكي، فصارت
+       مطابقةً بالمساواة وحشوَ الصفر بالشرط الثلاثيّ — وهو مستعملٌ في هذا
+       الملفّ منذ البداية (perms). */
+    function dayStr(t) {
+      return string(t.year()) + '-' + (t.month() < 10 ? '0' : '') + string(t.month())
+           + '-' + (t.day() < 10 ? '0' : '') + string(t.day());
     }
-    function isoDay(t) { return string(t.year()) + '-' + pad2(t.month()) + '-' + pad2(t.day()); }
     function anyToday(s) {
       return s is string
-        && s >= isoDay(request.time - duration.value(12, 'h'))
-        && s <= isoDay(request.time + duration.value(14, 'h'));
+        && (s == dayStr(request.time)
+            || s == dayStr(timestamp.value(request.time.toMillis() - 43200000))
+            || s == dayStr(timestamp.value(request.time.toMillis() + 50400000)));
     }
-
 
     /* ---------------- مصفوفة صلاحيات المعلم ---------------- */
     /* الافتراضات هنا مطابقة لـ PERM_DEFAULT في governance.js — إن غيّرتها
@@ -627,12 +629,12 @@ service cloud.firestore {
          الآن «اليوم» بساعة الخادم لا بما يكتبه المتصفّح (anyToday). */
       allow update: if canWrite()
                     || (isTeacher() && oldScopeOk() && scopeOk()
-                        && ((anyToday(resource.data.get('date', '')) && anyToday(request.resource.data.get('date', '')))
-                            || permOf('mushaf_past', 'editMarks', true)));
+                        && (permOf('mushaf_past', 'editMarks', true)
+                            || (anyToday(resource.data.get('date', '')) && anyToday(request.resource.data.get('date', '')))));
       allow delete: if canWrite()
                     || (isTeacher() && oldScopeOk()
-                        && (anyToday(resource.data.get('date', ''))
-                            || permOf('mushaf_past', 'editMarks', true)));
+                        && (permOf('mushaf_past', 'editMarks', true)
+                            || anyToday(resource.data.get('date', ''))));
     }
 
     /* اعتماد جلسة الحلقة */
