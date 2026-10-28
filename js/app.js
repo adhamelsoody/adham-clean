@@ -2943,6 +2943,13 @@ function planAttType(p) {
   return s ? s.attType : "دوام كامل";
 }
 
+/* معرّفُ الخطة كما في data-id: رقمٌ لما أنشأته النماذج، ونصٌّ («pl…») لما
+   أُسنِد بالقالب — وكان يُقرأ بـ +t.dataset.id فيصير NaN فتقول الإجراءاتُ
+   «الخطة غير موجودة» (٤٣٢). يُرجع سجلَّ الخطة أو null. */
+function planOfDs(raw) {
+  const k = String(raw == null ? "" : raw);
+  return (DB.plans || []).find(x => x && String(x.id) === k) || null;
+}
 function getPlan(id) {
   const p = DB.plans.find(x => x.id == id);
   if (!p) return null;
@@ -4474,6 +4481,28 @@ function personAvatar(p) {
 
 
 
+var PT_FIRST = 120, PT_CHUNK = 300, PT_TOKEN = 0, PT_REST = null;
+function ptBodyLive() {
+  const b = document.getElementById("ptBody");
+  return b && PT_REST && String(b.dataset.ptTok) === String(PT_REST.tok) ? b : null;
+}
+function ptDrip() {
+  const b = ptBodyLive();
+  if (!b) { PT_REST = null; return; }
+  const part = PT_REST.items.splice(0, PT_CHUNK);
+  b.insertAdjacentHTML("beforeend", part.map(PT_REST.build).join(""));
+  if (PT_REST.items.length) (window.requestAnimationFrame || setTimeout)(() => setTimeout(ptDrip, 0));
+  else PT_REST = null;
+}
+/* يُكمل الجدولَ كلَّه فوراً — قبل البحث والفرز والتحديد */
+function ptFlush() {
+  const b = ptBodyLive();
+  if (!b) { PT_REST = null; return; }
+  b.insertAdjacentHTML("beforeend", PT_REST.items.map(PT_REST.build).join(""));
+  PT_REST = null;
+}
+window.ptFlush = ptFlush;
+
 /* تحديد صف في الجدول */
 window.ptToggle = function (btn) {
   btn.classList.toggle("on");
@@ -4481,6 +4510,7 @@ window.ptToggle = function (btn) {
   if (tr) tr.classList.toggle("sel");
 };
 window.ptToggleAll = function (btn) {
+  ptFlush();
   const on = btn.classList.toggle("on");
   document.querySelectorAll("#ptBody .pt-box").forEach(b => {
     b.classList.toggle("on", on);
@@ -4526,13 +4556,29 @@ function personTable(opt) {
      opt.rowPanel هو الفعلُ المسجَّل (panel-student / panel-teacher)،
      ويُتجاهل النقرُ إن وقع على زرٍّ أو مربّع تحديد داخل الصفّ. */
   const rowPanel = opt.rowPanel || "";
-  const rows = list.map(p2 => {
+  const rowHtml = p2 => {
     const active = p2.active !== false && p2.status !== "متوقف";
+    /* الصفُّ قد يحمل فعلَه الخاص (_rowPanel): تبويبُ المدراء يجمع حساباتٍ
+       وسجلّاتِ كادر، ولكلٍّ نموذجُه (٤٣٢) */
+    const rp = p2._rowPanel || rowPanel;
     return `<tr data-id="${p2.id}" data-name="${esc(p2.name || "")}" data-active="${active ? 1 : 0}"${
-      rowPanel ? ` class="pt-clickable" onclick="window.ptRowOpen(event,'${rowPanel}','${jsAttr(p2.id)}')"` : ""}>
+      rp ? ` class="pt-clickable" onclick="window.ptRowOpen(event,'${rp}','${jsAttr(p2.id)}')"` : ""}>
       <td class="pt-check"><button class="pt-box" onclick="window.ptToggle(this)" aria-label="تحديد">${CHK}</button></td>` +
       cols.map(c => c.cell(p2, active)).join("") + `</tr>`;
-  }).join("");
+  };
+  /* =====================================================================
+     الجدولُ الكبير يُرسم على دفعات (٤٣٢)
+     ---------------------------------------------------------------------
+     بثلاثة آلاف طالب كان الجدولُ يُبنى صفّاً صفّاً دفعةً واحدة، فتتجمّد
+     الصفحةُ ثوانيَ قبل أن تظهر. فيُرسم أوّلُ PT_FIRST صفّاً مع الصفحة، والباقي
+     يُلحق في الخلفية دفعةً بعد دفعة، والشاشةُ تعمل. والبحثُ والفرزُ والتحديد
+     يُكملون الرسمَ أوّلاً (ptFlush) فلا يعملون على جدولٍ ناقص. لا يتغيّر
+     شيءٌ في شكل الجدول ولا في صفوفه.
+     ===================================================================== */
+  const ptTok = ++PT_TOKEN;
+  const rows = list.slice(0, PT_FIRST).map(rowHtml).join("");
+  PT_REST = list.length > PT_FIRST ? { tok: ptTok, items: list.slice(PT_FIRST), build: rowHtml } : null;
+  if (PT_REST) setTimeout(ptDrip, 0);
 
   return `<div class="page">
     ${pageHead(opt.title + (opt.showCount ? ` (${list.length})` : ""), "", backArrow())}
@@ -4543,7 +4589,7 @@ function personTable(opt) {
     <div class="pt-holder">
       ${opt.actionsPanel ? personActionsPanel() : ""}
       <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
-        <thead>${head}</thead><tbody id="ptBody">${rows}</tbody>
+        <thead>${head}</thead><tbody id="ptBody" data-pt-tok="${ptTok}">${rows}</tbody>
       </table></div></div>
     </div>
   </div>`;
@@ -4617,6 +4663,7 @@ function ptPanelCollapsed() {
   try { return localStorage.getItem("ptPanelCollapsed") === "1"; } catch (e) { return false; }
 }
 window.ptSearch = function (q) {
+  ptFlush();
   const t = String(q || "").trim();
   document.querySelectorAll("#ptBody tr").forEach(tr => {
     tr.style.display = !t || (tr.dataset.name || "").indexOf(t) > -1 ? "" : "none";
@@ -4635,6 +4682,7 @@ function ptSelected() {
 
 /* تصفية حسب الحالة */
 window.ptFilter = function (mode) {
+  ptFlush();
   document.querySelectorAll("#ptBody tr").forEach(tr => {
     const on = tr.dataset.active === "1";
     tr.style.display = mode === "all" ? "" : (mode === "on" ? (on ? "" : "none") : (on ? "none" : ""));
@@ -4920,6 +4968,32 @@ window.ptDelete = async function () {
   let full = 0, docOnly = 0;
   const refused = [];
 
+  /* =====================================================================
+     لا يحذف المديرُ نفسَه، ولا يُحذف آخرُ مديرٍ للنظام (٤٣٢)
+     ---------------------------------------------------------------------
+     الدالّةُ السحابية ترفض الحالتين، لكنها غيرُ منشورة — فكان المسارُ
+     البديلُ يحذف مستندَ الحساب بلا سؤال: يحذف المديرُ نفسَه فيُقفل خارج
+     النظام، أو يحذف آخرَ مديرٍ فلا يبقى من يدير. فيُمنعان هنا قبل أيّ
+     طريق، ويُقال السبب.
+     ===================================================================== */
+  const myIds = [String(me.uid || ""), String(me.id || "")].filter(Boolean);
+  const isTop = x => x && (x.role === "admin" || x.role === "owner") && x.active !== false;
+  const topLeft = (DB.users || []).filter(x => isTop(x) && ids.indexOf(String(x.id)) === -1).length;
+  const guarded = [];
+  for (const id of ids.slice()) {
+    const u = (DB.users || []).find(x => String(x.id) === String(id));
+    if (!u) continue;
+    if (myIds.indexOf(String(u.id)) > -1 || myIds.indexOf(String(u.uid || "")) > -1) {
+      guarded.push((u.name || "حسابك") + ": لا تحذف حسابك أنت — يحذفه مديرٌ آخر");
+      ids.splice(ids.indexOf(id), 1);
+    } else if (isTop(u) && topLeft === 0) {
+      guarded.push((u.name || "المدير") + ": آخرُ مديرٍ للنظام لا يُحذف — أنشئ مديراً آخر أوّلاً");
+      ids.splice(ids.indexOf(id), 1);
+    }
+  }
+  if (guarded.length) showToast("لم يُحذف: " + guarded.join(" · "), "warn");
+  if (!ids.length) { mount(); return; }
+
   for (const id of ids) {
     const u = (DB.users || []).find(x => String(x.id) === String(id));
     if (!u) continue;
@@ -5093,7 +5167,23 @@ function adminManagers() {
 
   const _accts   = scopeSupervisors();
   const _sups    = _accts.filter(u => String(u.role) === "supervisor").map(_acctMap);
-  const _mgrAcct = _accts.filter(u => String(u.role) !== "supervisor").map(_acctMap);
+  /* =====================================================================
+     وسجلّاتُ الكادر المعلَّمة «مدير منشأة» في تبويب المدراء (٤٣٢)
+     ---------------------------------------------------------------------
+     كانت تُستبعد من المعلّمين ولا تُضاف إلى المدراء، فتختفي من الصفحة كلّها
+     — ورسالةُ التبويب الفارغ نفسُها تطلب تعيين هذا النوع. فتُعرض مع حسابات
+     المدراء، ويفتح صفُّها نموذجَ الكادر لا بطاقةَ الحساب. ومن له حسابٌ
+     مربوطٌ بسجلّه (uid) لا يُكرَّر.
+     ===================================================================== */
+  const _acctIds = {};
+  _accts.forEach(u => { _acctIds[String(u.id)] = 1; if (u.uid) _acctIds[String(u.uid)] = 1; });
+  const _staffMgr = _all.filter(isStaffManager)
+    .filter(t => !(t.uid && _acctIds[String(t.uid)]))
+    .map(t => Object.assign({}, t, {
+      _rowPanel: "edit-teacher", roleAr: "مدير منشأة",
+      scopeName: (typeof facScopeLabel === "function" ? facScopeLabel(t) : "")
+    }));
+  const _mgrAcct = _accts.filter(u => String(u.role) !== "supervisor").map(_acctMap).concat(_staffMgr);
 
   /* «مدراء المنشآت» عند مدير النظام: حساباتُ المدراء في users، لا سجلّاتُ
      الكادر في teachers. مديرُ المسجد يُنشأ حسابُه من صفحة المستخدمين
@@ -6413,7 +6503,7 @@ window.userApproveDo = function (id) {
       if (!Array.isArray(DB.auditLog)) DB.auditLog = [];
       DB.auditLog.push(rec);
       const db = typeof FDB === "function" ? FDB() : null;
-      if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(() => {});
+      if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(e => sideFail("auditLog", e));
     } catch (e) {}
   }
 
@@ -6436,11 +6526,14 @@ window.userApproveDo = function (id) {
   u.role = wanted;
   u.active = true;
   u.pending = false;
+  /* المنشأةُ المطلوبةُ تُنشأ ويُسنَد إليها كما في شاشة الطلبات (٤٣٢) */
+  try { urqApplyFacility(u); } catch (e) { console.warn("userApprove facility:", e); }
   u.approvedAt = Date.now();
   u.approvedBy = ((STATE && STATE.user) || {}).email || "";
   delete u.selfSignup;          /* يخرج من قائمة الطلبات بعد البتّ */
   delete u.requestedRole;
-  persistSet("users", u);
+  /* الاعتمادُ إجراءٌ صريحٌ يُسنِد المنشأة — يُعلَن لحارس الارتباط (٤٣٢) */
+  window.linkChange(() => persistSet("users", u));
 
   /* سجلّا المعلّم والطالب يُنشآن هنا كما في مسار الطلبات، وإلا صار
      الحساب فعّالاً بلا سجلٍّ يربطه بحلقة أو خطة. */
@@ -6953,6 +7046,20 @@ window.recAdvance = function (id) {
   const next = EXAM_STAGES[i + 1];
   if (!next || next.k === "incomplete") { showToast("الاختبار في آخر مرحلة", "info"); return; }
   e.stage = next.k; persistSet("exams", e);
+  /* بلوغُ «معتمد» يُبلغ الطالبَ ووليَّه بنتيجته (٤٣٢) — وتُعرض في تقاريره */
+  if (next.k === "approved") {
+    try {
+      if (typeof pushNotif === "function") {
+        pushNotif({
+          key: "examok|" + e.id, studentId: String(e.studentId || ""), mosqueId: e.mosqueId || "",
+          title: "نتيجة اختبارك", type: "success", label: "الاختبارات",
+          text: "اعتُمدت نتيجةُ اختبار «" + (e.part || "—") + "»" +
+                (e.score != null && e.score !== "" ? ": " + toArabicDigits(e.score) : "") +
+                (e.result ? " — " + e.result : "") + ". تجدها في تقاريرك."
+        });
+      }
+    } catch (er) {}
+  }
   showToast("نُقل إلى: " + next.h, "success");
   mount();
 };
@@ -7199,8 +7306,11 @@ window.sheetSendDo = function () {
   ids.forEach(id => {
     const e = (DB.exams || []).find(x => String(x.id) === String(id));
     if (!e) return;
+    /* studentId يُوصل التنبيهَ إلى الطالب ووليّ أمره (٤٣٢): مرشّحُ الجرس يقارن
+       toId بمعرّف الحساب لا بمعرّف الطالب، فكانت النتيجةُ لا تصل أحداً */
     const rec = { id: Date.now() + "-" + id, title, text, ts: Date.now(),
-                  toId: e.studentId, type: "info", read: false };
+                  toId: e.studentId, studentId: String(e.studentId || ""), examId: String(e.id),
+                  mosqueId: e.mosqueId || "", type: "info", read: false };
     DB.notifications.push(rec); persistSet("notifications", rec);
   });
   SHEET_STATE.sel = {};
@@ -7220,7 +7330,8 @@ window.sheetCert = function (mode) {
     rows.forEach(e => {
       const rec = { id: "cert" + Date.now() + "-" + e.id, title: "شهادة اجتياز",
                     text: "تهانينا! شهادة اجتياز " + (e.part || "") + " متاحة في حسابك.",
-                    ts: Date.now(), toId: e.studentId, type: "success", read: false };
+                    ts: Date.now(), toId: e.studentId, studentId: String(e.studentId || ""), examId: String(e.id),
+                    mosqueId: e.mosqueId || "", type: "success", read: false };
       DB.notifications.push(rec); persistSet("notifications", rec);
     });
     showToast("أُرسلت " + rows.length + " شهادة", "success");
@@ -9008,7 +9119,7 @@ window.xctStatus = function (to) {
   showToast((to === "فعال" ? "فُعِّل " : "أُوقف ") + ids.length + " نموذج", "success"); mount();
 };
 window.xctDel = function (id) {
-  if (!needDelOk("هذه اللجنة", function () { window.xctDel(id); })) return;
+  if (!needDelOk("نموذج الشهادة هذا", function () { window.xctDel(id); })) return;
   const i = (DB.certTemplates || []).findIndex(x => String(x.id) === String(id));
   if (i > -1) { DB.certTemplates.splice(i, 1); persistDelete("certTemplates", id); }
   delete XCT.sel[id];
@@ -9256,7 +9367,16 @@ window.mvsRunDo = function () {
     }
     names.push(st.name || id);
     st.circleId = MVS.toCir;
-    if (toC) { st.mosqueId = toC.mosqueId || ""; st.complexId = toC.complexId || ""; }
+    /* اسمُ الحلقة ومعلّمُها يتبعان المعرّف (٤٣٢): كان يُغيَّر circleId وحده،
+       فيبقى اسمُ الحلقة القديمة والمعلّمُ القديم في السجلّ والتقارير */
+    if (toC) {
+      st.mosqueId = toC.mosqueId || ""; st.complexId = toC.complexId || "";
+      st.circle = toC.name || "—";
+      st.teacher = toC.teacher || "";
+      st.teacherId = toC.teacherId != null && toC.teacherId !== "" ? String(toC.teacherId) : "";
+      if (toC.mosque) st.mosque = toC.mosque;
+      else if (toC.mosqueId) { const _m = (DB.mosques || []).find(m => String(m.id) === String(toC.mosqueId)); if (_m) st.mosque = _m.name || st.mosque; }
+    }
     st.points = 0; st.balance = 0;
     persistSet("students", st);
   });
@@ -9620,9 +9740,55 @@ window.blkToAll = function (cid) {
               : "لا طالبَ يُنقل — كلُّهم في هذه الحلقة", n ? "success" : "warn");
 };
 
+/* =========================================================================
+   معاينةٌ ثمّ تأكيدٌ ثمّ سجلّ (٤٣٢)
+   -------------------------------------------------------------------------
+   كان زرُّ التنفيذ يكتب فوراً بلا عرضٍ لما سيتغيّر ولا سؤال، ولا يبقى للنقل
+   أثرٌ في سجلّ النقل (moveLog) كما يبقى لنقل الطلاب من شاشته. فيُعرض أوّلاً
+   كلُّ طالبٍ وما سيتغيّر له (الحلقة والمستوى من ← إلى)، ثمّ يُنفَّذ بالتأكيد،
+   ويُسجَّل ما نُفِّذ.
+   ========================================================================= */
+function blkPlan() {
+  const all = {};
+  Object.keys(BLK.circle).forEach(k => { if (BLK.circle[k]) all[k] = 1; });
+  Object.keys(BLK.level).forEach(k => { if (BLK.level[k]) all[k] = 1; });
+  const cirs = cur("circles") || [];
+  return Object.keys(all).map(sid => {
+    const st = (DB.students || []).find(x => String(x.id) === String(sid));
+    if (!st) return null;
+    const cid = BLK.circle[sid], lid = BLK.level[sid];
+    const c = cid ? cirs.find(x => String(x.id) === String(cid)) : null;
+    const row = { st: st, name: st.name || "—" };
+    if (c && String(st.circleId || "") !== String(c.id)) { row.cFrom = st.circle || "بلا حلقة"; row.cTo = c.name || "—"; }
+    if (lid && String(st.levelId || "") !== String(lid)) { row.lFrom = st.level || "بلا مستوى"; row.lTo = lvNameById(lid) || "—"; }
+    return (row.cTo || row.lTo) ? row : null;
+  }).filter(Boolean);
+}
+
 window.blkApply = function () {
   const n = blkCount();
   if (!n) { showToast("لم تختر تعديلاً لأحد", "warn"); return; }
+  const plan = blkPlan();
+  if (!plan.length) { showToast("لا تغيير — كلُّ من اخترتَهم في الحلقة والمستوى المختارَين أصلاً", "warn"); return; }
+  const lbl = ((document.getElementById("blkApply") || {}).dataset || {}).label || "تنفيذ";
+  const rows = plan.slice(0, 100).map((r, i) => `<tr>
+      <td class="pt-num">${toArabicDigits(i + 1)}</td><td>${esc(r.name)}</td>
+      <td>${r.cTo ? esc(r.cFrom) + " ← <strong>" + esc(r.cTo) + "</strong>" : "—"}</td>
+      <td>${r.lTo ? esc(r.lFrom) + " ← <strong>" + esc(r.lTo) + "</strong>" : "—"}</td></tr>`).join("");
+  openModal("معاينة قبل التنفيذ", toArabicDigits(plan.length) + " طالباً",
+    noteCard("هذا ما سيتغيّر — لا يُكتب شيءٌ قبل «تأكيد التنفيذ»، ويُسجَّل التنفيذ في سجلّ النقل.") +
+    `<div class="pt-scroll" style="max-height:52vh"><table class="ptable">
+      <thead><tr><th>#</th><th>الطالب</th><th>الحلقة</th><th>المستوى</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`,
+    `<button class="btn btn-primary" onclick="window.linkChange(function(){ window.blkApplyDo(); })">تأكيد التنفيذ: ${esc(lbl)}</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+};
+
+window.blkApplyDo = function () {
+  const n = blkCount();
+  if (!n) { closeModal(); showToast("لم تختر تعديلاً لأحد", "warn"); return; }
+  const planned = blkPlan();
+  const logRows = [];
   let done = 0, blkFull = 0;
   const all = {};
   Object.keys(BLK.circle).forEach(k => all[k] = 1);
@@ -9656,8 +9822,27 @@ window.blkApply = function () {
     /* المستوى المُسنَد منهجُه: تُطبَّق إعداداتُه ويبدأ من ابتدائه */
     if (lvChg && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
     done++;
+    const pr = planned.find(r => String(r.st.id) === String(sid));
+    if (pr) logRows.push(pr);
   });
 
+  /* سجلُّ النقل: ما نُفِّذ فعلاً، بأسماء الحلقات والمستويات من ← إلى */
+  if (logRows.length) {
+    if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
+    const pg = String((STATE && STATE.page) || "");
+    const log = { id: "mvb" + Date.now(), kind: "bulk", ts: Date.now(),
+                  screen: pg, from: "تعديل جماعي", to: ((document.getElementById("blkApply") || {}).dataset || {}).label || "تعديل جماعي",
+                  count: logRows.length,
+                  names: logRows.slice(0, 50).map(r => r.name),
+                  changes: logRows.slice(0, 100).map(r => ({
+                    studentId: String(r.st.id), name: r.name,
+                    circleFrom: r.cFrom || "", circleTo: r.cTo || "",
+                    levelFrom: r.lFrom || "", levelTo: r.lTo || "" })),
+                  by: ((STATE && STATE.user) || {}).name || "" };
+    DB.moveLog.push(log); persistSet("moveLog", log);
+  }
+
+  closeModal();
   blkReset();
   showToast("عُدّل " + done + " طالباً" +
     (blkFull ? " · تُخطّي " + toArabicDigits(blkFull) + " لامتلاء حلقتهم" : ""),
@@ -9954,6 +10139,21 @@ function bplSyncBtn() {
 window.bplApply = function () {
   const ids = Object.keys(BPL.edit);
   if (!ids.length) { showToast("لم تعدّل خطة أحد", "warn"); return; }
+  const rows = ids.map(sid => {
+    const st = DB.students.find(x => String(x.id) === String(sid));
+    if (!st) return null;
+    const ch = BPL.edit[sid] || {};
+    const text = Object.keys(ch).map(k => k + ": " + (typeof ch[k] === "object" ? JSON.stringify(ch[k]) : String(ch[k]))).join(" · ");
+    return { id: st.id, name: st.name, text: text, change: esc(text || "—") };
+  }).filter(Boolean);
+  BPL.__rows = rows;
+  bulkConfirm("تعديل الخطة", rows, "window.bplApplyDo();");
+};
+
+window.bplApplyDo = function () {
+  const ids = Object.keys(BPL.edit);
+  if (!ids.length) { closeModal(); showToast("لم تعدّل خطة أحد", "warn"); return; }
+  const planned = BPL.__rows || [];
   let n = 0;
   ids.forEach(function (sid) {
     const st = DB.students.find(x => String(x.id) === String(sid));
@@ -9968,7 +10168,9 @@ window.bplApply = function () {
     }
     n++;
   });
-  BPL.edit = {};
+  bulkLog("bulk-plans", "تعديل الخطة", planned.filter(r => ids.indexOf(String(r.id)) > -1));
+  closeModal();
+  BPL.edit = {}; BPL.__rows = null;
   showToast("عُدّلت خطة " + n + " طالباً", "success");
   mount();
 };
@@ -10582,9 +10784,58 @@ window.jzmPickAll = function (on, kind) {
   jzmPickPaint();
 };
 
+/* =========================================================================
+   تأكيدُ العمليات الجماعية وسجلُّها (٤٣٢) — مشتركٌ بين شاشاتها الأربع
+   ========================================================================= */
+function bulkConfirm(title, rows, doJs) {
+  const list = rows.slice(0, 100).map((r, i) => `<tr><td class="pt-num">${toArabicDigits(i + 1)}</td>
+      <td>${esc(r.name || "—")}</td><td>${r.change}</td></tr>`).join("");
+  openModal("معاينة قبل التنفيذ", title + " — " + toArabicDigits(rows.length) + " طالباً",
+    noteCard("هذا ما سيتغيّر — لا يُكتب شيءٌ قبل «تأكيد التنفيذ»، ويُسجَّل التنفيذ في سجلّ النقل." +
+             (rows.length > 100 ? "<br>يُعرض أوّلُ ١٠٠ من " + toArabicDigits(rows.length) + "." : "")) +
+    `<div class="pt-scroll" style="max-height:52vh"><table class="ptable">
+      <thead><tr><th>#</th><th>الطالب</th><th>التغيير</th></tr></thead><tbody>${list}</tbody></table></div>`,
+    `<button class="btn btn-primary" onclick="window.linkChange(function(){ ${doJs} })">تأكيد التنفيذ</button>
+     <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+}
+function bulkLog(kind, label, rows) {
+  if (!rows.length) return;
+  if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
+  const log = { id: "mvb" + Date.now(), kind: kind, ts: Date.now(),
+                from: "تعديل جماعي", to: label, count: rows.length,
+                names: rows.slice(0, 50).map(r => r.name || ""),
+                changes: rows.slice(0, 100).map(r => ({ studentId: String(r.id), name: r.name || "",
+                                                         change: String(r.text || "") })),
+                by: ((STATE && STATE.user) || {}).name || "" };
+  DB.moveLog.push(log); persistSet("moveLog", log);
+}
+
 window.jzmApply = function () {
   const ids = Object.keys(Object.assign({}, JZM.to, JZM.lv));
   if (!ids.length) { showToast("لم تختر تعديلاً لأحد", "warn"); return; }
+  const rows = ids.map(sid => {
+    const st = (DB.students || []).find(x => String(x.id) === String(sid));
+    if (!st) return null;
+    const pid = jzmRowJuz(st);
+    const moved = !!JZM.to[sid] && JZM.to[sid] !== jzmProgId(st);
+    const l = jzmTarget(st, pid, JZM.lv[sid] || 1);
+    if (!l && !moved) return null;
+    if (!moved && String(st.levelId || "") === String(l.id)) return null;
+    const pr = moved ? jzmProgById(pid) : null;
+    const text = (moved ? (jzmProgName(st) || "بلا برنامج") + " ← " + ((pr && pr.name) || "—") + " · " : "") +
+                 (st.level || "بلا مستوى") + " ← " + (l ? lvNameById(l.id) : "—");
+    return { id: st.id, name: st.name, text: text, change: esc(text) };
+  }).filter(Boolean);
+  if (!rows.length) { showToast("لا تغيير فيما اخترت", "warn"); return; }
+  JZM.__rows = rows;
+  bulkConfirm("تعديل البرامج والمستويات", rows, "window.jzmApplyDo();");
+};
+
+window.jzmApplyDo = function () {
+  const ids = Object.keys(Object.assign({}, JZM.to, JZM.lv));
+  if (!ids.length) { closeModal(); showToast("لم تختر تعديلاً لأحد", "warn"); return; }
+  const planned = JZM.__rows || [];
+  const logged = [];
   let done = 0, miss = 0;
   ids.forEach(sid => {
     const st = (DB.students || []).find(x => String(x.id) === String(sid));
@@ -10603,8 +10854,12 @@ window.jzmApply = function () {
     /* والمستوى المُسنَد منهجُه: تُطبَّق إعداداتُه ويبدأ من ابتدائه */
     if (st.levelId && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
     done++;
+    const pr = planned.find(r => String(r.id) === String(st.id));
+    if (pr) logged.push(pr);
   });
-  JZM.to = {}; JZM.lv = {};
+  bulkLog("bulk-movelevel", "تعديل البرامج والمستويات", logged);
+  closeModal();
+  JZM.to = {}; JZM.lv = {}; JZM.__rows = null;
   showToast("حُفظ تعديل " + toArabicDigits(done) + " طالباً" +
             (miss ? " · تُخطّي " + toArabicDigits(miss) + " لا يوجد المستوى في برنامجه" : ""), done ? "success" : "warn");
   mount();
@@ -11034,12 +11289,14 @@ window.mvcRunDo = function () {
   ids.forEach(id => {
     const c = (DB.circles || []).find(x => String(x.id) === String(id));
     if (!c) return;
-    if (isMosque) { c.mosqueId = MVC.toFac; c.complexId = to && to.complexId ? to.complexId : ""; }
-    else { c.complexId = MVC.toFac; c.mosqueId = ""; }
+    /* واسمُ المسجد النصّيّ يتبع معرّفَه (٤٣٢): كان يبقى القديمُ فتعرض
+       الشاشاتُ الحلقةَ وطلابَها في مسجدهم السابق */
+    if (isMosque) { c.mosqueId = MVC.toFac; c.complexId = to && to.complexId ? to.complexId : ""; c.mosque = (to && to.name) || c.mosque || ""; }
+    else { c.complexId = MVC.toFac; c.mosqueId = ""; c.mosque = ""; }
     persistSet("circles", c);
     (DB.students || []).forEach(st => {
       if (String(st.circleId) !== String(id)) return;
-      st.mosqueId = c.mosqueId || ""; st.complexId = c.complexId || "";
+      st.mosqueId = c.mosqueId || ""; st.complexId = c.complexId || ""; st.mosque = c.mosque || "";
       st.points = 0; st.balance = 0;
       persistSet("students", st); nStud++;
     });
@@ -11358,12 +11615,42 @@ function urqRows() {
 window.urqTab    = function (k) { URQ.tab = k; URQ.sel = {}; mount(); };
 window.urqStatus = function (v) { URQ.status = v; URQ.sel = {}; mount(); };
 window.urqSize   = function (n) { URQ.size = Number(n) || 10; mount(); };
+/* =========================================================================
+   القبولُ التلقائيّ يعمل فعلاً (٤٣٢)
+   -------------------------------------------------------------------------
+   كان الزرُّ يحفظ الإعدادَ ولا يقرؤه شيء، فيبقى الطلبُ معلَّقاً. الآن: ما دام
+   مفعَّلاً يُعتمد كلُّ طلبِ إضافةٍ معلَّقٍ لم تنتهِ مدّتُه ومنشأتُه في نطاق
+   من يملك الاعتماد — عند تفعيله، وعند إرسال طلبٍ جديد، وعند فتح الشاشة.
+   وطلباتُ التسجيل الذاتيّ (self:) خارجَه: تلك تُراجَع بياناتُها يدوياً.
+   ========================================================================= */
+function urqAutoOn() { return !!((DB.settings || {}).autoAcceptRequests); }
+function urqMayDecide() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  return r === "admin" || r === "owner" || (typeof isMgrRole === "function" && isMgrRole(r));
+}
+let URQ_AUTO_BUSY = false;
+function urqAutoRun() {
+  if (URQ_AUTO_BUSY || !urqAutoOn() || !urqMayDecide()) return 0;
+  const mine = {};
+  (cur("mosques") || []).concat(cur("complexes") || []).forEach(f => { if (f) mine[String(f.id)] = 1; });
+  const ids = (cur("userRequests") || []).filter(r => r && (r.status || "pending") === "pending" &&
+      !(r.expiresAt && r.expiresAt < Date.now()) &&
+      (!r.facId || mine[String(r.facId)])).map(r => String(r.id));
+  if (!ids.length) return 0;
+  URQ_AUTO_BUSY = true;
+  try { window.linkChange(() => window.urqDecide("approved", ids, true)); }
+  finally { URQ_AUTO_BUSY = false; }
+  return ids.length;
+}
+window.urqAutoRun = urqAutoRun;
+
 window.urqAuto   = function () {
   URQ.auto = !URQ.auto;
   if (!DB.settings) DB.settings = {};
   DB.settings.autoAcceptRequests = URQ.auto;
   persistSet("settings", Object.assign({ id: "exams" }, DB.settings));
   showToast(URQ.auto ? "فُعِّل القبول التلقائي" : "أُوقف القبول التلقائي", "success");
+  if (URQ.auto) urqAutoRun();
   mount();
 };
 window.urqToggle = function (btn, id) {
@@ -11381,7 +11668,65 @@ window.urqToggleAll = function (btn) {
 };
 const urqSel = () => Object.keys(URQ.sel);
 
-window.urqDecide = function (to, ids) {
+/* =========================================================================
+   المنشأةُ المطلوبةُ والمسجدُ المختار — عند الاعتماد (٤٣٢: مشتركةٌ)
+   -------------------------------------------------------------------------
+   كانت في مسار شاشة الطلبات (urqDecide) وحدَه، فاعتمادُ الحساب نفسِه من
+   صفحة المستخدمين (userApproveDo) يُفعّل مديراً بلا منشأة ويُبقي طلبَه
+   (reqFacility) معلَّقاً. فأُفردت هنا ويناديها المساران.
+   ========================================================================= */
+function urqApplyFacility(u) {
+  const _rf = reqFacOf(u);
+  if (_rf && !u.mosqueId && !u.complexId) {
+    try {
+      if (_rf.kind === "complex") {
+        if (!Array.isArray(DB.complexes)) DB.complexes = [];
+        let cx = DB.complexes.find(x => x && nameKey(x.name) === nameKey(_rf.name));
+        if (!cx) {
+          cx = { id: freshNumId("complexes"), name: _rf.name,
+                 region: _rf.region || "—", manager: u.name || "—",
+                 phone: _rf.phone || "—", status: "نشط" };
+          DB.complexes.push(cx);
+          persistSet("complexes", cx);
+        }
+        u.complexId = String(cx.id);
+        u.complex = cx.name || "";
+      } else {
+        if (!Array.isArray(DB.mosques)) DB.mosques = [];
+        let mq = DB.mosques.find(x => x && nameKey(x.name) === nameKey(_rf.name));
+        if (!mq) {
+          const cxHit = _rf.cxName
+            ? (DB.complexes || []).find(x => x && nameKey(x.name) === nameKey(_rf.cxName))
+            : null;
+          mq = { id: freshNumId("mosques"), complexId: cxHit ? String(cxHit.id) : "",
+                 name: _rf.name, region: _rf.region || "—",
+                 manager: u.name || "—", phone: _rf.phone || "—",
+                 status: "نشط", attendance: 0, plan: 0 };
+          DB.mosques.push(mq);
+          persistSet("mosques", mq);
+          try { if (window.pubMosqueIndexSync) window.pubMosqueIndexSync(); } catch (e) {}
+        }
+        u.mosqueId = String(mq.id);
+        u.mosque = mq.name || "";
+        if (mq.complexId) u.complexId = String(mq.complexId);
+      }
+    } catch (e) { console.warn("urq facility:", e); }
+  }
+  delete u.reqFacility;
+
+  const rqId = String(u.requestedMosqueId || "");
+  if (rqId && !u.mosqueId) {
+    const mq0 = (DB.mosques || []).find(x => String(x.id) === rqId);
+    if (mq0) {
+      u.mosqueId = String(mq0.id);
+      u.mosque = mq0.name || "";
+      if (mq0.complexId && !u.complexId) u.complexId = String(mq0.complexId);
+    }
+  }
+  delete u.requestedMosqueId;
+}
+
+window.urqDecide = function (to, ids, auto) {
   ids = ids || urqSel();
   if (!ids.length) { showToast("حدّد طلباً واحداً على الأقل", "warn"); return; }
   let n = 0;
@@ -11421,54 +11766,7 @@ window.urqDecide = function (to, ids) {
            ثانية. ومسجدُ المجمّع يُربط باسمه إن وُجد، وإلّا بقي مستقلّاً
            ويُربط من صفحة المساجد — ولا يُخترع مجمّعٌ لم يُطلب.
            ================================================================= */
-        const _rf = reqFacOf(u);
-        if (_rf && !u.mosqueId && !u.complexId) {
-          try {
-            if (_rf.kind === "complex") {
-              if (!Array.isArray(DB.complexes)) DB.complexes = [];
-              let cx = DB.complexes.find(x => x && nameKey(x.name) === nameKey(_rf.name));
-              if (!cx) {
-                cx = { id: freshNumId("complexes"), name: _rf.name,
-                       region: _rf.region || "—", manager: u.name || "—",
-                       phone: _rf.phone || "—", status: "نشط" };
-                DB.complexes.push(cx);
-                persistSet("complexes", cx);
-              }
-              u.complexId = String(cx.id);
-              u.complex = cx.name || "";
-            } else {
-              if (!Array.isArray(DB.mosques)) DB.mosques = [];
-              let mq = DB.mosques.find(x => x && nameKey(x.name) === nameKey(_rf.name));
-              if (!mq) {
-                const cxHit = _rf.cxName
-                  ? (DB.complexes || []).find(x => x && nameKey(x.name) === nameKey(_rf.cxName))
-                  : null;
-                mq = { id: freshNumId("mosques"), complexId: cxHit ? String(cxHit.id) : "",
-                       name: _rf.name, region: _rf.region || "—",
-                       manager: u.name || "—", phone: _rf.phone || "—",
-                       status: "نشط", attendance: 0, plan: 0 };
-                DB.mosques.push(mq);
-                persistSet("mosques", mq);
-                try { if (window.pubMosqueIndexSync) window.pubMosqueIndexSync(); } catch (e) {}
-              }
-              u.mosqueId = String(mq.id);
-              u.mosque = mq.name || "";
-              if (mq.complexId) u.complexId = String(mq.complexId);
-            }
-          } catch (e) { console.warn("urq facility:", e); }
-        }
-        delete u.reqFacility;
-
-        const rqId = String(u.requestedMosqueId || "");
-        if (rqId && !u.mosqueId) {
-          const mq0 = (DB.mosques || []).find(x => String(x.id) === rqId);
-          if (mq0) {
-            u.mosqueId = String(mq0.id);
-            u.mosque = mq0.name || "";
-            if (mq0.complexId && !u.complexId) u.complexId = String(mq0.complexId);
-          }
-        }
-        delete u.requestedMosqueId;
+        urqApplyFacility(u);
         u.approvedAt = Date.now();
         u.approvedBy = ((STATE && STATE.user) || {}).email || "";
       } else {
@@ -11495,9 +11793,10 @@ window.urqDecide = function (to, ids) {
     }
   });
   URQ.sel = {};
-  showToast(n ? (to === "approved" ? "ووفق على " : "رُفض ") + n + " طلب" : "لا توجد طلبات معلّقة ضمن المحدَّد",
+  showToast(n ? (auto ? "قُبل تلقائياً " : (to === "approved" ? "ووفق على " : "رُفض ")) + n + " طلب"
+              : "لا توجد طلبات معلّقة ضمن المحدَّد",
             n ? "success" : "warn");
-  mount();
+  if (!auto) mount();
 };
 
 /* =========================================================================
@@ -11572,11 +11871,16 @@ window.urqSave = function () {
   closeModal();
   showToast("أُرسل الطلب — تجده في «طلباتي»", "success");
   URQ.tab = "mine"; URQ.status = "pending";
+  if (urqAutoOn()) urqAutoRun();
   mount();
 };
 
 function adminUserRequests() {
   URQ.auto = !!((DB.settings || {}).autoAcceptRequests);
+  /* المعلَّقُ ممّا وصل والقبولُ مفعَّل: يُعتمد بعد الرسم لا أثناءه */
+  if (URQ.auto && !URQ_AUTO_BUSY && urqMayDecide()) {
+    setTimeout(() => { if (urqAutoRun()) mount(); }, 0);
+  }
   const all = urqRows();
   const rows = all.slice(0, URQ.size);
   const picked = urqSel().length;
@@ -23315,7 +23619,24 @@ window.procSaveAll = function () {
 
 /* points: الرصيد القابل للإنفاق. balance: المكتسب الكلّي — لا ينقص بالشراء،
    فيبقى سجلّ تميّز الطالب مهما أنفق. */
-function ptsOf(st) { return Number((st || {}).points) || 0; }
+/* الرصيدُ المتاح: المحفوظُ ناقصاً طلباتِ المتجر المعلَّقةَ التي لم تُخصم بعد
+   (debited:false — يُنشئها الطالب، ويُخصم ثمنُها عند اعتماد الإدارة) (٤٣٢) */
+var PTS_HOLD_MEMO = null, PTS_HOLD_VER = 0;
+function ptsHeld(sid) {
+  const arr = Array.isArray(DB.storeOrders) ? DB.storeOrders : [];
+  if (!PTS_HOLD_MEMO || PTS_HOLD_MEMO.arr !== arr || PTS_HOLD_MEMO.n !== arr.length || PTS_HOLD_MEMO.v !== PTS_HOLD_VER) {
+    const map = {};
+    arr.forEach(o => {
+      if (o && o.debited === false && (o.status === "pending" || o.status === "approved")) {
+        const k = String(o.studentId);
+        map[k] = (map[k] || 0) + (Number(o.cost) || 0);
+      }
+    });
+    PTS_HOLD_MEMO = { arr, n: arr.length, v: PTS_HOLD_VER, map };
+  }
+  return PTS_HOLD_MEMO.map[String(sid)] || 0;
+}
+function ptsOf(st) { return (Number((st || {}).points) || 0) - (st ? ptsHeld(st.id) : 0); }
 function ptsTotal(st) { return Number((st || {}).balance) || 0; }
 
 /* أسباب المنح الجاهزة — تُختصر على المعلّم كتابةَ السبب كل مرة */
@@ -23812,33 +24133,64 @@ window.storeBuyDo = function (rewardId) {
     showToast("هذه الجائزة ليست متاحةً لك", "warn"); closeModal(); return;
   }
 
-  st.points = ptsOf(st) - need;
-  persistSet("students", st);
+  /* =====================================================================
+     الطالبُ يطلب، والإدارةُ تخصم (٤٣٢)
+     ---------------------------------------------------------------------
+     كان الشراءُ يكتب رصيدَ الطالب وكميّةَ الجائزة وسجلَّ النقاط من جلسة
+     الطالب — والقواعدُ لا تُجيز له ذلك (لو أجازته لزاد رصيدَه بيده)، فيُردّ
+     كلُّه على الخادم ويبقى الخصمُ في جهازه وحده. فيُكتب الطلبُ وحدَه معلَّقاً
+     لم يُخصم (debited:false) بسعر الجائزة كما هو، ويُطرح من رصيده المعروض
+     حتى تعتمده الإدارة فيُخصم فعلاً. ومن الإدارة نفسِها يبقى كما كان.
+     ===================================================================== */
+  const _role = ((STATE && STATE.user) || {}).role || "";
+  const selfBuy = _role === "student" || _role === "parent";
 
-  if (r.qty != null && r.qty > 0) { r.qty = r.qty - 1; persistSet("rewards", r); }
+  if (!selfBuy) {
+    st.points = ptsOf(st) - need;
+    persistSet("students", st);
+    if (r.qty != null && r.qty > 0) { r.qty = r.qty - 1; persistSet("rewards", r); }
+  }
 
   const order = {
     id: "so" + Date.now(),
     studentId: String(st.id), student: st.name || "",
     circleId: st.circleId || "", mosqueId: st.mosqueId || "",
-    rewardId: String(r.id), reward: r.name || "", cost: need,
+    rewardId: String(r.id), reward: r.name || "", cost: r.cost != null ? r.cost : need,
     status: "pending",            /* pending · delivered · canceled */
+    debited: !selfBuy,
     ts: Date.now(), date: todayISO(),
     termId: typeof activeTermId === "function" ? activeTermId() : ""
   };
   if (!Array.isArray(DB.storeOrders)) DB.storeOrders = [];
   DB.storeOrders.push(order);
-  persistSet("storeOrders", order);
+  PTS_HOLD_VER++;
+  /* الطلبُ من الطالب يُكتب بحقوله وحدَها — لا ختمَ نطاقٍ ولا ترتيب: القاعدةُ
+     تفحص شكلَه، والمسجدُ فيه من سجلّ الطالب نفسِه */
+  if (selfBuy) {
+    Promise.resolve(persistPatch("storeOrders", order, Object.keys(order).filter(k => k !== "id")))
+      .then(ok => {
+        if (ok === false) {
+          const i = DB.storeOrders.indexOf(order);
+          if (i > -1) DB.storeOrders.splice(i, 1);
+          PTS_HOLD_VER++;
+          mount();
+        }
+      });
+  } else {
+    persistSet("storeOrders", order);
+  }
 
   /* سحبٌ مسجَّل في دفتر النقاط: لا يُخصم رصيد بلا أثر */
-  const plog = {
-    id: "pt" + Date.now(), studentId: String(st.id), student: st.name || "",
-    n: -need, why: "استبدال: " + (r.name || ""), by: "المتجر",
-    ts: Date.now(), date: todayISO(), after: st.points, orderId: order.id
-  };
-  if (!Array.isArray(DB.pointsLog)) DB.pointsLog = [];
-  DB.pointsLog.push(plog);
-  persistSet("pointsLog", plog);
+  if (!selfBuy) {
+    const plog = {
+      id: "pt" + Date.now(), studentId: String(st.id), student: st.name || "",
+      n: -need, why: "استبدال: " + (r.name || ""), by: "المتجر",
+      ts: Date.now(), date: todayISO(), after: st.points, orderId: order.id
+    };
+    if (!Array.isArray(DB.pointsLog)) DB.pointsLog = [];
+    DB.pointsLog.push(plog);
+    persistSet("pointsLog", plog);
+  }
 
   try {
     if (typeof pushNotif === "function") {
@@ -23866,6 +24218,7 @@ window.orderDeliver = function (orderId) {
   const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
   if (!o) return;
   const u = (STATE && STATE.user) || {};
+  if (!orderDebit(o)) return;
   o.status = "delivered";
   o.deliveredAt = Date.now();
   o.deliveredBy = u.name || u.email || "";
@@ -23885,8 +24238,40 @@ window.orderCancel = function (orderId) {
      <button class="btn btn-ghost" data-action="close-modal">تراجع</button>`);
 };
 
+/* خصمُ طلبٍ أنشأه الطالب ولم يُخصم بعد — عند الاعتماد أو التسليم (٤٣٢).
+   يُرجع false إن لم يكفِ الرصيد، فلا يُعتمد الطلب. */
+function orderDebit(o) {
+  if (!o || o.debited !== false) return true;
+  const st = (cur("students") || []).find(x => String(x.id) === String(o.studentId));
+  const cost = Number(o.cost) || 0;
+  if (!st) { showToast("لم يُعثر على سجلّ الطالب", "warn"); return false; }
+  const saved = Number(st.points) || 0;
+  if (saved < cost) {
+    showToast("رصيدُ " + (st.name || "الطالب") + " (" + toArabicDigits(saved) + ") لا يكفي لهذا الطلب (" +
+              toArabicDigits(cost) + ") — ارفضه أو انتظر", "warn");
+    return false;
+  }
+  st.points = saved - cost;
+  persistSet("students", st);
+  const r = (cur("rewards") || []).find(x => String(x.id) === String(o.rewardId));
+  if (r && r.qty != null && r.qty > 0) { r.qty = r.qty - 1; persistSet("rewards", r); }
+  const plog = {
+    id: "pt" + Date.now(), studentId: String(st.id), student: st.name || "",
+    n: -cost, why: "استبدال: " + (o.reward || ""), by: "المتجر",
+    ts: Date.now(), date: todayISO(), after: st.points, orderId: o.id
+  };
+  if (!Array.isArray(DB.pointsLog)) DB.pointsLog = [];
+  DB.pointsLog.push(plog);
+  persistSet("pointsLog", plog);
+  o.debited = true;
+  PTS_HOLD_VER++;
+  return true;
+}
+
 /* ردُّ نقاط الطلب وإعادةُ الجائزة إلى المتجر — للإلغاء وللرفض سواء */
 function orderGiveBack(o, why) {
+  /* طلبٌ لم يُخصم بعد لا يُردّ له شيء — لم يُؤخذ منه شيء (٤٣٢) */
+  if (o && o.debited === false) { PTS_HOLD_VER++; return; }
   const st = (cur("students") || []).find(x => String(x.id) === String(o.studentId));
   if (st) {
     /* تُردّ النقاط: الإلغاء لا يُضيع رصيد الطالب */
@@ -23931,6 +24316,7 @@ window.orderApprove = function (orderId) {
   const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
   if (!o || o.status !== "pending") return;
   const u = (STATE && STATE.user) || {};
+  if (!orderDebit(o)) return;
   o.status = "approved";
   o.approvedAt = Date.now();
   o.approvedBy = u.name || u.email || "";
@@ -25437,7 +25823,7 @@ function auditWrite(coll, obj, act, before) {
     if (!Array.isArray(DB.auditLog)) DB.auditLog = [];
     DB.auditLog.push(rec);
     const db = typeof FDB === "function" ? FDB() : null;
-    if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(() => {});
+    if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(e => sideFail("auditLog", e));
     notifyAdminsOfChange(rec, u);
   } catch (e) {}
   LOG_ON = true;
@@ -29436,6 +29822,28 @@ function regEnrollOf(v) {
   return "";
 }
 
+/* =========================================================================
+   رقمُ هوية الطالب في نماذج الإضافة والتعديل (٤٣٢)
+   -------------------------------------------------------------------------
+   كان التسجيلُ المتعدّدُ وحده يفحص الرقم (regRowError)، ونموذجا الإضافة
+   والتعديل يحفظان المكرَّرَ والناقص ويقولان «تمت الإضافة». فيُفحص هنا
+   بالقاعدة نفسِها: عشرةُ أرقام، ولا يتكرّر لطالبٍ آخر. والفارغُ مقبول —
+   الحقلُ اختياريّ. يُرجع نصَّ الخطأ أو "".
+   ========================================================================= */
+function stuIdNoError(raw, selfId) {
+  const t = String(raw == null ? "" : raw).trim();
+  if (!t) return "";
+  const id = toLatinDigitsSafe(t).replace(/\s+/g, "");
+  if (!/^[0-9]{10}$/.test(id)) return "رقم الهوية عشرة أرقام";
+  const dup = (DB.students || []).find(x => x && String(x.id) !== String(selfId == null ? "" : selfId) &&
+                                             toLatinDigitsSafe(String(x.idNo || "")).replace(/\s+/g, "") === id);
+  return dup ? "رقم الهوية مسجَّلٌ للطالب «" + (dup.name || "—") + "»" : "";
+}
+function toLatinDigitsSafe(v) {
+  return String(v == null ? "" : v).replace(/[٠-٩]/g, d => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+                                   .replace(/[۰-۹]/g, d => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
+}
+
 /* فحصُ صفٍّ واحد: ما يمنع كتابتَه، أو لا شيء */
 function regRowError(r, mqId, seenIds) {
   if (String(r.name || "").trim().length < 2) return "الاسم مطلوب";
@@ -29476,7 +29884,7 @@ function regStudentRec(r, mqId, n) {
     attType: "دوام كامل",
     days: (typeof circleDaysOf === "function" ? circleDaysOf(c.name) : "") || "يومياً",
     birth: "", age: "—",
-    program: prog.name || "—", levelId: "", level: "",
+    program: regEnrollOf(r.enroll) === "attend" ? "" : (prog.name || "—"), levelId: "", level: "",
     enrollType: regEnrollOf(r.enroll),
     progress: 0, delays: 0, status: "نشط",
     idNo: String(r.idNo || "").replace(/\D+/g, ""), nationality: "",
@@ -32816,10 +33224,7 @@ window.tchatOpen = function (kind, id) {
   const u = (STATE && STATE.user) || {};
   const me = String(u.uid || u.id || "");
   tchatMsgs(kind, id).forEach(m => {
-    if (!m.read && String(m.fromUid || m.fromId || "") !== me) {
-      m.read = true;
-      try { persistSet("site_messages", m); } catch (e) { console.warn("persistSet:", e); }
-    }
+    if (!m.read && String(m.fromUid || m.fromId || "") !== me) msgMarkRead(m);
   });
 
   go("chat");
@@ -34714,6 +35119,7 @@ window.tcrcAttOne = function (sid) {
 
   const d = typeof attDate === "function" ? attDate() : todayISO();
   const r = attMap(d, String(c.id))[String(sid)];
+  if (r && typeof attEditOpen === "function" && !attEditOpen(r)) return;
   TATT.sel = TATT.sel || {};
   TATT.sel[String(sid)] = (r && r.status) || "حاضر";
 
@@ -34755,7 +35161,7 @@ window.tcrcAttSave = async function () {
   if (typeof attMayTake === "function" && !attMayTake(c.id)) return;
   const d = typeof attDate === "function" ? attDate() : todayISO();
   const map = attMap(d, String(c.id));
-  let ok = 0, fail = 0, skip = 0;
+  let ok = 0, fail = 0, skip = 0, locked = 0;
   const jobs = [];
   if (!Array.isArray(DB.attendance)) DB.attendance = [];
 
@@ -34765,6 +35171,12 @@ window.tcrcAttSave = async function () {
        فتقول الرسالةُ «اعتُمد تحضيرُ ٠ طالباً» — نجاحٌ بلا شيءٍ محفوظ */
     if (!st) { skip++; continue; }
     const old = map[String(sid)];
+    /* المحفوظُ لا يُعدَّل بلا صلاحيته (attEdit ومهلةُ التعديل) — ويُعدّ (٤٣٢) */
+    if (old && typeof attEditOpen === "function" && !attEditOpen(old, true)) {
+      if (String(old.status || "") !== String(TATT.sel[sid] || "")) locked++;
+      else ok++;                 /* محفوظٌ بالحالة نفسِها: لا تعديلَ فيه */
+      continue;
+    }
     const rec = old || { id: "at" + Date.now() + "-" + sid, studentId: String(sid),
                          date: d, circleId: String(c.id) };
     rec.student = st.name || "";
@@ -34846,6 +35258,11 @@ window.tcrcAttSave = async function () {
   /* والنافذةُ تُغلق فوراً: العملُ جارٍ والنتيجةُ تُقال عند تمامه */
   closeModal();
   await Promise.all(jobs);
+  if (locked) {
+    showToast("لم يُعدَّل تحضيرُ " + toArabicDigits(locked) +
+              " طالباً محفوظٍ سابقاً — تعديلُ المحفوظ غيرُ متاحٍ في صلاحياتك", "warn");
+    if (!ok && !fail) { mount(); return; }
+  }
   if (fail) {
     showToast("لم يصل تحضيرُ " + toArabicDigits(fail) + " من " +
               toArabicDigits(ok + fail) + " — الخادمُ ردَّ الكتابة", "warn");
@@ -34926,6 +35343,8 @@ window.tcrcAddSave = function () {
   if (!name) { showToast("اسم الطالب مطلوب", "warn"); return; }
   const enroll = val("#tsa_enroll", "");
   if (!enroll) { showToast("اختر نوع التسجيل: تُنسب لخطة أم تحضير فقط", "warn"); return; }
+  { const tIdErr = stuIdNoError(val("#tsa_idno", ""), null);
+    if (tIdErr) { showToast(tIdErr, "warn"); return; } }
   /* السعةُ تُحترم كما في نموذج الإدارة: الحلقةُ المكتملة لا تقبل */
   if (typeof circleFull === "function" && circleFull(c)) {
     showToast("حلقة " + (c.name || "") + " مكتملة — راجع الإدارة", "warn"); return;
@@ -34946,8 +35365,10 @@ window.tcrcAddSave = function () {
     idNo: val("#tsa_idno", ""),
     phone: val("#tsa_phone", ""),
     parent: val("#tsa_parent", "") || "—", parentRel: "الأب",
-    program: val("#tsa_program", ""),
-    levelId: lvId, level: lvId ? lvNameById(lvId) : "",
+    /* «تحضير فقط» بلا برنامجٍ ولا مستوى (٤٣٢) */
+    program: enroll === "attend" ? "" : val("#tsa_program", ""),
+    levelId: enroll === "attend" ? "" : lvId,
+    level: enroll === "attend" ? "" : (lvId ? lvNameById(lvId) : ""),
     enrollType: enroll,
     progress: 0, delays: 0, status: "نشط",
     /* مَن ضمَّه: يُعرف في التقارير أنّ المعلّمَ هو من أضافه لا الإدارة */
@@ -37408,9 +37829,13 @@ function ratingItems() {
 function ratingItemsOn() { return ratingItems().filter(x => x.on); }
 
 /* من يملك التقييم: المالك والمدير والمشرف */
+/* ومديرُ المسجد ومديرُ المجمّع يقيّمان معلّمي منشأتهما (٤٣٢): كانا يُردّان
+   بـ«التقييم من صلاحية الإدارة» وهما إدارتُها، والمشرفُ دونهما يقيّم.
+   والتقييمُ سجلٌّ في reviews يحصره نطاقُهما على الخادم كسائر الكتابة. */
 function canRateTeacher() {
   const r = ((STATE && STATE.user) || {}).role || "";
-  return r === "owner" || r === "admin" || r === "supervisor";
+  return r === "owner" || r === "admin" || r === "supervisor" ||
+         r === "mosqueManager" || r === "complexManager";
 }
 
 /* شهرُ الدورة الحاليّة */
@@ -39426,6 +39851,9 @@ window.reciteSync = function () {
 window.reciteDelete = function (id) {
   const r = (DB.recitations || []).find(x => String(x.id) === String(id));
   if (!r) return;
+  if (typeof teacherCan === "function" && !teacherCan("recite")) {
+    showToast("حذفُ التسميع غيرُ متاحٍ في صلاحياتك — راجع الإدارة", "warn"); return;
+  }
 
   openModal("حذف جلسة التسميع", "",
     noteCard(`ستُحذف جلسة <strong>${esc(r.student || "")}</strong> بتاريخ ${esc(r.date)}
@@ -39436,6 +39864,9 @@ window.reciteDelete = function (id) {
 };
 
 window.reciteDeleteDo = function (id) {
+  if (typeof teacherCan === "function" && !teacherCan("recite")) {
+    closeModal(); showToast("حذفُ التسميع غيرُ متاحٍ في صلاحياتك — راجع الإدارة", "warn"); return;
+  }
   const i = (DB.recitations || []).findIndex(x => String(x.id) === String(id));
   if (i > -1) { DB.recitations.splice(i, 1); persistDelete("recitations", id); }
   closeModal();
@@ -39518,6 +39949,11 @@ function reciteAgain() {
 }
 
 function reciteSave() {
+  /* صلاحيةُ «تسجيل التسميع» تُفحص في بوّابة الحفظ لا في الأزرار وحدَها (٤٣٢):
+     شاشةُ التسميع كانت تحفظ لمعلّمٍ أطفأتها الإدارةُ عنه */
+  if (typeof teacherCan === "function" && !teacherCan("recite")) {
+    showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return false;
+  }
   const sid = val("#r_student");
   if (!sid) { showToast("اختر الطالب", "warn"); return false; }
   const st = DB.students.find(x => String(x.id) === String(sid));
@@ -39674,6 +40110,9 @@ function reciteSave() {
 }
 
 function reciteDelete(id) {
+  if (typeof teacherCan === "function" && !teacherCan("recite")) {
+    showToast("حذفُ التسميع غيرُ متاحٍ في صلاحياتك — راجع الإدارة", "warn"); return;
+  }
   DB.recitations = (DB.recitations || []).filter(r => String(r.id) !== String(id));
   persistDelete("recitations", id);
   mount();
@@ -39959,6 +40398,16 @@ function saveMark(st, key, kind) {
   const parts = String(key).split(":");
   const id = markId(st.id, key);
   if (!Array.isArray(DB.mushafMarks)) DB.mushafMarks = [];
+
+  /* تأشيرُ يومٍ مضى لا يُعدَّل ولا يُزال بلا صلاحية «تعديل أخطاء المصحف
+     السابقة» (editMarks) — كانت تُعرض في البطاقة ولا يقرؤها شيء (٤٣٢).
+     والقاعدةُ على الخادم تفحص المفتاحَ نفسَه بتاريخ الخادم. */
+  const prevMk = DB.mushafMarks.find(x => String(x.id) === id);
+  if (prevMk && prevMk.date && String(prevMk.date) !== todayISO() &&
+      u.role === "teacher" && typeof teacherCan === "function" && !teacherCan("editMarks")) {
+    showToast("تأشيرُ يومٍ مضى لا يُعدَّل — الصلاحيةُ غيرُ مفعَّلةٍ لحسابك", "warn");
+    return;
+  }
 
   if (!kind) {
     DB.mushafMarks = DB.mushafMarks.filter(x => String(x.id) !== id);
@@ -43524,7 +43973,7 @@ window.unapproveSessionDo = function () {
     if (!Array.isArray(DB.auditLog)) DB.auditLog = [];
     DB.auditLog.push(rec);
     const db = typeof FDB === "function" ? FDB() : null;
-    if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(() => {});
+    if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(e => sideFail("auditLog", e));
   } catch (e) {}
 
   closeModal();
@@ -44749,6 +45198,34 @@ function badgeCard(st) {
   </div>`;
 }
 
+/* =========================================================================
+   نتائجُ الاختبارات عند الطالب ووليّ أمره (٤٣٢)
+   -------------------------------------------------------------------------
+   مسارُ الاختبار يمضي من المعلّم إلى المشرف إلى المدير، ثمّ لا شاشةَ عند
+   الطالب تعرض نتيجتَه. فتُعرض هنا نتائجُه المعتمدةُ والموثَّقة وحدَها —
+   ما لم يُعتمد بعدُ لا يُعرض درجةً قد تتغيّر.
+   ========================================================================= */
+function stuExamResults(st) {
+  const done = (cur("exams") || []).filter(e => e && String(e.studentId) === String(st.id) &&
+                                               (e.stage === "approved" || e.stage === "documented"))
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const pending = (cur("exams") || []).filter(e => e && String(e.studentId) === String(st.id) &&
+                                                  e.stage !== "approved" && e.stage !== "documented" &&
+                                                  e.stage !== "incomplete").length;
+  const rows = done.map(e => `<tr>
+      <td>${esc(e.part || e.title || "—")}</td>
+      <td class="pt-num">${esc(e.date ? toArabicDigits(e.date) : "—")}</td>
+      <td class="pt-num">${e.score == null || e.score === "" ? "—" : toArabicDigits(e.score)}</td>
+      <td>${esc(e.result || "—")}</td></tr>`).join("");
+  return `<div class="tsc-h">نتائج الاختبارات</div>
+    <div class="card trp-card">${done.length
+      ? `<div class="pt-scroll"><table class="ptable"><thead><tr><th>الاختبار</th><th>التاريخ</th><th>الدرجة</th><th>التقدير</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>`
+      : `<div class="muted" style="padding:10px 4px;font-size:13px">لا نتائج معتمدة بعد.</div>`}
+      ${pending ? `<div class="muted" style="padding:6px 4px;font-size:12.5px">${toArabicDigits(pending)} اختبارٌ قيد الإجراء — تظهر نتيجتُه بعد اعتمادها.</div>` : ""}
+    </div>`;
+}
+
 function studentReports() {
   const st = typeof activeStudent === "function" ? activeStudent() : null;
   if (!st) return typeof noKidPage === "function"
@@ -44796,6 +45273,8 @@ function studentReports() {
 
     ${stuAppOn("reports.path") ? `<div class="tsc-h">المسار</div>
     <div class="card trp-card"><div class="tsc-four">${pathCards}</div></div>` : ""}
+
+    ${stuAppOn("reports.exams") ? stuExamResults(st) : ""}
 
     ${stuAppOn("reports.qmap") ? `<div class="tsc-h">خريطة التقدم في القرآن</div>
     ${quranMapCard(st)}` : ""}
@@ -46946,15 +47425,84 @@ function openModal(title, sub, body, foot) {
      فنوافذُ «دوام الموظفين» في duty-plus.js تبقى ميلاديةً بلا تعديلٍ فيه. */
   const greg = (typeof hijGregHere === "function" && hijGregHere()) ? ' data-greg="1"' : "";
   root.removeAttribute("data-dirty");
+  if (!root.querySelector(".modal")) {
+    const ae = document.activeElement;
+    MODAL_RETURN = ae && ae !== document.body ? ae : null;
+  }
   root.innerHTML = `<div class="modal-back"${greg} data-action="close-modal">
-    <div class="modal" data-stop>
-      <div class="modal-head"><div><h3>${esc(title)}</h3>${sub ? `<div class="mh-sub">${esc(sub)}</div>` : ""}</div>
-        <button class="modal-close" data-action="close-modal">${ic("x", 18)}</button></div>
+    <div class="modal" data-stop role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">
+      <div class="modal-head"><div><h3 id="modalTitle">${esc(title)}</h3>${sub ? `<div class="mh-sub">${esc(sub)}</div>` : ""}</div>
+        <button class="modal-close" data-action="close-modal" aria-label="إغلاق">${ic("x", 18)}</button></div>
       <div class="modal-body">${body}</div>
       ${foot ? `<div class="modal-foot">${foot}</div>` : ""}
     </div></div>`;
+  modalA11y(root);
 }
-function closeModal() { const r = $("#modalRoot"); if (r) { r.innerHTML = ""; r.removeAttribute("data-dirty"); } }
+
+/* =========================================================================
+   الوصوليةُ في النوافذ (٤٣٢)
+   -------------------------------------------------------------------------
+   كان Esc يُغلق النافذة، لكنّ التركيزَ يبقى في الصفحة خلفها، وأغلبُ الحقول
+   بلا ربطٍ برمجيٍّ بتسميتها — فقارئُ الشاشة يقرأ «حقلُ نص» بلا اسم. الآن:
+     • كلُّ تسميةٍ في خانة (.field) تُربط بحقلها (for/id) ما لم تُربط.
+     • ما بلا تسمية يأخذ placeholder اسماً له (aria-label).
+     • التركيزُ ينتقل إلى أوّل حقلٍ في النافذة (أو إليها)، ويبقى داخلها
+       بـ Tab، ويعود إلى ما كان عليه بعد إغلاقها.
+   لا يتغيّر شكلٌ ولا سلوكٌ مرئيّ.
+   ========================================================================= */
+var MODAL_RETURN = null, MODAL_UID = 0;
+var MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), ' +
+                        'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+function modalA11y(root) {
+  try {
+    const m = root.querySelector(".modal");
+    if (!m) return;
+    m.querySelectorAll("label").forEach(lb => {
+      if (lb.htmlFor || lb.querySelector("input,select,textarea")) return;
+      const box = lb.closest(".field, .form-row, .tsd-row") || lb.parentElement;
+      const f = box && box.querySelector("input:not([type=hidden]),select,textarea");
+      if (!f) return;
+      if (!f.id) f.id = "mf" + (++MODAL_UID);
+      if (!document.querySelector('label[for="' + f.id + '"]')) lb.htmlFor = f.id;
+    });
+    m.querySelectorAll("input:not([type=hidden]),select,textarea").forEach(f => {
+      if (f.getAttribute("aria-label") || f.labels && f.labels.length) return;
+      const ph = f.getAttribute("placeholder");
+      if (ph) f.setAttribute("aria-label", ph);
+    });
+    const first = [...m.querySelectorAll(".modal-body " + MODAL_FOCUSABLE.split(", ").join(", .modal-body "))]
+      .find(el => el.offsetParent !== null && !el.readOnly &&
+                  /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName));
+    setTimeout(() => {
+      try {
+        if (!document.body.contains(m)) return;
+        if (m.contains(document.activeElement)) return;
+        /* على اللمس يُركَّز على النافذة لا الحقل: الحقلُ يفتح لوحةَ المفاتيح
+           فتغطّي النافذةَ قبل أن يقرأها صاحبُها */
+        const touch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+        (!touch && first ? first : m).focus({ preventScroll: true });
+      } catch (e) {}
+    }, 30);
+  } catch (e) {}
+}
+/* Tab يدور داخل النافذة المفتوحة ولا يخرج إلى الصفحة خلفها */
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Tab") return;
+  const m = document.querySelector("#modalRoot .modal");
+  if (!m) return;
+  const els = [...m.querySelectorAll(MODAL_FOCUSABLE)].filter(el => el.offsetParent !== null);
+  if (!els.length) return;
+  const a = els[0], z = els[els.length - 1];
+  if (!m.contains(document.activeElement)) { e.preventDefault(); a.focus(); return; }
+  if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus(); }
+  else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+}, true);
+function closeModal() {
+  const r = $("#modalRoot");
+  if (r) { r.innerHTML = ""; r.removeAttribute("data-dirty"); }
+  const back = MODAL_RETURN; MODAL_RETURN = null;
+  try { if (back && document.body.contains(back) && typeof back.focus === "function") back.focus({ preventScroll: true }); } catch (e) {}
+}
 
 /* تعديلاتٌ لم تُحفظ في النافذة المفتوحة (٤٢٩): تُوسَم النافذةُ عند أوّل
    كتابةٍ أو اختيارٍ من يد المستخدم (isTrusted)، لا ممّا يملؤه الكود.
@@ -47285,7 +47833,9 @@ function circleTypeOptions(mosqueId, complexId) {
    ========================================================================= */
 function pubMosqueIndexBuild() {
   const items = (Array.isArray(DB.mosques) ? DB.mosques : [])
-    .filter(m => m && m.status !== "متوقف" && String(m.name || "").trim())
+    /* «متوقف» و«متوقف مؤقت» كلاهما خارجَ صفحة التسجيل (٤٣٢): كان يُستبعد
+       الأوّلُ وحدَه، وزرُّ الإيقاف يكتب الثاني فيبقى المسجدُ الموقوفُ ظاهراً */
+    .filter(m => m && !/^متوقف/.test(String(m.status || "")) && String(m.name || "").trim())
     .map(m => {
       /* اسمُ المجمّع معه: مسجدان باسمٍ واحدٍ في مجمّعين يلتبسان على
          المسجِّل بلا هذا. واسمُ المجمّع علنيٌّ كاسم المسجد — لا سرَّ فيه. */
@@ -47306,7 +47856,7 @@ window.pubMosqueIndexSync = function () {
     /* لا تمرُّ بـ persistSet: ليست من مجموعات النظام ولا تُحمَّل معها،
        وهي فهرسُ عرضٍ لا سجلُّ بيانات. */
     return db.collection("publicIndex").doc("mosques")
-      .set(pubMosqueIndexBuild()).then(() => true).catch(() => false);
+      .set(pubMosqueIndexBuild()).then(() => true).catch(e => sideFail("publicIndex", e));
   } catch (e) { return Promise.resolve(false); }
 };
 
@@ -49383,8 +49933,10 @@ function modalAddComp(id) {
 function modalPromote(id) {
   const pl = getPlan(id);
   if (!pl) { showToast("الخطة غير موجودة", "warn"); return; }
-  openModal(`اعتماد ترقية ${pl.student}`, `الترقية من ${pl.level} إلى المستوى التالي`,
-    noteCard("سيُنقل الطالب للمستوى التالي ويُسجّل ذلك في سجل التغييرات."),
+  const nx = typeof nextLevelOf === "function" ? nextLevelOf(pl) : null;
+  openModal(`اعتماد ترقية ${pl.student}`, `الترقية من ${pl.level || "—"} إلى ${nx ? nx.name : "المستوى التالي"}`,
+    noteCard(nx ? "سيُنقل الطالب وخطته إلى «" + esc(nx.name) + "» ويُسجّل ذلك في سجل التغييرات."
+                : "لا مستوى تالٍ في برنامج الطالب — أضِفه من الإعدادات أولاً."),
     `<button class="btn btn-gold" data-action="promote-confirm" data-id="${id}">${ic("trophy", 16)} اعتماد الترقية</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 }
@@ -52202,6 +52754,13 @@ function attEditOpen(rec, silent) {
   if (!rec) return true;
   const r = ((STATE && STATE.user) || {}).role || "";
   if (r !== "teacher") return true;
+  /* صلاحيةُ البطاقة «تعديل التحضير بعد اعتماد الحلقة» (attEdit) — كانت
+     تُعرض في بطاقة المعلّم ولا يقرؤها شيء، فيعدّل من أطفأتها الإدارة (٤٣٢).
+     والقاعدةُ على الخادم تقرأ المفتاحَ نفسَه. */
+  if (typeof teacherCan === "function" && !teacherCan("attEdit")) {
+    if (!silent) showToast("تعديلُ التحضير المحفوظ غيرُ متاحٍ في صلاحياتك — التعديل من الإدارة", "warn");
+    return false;
+  }
   const m = attCfg().editMin;
   if (!m) return true;
   const t0 = Number(rec.firstTs || rec.ts) || 0;
@@ -54543,6 +55102,8 @@ document.addEventListener("click", (e) => {
       if (!m) { showToast("المسجد غير موجود", "warn"); break; }
       m.status = m.status === "نشط" ? "متوقف مؤقت" : "نشط";
       persistSet("mosques", m);
+      /* الفهرسُ العلنيّ يتبع الحالة فوراً (٤٣٢) — كان لا يُحدَّث إلا مع حفظ النموذج */
+      if (typeof window.pubMosqueIndexSync === "function") window.pubMosqueIndexSync();
       mount();
       showToast(m.status === "نشط" ? "تم تشغيل المسجد" : "تم إيقاف المسجد مؤقتاً");
       break;
@@ -54609,7 +55170,7 @@ document.addEventListener("click", (e) => {
     case "modal-freeze": modalFreeze(t.dataset.id); break;
     case "modal-add-comp": modalAddComp(t.dataset.id); break;
     case "modal-promote": modalPromote(t.dataset.id); break;
-    case "plan-open": STATE.planId = +t.dataset.id; mount(); break;
+    case "plan-open": { const _op = planOfDs(t.dataset.id); STATE.planId = _op ? _op.id : t.dataset.id; mount(); break; }
     case "plan-back": STATE.planId = null; mount(); break;
     case "close-modal":
       /* النقرُ على الخلفية وحدها لا يُسقط تعديلاتٍ لم تُحفظ (٤٢٩) */
@@ -54823,7 +55384,9 @@ document.addEventListener("click", (e) => {
       s.status = val("#es_status", s.status);
 
       /* البيانات الشخصية */
-      s.idNo = val("#es_idno", s.idNo || "");
+      { const eIdErr = stuIdNoError(val("#es_idno", s.idNo || ""), s.id);
+        if (eIdErr && String(val("#es_idno", "") || "") !== String(s.idNo || "")) { showToast(eIdErr, "warn"); break; } }
+      s.idNo = toLatinDigitsSafe(val("#es_idno", s.idNo || "")).trim();
       s.nationality = val("#es_nat", s.nationality || "");
       s.school = val("#es_school", s.school || "");
       s.grade = val("#es_grade", s.grade || "");
@@ -55000,14 +55563,41 @@ document.addEventListener("click", (e) => {
       reloadAndRender().then(() => showToast("تم تحديث البيانات")).catch(err => { console.warn(err); showToast("تعذّر التحميل", "warn"); });
       break;
     }
+    /* =====================================================================
+       «حذف كل البيانات» بتأكيدٍ مزدوج ولمدير النظام وحدَه (٤٣٢)
+       ---------------------------------------------------------------------
+       كان نقرٌ واحدٌ على «نعم» يمحو المجموعاتِ كلَّها، ولا يُفحص الدورُ في
+       clearAllData نفسِها. الآن: الأوّلُ كتابةُ العبارة حرفاً بحرف، والثاني
+       تأكيدٌ أخيرٌ يذكر عددَ ما سيُحذف — ثمّ الحذف.
+       ===================================================================== */
     case "clear-data": {
-      openModal("حذف كل البيانات", "سيُحذف كل المحتوى من قاعدة البيانات",
-        `${noteCard("سيتم حذف <strong>جميع المجمعات</strong> والمساجد والحلقات والطلاب والمعلمين والبرامج والخطط نهائياً. لا يمكن التراجع.")}`,
-        `<button class="btn btn-danger" data-action="clear-confirm">${ic("x", 16)} نعم، احذف كل البيانات</button>
+      if (!isTopAdmin()) { showToast("حذفُ كل البيانات لمدير النظام وحدَه", "warn"); break; }
+      openModal("حذف كل البيانات", "الخطوة ١ من ٢ — سيُحذف كل المحتوى من قاعدة البيانات",
+        `${noteCard("سيتم حذف <strong>جميع المجمعات</strong> والمساجد والحلقات والطلاب والمعلمين والبرامج والخطط نهائياً. لا يمكن التراجع.")}
+         <div class="field full" style="margin-top:12px"><label for="clr_phrase">اكتب: <strong>${CLEAR_PHRASE}</strong></label>
+           <input id="clr_phrase" autocomplete="off" placeholder="${CLEAR_PHRASE}"></div>`,
+        `<button class="btn btn-danger" data-action="clear-confirm">${ic("x", 16)} متابعة</button>
          <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
       break;
     }
     case "clear-confirm": {
+      if (!isTopAdmin()) { closeModal(); showToast("حذفُ كل البيانات لمدير النظام وحدَه", "warn"); break; }
+      if (String(val("#clr_phrase", "") || "").trim() !== CLEAR_PHRASE) {
+        showToast("اكتب العبارة كما هي للمتابعة", "warn"); break;
+      }
+      const nAll = COLLECTIONS.filter(c => CLEAR_KEEP.indexOf(c) === -1)
+        .reduce((n, c) => n + (Array.isArray(DB[c]) ? DB[c].length : 0), 0);
+      closeModal();
+      openModal("تأكيد أخير", "الخطوة ٢ من ٢",
+        noteCard("سيُحذف <strong>" + toArabicDigits(nAll) + "</strong> سجلاً من " +
+                 toArabicDigits(COLLECTIONS.length - CLEAR_KEEP.length) +
+                 " مجموعة نهائياً، وتبقى حساباتُ المستخدمين. هل أنت متأكد؟"),
+        `<button class="btn btn-danger" data-action="clear-final">${ic("x", 16)} نعم، احذف نهائياً</button>
+         <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+      break;
+    }
+    case "clear-final": {
+      if (!isTopAdmin()) { closeModal(); showToast("حذفُ كل البيانات لمدير النظام وحدَه", "warn"); break; }
       closeModal();
       showToast("جارٍ حذف البيانات…", "info");
       clearAllData().then(() => {
@@ -55089,6 +55679,8 @@ document.addEventListener("click", (e) => {
       /* الاختيارُ إلزاميّ: إمّا خطّةٌ يُتابَع عليها، وإمّا تحضيرٌ وحده */
       const sEnroll = val("#s_enroll", "");
       if (!sEnroll) { showToast("اختر نوع التسجيل: تُنسب لخطة أم تحضير فقط", "warn"); break; }
+      const sIdErr = stuIdNoError(val("#s_idno", ""), null);
+      if (sIdErr) { showToast(sIdErr, "warn"); break; }
 
       /* كان الشرطُ STATE.complexId، وهو فارغٌ عند مدير المسجد المستقلّ:
          لا مجمّعَ في نطاقه فتُردّ إضافةُ الطالب ويُقال له «أضف مجمعاً» —
@@ -55128,17 +55720,19 @@ document.addEventListener("click", (e) => {
           const a = ageFromBirth(val("#s_birth", ""));
           return a == null ? "—" : String(a);
         })(),
-        program: val("#s_program", (DB.programs[0] || {}).name || "—"),
+        /* «تحضير فقط» بلا برنامجٍ ولا مستوى (٤٣٢): حقلاهما مخفيّان عنده،
+           وكانت تُقرأ قيمتاهما الافتراضيتان فيُنسب إلى أوّل برنامجٍ ومستوى */
+        program: sEnroll === "attend" ? "" : val("#s_program", (DB.programs[0] || {}).name || "—"),
         /* المعرّف للربط والاسم ليبقى مقروءاً في التقارير */
-        levelId: val("#s_level", ""),
-        level: lvNameById(val("#s_level", "")),
+        levelId: sEnroll === "attend" ? "" : val("#s_level", ""),
+        level: sEnroll === "attend" ? "" : lvNameById(val("#s_level", "")),
         /* نوعُ التسجيل يُحفظ في السجلّ: التقاريرُ تحتاج تمييزَ من يُتابَع
            على خطّةٍ ممّن سُجّل للتحضير وحده. */
         enrollType: sEnroll,
         progress: 0, delays: 0, status: val("#s_status", "نشط"),
 
         /* البيانات الشخصية: تُحفظ في ملفّه لا على ورقةٍ خارجه */
-        idNo: val("#s_idno", ""), nationality: val("#s_nat", ""),
+        idNo: toLatinDigitsSafe(val("#s_idno", "")).trim(), nationality: val("#s_nat", ""),
         school: val("#s_school", ""), grade: val("#s_grade", ""),
         phone: val("#s_phone", ""), parentRel: val("#s_rel", "الأب"),
         address: val("#s_addr", ""), health: val("#s_health", ""),
@@ -55360,7 +55954,7 @@ document.addEventListener("click", (e) => {
 
     /* ---- Plan actions ---- */
     case "edit-path-save": {
-      const id = +t.dataset.id, p = DB.plans.find(x => x.id == id), pl = getPlan(id);
+      const p = planOfDs(t.dataset.id), id = p ? p.id : t.dataset.id, pl = p ? getPlan(id) : null;
       if (!p || !pl) { showToast("الخطة غير موجودة", "warn"); break; }
       const reason = val("#ep_reason", "تعديل يدوي");
       const newCurrent = val("#ep_current", p.current), newAmount = val("#ep_amount", p.amount), newUnit = val("#ep_unit", p.unit), newEnd = val("#ep_end", p.end);
@@ -55372,7 +55966,7 @@ document.addEventListener("click", (e) => {
       break;
     }
     case "freeze-confirm": {
-      const id = +t.dataset.id, p = DB.plans.find(x => x.id == id), pl = getPlan(id);
+      const p = planOfDs(t.dataset.id), id = p ? p.id : t.dataset.id, pl = p ? getPlan(id) : null;
       if (!p || !pl) { showToast("الخطة غير موجودة", "warn"); break; }
       const ext = PLAN_EXTRA[id] || (PLAN_EXTRA[id] = pl.ext);
       const reason = val("#fz_reason", "—");
@@ -55392,7 +55986,7 @@ document.addEventListener("click", (e) => {
       break;
     }
     case "comp-save": {
-      const id = +t.dataset.id, p = DB.plans.find(x => x.id == id), pl = getPlan(id);
+      const p = planOfDs(t.dataset.id), id = p ? p.id : t.dataset.id, pl = p ? getPlan(id) : null;
       if (!p || !pl) { showToast("الخطة غير موجودة", "warn"); break; }
       const ext = PLAN_EXTRA[id] || (PLAN_EXTRA[id] = pl.ext);
       const reason = val("#ac_reason", "غياب");
@@ -55408,20 +56002,32 @@ document.addEventListener("click", (e) => {
       break;
     }
     case "promote-confirm": {
-      const id = +t.dataset.id, p = DB.plans.find(x => x.id == id), pl = getPlan(id);
+      const p = planOfDs(t.dataset.id), id = p ? p.id : t.dataset.id, pl = p ? getPlan(id) : null;
       if (!p || !pl) { showToast("الخطة غير موجودة", "warn"); break; }
+      /* =================================================================
+         الترقيةُ إلى المستوى التالي فعلاً (٤٣٢)
+         -----------------------------------------------------------------
+         كانت تبدّل كلمةَ «الأول» بـ«الثاني» في نصّ المستوى وحده: levelId
+         باقٍ، ومستوى الطالب لا يتغيّر، ومحرّكُ الواجبات يمضي على القديم.
+         الآن تمرّ بالمسار نفسِه الذي في صفحة الخطة (planPromoteDo): المستوى
+         التالي في برنامجه بترتيبه، وشرطُ الانتقال، وسجلُّ الطالب معه.
+         ================================================================= */
       const ext = PLAN_EXTRA[id] || (PLAN_EXTRA[id] = pl.ext);
-      const m = String(p.level).match(/(الأول|الثاني|الثالث|الرابع|الخامس)/);
-      const next = { "الأول": "الثاني", "الثاني": "الثالث", "الثالث": "الرابع", "الرابع": "الخامس", "الخامس": "السادس" };
-      const newLevel = m ? p.level.replace(m[1], next[m[1]] || m[1]) : p.level;
-      ext.history.unshift({ by: USER_NAME[STATE.iface], role: "مدير النظام", dt: "الآن", field: "المستوى", before: p.level, after: newLevel, reason: "اعتماد ترقية" });
-      p.level = newLevel; p.progress = 5; ext.health = "healthy";
-      persistPlan(id); closeModal(); mount(); showToast("تم اعتماد الترقية");
+      const nextLv = typeof nextLevelOf === "function" ? nextLevelOf(p) : null;
+      if (!nextLv) { showToast("لا مستوى تالٍ في برنامج الطالب — أضِفه من الإعدادات ← البرامج والمستويات أولاً", "warn"); break; }
+      const fromLv = p.level || "";
+      window.linkChange(() => window.planPromoteDo(p.id, nextLv.id));
+      if (String(p.levelId) === String(nextLv.id)) {
+        ext.history.unshift({ by: USER_NAME[STATE.iface], role: "مدير النظام", dt: "الآن", field: "المستوى", before: fromLv, after: nextLv.name, reason: "اعتماد ترقية" });
+        ext.health = "healthy";
+        persistPlan(id);
+      }
+      closeModal(); mount();
       break;
     }
     case "req-approve":
     case "req-reject": {
-      const id = +t.dataset.id, i = +t.dataset.i, pl = getPlan(id);
+      const _rp = planOfDs(t.dataset.id), id = _rp ? _rp.id : t.dataset.id, i = +t.dataset.i, pl = _rp ? getPlan(id) : null;
       if (!pl) { showToast("الخطة غير موجودة", "warn"); break; }
       const ext = PLAN_EXTRA[id] || (PLAN_EXTRA[id] = pl.ext);
       const req = ext.requests[i];
@@ -55531,8 +56137,27 @@ async function loadAllData(source) {
   const core = _cols.filter(c => CORE.indexOf(c) > -1);
   const rest = _cols.filter(c => CORE.indexOf(c) === -1);
 
-  const readOne = c => db.collection(c).get(opts).then(
-    snap => ({ c, snap }),
+  /* =====================================================================
+     رسائلُ صاحب الجلسة وحدَها (٤٣٢)
+     ---------------------------------------------------------------------
+     القواعدُ لا تُجيز لغير الإدارة سردَ site_messages كلِّها — كان ذلك
+     ثغرةً يقرأ بها الطالبُ رسائلَ غيره. فيُقرأ ما أُرسل إليه وما أرسله هو،
+     باستعلامين تمرّهما القاعدة، ويُدمجان في شكل اللقطة نفسِه.
+     ===================================================================== */
+  const _mgrRead = !_r || _r === "admin" || _r === "owner" || isMgrRole(_r);
+  const _myMail = String(((STATE && STATE.user) || {}).email || "").toLowerCase();
+  const readMine = c => {
+    if (!_myMail) return Promise.resolve({ c, snap: { forEach() {} } });
+    const qs = ["toEmail", "fromEmail"].map(f => db.collection(c).where(f, "==", _myMail).get(opts));
+    return Promise.all(qs).then(snaps => {
+      const seen = {}, docs = [];
+      snaps.forEach(sn => sn.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } }));
+      return { c, snap: { forEach: fn => docs.forEach(fn) } };
+    });
+  };
+  const readOne = c => (c === "site_messages" && !_mgrRead ? readMine(c) : db.collection(c).get(opts)
+    .then(snap => ({ c, snap }))).then(
+    r => r,
     err => { console.warn("تعذّرت قراءة المجموعة:", c, err); return { c, snap: null }; }
   );
 
@@ -55725,7 +56350,10 @@ async function loadDataFast(onData) {
   return painted;
 }
 
+const CLEAR_PHRASE = "احذف كل البيانات";
 async function clearAllData() {
+  /* الحارسُ في الدالّة لا في الزرّ وحدَه: الأزرارُ تُخفى والدوالُّ تُنادى */
+  if (!isTopAdmin()) throw new Error("clearAllData: لمدير النظام وحدَه");
   const db = FDB();
   if (db) {
     for (const c of COLLECTIONS) {
@@ -55844,6 +56472,37 @@ window.fixMyScope = function () {
   persistSet("users", rec);
   return true;
 };
+
+/* =========================================================================
+   رفضُ الكتابات الجانبية — لا يُبتلع صامتاً (٤٣٢)
+   -------------------------------------------------------------------------
+   سجلُّ العمليات وفهرسُ المساجد العلنيّ وتعليمُ «مقروء» تُكتب مباشرةً لا عبر
+   persistSet، وكان رفضُها يُبتلع بلا أثر: يظنّ المديرُ أنّ صفحةَ التسجيل
+   حُدّثت أو أنّ العمليةَ وُثّقت ولم يحدث شيء. فيُسجَّل السببُ في الكونسول
+   دائماً، ويُبلَّغ المستخدمُ مرّةً واحدةً في الجلسة لكلّ نوع — لا عند كلّ
+   كتابة — لأنّ هذه الكتابات تتكرّر بلا طلبٍ منه.
+   ========================================================================= */
+const SIDE_FAIL_SEEN = {};
+const SIDE_FAIL_MSG = {
+  auditLog:    "لم يُوثَّق آخرُ تعديلٍ في سجلّ العمليات — رفضه الخادم",
+  publicIndex: "لم تُحدَّث قائمةُ المساجد في صفحة التسجيل — رفضها الخادم",
+  read:        "تعذّر تعليمُ الرسالة مقروءةً على الخادم — ستظهر غيرَ مقروءةٍ في جهازٍ آخر"
+};
+function sideFail(kind, err) {
+  const code = (err && err.code) || String(err || "");
+  console.warn("[" + kind + "] رُفضت الكتابة:", code, err);
+  if (SIDE_FAIL_SEEN[kind]) return false;
+  SIDE_FAIL_SEEN[kind] = 1;
+  const off = code === "unavailable" || (typeof isOnline === "function" && !isOnline());
+  try {
+    if (typeof showToast === "function") {
+      showToast((SIDE_FAIL_MSG[kind] || "تعذّرت كتابةٌ جانبية") +
+                (off ? " (لا اتصال)" : code ? " [" + code + "]" : ""), "warn");
+    }
+  } catch (e) {}
+  return false;
+}
+window.sideFail = sideFail;
 
 function persistFail(where, coll, err, rec) {
   console.warn(where, coll, err);
@@ -56384,7 +57043,7 @@ window.archiveOverrideDo = function (on) {
       if (!Array.isArray(DB.auditLog)) DB.auditLog = [];
       DB.auditLog.push(rec);
       const db = typeof FDB === "function" ? FDB() : null;
-      if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(() => {});
+      if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(e => sideFail("auditLog", e));
     } catch (e) {}
   }
   closeModal();
@@ -56577,6 +57236,15 @@ function persistSet(coll, obj) {
   } catch (e) {}
 
   const data = scopeStamp(coll, Object.assign({}, obj));
+  /* ما ختمه scopeStamp على المكتوب يُختم على السجلّ في الذاكرة كذلك (٤٣٢):
+     كان الخادمُ يحمل المسجدَ والمجمّعَ والذاكرةُ فارغةً منهما، فيحجب حصرُ
+     النطاق السجلَّ عن منشئه حتى يُعاد التحميل (طلبُ القبول والجائزة «للجميع») */
+  let _stamped = 0;
+  ["mosqueId", "complexId"].forEach(k => {
+    if ((obj[k] == null || obj[k] === "") && data[k] != null && data[k] !== "") { obj[k] = data[k]; _stamped++; }
+  });
+  /* والظلُّ يتبعه، فلا يحسب حارسُ الارتباط الختمَ تغييراً في الحفظ التالي */
+  if (_stamped) { try { if (typeof auditKeep === "function") auditKeep(coll, obj); } catch (e) {} }
   if (data._o == null) data._o = Date.now();
   /* امتداداتُ الخطة (الحالةُ الصحية · التجميدُ وسببُه · الطلبات) تُنزع من
      السجلّ عند التحميل إلى PLAN_EXTRA، والكتابةُ هنا set بلا دمج — فكان
@@ -56703,7 +57371,10 @@ function persistDelete(coll, id) {
 
   db.collection(coll).doc(String(id)).delete()
     .catch(err => {
-      offqPush("delete", coll, { id });
+      /* رفضُ القواعد ليس انقطاعاً (٤٣٢): كان يُدفع إلى طابور الرفع فيُعاد
+         أبداً بلا طائل. يُعاد إلى الطابور الانقطاعُ وحده، كما في persistSet. */
+      const denied = err && (err.code === "permission-denied" || err.code === "unauthenticated");
+      if (!denied) offqPush("delete", coll, { id });
       persistFail("persistDelete", coll, err);
     });
 }
@@ -57004,8 +57675,17 @@ function facilityFilter(coll, raw) {
         شغّل migrate-roles.js --apply فيُبصَم القديمُ ويعود لأصحابه.
         وتبقى للمالك والمدير في كلّ حال.
      ======================================================================= */
+  /* ما وُجِّه إليّ بعينه (toUid أو toEmail) لي أيّاً كان نطاقُه (٤٣٢): تنبيهُ
+     «تغييراتٌ لم تُرفع بعد» يُكتب لصاحب الجلسة بلا منشأة، فكان حصرُ النطاق
+     يحجبه عنه — وهو وحدَه المعنيُّ به. */
+  const _me = (STATE && STATE.user) || {};
+  const _meId = String(_me.uid || _me.id || ""), _meMail = String(_me.email || "").toLowerCase();
+  const toMe = x => (coll === "notifications" || coll === "site_messages") &&
+    ((_meId && String(x.toUid || "") === _meId) ||
+     (_meMail && String(x.toEmail || "").toLowerCase() === _meMail));
   return raw.filter(x => {
     if (!x) return false;
+    if (toMe(x)) return true;
     if (x.mosqueId || x.complexId) return inScope(x);
     if (x.circleId) return cids.indexOf(String(x.circleId)) > -1;
     /* المشتركُ بطبعه: مناهجُ ومستوياتٌ وقوالبُ يضعها النظام للجميع */
@@ -57759,10 +58439,31 @@ window.openMsgPanel = function () {
      ${unread ? `<button class="btn btn-ghost" data-action="msg-read-all">${ic("check", 16)} تعليم الكل كمقروء</button>` : ""}`);
 };
 
+/* =========================================================================
+   تعليمُ الرسالة مقروءةً — حقلُ read وحدَه (٤٣٢)
+   -------------------------------------------------------------------------
+   كان يُكتب السجلُّ كلُّه عبر persistSet (ومعه _o والنطاق)، والقاعدةُ لا
+   تُجيز للمستلِم إلّا تغييرَ read — فتُردّ الكتابة ويبقى غيرَ مقروءٍ على
+   الخادم. فيُرسَل read وحدَه دمجاً، ومن المستلِم نفسِه (أو الإدارة) فقط:
+   رسالةٌ ليست له لا يُطلب تعليمُها فيُرفض.
+   ========================================================================= */
+function msgMarkRead(m) {
+  if (!m || m.read) return;
+  m.read = true;
+  const u = (STATE && STATE.user) || {};
+  const me = String(u.email || "").toLowerCase();
+  const mine = me && String(m.toEmail || "").toLowerCase() === me;
+  const admin = u.role === "admin" || u.role === "owner" || (typeof isMgrRole === "function" && isMgrRole(u.role));
+  if (!mine && !admin) return;
+  /* الرفضُ يُبلَّغ من persistFail داخل persistPatch */
+  Promise.resolve(persistPatch("site_messages", m, ["read"])).catch(e => sideFail("read", e));
+}
+window.msgMarkRead = msgMarkRead;
+
 function msgOpen(id) {
   const m = (DB.site_messages || []).find(x => String(x.id) === String(id));
   if (!m) return;
-  if (!m.read) { m.read = true; persistSet("site_messages", m); }
+  if (!m.read) msgMarkRead(m);
 
   openModal(m.title || "رسالة",
     (m.fromName ? "من " + m.fromName + " — " : "") + timeAgo(m.ts),
@@ -57808,7 +58509,7 @@ function msgReply() {
 function msgReadAll() {
   const list = myMessages().filter(m => !m.read);
   if (!list.length) { showToast("لا توجد رسائل غير مقروءة"); return; }
-  list.forEach(m => { m.read = true; persistSet("site_messages", m); });
+  list.forEach(m => msgMarkRead(m));
   window.openMsgPanel();
   showToast("عُلّمت " + toArabicDigits(list.length) + " رسالة كمقروءة");
 }

@@ -741,6 +741,9 @@ window.SHELL_MODE = true;
         teacherId: profile.teacherId || "",
         studentId: profile.studentId || "",
         studentIds: Array.isArray(profile.studentIds) ? profile.studentIds : [],
+        /* صلاحياتُ المعلّم من بطاقته (٤٣٢): كانت تسقط هنا، فيقرأ teacherCan
+           ملفّاً بلا perms ويسمح بكلّ شيء — فلا تسري صلاحيةٌ أطفأتها الإدارة. */
+        perms:     (profile.perms && typeof profile.perms === "object") ? profile.perms : {},
         active:    profile.active !== false
       };
     }
@@ -989,7 +992,9 @@ window.SHELL_MODE = true;
           /* كانا مفقودين هنا فلا يصلان إلى STATE.user ولا تعمل myCircles() */
           circleIds: d.circleIds || [], studentId: d.studentId || "",
           studentIds: Array.isArray(d.studentIds) ? d.studentIds : [],
-          teacherId: d.teacherId || "", active: d.active !== false
+          teacherId: d.teacherId || "", active: d.active !== false,
+          /* وصلاحياتُ بطاقة المعلّم — كانت تسقط فلا يُطفأ شيء (٤٣٢) */
+          perms: (d.perms && typeof d.perms === "object") ? d.perms : {}
         });
       } catch (e) {
         console.error(e);

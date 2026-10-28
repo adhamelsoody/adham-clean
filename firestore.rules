@@ -109,6 +109,11 @@ service cloud.firestore {
                 (docId in profile().get('studentIds', [])
                  || docId in profile().get('kids', [])));
     }
+    /* الطالبُ نفسُه أو وليُّ أمره — بمعرّف الطالب وحده، بلا سجلٍّ قائم */
+    function ownsSid(sid) {
+      return (role() == "student" && sv(profile(), 'studentId') != '' && sv(profile(), 'studentId') == sid)
+          || (role() == "parent" && (sid in profile().get('studentIds', []) || sid in profile().get('kids', [])));
+    }
     function ownsTeacher(docId) {
       return isTeacher() &&
         ((profile().get('teacherId', '') != '' && string(profile().get('teacherId', '')) == docId)
@@ -148,7 +153,10 @@ service cloud.firestore {
         'assignments', 'sysAlerts', 'procLog', 'pointsLog',
         'storeOrders', 'paySheets', 'msgOutbox', 'admissions',
         'reviews', 'dutyTypes', 'workflow', 'notifications', 'recitations',
-        'mushafMarks', 'site_messages',
+        /* site_messages أُخرجت من هنا (٤٣٢): القراءةُ العامّة canRead كانت
+           تمنح كلَّ حساب فعّال قراءةَ رسائل غيره متجاوزةً شرطَ المستلِم في
+           كتلتها أدناه — والقواعد تُجمع بـ OR. لها كتلتُها وحدها الآن. */
+        'mushafMarks',
         'attendance', 'exams', 'rewards', 'examPaths', 'rewardRules',
         'questions', 'questionGroups', 'examSupervisors', 'examCommittees',
         'examRouting', 'certTemplates', 'moveLog', 'userRequests'
@@ -178,6 +186,21 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
+    /* «اليوم» بساعة الخادم (٤٣٢) — التاريخُ محفوظٌ نصّاً YYYY-MM-DD بتوقيت
+       جهاز المعلّم، فيُقبل ما وقع بين تاريخ (الآن − ١٢ ساعة) وتاريخ
+       (الآن + ١٤ ساعة) بتوقيت غرينتش: يومُ المعلّم الجاري في أيّ منطقةٍ
+       زمنية، ولا يدخل فيه يومٌ مضى. */
+    function pad2(n) {
+      return ['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15',
+              '16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31'][n];
+    }
+    function isoDay(t) { return string(t.year()) + '-' + pad2(t.month()) + '-' + pad2(t.day()); }
+    function anyToday(s) {
+      return s is string
+        && s >= isoDay(request.time - duration.value(12, 'h'))
+        && s <= isoDay(request.time + duration.value(14, 'h'));
+    }
+
 
     /* ---------------- مصفوفة صلاحيات المعلم ---------------- */
     /* الافتراضات هنا مطابقة لـ PERM_DEFAULT في governance.js — إن غيّرتها
@@ -190,9 +213,32 @@ service cloud.firestore {
       return perms().get(key, byDefault) == true;
     }
 
+    /* =====================================================================
+       الصلاحيةُ بمفتاحيها (٤٣٢)
+       ---------------------------------------------------------------------
+       بطاقةُ المعلّم تحفظ مفاتيحَ TEACHER_PERMS في app.js (attEdit · recite
+       · editMarks · editPlan …)، والقواعدُ كانت تقرأ مفاتيحَ governance.js
+       وحدَها (attend_edit · recite_edit · mushaf_past · plan_edit). فمن
+       أطفأت الإدارةُ صلاحيتَه في بطاقته بقي يكتب على الخادم.
+       فيُقرأ مفتاحُ البطاقة أوّلاً إن ضُبط، ثمّ مفتاحُ الرقابة، ثمّ
+       الافتراضيُّ العامّ من «إدارة الصلاحيات» (settings/teacherPerms)،
+       ثمّ الافتراضيّ المكتوب هنا — كما يقرؤها teacherCan في المتصفّح.
+       ===================================================================== */
+    function tpPath() { return /databases/$(database)/documents/settings/teacherPerms; }
+    function globalOff(alias) {
+      return exists(tpPath())
+        && get(tpPath()).data.get('teacherPerms', {}).get(alias, true) == false;
+    }
+    function permOf(key, alias, byDefault) {
+      return perms().get(alias, perms().get(key, byDefault && !globalOff(alias))) == true;
+    }
+
     /* معلّم يملك الصلاحية — أو إداريٌّ لا تلزمه */
     function teacherMay(key, byDefault) {
       return canWrite() || (isTeacher() && perm(key, byDefault));
+    }
+    function teacherMayAs(key, alias, byDefault) {
+      return canWrite() || (isTeacher() && permOf(key, alias, byDefault));
     }
 
 
@@ -215,9 +261,29 @@ service cloud.firestore {
              && profile().get('complexId', '') == '';
     }
 
+    /* =====================================================================
+       الحصرُ بقيمةٍ غير فارغة (٤٣٢)
+       ---------------------------------------------------------------------
+       scopeIds() تضمّ mosqueId و complexId من الملفّ ولو كانا فارغين. فسجلٌّ
+       complexId فيه فارغٌ (مسجدٌ مستقلّ) كان يطابق القيمةَ الفارغة في ملفّ
+       أيّ مديرٍ ليس له مجمّع — فيكتب فيه مديرُ مسجدٍ آخر. فلا يُطابَق إلا
+       بقيمةٍ غير فارغة.
+       ومديرُ المسجد نطاقُه مسجدُه: سجلٌّ يحمل مسجداً لا يُكتب إلا إن كان
+       مسجدَه، ولو اشتركا في المجمّع. وما لا مسجدَ فيه يُحصر بالمجمّع.
+       ===================================================================== */
+    function sv(d, k) {
+      return d.get(k, '') == null ? '' : string(d.get(k, ''));
+    }
+    function mineMosque(v) {
+      return v != '' && (v == sv(profile(), 'mosqueId') || v in profile().get('mosqueIds', []));
+    }
+    function mineComplex(v) {
+      return v != '' && (v == sv(profile(), 'complexId') || v in profile().get('complexIds', []));
+    }
+    function mqBound(d) { return role() == "mosqueManager" && sv(d, 'mosqueId') != ''; }
     function inScope(d) {
-      return d.get('mosqueId', '')  in scopeIds()
-          || d.get('complexId', '') in scopeIds();
+      return (mqBound(d) && mineMosque(sv(d, 'mosqueId')))
+          || (!mqBound(d) && (mineMosque(sv(d, 'mosqueId')) || mineComplex(sv(d, 'complexId'))));
     }
 
     /* سجل بلا منشأة لا يُحجب — كثير من السجلات القديمة بلا هذين الحقلين */
@@ -253,6 +319,29 @@ service cloud.firestore {
     }
 
 
+    /* حسابٌ داخلَ نطاق المدير: بلا منشأةٍ أصلاً، أو كلُّ منشآته في نطاقه */
+    function userScopeOk(d) {
+      return (sv(d, 'mosqueId') == '' && sv(d, 'complexId') == ''
+              && d.get('mosqueIds', []).size() == 0 && d.get('complexIds', []).size() == 0)
+        || (inScope(d)
+            && scopeIds().hasAll(d.get('mosqueIds', []))
+            && scopeIds().hasAll(d.get('complexIds', [])));
+    }
+
+    /* الملفُّ القائمُ يحمل بريدَ هذا الحساب — انظر «ربط الحساب» في users */
+    function linkMatch(d) {
+      return request.auth.token.email != null && (
+           d.get('loginEmail', '') == request.auth.token.email
+        || request.auth.token.email == string(d.get('username', '')) + '@mirath.id'
+        || (d.get('email', '') == request.auth.token.email
+            && request.auth.token.email_verified == true));
+    }
+    function linkSrcOk(src) {
+      return linkMatch(src)
+        && (src.get('uid', '') == '' || src.get('uid', '') == request.auth.uid)
+        && request.resource.data.diff(src).affectedKeys().hasOnly(['uid', 'linkedAt', 'linkedFrom']);
+    }
+
     /* ---------------- ملفات المستخدمين ---------------- */
     match /users/{uid} {
 
@@ -283,6 +372,33 @@ service cloud.firestore {
          {id}@mirath.id، و loadAllData يعزل الرفض ويكمل بباقي المجموعات. */
       allow list: if isAdmin() || isSupervisor();
 
+      /* =================================================================
+         ربطُ الحساب بملفّه القائم عند أوّل دخول (٤٣٢)
+         -----------------------------------------------------------------
+         الإدارةُ تُنشئ الملفَّ (users/<معرّفٌ ما>) ببريد الدخول أو رقم الهوية
+         قبل أن يدخل صاحبُه، فإذا دخل أوّلَ مرّةٍ لم يجد ملفّاً بمعرّف حسابه.
+         وكانت بوّابةُ login.html تبحث عن ملفّه بسرد users — وهو للإدارة
+         وحدَها — ثمّ تنسخه بدوره وتفعيله، والإنشاءُ الذاتيّ يمنع الاثنين.
+         فكان الربطُ يُرفض دائماً ويُقال لصاحبه «راجع الإدارة».
+         الآن يقرأ صاحبُ الحساب ما يحمل بريدَه هو وحدَه، وينسخه كما هو حرفاً
+         بحرف تحت معرّف حسابه — لا يزيد عليه إلّا uid و linkedAt و linkedFrom.
+         فلا يمنح نفسَه دوراً ولا نطاقاً لم تكتبه الإدارة له.
+           • loginEmail: بريدُ الدخول الذي كتبته الإدارة.
+           • username + @mirath.id: بريدُ النظام لرقم الهوية، ولا يُنشأ
+             حسابُه إلّا من الإدارة.
+           • email: بريدُ الملفّ، بشرط أن يكون بريدُ الحساب موثَّقاً — وإلّا
+             سجّل أحدٌ ببريد موظّفٍ لم يُنشأ حسابه فأخذ ملفّه.
+         والملفُّ المربوطُ بحسابٍ آخر (uid مختلف) لا يُربط ثانية.
+         ================================================================= */
+      allow list: if signedIn() && linkMatch(resource.data);
+      allow create: if signedIn()
+                    && request.auth.uid == uid
+                    && request.resource.data.get('linkedFrom', '') is string
+                    && request.resource.data.get('linkedFrom', '') != ''
+                    && request.resource.data.get('linkedFrom', '') != uid
+                    && request.resource.data.get('uid', '') == request.auth.uid
+                    && linkSrcOk(get(/databases/$(database)/documents/users/$(request.resource.data.linkedFrom)).data);
+
       /* إنشاء ذاتي: بدور غير إداري وحساب موقوف بانتظار الاعتماد فقط.
          هذا ما يسدّ ثغرة منح admin التلقائي على مستوى الخادم. */
       allow create: if signedIn()
@@ -304,11 +420,16 @@ service cloud.firestore {
          والحذفُ والإنشاءُ يبقيان لمدير النظام وحده. */
       /* وبياناتُ الدخول (الجوالُ والبريدُ ورقمُ الهوية) لمدير النظام وحده:
          الجوالُ يُستعاد به الحسابُ برسالة SMS، فمن غيّره إلى جواله أخذ الحساب. */
+      /* ونطاقُ الحساب (٤٣٢): لا يعدّل مديرُ مسجدٍ حسابَ معلّمٍ في مسجدٍ آخر
+         ولا ينقله إلى مسجده. الحسابُ قبل التعديل بلا منشأةٍ (طلبُ انضمامٍ
+         لم يُعتمد) أو داخلَ نطاقه، وبعده داخلَ نطاقه أو بلا منشأة. */
       allow update: if isManager()
                     && request.auth.uid != uid
                     && resource.data.role in grantableRoles()
                     && request.resource.data.role in grantableRoles()
-                    && !changed().hasAny(['phone', 'email', 'loginEmail', 'username', 'uid']);
+                    && !changed().hasAny(['phone', 'email', 'loginEmail', 'username', 'uid'])
+                    && (unscoped() || userScopeOk(resource.data))
+                    && (unscoped() || userScopeOk(request.resource.data));
 
       /* المدير وحده يُنشئ الحسابات ويغيّر الأدوار والحالة ويحذف. */
       allow create, update, delete: if isAdmin();
@@ -366,11 +487,31 @@ service cloud.firestore {
        مُنع هنا كما يُخفى الزرُّ هناك. */
     match /students/{docId} {
       allow read: if canRead() || isDonor();
-      allow create: if teacherMay('addStudent', true) && scopeOk();
+      allow create: if teacherMayAs('addStudent', 'addStudent', true) && scopeOk();
       /* الملفُّ الشخصيّ للطالب ولوليّ أمره: البريدُ والصورةُ وحدَهما (٤٣٠).
          لا نطاقَ ولا ارتباطَ ولا اسمَ — تلك للإدارة. */
       allow update: if ownsStudent(docId)
                     && changed().hasOnly(['email', 'photo']);
+    }
+
+    /* =====================================================================
+       المتجر — طلبُ الطالب (٤٣٢)
+       ---------------------------------------------------------------------
+       كان شراءُ الطالب يكتب رصيدَه في سجلّه وكميّةَ الجائزة وسجلَّ النقاط —
+       ولا تملك القواعدُ أن تُجيز له كتابةَ رصيده (لزاده). فكان يُرفض كلُّه
+       على الخادم ويبقى الخصمُ في جهازه وحده.
+       الآن يُنشئ الطالبُ (أو وليُّه) الطلبَ وحدَه: معلَّقاً، لم يُخصم بعد،
+       بسعر الجائزة نفسِه كما في سجلّها. والخصمُ وإنقاصُ الكميّة وسجلُّ
+       النقاط عند اعتماد الإدارة، والرصيدُ المعروض يطرح المعلَّقَ حتى ذلك.
+       ===================================================================== */
+    match /storeOrders/{docId} {
+      allow create: if ownsSid(sv(request.resource.data, 'studentId'))
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.debited == false
+                    && request.resource.data.rewardId is string
+                    && exists(/databases/$(database)/documents/rewards/$(request.resource.data.rewardId))
+                    && string(request.resource.data.cost)
+                       == string(get(/databases/$(database)/documents/rewards/$(request.resource.data.rewardId)).data.get('cost', 0));
     }
 
     /* صورةُ المعلّم في سجلّه — وحدَها (٤٣٠) */
@@ -383,7 +524,7 @@ service cloud.firestore {
        وافتراضُها مسموحٌ كما في teacherCan. والحقلُ badgeRules وحدَه (٤٣٠). */
     match /circles/{docId} {
       allow update: if ownsCircle(docId)
-                    && perm('badgeRules', true)
+                    && permOf('badgeRules', 'badgeRules', true)
                     && changed().hasOnly(['badgeRules']);
     }
 
@@ -392,7 +533,7 @@ service cloud.firestore {
        ولا يعدّل محفوظاً ولا يحذفه. */
     match /exams/{docId} {
       allow read: if canRead();
-      allow create: if teacherMay('examRequest', true)
+      allow create: if teacherMayAs('examRequest', 'examRequest', true)
                     && request.resource.data.stage == 'await-sup'
                     && request.resource.data.studentId is string;
     }
@@ -403,8 +544,8 @@ service cloud.firestore {
        ولا يُمسّ عملُه: المسارُ والموضعُ والتجميدُ والمقدار كلُّها باقية. */
     match /plans/{docId} {
       allow read: if canRead();
-      allow create: if teacherMay('plan_edit', true) && scopeOk();
-      allow update: if teacherMay('plan_edit', true) && scopeOk() && oldScopeOk()
+      allow create: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk();
+      allow update: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk() && oldScopeOk()
                     && (canWrite() || !changed().hasAny(linkFields()));
       /* الحذف للإدارة وحدها: إزالة خطة طالب أخطر من تعديلها،
          والمعلّم يملك التجميد وتعديل المسار وهما يكفيان عمله. */
@@ -425,8 +566,8 @@ service cloud.firestore {
        طالبٍ آخرَ ولا إلى مسجدٍ آخر. والحذفُ للإدارة وحدها. */
     match /assignments/{docId} {
       allow read: if canRead();
-      allow create: if teacherMay('plan_edit', true) && scopeOk();
-      allow update: if teacherMay('plan_edit', true) && scopeOk() && oldScopeOk()
+      allow create: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk();
+      allow update: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk() && oldScopeOk()
                     && (canWrite() || !changed().hasAny(linkFields()));
       allow delete: if canWrite();
     }
@@ -468,19 +609,30 @@ service cloud.firestore {
       allow read: if canRead();
       /* الإنشاء عمل يومي، والتعديل على محفوظ صلاحية خاصة */
       /* وداخلَ النطاق: لا يكتب المعلّمُ تسميعاً لطالبٍ في منشأةٍ أخرى ولا يعدّله */
-      allow create: if (canWrite() || isTeacher()) && scopeOk();
-      allow update: if teacherMay('recite_edit', true) && scopeOk() && oldScopeOk();
-      allow delete: if teacherMay('recite_edit', true) && oldScopeOk();
+      /* و«تسجيل التسميع» (recite) في بطاقة المعلّم يحرس الإنشاءَ كذلك (٤٣٢):
+         كان معلّمٌ أطفأت الإدارةُ تسميعَه يكتب تسميعاً على الخادم. */
+      allow create: if teacherMayAs('recite', 'recite', true) && scopeOk();
+      allow update: if teacherMayAs('recite_edit', 'recite', true) && scopeOk() && oldScopeOk();
+      allow delete: if teacherMayAs('recite_edit', 'recite', true) && oldScopeOk();
     }
 
     match /mushafMarks/{docId} {
       allow read: if canRead();
       allow create: if (canWrite() || isTeacher()) && scopeOk();
-      /* تأشير اليوم عمل عادي، وتعديل تأشير يوم مضى صلاحية خاصة.
-         resource.data.date هو تاريخ التأشير المحفوظ. */
-      allow update, delete: if canWrite()
-                            || (isTeacher() && resource.data.date == request.resource.data.date)
-                            || (isTeacher() && perm('mushaf_past', false));
+      /* تأشيرُ اليوم عملٌ عادي، وتعديلُ تأشيرِ يومٍ مضى أو حذفُه صلاحيةٌ خاصة
+         (mushaf_past · وفي بطاقة المعلّم editMarks).
+         كانت القاعدةُ تقارن تاريخَ السجلّ القديم بالجديد، فيُعدَّل تأشيرٌ
+         قديمٌ ما دام تاريخُه لم يتغيّر — وتقرأ request.resource عند الحذف
+         وهو فارغٌ فيه، فلا يُزيل المعلّمُ تأشيرَ يومه (٤٣٢).
+         الآن «اليوم» بساعة الخادم لا بما يكتبه المتصفّح (anyToday). */
+      allow update: if canWrite()
+                    || (isTeacher() && oldScopeOk() && scopeOk()
+                        && ((anyToday(resource.data.get('date', '')) && anyToday(request.resource.data.get('date', '')))
+                            || permOf('mushaf_past', 'editMarks', true)));
+      allow delete: if canWrite()
+                    || (isTeacher() && oldScopeOk()
+                        && (anyToday(resource.data.get('date', ''))
+                            || permOf('mushaf_past', 'editMarks', true)));
     }
 
     /* اعتماد جلسة الحلقة */
@@ -515,12 +667,12 @@ service cloud.firestore {
                     && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
                     && request.resource.data.date is string
                     && request.resource.data.studentId is string;
-      allow update: if teacherMay('attend_edit', true) && scopeOk() && oldScopeOk()
+      allow update: if teacherMayAs('attend_edit', 'attEdit', true) && scopeOk() && oldScopeOk()
                     && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
                     && request.resource.data.date is string
                     && request.resource.data.studentId is string;
       /* سجل خاطئ يجب أن يُحذف لا أن يُترك — بنفس صلاحية التعديل */
-      allow delete: if teacherMay('attend_edit', true) && oldScopeOk();
+      allow delete: if teacherMayAs('attend_edit', 'attEdit', true) && oldScopeOk();
     }
 
 
@@ -557,15 +709,25 @@ service cloud.firestore {
     /* ---------------- الرسائل داخل الموقع ---------------- */
     match /site_messages/{msgId} {
 
-      /* المرسَل إليه يقرأ رسائله، والإدارة تقرأ الكل.
-         استعلام topbar-dates.js هو where("toEmail","==",بريدي) فيمرّ. */
+      /* بريدُ الجلسة بأحرفٍ صغيرة — حسابٌ بلا بريدٍ لا يطابق شيئاً */
+      function myMail() { return request.auth.token.email.lower(); }
+
+      /* المرسَل إليه يقرأ رسائله، والمرسِل ما أرسله، وطرفا المحادثة رسائلَها
+         (threadId = البريدان مرتَّبَين بينهما «|» كما يبنيه chat.js)، والإدارة
+         تقرأ الكل. والاستعلاماتُ الثلاثة في التطبيق مقيَّدةٌ بأحد هذه الحقول:
+         where("toEmail"/"fromEmail"/"threadId", "==", …) فتمرّ. (٤٣٢) */
       allow read: if isActive() && (
-                       resource.data.toEmail == request.auth.token.email.lower()
+                       resource.data.get('toEmail', '') == myMail()
+                    || resource.data.get('fromEmail', '') == myMail()
+                    || myMail() in string(resource.data.get('threadId', '')).split('[|]')
                     || isAdmin() || isSupervisor()
                   );
 
-      /* الإرسال من الإدارة والمعلمين فقط، ولا يجوز انتحال حالة القراءة. */
-      allow create: if (isAdmin() || isSupervisor() || isTeacher())
+      /* الإرسال من الإدارة والمعلمين، ومن الطالب ووليّ الأمر باسمهما هما
+         (fromEmail بريدُ الجلسة) — ولا يجوز انتحال حالة القراءة. */
+      allow create: if (isAdmin() || isSupervisor() || teacherMay('msg_send', true)
+                        || ((role() == "student" || role() == "parent")
+                            && request.resource.data.get('fromEmail', '') == myMail()))
                     && request.resource.data.toEmail is string
                     && request.resource.data.text is string
                     && request.resource.data.text.size() > 0
@@ -574,10 +736,11 @@ service cloud.firestore {
 
       /* المستلِم لا يملك إلا تعليم الرسالة كمقروءة. */
       allow update: if isActive()
-                    && resource.data.toEmail == request.auth.token.email.lower()
+                    && resource.data.toEmail == myMail()
                     && changed().hasOnly(['read']);
 
-      allow delete: if isAdmin();
+      /* وما كانت القاعدةُ العامّة تمنحه للإدارة يبقى لها */
+      allow update, delete: if canWrite();
     }
 
 

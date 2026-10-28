@@ -148,7 +148,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
-  <script src="js/firebase-config.js?v=20261028-0900"></script>
+  <script src="js/firebase-config.js?v=20261028-2300"></script>
   <script>
   (function () {
     "use strict";
@@ -243,11 +243,16 @@
           const mailLc = String(user.email || "").toLowerCase();
           const idFromMail = mailLc.split("@")[0];
           const sysMail = /@mirath\.id$/.test(mailLc);
+          /* ومعرّفُ الملفّ القائم يُحفظ معه (linkedFrom): به تتحقّق القواعدُ أنّ
+             المنسوخَ هو ملفُّ هذا البريد بعينه لم يُزَد عليه شيء (٤٣٢) */
+          let linkedFrom = "";
           const freeOrMine = doc => {
             const v = doc && doc.data ? (doc.data() || {}) : null;
             if (!v) return null;
             const owner = String(v.uid || "");
-            return (!owner || owner === user.uid) ? v : null;
+            if (owner && owner !== user.uid) return null;
+            linkedFrom = String(doc.id || "");
+            return v;
           };
           try {
             let q = await db.collection("users").where("loginEmail", "==", user.email).limit(1).get();
@@ -256,17 +261,18 @@
               q = await db.collection("users").where("username", "==", idFromMail).limit(1).get();
               if (!q.empty) linked = freeOrMine(q.docs[0]);
             }
-            if (!linked) {
+            if (!linked && user.emailVerified) {
               q = await db.collection("users").where("email", "==", user.email).limit(1).get();
               if (!q.empty) linked = freeOrMine(q.docs[0]);
             }
           } catch (e) { console.warn("lookup failed:", e); }
+          if (linked && (!linkedFrom || linkedFrom === user.uid)) linked = null;
 
           if (linked) {
             /* ننسخ الملف تحت معرّف Firebase ليُقرأ مباشرة في المرات القادمة */
             let copied = false;
             try { await db.collection("users").doc(user.uid).set(
-              Object.assign({}, linked, { uid: user.uid, linkedAt: Date.now() }), { merge: true });
+              Object.assign({}, linked, { uid: user.uid, linkedAt: Date.now(), linkedFrom: linkedFrom }));
               copied = true; }
             catch (e) { console.warn("link failed:", e); }
             if (!copied) {

@@ -14321,3 +14321,30 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
 }
 .cal-grid, .cal-head { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .cal-cell { min-width: 0; }
+
+
+/* =========================================================================
+   مساحةُ اللمس على الجوال ≥ ٤٠ بكسل (٤٣٢)
+   -------------------------------------------------------------------------
+   في عرض ٣٧٥ كان أكثرُ من نصف الأزرار أصغرَ من ٤٠ بكسل — مربّعاتُ التحديد
+   ٢٢×٢٢ وأزرارُ الصفوف ٣٢×٣٢ — فتُخطئها الإصبع. وتكبيرُها مرئيّاً يكسر
+   الجداولَ والشرائط، فالأزرارُ النصّيّةُ تأخذ ارتفاعاً أدنى، والأيقوناتُ
+   الصغيرةُ تُوسَّع مساحةُ نقرها بطبقةٍ شفّافةٍ حولها (::before) بلا تغيير
+   في شكلها ولا في مواضع ما حولها. للّمس وحدَه — الفأرةُ لا تحتاجه.
+   ========================================================================= */
+@media (pointer: coarse) {
+  .pt-act, .bld-chip, .pt-tab, .attv-btn, .tab, .sls-tab, .btn, .btn-sm,
+  .fac-tab, .stp-logo-btn, .uv-link, button:not([class]) { min-height: 40px; }
+  .uv-link { display: inline-flex; align-items: center; }
+  .row-btn, .icon-btn, .pt-box, .shx-ic, .tc-gear, .pt-arrow, .modal-close, .sp-act {
+    position: relative;
+  }
+  .row-btn::before, .icon-btn::before, .pt-box::before, .shx-ic::before, .tc-gear::before,
+  .pt-arrow::before, .modal-close::before, .sp-act::before {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: 44px; height: 44px; min-width: 100%; min-height: 100%;
+    transform: translate(-50%, -50%); background: transparent;
+  }
+  .modal:focus { outline: none; }
+}
+.modal:focus { outline: none; }

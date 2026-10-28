@@ -256,7 +256,7 @@
       var m = doc.data();
       if (m.read) return;
       if (String(m.toEmail || "").toLowerCase() !== me) return;
-      doc.ref.update({ read: true }).catch(function () {});
+      doc.ref.update({ read: true }).catch(function (e) { if (window.sideFail) window.sideFail("read", e); });
       var local = (DBX().site_messages || []).find(function (x) { return String(x.id) === String(m.id); });
       if (local) local.read = true;
     });

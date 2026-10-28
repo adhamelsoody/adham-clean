@@ -586,7 +586,7 @@
         }).join("");
       }
       /* تعليم الكل كمقروء */
-      snap.forEach(function (doc) { if (!doc.data().read) doc.ref.update({ read: true }).catch(function () {}); });
+      snap.forEach(function (doc) { if (!doc.data().read) doc.ref.update({ read: true }).catch(function (e) { if (window.sideFail) window.sideFail("read", e); }); });
       updateMsgBadge(0);
     }).catch(function (e) {
       console.warn("inbox", e);
