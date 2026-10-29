@@ -138,10 +138,21 @@
     const d = s.data() || {};
     console.log("users/<self>: نجحت | role=" + d.role + " active=" + d.active);
   } catch (e) { console.log("users/<self>: رُفضت | " + e.code); }
+  /* منذ ٤٤٤ الطالبُ ووليُّ الأمر يقرآن سجلّاتِ أبنائهما وحدها: يُستعلم لهما
+     بمعرّف الابن (where studentId ==) وسجلُّه في students بمعرّفه — وسردُ
+     المجموعة كاملةً مرفوضٌ لهما عن قصد. */
+  const me = (await window.__db.collection("users").doc(u.uid).get(o)).data() || {};
+  const kid = me.role === "student" || me.role === "parent";
+  const kids = [me.studentId].concat(me.studentIds || []).filter(Boolean).map(String);
   for (const c of ["students", "assignments", "plans", "recitations",
                    "circles", "attendance", "settings"]) {
-    try { await window.__db.collection(c).limit(1).get(o); console.log(c + ": نجحت"); }
-    catch (e) { console.log(c + ": رُفضت | " + e.code); }
+    try {
+      if (kid && c === "students") { for (const id of kids) await window.__db.collection(c).doc(id).get(o); }
+      else if (kid && c !== "circles" && c !== "settings") {
+        for (const id of kids) await window.__db.collection(c).where("studentId", "==", id).limit(1).get(o); }
+      else await window.__db.collection(c).limit(1).get(o);
+      console.log(c + ": نجحت" + (kid && c !== "circles" && c !== "settings" ? " (لأبنائه: " + kids.join("،") + ")" : ""));
+    } catch (e) { console.log(c + ": رُفضت | " + e.code); }
   }
   /* الرسائل منذ ٤٣٢: غيرُ الإدارة يقرأ ما أُرسل إليه وحدَه — فيُستعلم بالمستلِم */
   try { await window.__db.collection("site_messages").where("toEmail", "==",
