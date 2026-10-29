@@ -56295,7 +56295,33 @@ async function loadAllData(source) {
       return { c, snap: { forEach: fn => docs.forEach(fn) } };
     });
   };
-  const readOne = c => (c === "site_messages" && !_mgrRead ? readMine(c) : db.collection(c).get(opts)
+  /* =====================================================================
+     الطالبُ ووليُّ أمره: سجلّاتُ أبنائه وحدَها (٤٤٤)
+     ---------------------------------------------------------------------
+     القواعدُ تقصر قراءتَهما في هذه المجموعات على ما يحمل studentId من
+     أبنائهما (kidOwn في firestore.rules)، وفي students على سجلّاتهم بأعيانها.
+     وقواعدُ Firestore لا تُصفّي: استعلامُ المجموعة كلِّها يُردّ كلُّه. فيُقرأ
+     لكلّ ابنٍ استعلامُه (where studentId ==) ويُدمج في شكل اللقطة نفسِه.
+     ===================================================================== */
+  const _kid = _r === "student" || _r === "parent";
+  const _kidIds = _kid ? [...new Set([((STATE && STATE.user) || {}).studentId]
+      .concat(((STATE && STATE.user) || {}).studentIds || [])
+      .filter(x => x != null && x !== "").map(String))] : [];
+  const KID_COLLS = ["assignments", "attendance", "recitations", "mushafMarks", "plans",
+                     "pointsLog", "exams", "storeOrders", "delays"];
+  const readKid = c => {
+    const qs = c === "students"
+      ? _kidIds.map(id => db.collection(c).doc(id).get(opts).then(d => (d && d.exists ? [d] : []), () => []))
+      : _kidIds.map(id => db.collection(c).where("studentId", "==", id).get(opts).then(sn => sn.docs));
+    return Promise.all(qs).then(arrs => {
+      const seen = {}, docs = [];
+      arrs.forEach(a => a.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } }));
+      return { c, snap: { forEach: fn => docs.forEach(fn) } };
+    });
+  };
+  const readOne = c => (c === "site_messages" && !_mgrRead ? readMine(c)
+    : (_kid && (c === "students" || KID_COLLS.indexOf(c) > -1)) ? readKid(c)
+    : db.collection(c).get(opts)
     .then(snap => ({ c, snap }))).then(
     r => r,
     err => { console.warn("تعذّرت قراءة المجموعة:", c, err); return { c, snap: null }; }

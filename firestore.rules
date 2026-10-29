@@ -119,7 +119,35 @@ service cloud.firestore {
     function hiddenFrom(coll) {
       let r = role();
       return (r in ['teacher', 'student', 'parent'] && coll in ['paySheets', 'admissions'])
-          || (r in ['student', 'parent'] && coll in ['msgOutbox', 'moveLog', 'procLog', 'sysAlerts']);
+          || (r in ['student', 'parent'] && coll in ['msgOutbox', 'moveLog', 'procLog', 'sysAlerts'])
+          || (r in ['student', 'parent'] && coll in kidColls());
+    }
+
+    /* =====================================================================
+       الطالبُ ووليُّ أمره: سجلّاتُ أبنائه وحدَها (٤٤٤)
+       ---------------------------------------------------------------------
+       كان كلٌّ منهما يقرأ واجباتِ الطلاب جميعاً وحضورَهم وتسميعَهم وخططَهم
+       ونقاطَهم في كلّ المنشآت — والتطبيقُ يُنزّلها إلى جهازه. صارت قراءتُه
+       في هذه المجموعات لِما يحمل studentId من أبنائه (studentId · studentIds
+       في ملفّه)، وفي students لسجلّاتهم بأعيانها.
+
+       قيس قبل الحصر على بيانات الإنتاج (قراءةً فقط): كلُّ سجلٍّ في هذه
+       المجموعات يحمل studentId نصّاً — إلّا حضوراً واحداً رقماً — وكلُّ
+       حسابات الطلاب وأولياء الأمور مربوطةٌ بمعرّفاتٍ في ملفّها. وجُرِّبت
+       شاشاتُهما كلُّها في B1 بالبياناتِ كاملةً ثمّ بسجلّاتهم وحدها: لا فرق.
+       والتطبيقُ يقرأ لهما بالاستعلام نفسِه (where studentId ==) فتقبله القاعدة.
+       ===================================================================== */
+    function kidColls() {
+      return ['assignments', 'attendance', 'recitations', 'mushafMarks', 'plans',
+              'pointsLog', 'exams', 'storeOrders', 'delays'];
+    }
+    function kidIds() {
+      return profile().get('studentIds', []).concat(profile().get('kids', []))
+                      .concat([profile().get('studentId', '')]);
+    }
+    function kidOwn(coll) {
+      return coll in kidColls() && role() in ['student', 'parent']
+          && resource.data.studentId in kidIds();
     }
 
     /* =====================================================================
@@ -509,7 +537,7 @@ service cloud.firestore {
 
     /* ---------------- البيانات التشغيلية ---------------- */
     match /{coll}/{docId} {
-      allow read: if coll in operational() && ((canRead() && !hiddenFrom(coll)) || donorMay(coll));
+      allow read: if coll in operational() && ((canRead() && !hiddenFrom(coll)) || donorMay(coll) || kidOwn(coll));
       allow create: if coll in operational() && canWrite() && scopeOk();
       allow update: if coll in operational() && canWrite() && scopeOk() && oldScopeOk();
       allow delete: if coll in operational() && canWrite()
@@ -557,7 +585,9 @@ service cloud.firestore {
        مسموحٌ كما في teacherCan — فإن عطّلته الإدارةُ في بطاقة المعلّم
        مُنع هنا كما يُخفى الزرُّ هناك. */
     match /students/{docId} {
-      allow read: if canRead() || isDonor();
+      /* الطالبُ ووليُّه: سجلّاتُ أبنائه بأعيانها (٤٤٤) */
+      allow read: if (canRead() && !(role() in ['student', 'parent'])) || isDonor()
+                  || (role() in ['student', 'parent'] && docId in kidIds());
       allow create: if teacherMayAs('addStudent', 'addStudent', true) && scopeOk();
       /* الملفُّ الشخصيّ للطالب ولوليّ أمره: البريدُ والصورةُ وحدَهما (٤٣٠).
          لا نطاقَ ولا ارتباطَ ولا اسمَ — تلك للإدارة. */
@@ -610,7 +640,7 @@ service cloud.firestore {
        إنشاءٌ بمرحلة await-sup وحدَها: لا يرفع طلباً معتمداً ولا موثَّقاً،
        ولا يعدّل محفوظاً ولا يحذفه. */
     match /exams/{docId} {
-      allow read: if canRead();
+      allow read: if (canRead() && !hiddenFrom('exams')) || kidOwn('exams');
       allow create: if teacherMayAs('examRequest', 'examRequest', true)
                     && request.resource.data.stage == 'await-sup'
                     && request.resource.data.studentId is string;
@@ -621,7 +651,7 @@ service cloud.firestore {
        الآن: نطاقُه يحصره كسائر الكتابة، وحقولُ الارتباط ممنوعةٌ عليه.
        ولا يُمسّ عملُه: المسارُ والموضعُ والتجميدُ والمقدار كلُّها باقية. */
     match /plans/{docId} {
-      allow read: if canRead();
+      allow read: if (canRead() && !hiddenFrom('plans')) || kidOwn('plans');
       allow create: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk();
       allow update: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk() && oldScopeOk()
                     && (canWrite() || !changed().hasAny(linkFields()));
@@ -643,7 +673,7 @@ service cloud.firestore {
        وحقولُ الارتباط ممنوعةٌ عليه في التعديل — فلا يَنقل واجباً إلى
        طالبٍ آخرَ ولا إلى مسجدٍ آخر. والحذفُ للإدارة وحدها. */
     match /assignments/{docId} {
-      allow read: if canRead();
+      allow read: if (canRead() && !hiddenFrom('assignments')) || kidOwn('assignments');
       allow create: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk();
       allow update: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk() && oldScopeOk()
                     && (canWrite() || !changed().hasAny(linkFields()));
@@ -660,7 +690,7 @@ service cloud.firestore {
        نطاقه كسائر كتابته. والمراسلةُ بمفتاحها msg_send كما في
        site_messages، فمن مُنع منها هناك مُنع هنا. */
     match /pointsLog/{docId} {
-      allow read: if canRead();
+      allow read: if (canRead() && !hiddenFrom('pointsLog')) || kidOwn('pointsLog');
       allow create: if (canWrite() || isTeacher()) && scopeOk();
       allow update, delete: if canWrite();
     }
@@ -692,7 +722,7 @@ service cloud.firestore {
     }
 
     match /recitations/{docId} {
-      allow read: if canRead();
+      allow read: if (canRead() && !hiddenFrom('recitations')) || kidOwn('recitations');
       /* الإنشاء عمل يومي، والتعديل على محفوظ صلاحية خاصة */
       /* وداخلَ النطاق: لا يكتب المعلّمُ تسميعاً لطالبٍ في منشأةٍ أخرى ولا يعدّله */
       /* و«تسجيل التسميع» (recite) في بطاقة المعلّم يحرس الإنشاءَ كذلك (٤٣٢):
@@ -703,7 +733,7 @@ service cloud.firestore {
     }
 
     match /mushafMarks/{docId} {
-      allow read: if canRead();
+      allow read: if (canRead() && !hiddenFrom('mushafMarks')) || kidOwn('mushafMarks');
       allow create: if (canWrite() || isTeacher()) && scopeOk();
       /* تأشيرُ اليوم عملٌ عادي، وتعديلُ تأشيرِ يومٍ مضى أو حذفُه صلاحيةٌ خاصة
          (mushaf_past · وفي بطاقة المعلّم editMarks).
@@ -733,7 +763,7 @@ service cloud.firestore {
     }
 
     match /delays/{docId} {
-      allow read: if canRead();
+      allow read: if (canRead() && !hiddenFrom('delays')) || kidOwn('delays');
       allow create, update: if teacherMay('delay_manage', true);
       allow delete: if teacherMay('delay_manage', true);
     }
@@ -748,7 +778,7 @@ service cloud.firestore {
        سجل لطالب خارج حلقاته. إغلاق ذلك يحتاج ربط circleIds في ملف المستخدم
        وهو ضمن مرحلة تقييد الصلاحيات القادمة. */
     match /attendance/{docId} {
-      allow read: if canRead();
+      allow read: if (canRead() && !hiddenFrom('attendance')) || kidOwn('attendance');
       /* التحضير عمل المعلّم اليومي، وتعديل سجل محفوظ يحتاج attend_edit.
          ⚠ «التحضير بعد انتهاء الوقت» (attend_late) يُفحص في المتصفح فقط:
            التاريخ محفوظ بصيغة النظام لا بطابع زمني، فلا تستطيع القاعدة
