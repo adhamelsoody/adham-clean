@@ -46928,12 +46928,13 @@ const GRANTABLE = {
                    "teacher", "parent", "student", "donor"],
   admin:          ["admin", "complexManager", "mosqueManager", "supervisor",
                    "teacher", "parent", "student", "donor"],
-  /* مطابقٌ لـ grantableRoles() في firestore.rules حرفاً بحرف (٤٤٠): كان
-     مديرُ المجمّع يُعرض عليه «مشرف» و«داعم» ومديرُ المسجد «مشرف»، والقواعدُ
-     تردّها — فيُنشأ حسابُ الدخول ويُردّ ملفُّه فيبقى يتيماً. إعادتُها تكون
-     بإضافتها هنا وفي grantableRoles() معاً، لا في أحدهما. */
-  complexManager: ["mosqueManager", "teacher", "parent", "student"],
-  mosqueManager:  ["teacher", "parent", "student"],
+  /* مطابقٌ لـ grantableRoles() في firestore.rules حرفاً بحرف: أيُّ تغييرٍ
+     هنا يُنقل إليها معاً، وإلّا أُنشئ حسابُ الدخول ورُدّ ملفُّه فبقي يتيماً.
+     «مشرف» و«داعم» لمدير المجمّع و«مشرف» لمدير المسجد أُعيدت (٤٤٢) بعد أن
+     أُجيزت في القواعد، داخل منشأة المانح وحدها. */
+  complexManager: ["mosqueManager", "supervisor", "teacher", "parent", "student", "donor"],
+  /* مديرُ المسجد يعيّن مشرفَ مسجده — وهو أعرفُ بمن يشرف عنده */
+  mosqueManager:  ["supervisor", "teacher", "parent", "student"],
   supervisor:     ["teacher", "parent", "student"]
 };
 
@@ -50544,22 +50545,47 @@ function spCopyFallback(txt, done) {
 
    يُحمَّل شيءٌ ما لم يُضغط الزرّ. */
 
-/* وإن لم تستجب الخدمة ظهر سببُه بدل صورةٍ مكسورة، والرابطُ تحته يُنسخ (٤٤٠) */
+/* رمزُ QR يُولَّد في المتصفّح بمكتبةٍ محلّية (js/qrcode.js) تُحمَّل عند الضغط
+   وحدَه (٤٤٢): كان الرابطُ يُرسَل إلى خدمةٍ عامّةٍ خارجية (api.qrserver.com)
+   فيصلها رابطُ صفحة الطالب، ولا يظهر الرمزُ إن لم تستجب. وإن تعذّر تحميلُ
+   المكتبة نفسِها قيل ذلك، والرابطُ تحته يُنسخ. */
+function spQrLib() {
+  if (window.qrcode) return Promise.resolve(window.qrcode);
+  if (spQrLib.p) return spQrLib.p;
+  const base = location.pathname.indexOf("/admin/") > -1 ? "../" : "./";
+  spQrLib.p = new Promise(function (res, rej) {
+    const sc = document.createElement("script");
+    sc.src = base + "js/qrcode.js";
+    sc.onload = function () { window.qrcode ? res(window.qrcode) : rej(new Error("qrcode")); };
+    sc.onerror = function () { spQrLib.p = null; rej(new Error("qrcode")); };
+    document.head.appendChild(sc);
+  });
+  return spQrLib.p;
+}
+
 window.spQr = function (link) {
-
-  const src = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" + encodeURIComponent(link);
-
   openModal("رمز QR للطالب", "امسح الرمز لفتح صفحة الطالب",
-
     `<div style="text-align:center;padding:6px 0">
-
-      <img src="${esc(src)}" alt="QR" style="width:240px;height:240px;border-radius:14px;background:#fff"
-        onerror="this.outerHTML='<div class=&quot;muted&quot; style=&quot;padding:24px 8px&quot;>تعذّر توليد الرمز — خدمةُ QR الخارجية لا تستجيب. انسخ الرابط أدناه وأرسله.</div>'">
-
+      <div id="spQrBox" style="width:240px;height:240px;margin:0 auto;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center">
+        <span class="muted">جارٍ التوليد…</span></div>
       <div class="muted" style="font-size:12px;margin-top:12px;word-break:break-all">${esc(link)}</div>
-
     </div>`, "");
-
+  spQrLib().then(function (qr) {
+    const box = document.getElementById("spQrBox");
+    if (!box) return;
+    try { qr.stringToBytes = qr.stringToBytesFuncs["UTF-8"]; } catch (e) {}
+    const q = qr(0, "M");
+    q.addData(String(link || ""));
+    q.make();
+    const n = q.getModuleCount();
+    const cell = Math.max(2, Math.floor(224 / (n + 8)));
+    box.innerHTML = q.createSvgTag(cell, cell * 4);
+    const svg = box.querySelector("svg");
+    if (svg) { svg.setAttribute("width", "240"); svg.setAttribute("height", "240"); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "رمز QR"); }
+  }).catch(function () {
+    const box = document.getElementById("spQrBox");
+    if (box) box.innerHTML = '<div class="muted" style="padding:24px 8px">تعذّر توليد الرمز — لم تُحمَّل مكتبتُه (لا اتصال؟). انسخ الرابط أدناه وأرسله.</div>';
+  });
 };
 
 

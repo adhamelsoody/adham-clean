@@ -63,10 +63,15 @@ service cloud.firestore {
     /* سقفُ ما يمنحه مديرُ المنشأة من أدوار: لا أحدَ يمنح دوراً أعلى من
        دوره، وإلّا فتح حساباً بصلاحيةٍ أوسع ودخل به. مطابقٌ لـ GRANTABLE
        في app.js — إن غيّرتَها هناك فغيّرها هنا. */
+    /* ومديرُ المجمّع يمنح «مشرف» و«داعم»، ومديرُ المسجد «مشرف» (٤٤٢) — كما
+       قرّرته الإدارة في GRANTABLE. والحدُّ باقٍ: داخل منشأته (targetScopeOk)
+       ولا دورَ في مستواه أو فوقه. بخريطةٍ لا بشرطٍ متداخل: الشرطُ المتداخل
+       في قواعد الإنشاء علّق المحاكي من قبل (٤٣٦). */
     function grantableRoles() {
-      return role() == "complexManager"
-        ? ['mosqueManager', 'teacher', 'parent', 'student']
-        : ['teacher', 'parent', 'student'];
+      return {
+        'complexManager': ['mosqueManager', 'supervisor', 'teacher', 'parent', 'student', 'donor'],
+        'mosqueManager':  ['supervisor', 'teacher', 'parent', 'student']
+      }.get(role(), ['teacher', 'parent', 'student']);
     }
 
     /* من يحقّ له الكتابة في البيانات التشغيلية */
