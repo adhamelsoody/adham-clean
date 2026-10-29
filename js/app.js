@@ -5283,10 +5283,13 @@ function isTopAdmin(u) {
   return r === "owner" || r === "admin";
 }
 
-function assignableRoles() {
+function assignableRoles(keep) {
   const r = ((STATE && STATE.user) || {}).role || "";
   if (isTopAdmin()) return USER_ROLES;          /* المالك والمدير سواء */
-  return USER_ROLES.filter(x => x.k !== "owner");
+  /* ما لا يملك منحَه لا يُعرض عليه (٤٣٩): كانت القائمةُ تعرض على مدير المجمّع
+     «مدير مجمّع» و«مدير»، فيختاره ثمّ يردّه userSave وقواعدُ الخادم. ويبقى
+     دورُ الحساب المفتوح للتعديل ظاهراً (keep) كي لا يتبدّل بصمتٍ عند الحفظ. */
+  return USER_ROLES.filter(x => x.k !== "owner" && (canGrantRole(x.k) || (keep && x.k === keep)));
 }
 
 /* المالك لا يُعدَّل ولا يُوقَف إلا من مالك — وإلا عُزل صاحب النظام بنقرة */
@@ -6014,7 +6017,7 @@ window.userForm = function (id, presetRole) {
           <option value="أنثى"${u && u.gender === "أنثى" ? " selected" : ""}>أنثى</option>
         </select></div>
       <div class="field"><label>الدور <span class="req">*</span></label>
-        <select id="usRole" onchange="window.roleChanged(this)">${assignableRoles().map(r =>
+        <select id="usRole" onchange="window.roleChanged(this)">${assignableRoles(u && u.role).map(r =>
           `<option value="${r.k}"${r.k === role ? " selected" : ""}>${esc(r.h)}</option>`).join("")}
         ${role === "supervisor" ? `<option value="supervisor" selected>مشرف / ة (دور قديم)</option>` : ""}</select></div>
       ${permsField(u, role !== "teacher")}
