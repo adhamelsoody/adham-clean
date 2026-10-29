@@ -56520,7 +56520,14 @@ async function loadDataFast(onData) {
      للإداريين وحدهم لأنهم من يملك صلاحية الكتابة. */
   try {
     const role = ((STATE && STATE.user) || {}).role;
-    if (role === "admin" || isMgrRole(role)) {
+    /* ومن يُقرأ له مسجدُه وحدَه لا يُزامِن (٤٤٧): لا يرى معلّمي المساجد الأخرى
+       ولا طلابَها، فكانت المزامنةُ تحسب حساباتِهم «بلا سجلّ» فتُنشئ لهم سجلّاتٍ
+       مكرّرة. تجري من جلسةٍ تقرأ المنشآتِ كلَّها: المدير والمالك ومدير المجمّع. */
+    const _u0 = (STATE && STATE.user) || {};
+    const mqScoped = ["mosqueManager", "supervisor"].indexOf(role) > -1 &&
+      (_u0.mosqueId || (_u0.scopeIds || []).some(k => String(k).indexOf("mosque:") === 0) ||
+       (_u0.mosqueIds || []).length);
+    if ((role === "admin" || isMgrRole(role)) && !mqScoped) {
       /* تلقائيةٌ بالتعريف: تجري بلا طلبٍ من أحدٍ عقب كلّ تحميل، فتُحاط
          بـ linkAuto ليمنعها الحارسُ من مسّ أيّ ارتباط. */
       const n = linkAuto(syncAllTeachers);
