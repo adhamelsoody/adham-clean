@@ -44444,7 +44444,9 @@ function parentDashboard() {
     const att = (cur("attendance") || []).find(a =>
       !a.staffId && String(a.studentId) === String(k.id) && String(a.date) === day);
 
-    const asgs = todayAssignments(k.id, day, true) || [];
+    /* عرضٌ لا كتابة (٤٤١): وليُّ الأمر لا يملك كتابةَ الواجبات، فكان كلُّ
+       فتحٍ للوحته يُنشئ واجباتِ اليوم ويردّها الخادم. يكتبها المعلّم في حلقته */
+    const asgs = todayAssignments(k.id, day, false) || [];
     const done = asgs.filter(a => a.status === "done").length;
 
     const pl = (cur("plans") || []).find(p => String(p.studentId) === String(k.id));
@@ -46130,18 +46132,40 @@ function notifFilter() {
 
 window.notifSetFilter = function (v) { STATE.notifFilter = v || "all"; mount(); };
 
+/* =========================================================================
+   حفظُ «مقروء» للتنبيه (٤٤١)
+   -------------------------------------------------------------------------
+   كان يُكتب التنبيهُ كاملاً لكلّ دور، والقاعدةُ لا تُجيز تعديلَ التنبيهات
+   إلا للإدارة والمعلّم — فيُردّ للطالب ووليّ الأمر ويعود غيرَ مقروء.
+   الإدارةُ والمعلّم كما كانا. والمستلِمُ غيرُهما يكتب حقلَ read وحدَه في
+   تنبيهٍ موجَّهٍ إليه بعينه (toUid أو toEmail)، وتُجيزه قاعدةٌ تقصره عليه.
+   والتنبيهُ العامّ (لدورٍ أو لمنشأة) يبقى مقروءاً في جلسته وحدها: مستندٌ
+   واحدٌ يشترك فيه كثيرون لا يحمل «مقروءاً» لواحدٍ منهم.
+   وتنبيهُ الطابور (offq) في الذاكرة وحدها، لا يُكتب أبداً.
+   ========================================================================= */
+function notifPersistRead(n) {
+  if (!n || n.virtual || n.key === "offq") return;
+  const u = (STATE && STATE.user) || {};
+  const staff = u.role === "teacher" || (typeof maySysWrite === "function" && maySysWrite());
+  if (staff) { persistSet("notifications", n); return; }
+  const me = String(u.uid || u.id || ""), mail = String(u.email || "").toLowerCase();
+  const mine = (me && String(n.toUid || "") === me) ||
+               (mail && String(n.toEmail || "").toLowerCase() === mail);
+  if (mine) persistPatch("notifications", n, ["read"]);
+}
+
 function notifRead(id) {
   const n = (DB.notifications || []).find(x => String(x.id) === String(id));
   if (!n) return;
   n.read = !n.read;
-  persistSet("notifications", n);
+  notifPersistRead(n);
   mount();
 }
 
 function notifReadAll() {
   const mine = myNotifs().filter(n => !n.read);   /* تنبيهاتي وحدها تُعلَّم */
   if (!mine.length) { showToast("لا توجد تنبيهات غير مقروءة"); return; }
-  mine.forEach(n => { n.read = true; persistSet("notifications", n); });
+  mine.forEach(n => { n.read = true; notifPersistRead(n); });
   mount();
   showToast("عُلّمت " + toArabicDigits(mine.length) + " تنبيهاً كمقروء");
 }
@@ -56923,8 +56947,9 @@ function offqBadge() {
       if (Array.isArray(DB.notifications)) {
         const i = DB.notifications.findIndex(x => x && x.key === "offq");
         if (i > -1) {
-          const gone = DB.notifications.splice(i, 1)[0];
-          if (gone && gone.id) persistDelete("notifications", gone.id);
+          /* تنبيهُ الطابور في الذاكرة وحدَها — لم يُكتب على الخادم قطّ، فلا يُحذف
+             منه (٤٤١): كان حذفُه يُرسَل فيردّه الخادمُ للطالب ويُسجَّل حذفاً */
+          DB.notifications.splice(i, 1);
         }
       }
     } catch (e) {}
@@ -57959,6 +57984,11 @@ window.syncMyScope = function (force) {
   if (!Object.keys(patch).length && !force) return Promise.resolve(false);
 
   Object.assign(rec, patch);
+  /* حقولُ النطاق لا يكتبها صاحبُ الحساب في ملفّه (٤٤١): القاعدةُ تُجيز له
+     خمسةَ حقولٍ فحسب، فكان كلُّ فحصٍ دوريٍّ في جلسة المعلّم يُردّ على الخادم.
+     تبقى في الذاكرة لجلسته، وتُكتب على الخادم من جلسة الإدارة — نطاقُ
+     المعلّم يُزامَن هناك عند إسناد الحلقة أو تغيير معلّمها. */
+  if (typeof maySysWrite === "function" && !maySysWrite()) return Promise.resolve(false);
   return Promise.resolve(persistSet("users", rec)).then(() => true);
 };
 
@@ -59253,7 +59283,7 @@ window.notifMarkAllRead = function () {
     /* المحسوبُ لا يُكتب في السجلّ: ليس سجلّاً أصلاً */
     if (x.virtual) return;
     x.read = true;
-    persistSet("notifications", x);
+    notifPersistRead(x);
     n++;
   });
   updateNotifBadge();

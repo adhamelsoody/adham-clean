@@ -670,6 +670,14 @@ service cloud.firestore {
       allow read: if canRead();
       allow create: if canWrite() || isTeacher();
       allow update, delete: if canWrite() || isTeacher();
+      /* المستلِمُ بعينه يعلّم تنبيهَه مقروءاً — حقلَ read وحدَه (٤٤١). كان
+         الطالبُ ووليُّ الأمر لا يملكان ذلك، فيعود التنبيهُ غيرَ مقروء */
+      allow update: if isActive()
+                    && (resource.data.get('toUid', '') == request.auth.uid
+                        || (request.auth.token.get('email', '') != ''
+                            && resource.data.get('toEmail', '') == request.auth.token.get('email', '').lower()))
+                    && changed().hasOnly(['read'])
+                    && request.resource.data.read is bool;
     }
 
     match /msgOutbox/{docId} {
