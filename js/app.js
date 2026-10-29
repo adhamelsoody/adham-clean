@@ -5397,6 +5397,11 @@ function freshNumId(coll) {
   return n;
 }
 
+/* حساباتُ طلابٍ تشير إلى سجلٍّ غير موجود — تُعرض ولا تُصلَح تلقائياً (٤٤٣).
+   byUid: سجلُّ طالبٍ موجودٌ يحمل uid الحساب نفسه (أنشأته المزامنةُ قبل ٤٤٣) */
+const STU_LINK_ISSUES = [];
+window.studentLinkIssues = function () { return STU_LINK_ISSUES.slice(); };
+
 function syncStudentRecord(u) {
   if (!u || u.role !== "student") return null;
   if (!Array.isArray(DB.students)) DB.students = [];
@@ -5408,6 +5413,31 @@ function syncStudentRecord(u) {
     || (u.name && String(x.name || "").trim() === String(u.name).trim());
 
   let st = DB.students.find(key);
+
+  /* =====================================================================
+     حسابٌ يشير إلى سجلّ طالبٍ غير موجود (٤٤٣)
+     ---------------------------------------------------------------------
+     المزامنةُ التلقائيةُ عقب كلّ تحميلٍ للإدارة (syncAllTeachers) كانت
+     تُنشئ لهذا الحساب سجلَّ طالبٍ جديداً فارغاً ثمّ تحاول نقلَ studentId
+     إليه — فيمنع حارسُ الارتباط النقلَ، ويبقى السجلُّ الجديد، وتتكرّر
+     المحاولةُ مع كلّ فتحة (رُصدت على الإنتاج: users/… studentId). والربطُ
+     بسجلٍّ آخر قرارٌ لا يُتّخذ تلقائياً. فالتلقائيُّ هنا لا يُنشئ ولا ينقل:
+     يُسجَّل الحسابُ في studentLinkIssues() ليراجعه مدير النظام بنفسه.
+     ومساراتُ الاعتماد والإضافة الصريحة باقيةٌ كما هي. */
+  const autoRun = typeof LINK_AUTO === "number" && LINK_AUTO > 0;
+  const dangling = !!u.studentId &&
+    !DB.students.some(x => x && String(x.id) === String(u.studentId));
+  if (autoRun && dangling) {
+    const k = String(u.uid || u.id || "");
+    if (!STU_LINK_ISSUES.some(x => x.uid === k)) {
+      STU_LINK_ISSUES.push({ uid: k, studentId: String(u.studentId),
+                             byUid: st && st.uid && String(st.uid) === k ? String(st.id) : "" });
+      console.warn("[ربط الطالب] الحساب users/" + k + " يشير إلى سجلّ طالبٍ غير موجود (" +
+                   u.studentId + ") — لم يُنشأ سجلٌّ ولم يُنقل الربط. اطبع studentLinkIssues() لتفصيله.");
+    }
+    return st || null;
+  }
+
   /* المطابقةُ بالاسم تُعرض ولا يُكتب بها: متشابها الاسمِ كانا يتبادلان
      المنشأةَ والحسابَ حين تُوجد الصلةُ بالاسم ثمّ تُكتب. */
   const byId = x =>
