@@ -6196,9 +6196,10 @@ window.userSave = function () {
       const u = Object.assign({ id: res.uid, uid: res.uid, loginEmail: res.loginEmail, createdAt: Date.now() }, data);
       DB.users.push(u);
       /* رفضُ الملفّ بعد إنشاء حساب الدخول يُقال بعينه (٤٣٥): يبقى حسابُ دخولٍ
-         بلا ملفّ، يحذفه مديرُ النظام من «الحسابات اليتيمة» */
+         بلا ملفّ. وشاشةُ «الحسابات اليتيمة» في js/accounts.js غيرُ محمَّلة،
+         فيُدلّ على الموضع الذي يُحذف منه فعلاً، باسم الحساب (٤٤٠). */
       Promise.resolve(persistSet("users", u)).then(ok => {
-        if (ok === false) showToast("أُنشئ حساب الدخول ورفض الخادمُ حفظَ ملفّه — راجع مدير النظام لحذف الحساب اليتيم", "warn");
+        if (ok === false) showToast("أُنشئ حساب الدخول ورفض الخادمُ حفظَ ملفّه — يبقى حسابُ دخولٍ بلا ملفّ: يحذفه مديرُ النظام من Firebase Console ← Authentication (" + (res.loginEmail || "") + ")", "warn");
       });
       syncTeacherRecord(u);   /* يظهر فوراً في صفحة المعلمين وقوائم الحلقات */
       syncStudentRecord(u);   /* وكذلك الطالب في صفحة الطلاب */
@@ -23122,6 +23123,10 @@ function runOfDays(records, test, need) {
    توليد التنبيهات
    ========================================================================= */
 function scanAlerts() {
+  /* التنبيهاتُ كتابةٌ إداريّة (٤٤٠): كانت تجري لكلّ دور، والقواعدُ تردّ
+     كتابةَ المعلّم والطالب — وصار الطالبُ ووليُّه لا يقرآنها أصلاً، فكان
+     كلُّ فحصٍ يعيد إنشاءَ ما لا يراه. تجري من جلسةِ من يملكها وحدَه. */
+  if (typeof maySysWrite === "function" && !maySysWrite()) return 0;
   const out = [];
   const today = todayISO();
 
@@ -41452,7 +41457,17 @@ function qv2Load(n) {
       try { localStorage.setItem("qv2:" + n, JSON.stringify({ t: Date.now(), w: w })); } catch (e) {}
       qv2Font(n);
     })
-    .catch(e => { QV2.fail[n] = 1; console.warn("المصحف: تعذّر جلب الصفحة " + n + " بخطّها", e); })
+    .catch(e => {
+      QV2.fail[n] = 1; console.warn("المصحف: تعذّر جلب الصفحة " + n + " بخطّها", e);
+      /* كان الرجوعُ إلى الخطّ الاحتياطيّ صامتاً (٤٤٠): يُقال مرّةً في الجلسة،
+         والنصُّ نفسُه لا يتغيّر — هو من quran/ في الحالين. */
+      try {
+        if (!sessionStorage.getItem("zat.qv2Note")) {
+          sessionStorage.setItem("zat.qv2Note", "1");
+          if (typeof showToast === "function") showToast("يُعرض المصحف بالخطّ الاحتياطيّ — تعذّر جلب خطّ الصفحات", "info");
+        }
+      } catch (x) {}
+    })
     .then(() => { QV2.wait[n] = 0; });
 }
 
@@ -46889,9 +46904,12 @@ const GRANTABLE = {
                    "teacher", "parent", "student", "donor"],
   admin:          ["admin", "complexManager", "mosqueManager", "supervisor",
                    "teacher", "parent", "student", "donor"],
-  complexManager: ["mosqueManager", "supervisor", "teacher", "parent", "student", "donor"],
-  /* مديرُ المسجد يعيّن مشرفَ مسجده — وهو أعرفُ بمن يشرف عنده */
-  mosqueManager:  ["supervisor", "teacher", "parent", "student"],
+  /* مطابقٌ لـ grantableRoles() في firestore.rules حرفاً بحرف (٤٤٠): كان
+     مديرُ المجمّع يُعرض عليه «مشرف» و«داعم» ومديرُ المسجد «مشرف»، والقواعدُ
+     تردّها — فيُنشأ حسابُ الدخول ويُردّ ملفُّه فيبقى يتيماً. إعادتُها تكون
+     بإضافتها هنا وفي grantableRoles() معاً، لا في أحدهما. */
+  complexManager: ["mosqueManager", "teacher", "parent", "student"],
+  mosqueManager:  ["teacher", "parent", "student"],
   supervisor:     ["teacher", "parent", "student"]
 };
 
@@ -48050,7 +48068,9 @@ window.clockMask = function (el, done) {
   let h = "", rest = "";
   if (d.length) {
     if (Number(d[0]) > 2) { h = "0" + d[0]; rest = d.slice(1); }
-    else if (d.length >= 2 && Number(d.slice(0, 2)) > 23) { h = "0" + d[0]; rest = d.slice(1); }
+    /* «25» ساعةٌ لا تصحّ: يُرفض الرقمُ الثاني ويبقى «2» حتى يُكتب صحيحٌ بعده —
+       كانت تُقرأ «02» ويصير الخامسُ دقيقةً فيُكتب «25:70» «02:57» (٤٤٠) */
+    else if (d.length >= 2 && Number(d.slice(0, 2)) > 23) { h = d[0]; rest = ""; }
     else { h = d.slice(0, 2); rest = d.slice(2); }
   }
   if (rest && Number(rest[0]) > 5) rest = rest.slice(1);
@@ -50500,6 +50520,7 @@ function spCopyFallback(txt, done) {
 
    يُحمَّل شيءٌ ما لم يُضغط الزرّ. */
 
+/* وإن لم تستجب الخدمة ظهر سببُه بدل صورةٍ مكسورة، والرابطُ تحته يُنسخ (٤٤٠) */
 window.spQr = function (link) {
 
   const src = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" + encodeURIComponent(link);
@@ -50508,7 +50529,8 @@ window.spQr = function (link) {
 
     `<div style="text-align:center;padding:6px 0">
 
-      <img src="${esc(src)}" alt="QR" style="width:240px;height:240px;border-radius:14px;background:#fff">
+      <img src="${esc(src)}" alt="QR" style="width:240px;height:240px;border-radius:14px;background:#fff"
+        onerror="this.outerHTML='<div class=&quot;muted&quot; style=&quot;padding:24px 8px&quot;>تعذّر توليد الرمز — خدمةُ QR الخارجية لا تستجيب. انسخ الرابط أدناه وأرسله.</div>'">
 
       <div class="muted" style="font-size:12px;margin-top:12px;word-break:break-all">${esc(link)}</div>
 
@@ -56118,8 +56140,15 @@ async function loadAllData(source) {
   /* سجلُّ العمليات لا يُنزَّل مع الباقي (٤٢٥): يكبر مع كلّ حفظٍ ولا يقرؤه
      إلّا صفحتُه، فكان يُنزَّل كاملاً مع كلّ فتحةٍ لأيّ صفحة. يُحمَّل عند
      فتح صفحته وحدَها — انظر audLazyLoad. */
+  /* وما تحجبه القواعدُ عن الدور (٤٤٠ — hiddenFrom في firestore.rules):
+     لا تقرؤه شاشةٌ من شاشاته، فلا يُطلب ولا يُنزَّل إلى جهازه. */
+  const _hidden = ({
+    teacher: ["paySheets", "admissions"],
+    student: ["paySheets", "admissions", "msgOutbox", "moveLog", "procLog", "sysAlerts"],
+    parent:  ["paySheets", "admissions", "msgOutbox", "moveLog", "procLog", "sysAlerts"]
+  })[_r] || [];
   const _cols = ((_r && _r !== "admin" && !isMgrRole(_r))
-    ? COLLECTIONS.filter(c => _adminOnly.indexOf(c) === -1)
+    ? COLLECTIONS.filter(c => _adminOnly.indexOf(c) === -1 && _hidden.indexOf(c) === -1)
     : COLLECTIONS).filter(c => c !== "auditLog");
 
   /* =====================================================================
@@ -57362,6 +57391,11 @@ function persistPatch(coll, obj, keys) {
   if (CUR_MEMO) CUR_MEMO = {};
   const db = FDB(); if (!db || !obj || obj.id == null) return Promise.resolve(false);
   if (typeof guardArchived === "function" && guardArchived(coll, obj)) return Promise.resolve(false);
+
+  /* حارسُ الارتباط هنا كما في persistSet (٤٤٠): كانت الكتابةُ بحقولٍ بعينها
+     تتجاوزه، فحقلُ ارتباطٍ يُمرَّر هنا يُكتب بلا لمسة. ما يردّه الحارس يُعاد
+     إلى قيمته في obj قبل بناء الرقعة. */
+  try { linkGuard(coll, obj); } catch (e) {}
 
   const patch = {};
   (keys || []).forEach(k => { patch[k] = obj[k] === undefined ? null : obj[k]; });

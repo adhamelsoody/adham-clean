@@ -62,6 +62,8 @@
 | `sw.js` | — | عامل الخدمة: الشبكة أوّلاً للـ js/css/html |
 | `functions/` | — | دوال Firebase |
 
+> **ملفاتٌ في `js/` لا تحمّلها أيُّ صفحة:** `accounts.js` · `chat.js` · `governance.js` · `duty-plus.js` · `facilities-plus.js` · `kpi-settings.js` · `manager-link.js`. لا تُذكر إلا في أدوات Node القديمة. **تعديلُها لا يغيّر شيئاً في الموقع** — ما يعمل منها نُقل إلى `app.js`، وإصلاحُ سلوكٍ ظاهرٍ يكون هناك. (تعديلُ ٤٣٢ على `chat.js` لم يكن له أثر لهذا السبب.)
+
 ### ثلاثة مسارات إقلاع منفصلة
 
 | الصفحة | المُقلِع | ملاحظة |
@@ -137,9 +139,19 @@
     console.log("users/<self>: نجحت | role=" + d.role + " active=" + d.active);
   } catch (e) { console.log("users/<self>: رُفضت | " + e.code); }
   for (const c of ["students", "assignments", "plans", "recitations",
-                   "circles", "attendance", "settings", "site_messages"]) {
+                   "circles", "attendance", "settings"]) {
     try { await window.__db.collection(c).limit(1).get(o); console.log(c + ": نجحت"); }
     catch (e) { console.log(c + ": رُفضت | " + e.code); }
+  }
+  /* الرسائل منذ ٤٣٢: غيرُ الإدارة يقرأ ما أُرسل إليه وحدَه — فيُستعلم بالمستلِم */
+  try { await window.__db.collection("site_messages").where("toEmail", "==",
+          String(u.email || "").toLowerCase()).limit(1).get(o); console.log("site_messages (الوارد): نجحت"); }
+  catch (e) { console.log("site_messages (الوارد): رُفضت | " + e.code); }
+  /* ومنذ ٤٤٠ يُتوقَّع الرفضُ هنا لغير الإدارة: المعلّم في paySheets و admissions،
+     والطالب ووليّ الأمر فيهما وفي msgOutbox و moveLog و procLog و sysAlerts */
+  for (const c of ["paySheets", "admissions", "msgOutbox", "moveLog", "procLog", "sysAlerts"]) {
+    try { await window.__db.collection(c).limit(1).get(o); console.log(c + ": تُقرأ"); }
+    catch (e) { console.log(c + ": محجوبة | " + e.code); }
   }
 })()
 ```

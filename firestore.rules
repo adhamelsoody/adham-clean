@@ -100,6 +100,24 @@ service cloud.firestore {
     function donorMay(coll) { return isDonor() && coll in donorColls(); }
 
     /* =====================================================================
+       ما لا يقرؤه الدورُ أصلاً (٤٤٠)
+       ---------------------------------------------------------------------
+       canRead() تشترط الدورَ وحده، فكان الطالبُ يقرأ مسيّراتِ الرواتب
+       وطلباتِ القبول بجوالاتها وصادرَ الرسائل — والتطبيقُ يُنزّلها كلَّها
+       إلى جهازه ثمّ يُخفيها عند العرض. تُحجب هنا المجموعاتُ التي لا تقرؤها
+       شاشةٌ من شاشات الدور (جُردت من app.js):
+         • المعلّم:           paySheets · admissions
+         • الطالب ووليّ الأمر: paySheets · admissions · msgOutbox · moveLog
+                              · procLog · sysAlerts
+       والتطبيقُ لا يطلبها لهذه الأدوار (loadAllData) فلا يظهر رفض.
+       ===================================================================== */
+    function hiddenFrom(coll) {
+      let r = role();
+      return (r in ['teacher', 'student', 'parent'] && coll in ['paySheets', 'admissions'])
+          || (r in ['student', 'parent'] && coll in ['msgOutbox', 'moveLog', 'procLog', 'sysAlerts']);
+    }
+
+    /* =====================================================================
        سجلُّ صاحب الحساب (٤٣٠)
        ---------------------------------------------------------------------
        الطالبُ ووليُّ أمره يحفظان البريدَ والصورة في سجلّ الطالب، والمعلّمُ
@@ -486,7 +504,7 @@ service cloud.firestore {
 
     /* ---------------- البيانات التشغيلية ---------------- */
     match /{coll}/{docId} {
-      allow read: if coll in operational() && (canRead() || donorMay(coll));
+      allow read: if coll in operational() && ((canRead() && !hiddenFrom(coll)) || donorMay(coll));
       allow create: if coll in operational() && canWrite() && scopeOk();
       allow update: if coll in operational() && canWrite() && scopeOk() && oldScopeOk();
       allow delete: if coll in operational() && canWrite()
@@ -643,7 +661,7 @@ service cloud.firestore {
     }
 
     match /procLog/{docId} {
-      allow read: if canRead();
+      allow read: if canRead() && !hiddenFrom('procLog');
       allow create: if canWrite() || isTeacher();
       allow update, delete: if canWrite();
     }
@@ -655,7 +673,7 @@ service cloud.firestore {
     }
 
     match /msgOutbox/{docId} {
-      allow read: if canRead();
+      allow read: if canRead() && !hiddenFrom('msgOutbox');
       allow create: if teacherMay('msg_send', true);
       allow update, delete: if canWrite();
     }
