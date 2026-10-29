@@ -348,11 +348,19 @@ service cloud.firestore {
        داخلَ نطاقه أو بلا منشأة، وما سواهما (معلّمٌ · مدير مسجد) داخلَ نطاقه
        حتماً — من يُترك بلا نطاقٍ يكتب في كلّ منشأةٍ في النظام. */
     function targetScopeOk(d) {
-      return d.get('role', '') in ['student', 'parent']
-        ? userScopeOk(d)
-        : (inScope(d)
-           && scopeIds().hasAll(d.get('mosqueIds', []))
-           && scopeIds().hasAll(d.get('complexIds', [])));
+      return (d.get('role', '') in ['student', 'parent']
+              && sv(d, 'mosqueId') == '' && sv(d, 'complexId') == ''
+              && d.get('mosqueIds', []).size() == 0 && d.get('complexIds', []).size() == 0)
+          || (inScope(d)
+              && oneOf(d.get('mosqueIds', []), sv(d, 'mosqueId'))
+              && oneOf(d.get('complexIds', []), sv(d, 'complexId')));
+    }
+    /* قائمةُ المنشآت إمّا فارغة وإمّا منشأةُ الحقل المفرد نفسُها (٤٣٦): صيغةُ
+       ٤٣٥ (شرطٌ ثلاثيّ و hasAll) أوقعت محاكيَ Firestore في خطأٍ داخليّ عند
+       إنشاء ملفٍّ فيه مسجد، فعلّقت الكتابة. والحسابُ متعدّدُ المنشآت يُنشئه
+       مديرُ النظام. */
+    function oneOf(l, single) {
+      return l.size() == 0 || (l.size() == 1 && string(l[0]) == single);
     }
 
     /* الملفُّ القائمُ يحمل بريدَ هذا الحساب — انظر «ربط الحساب» في users */
