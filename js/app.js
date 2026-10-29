@@ -5278,6 +5278,18 @@ const USER_ROLES = [
    ⚠ ما يترتّب على هذا: من ملك حساب مديرٍ ملك النظام كلّه — يمنح نفسه
    دور المالك ويعزل غيره. فحماية حسابات المديرين صارت حماية النظام.
    ========================================================================= */
+/* خياراتُ «الحالة» في نافذتَي تعديل الطالب والمعلّم (٤٤٩): كان كلُّ ما ليس
+   «نشط» يُختار «متوقف» — ومنه السجلُّ بلا حالة، وهو في الجداول والعدّ نشط
+   (status !== "متوقف"). فالحفظُ بلا تغييرٍ كان يوقف السجلَّ بصمت. صار الغائبُ
+   «نشط» كما يُعرض، والقيمةُ المحفوظةُ خارج القائمة تُضاف إليها ولا تُبدَّل. */
+function statusOpts(st) {
+  const v = String(st == null ? "" : st).trim();
+  const sel = v === "متوقف" ? "متوقف" : (v === "" || v === "نشط" ? "نشط" : v);
+  const opts = ["نشط", "متوقف"];
+  if (opts.indexOf(sel) < 0) opts.push(sel);
+  return opts.map(o => `<option ${o === sel ? "selected" : ""}>${esc(o)}</option>`).join("");
+}
+
 function isTopAdmin(u) {
   const r = ((u || (STATE && STATE.user) || {}).role) || "";
   return r === "owner" || r === "admin";
@@ -49647,7 +49659,7 @@ function modalEditStudent(id) {
               arr.map(n => `<option ${n === sv ? "selected" : ""}>${esc(n)}</option>`).join("");
           })()}</select></div>
       ${levelField("es_level", s.program, s.levelId || "", s.level || "", true)}
-      <div class="field"><label>الحالة</label><select id="es_status"><option ${s.status === "نشط" ? "selected" : ""}>نشط</option><option ${s.status !== "نشط" ? "selected" : ""}>متوقف</option></select></div>
+      <div class="field"><label>الحالة</label><select id="es_status">${statusOpts(s.status)}</select></div>
 
       <div class="field full" style="margin-top:6px">
         <div class="fld-sep">البيانات الشخصية</div></div>
@@ -49829,7 +49841,7 @@ function modalEditTeacher(id) {
         </div>
         ${otherMail ? `<small class="muted" style="display:block;margin-top:4px">المحفوظ حالياً: <span dir="ltr">${esc(otherMail)}</span> — يبقى ما لم تكتب بدلَه</small>` : ""}
       </div>
-      <div class="field"><label>الحالة</label><select id="et_status"><option ${t.status === "نشط" ? "selected" : ""}>نشط</option><option ${t.status !== "نشط" ? "selected" : ""}>متوقف</option></select></div>
+      <div class="field"><label>الحالة</label><select id="et_status">${statusOpts(t.status)}</select></div>
 
       <div class="field full" style="margin-top:6px">
         <div class="fld-sep">البيانات الوظيفية والأجر</div></div>
@@ -57301,17 +57313,56 @@ function myRoleNow() {
   return String(((STATE && STATE.user) || {}).role || "");
 }
 
+/* =========================================================================
+   مسجدُ السجلّ من حلقته ثمّ طالبه — لكلّ كاتب (٤٤٩)
+   -------------------------------------------------------------------------
+   منذ ٤٤٧ يقرأ المعلّمُ ومديرُ المسجد في هذه المجموعات ما يحمل mosqueId
+   مسجدهم وحدَه. وكان الختمُ لمدير المسجد وحدَه: فالواجبُ الذي يولّده
+   المعلّمُ والحضورُ الذي يسجّله المديرُ أو مديرُ المجمّع يُكتبان بلا مسجد،
+   فلا يراهما المعلّم — بل يولّد المعلّمُ الواجبَ نفسَه من جديد فيكتب
+   «pending» فوق «done» (فحصُ القبول ACC-18 و ACC-19).
+   فصار المسجدُ يُؤخذ من حلقة السجلّ ثمّ من طالبه، لا من الكاتب — فلا
+   يُختم سجلُّ طالبٍ بمسجدٍ غير مسجده. والمكتوبُ سلفاً لا يُداس.
+   ========================================================================= */
+const SCOPE_MQ_COLLS = ["students", "teachers", "plans", "assignments", "attendance", "recitations",
+                        "mushafMarks", "exams", "delays", "pointsLog", "storeOrders"];
+function scopeMosqueOf(data) {
+  const find = (c, id) => (Array.isArray(DB[c]) ? DB[c] : [])
+    .find(x => x && String(x.id) === String(id));
+  if (data.circleId != null && data.circleId !== "") {
+    const c = find("circles", data.circleId);
+    if (c && c.mosqueId) return String(c.mosqueId);
+  }
+  if (data.studentId != null && data.studentId !== "") {
+    const s = find("students", data.studentId);
+    if (s && s.mosqueId) return String(s.mosqueId);
+  }
+  return "";
+}
+
 function scopeStamp(coll, data) {
   if (!data || SCOPE_FREE.indexOf(String(coll)) > -1) return data;
   if (SCOPE_SELF.indexOf(String(coll)) > -1) return data;
 
   const u = (STATE && STATE.user) || {};
+  if (!data.mosqueId && SCOPE_MQ_COLLS.indexOf(String(coll)) > -1) {
+    const m0 = scopeMosqueOf(data);
+    if (m0) {
+      data.mosqueId = m0;
+      if (!data.complexId) {
+        const m = (Array.isArray(DB.mosques) ? DB.mosques : []).find(x => x && String(x.id) === m0);
+        if (m && m.complexId) data.complexId = String(m.complexId);
+      }
+    }
+  }
   if (isTopAdmin(u)) return data;              /* المالكُ والمديرُ بلا نطاق */
 
   const mq = String(u.mosqueId || "");
   const cx = String(u.complexId || "");
 
-  if (!data.mosqueId && mq && isMosqueMgr(u.role)) data.mosqueId = mq;
+  /* ولا حلقةَ ولا طالبَ يدلّان: من يعمل في مسجدٍ يكتب لمسجده (٤٤٩) */
+  if (!data.mosqueId && mq && (isMosqueMgr(u.role) ||
+      (u.role === "teacher" && SCOPE_MQ_COLLS.indexOf(String(coll)) > -1))) data.mosqueId = mq;
   if (!data.complexId) {
     if (cx) data.complexId = cx;
     else if (data.mosqueId) {
