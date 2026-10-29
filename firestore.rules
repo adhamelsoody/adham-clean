@@ -120,7 +120,10 @@ service cloud.firestore {
       let r = role();
       return (r in ['teacher', 'student', 'parent'] && coll in ['paySheets', 'admissions'])
           || (r in ['student', 'parent'] && coll in ['msgOutbox', 'moveLog', 'procLog', 'sysAlerts'])
-          || (r in ['student', 'parent'] && coll in kidColls());
+          || (r in ['student', 'parent'] && coll in kidColls())
+          /* و students تُقرأ لهما من كتلتها وحدها (سجلّاتُ أبنائهما بأعيانها): كانت
+             هذه الكتلةُ العامّة تُجيزها لهما كاملةً — والقواعدُ تُجمع بـ OR (٤٤٥) */
+          || (r in ['student', 'parent'] && coll == 'students');
     }
 
     /* =====================================================================
