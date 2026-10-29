@@ -6504,7 +6504,7 @@ window.userApproveDo = function (id) {
       const me = (STATE && STATE.user) || {};
       const rec = {
         id: "lg" + Date.now() + "-own",
-        ts: Date.now(), act: "update", coll: "users", collAr: "المستخدمون",
+        ts: Date.now(), byUid: String(((STATE && STATE.user) || {}).uid || ""), act: "update", coll: "users", collAr: "المستخدمون",
         docId: String(u.id), subject: u.name || "",
         by: me.name || me.email || "—", role: logRoleAr(me.role),
         changes: [{ k: "role", h: "الدور", from: u.role || "—", to: "مالك النظام" }],
@@ -43988,7 +43988,7 @@ window.unapproveSessionDo = function () {
     const me = (STATE && STATE.user) || {};
     const rec = {
       id: "lg" + Date.now() + "-uas",
-      ts: Date.now(), act: "delete", coll: "workflow", collAr: "اعتماد الجلسات",
+      ts: Date.now(), byUid: String(((STATE && STATE.user) || {}).uid || ""), act: "delete", coll: "workflow", collAr: "اعتماد الجلسات",
       docId: id, subject: (c && c.name) || "",
       by: me.name || me.email || "—",
       role: typeof logRoleAr === "function" ? logRoleAr(me.role) : "",
@@ -57064,7 +57064,7 @@ window.archiveOverrideDo = function (on) {
       const me = (STATE && STATE.user) || {};
       const rec = {
         id: "lg" + Date.now() + "-arc",
-        ts: Date.now(), act: "update", coll: "terms", collAr: "الفترات",
+        ts: Date.now(), byUid: String(((STATE && STATE.user) || {}).uid || ""), act: "update", coll: "terms", collAr: "الفترات",
         docId: "", subject: "",
         by: me.name || me.email || "—", role: logRoleAr(me.role), changes: [],
         text: "فتح " + (logRoleAr(me.role) || "") + " (" + (me.name || "—") +

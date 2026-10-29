@@ -812,9 +812,14 @@ service cloud.firestore {
 
       allow read: if isAdmin() || isSupervisor();
 
+      /* وبصيغة app.js (٤٣٦): byUid و act — كانت القاعدةُ تشترط uid و action
+         وحدَهما، وهما صيغةُ governance.js غير المحمَّل، فيُردّ كلُّ قيدٍ يكتبه
+         التطبيق ولا يُحفظ في السجلّ شيء. الشرطُ هو هو: باسم كاتبه وبفعلٍ معروف. */
       allow create: if isActive()
-                    && request.resource.data.uid == request.auth.uid
-                    && request.resource.data.action in ['create', 'update', 'delete']
+                    && ((request.resource.data.get('uid', '') == request.auth.uid
+                         && request.resource.data.get('action', '') in ['create', 'update', 'delete'])
+                        || (request.resource.data.get('byUid', '') == request.auth.uid
+                            && request.resource.data.get('act', '') in ['create', 'update', 'delete']))
                     && request.resource.data.coll is string
                     && request.resource.data.ts is number;
 
