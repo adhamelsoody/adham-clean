@@ -40400,7 +40400,16 @@ function musLiveSync(sid) {
   if (MUS_LIVE.sid === String(sid) && MUS_LIVE.off) return;
   musLiveStop();
   try {
-    const q = db.collection("mushafMarks").where("studentId", "==", String(sid));
+    let q = db.collection("mushafMarks").where("studentId", "==", String(sid));
+    /* المعلّمُ ومديرُ المسجد يقرآن تأشيرَ مسجدهم وحدَه (٤٤٧): القاعدةُ لا تقبل
+       الاستعلامَ بالطالب وحده منهم، فيُقيَّد بمسجد الطالب نفسِه */
+    const _u = (STATE && STATE.user) || {};
+    if (["teacher", "mosqueManager", "supervisor"].indexOf(_u.role) > -1 &&
+        (_u.mosqueId || (_u.scopeIds || []).some(k => String(k).indexOf("mosque:") === 0))) {
+      const st = (DB.students || []).find(x => x && String(x.id) === String(sid));
+      const m = st && st.mosqueId ? String(st.mosqueId) : String(_u.mosqueId || "");
+      if (m) q = q.where("mosqueId", "==", m);
+    }
     if (!q || typeof q.onSnapshot !== "function") return;
     MUS_LIVE.sid = String(sid);
     MUS_LIVE.off = q.onSnapshot(snap => {
@@ -56319,8 +56328,32 @@ async function loadAllData(source) {
       return { c, snap: { forEach: fn => docs.forEach(fn) } };
     });
   };
+  /* =====================================================================
+     المعلّمُ ومديرُ المسجد والمشرف: سجلّاتُ مسجدهم وحدَها (٤٤٧)
+     ---------------------------------------------------------------------
+     القواعدُ تقصر قراءتَهم في هذه المجموعات على ما يحمل mosqueId من
+     مساجدهم (mqOwn في firestore.rules)، فيُقرأ لكلّ مسجدٍ استعلامُه.
+     ومن لا مسجدَ في ملفّه يُقرأ له كما كان — والقاعدةُ تُبقيه كذلك.
+     ===================================================================== */
+  const _su = (STATE && STATE.user) || {};
+  const _mqIds = ["teacher", "mosqueManager", "supervisor"].indexOf(_r) > -1
+    ? [...new Set([_su.mosqueId].concat((_su.scopeIds || [])
+        .filter(k => String(k).indexOf("mosque:") === 0).map(k => String(k).split(":")[1]))
+        .concat(_su.mosqueIds || []).filter(x => x != null && x !== "").map(String))]
+    : [];
+  const MQ_COLLS = ["students", "teachers", "plans", "assignments", "attendance", "recitations",
+                    "mushafMarks", "exams", "delays", "pointsLog", "storeOrders"];
+  const readMq = c => Promise.all(_mqIds.map(m =>
+      db.collection(c).where("mosqueId", "==", m).get(opts).then(sn => sn.docs, e => {
+        console.warn("تعذّرت قراءة المجموعة:", c, "مسجد", m, e && e.code); return []; })))
+    .then(arrs => {
+      const seen = {}, docs = [];
+      arrs.forEach(a => a.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } }));
+      return { c, snap: { forEach: fn => docs.forEach(fn) } };
+    });
   const readOne = c => (c === "site_messages" && !_mgrRead ? readMine(c)
     : (_kid && (c === "students" || KID_COLLS.indexOf(c) > -1)) ? readKid(c)
+    : (_mqIds.length && MQ_COLLS.indexOf(c) > -1) ? readMq(c)
     : db.collection(c).get(opts)
     .then(snap => ({ c, snap }))).then(
     r => r,
