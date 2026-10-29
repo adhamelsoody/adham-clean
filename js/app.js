@@ -56227,6 +56227,10 @@ async function loadAllData(source) {
     try {
       const _u = String(((STATE && STATE.user) || {}).uid || "");
       if (_u) localStorage.setItem("zat.srvAt." + _u, String(Date.now()));
+      /* وعددُ المجموعات غير الفارغة في ذلك التنزيل (٤٣٨): يُقارَن به المخزنُ
+         المحلّيّ، فلا يُكتفى بمخزنٍ ناقص (فيه ما كُتب محلّياً وحده) */
+      if (_u) localStorage.setItem("zat.srvN." + _u,
+        String(COLLECTIONS.filter(c => Array.isArray(DB[c]) && DB[c].length).length));
     } catch (e) {}
   }
 
@@ -56290,7 +56294,13 @@ async function loadDataFast(onData) {
     const _u = String(((STATE && STATE.user) || {}).uid || "");
     const _t = _u ? Number(localStorage.getItem("zat.srvAt." + _u) || 0) : 0;
     const _age = Date.now() - _t;
-    fresh = painted && _t > 0 && _age >= 0 && _age < 60000;
+    /* المخزنُ الناقص ليس طازجاً (٤٣٨): صفحةٌ بلا مخزنٍ دائم يكون فيها ما
+       كُتب محلّياً وحده (إشعارٌ واحد مثلاً)، فيُحسب «مرسوماً» ويُترك الخادم
+       فتبقى الشاشةُ فارغةً دقيقةً كاملة. فيُشترط أن يحوي من المجموعات غيرِ
+       الفارغة ما حواه آخرُ تنزيلٍ من الخادم. */
+    const _n = _u ? Number(localStorage.getItem("zat.srvN." + _u) || 0) : 0;
+    const _has = COLLECTIONS.filter(c => Array.isArray(DB[c]) && DB[c].length).length;
+    fresh = painted && _t > 0 && _age >= 0 && _age < 60000 && _n > 0 && _has >= _n;
   } catch (e) { fresh = false; }
 
   if (!fresh) {
@@ -56631,6 +56641,7 @@ function persistFail(where, coll, err, rec) {
         /* عاملٌ منتظرٌ من نشرةٍ سابقة: `updatefound` لا يُطلق له — فقد وقع
            قبل فتح الصفحة. والتطبيقُ المثبَّت يبقى على عاملٍ منتظرٍ أياماً
            فلا يُعرض لصاحبه شريط. فيُفتَّش عليه حالاً لا بالحدث وحده. */
+        if (!reg) return;   /* التسجيلُ قد يعود بلا عامل (متصفّحٌ يحجبه) */
         if (reg.waiting && navigator.serviceWorker.controller) swUpdateBar(reg);
 
         /* نسخةٌ جديدة تنتظر: تُعرض دعوةٌ للتحديث بدل فرضه على عملٍ جارٍ */
