@@ -725,9 +725,12 @@ window.SHELL_MODE = true;
     var ROLE_AR = {
       owner: "مالك النظام", admin: "مدير النظام",
       complexManager: "مدير المجمّع", mosqueManager: "مدير المسجد",
-      supervisor: "مشرف", donor: "داعم", teacher: "معلّم"
+      supervisor: "مشرف", donor: "داعم", teacher: "معلّم",
+      /* وكان الطالبُ ووليُّ الأمر غائبَين عن القائمة، فيُسمَّيان «مدير النظام» (٤٥٠) */
+      student: "طالب", parent: "وليّ الأمر"
     };
-    if (roleEl) roleEl.textContent = ROLE_AR[profile.role] || "مدير النظام";
+    /* والدورُ غيرُ المعروف لا يُسمّى «مدير النظام» — اللقبُ لا يُمنح بالسقوط (٤٥٠) */
+    if (roleEl) roleEl.textContent = ROLE_AR[profile.role] || "—";
     if (avEl && typeof initials === "function") avEl.textContent = initials(profile.name || profile.email || "?");
   }
 
