@@ -125,7 +125,9 @@ service cloud.firestore {
              هذه الكتلةُ العامّة تُجيزها لهما كاملةً — والقواعدُ تُجمع بـ OR (٤٤٥) */
           || (r in ['student', 'parent'] && coll == 'students')
           /* ومن يعمل في مسجد: سجلّاتُ مسجده وحدَها (٤٤٧) — إن كان له مسجدٌ في ملفّه */
-          || (r in mqRoles() && coll in mqColls() && hasMosque());
+          || (r in mqRoles() && coll in mqColls() && hasMosque())
+          /* ومديرُ المجمّع: سجلّاتُ مجمّعه وحدَها (٤٥٢) — إن كان له مجمّعٌ في ملفّه */
+          || (r == 'complexManager' && coll in mqColls() && hasComplex());
     }
 
     /* =====================================================================
@@ -161,6 +163,27 @@ service cloud.firestore {
     function mqOwn(coll) {
       return coll in mqColls() && role() in mqRoles() && hasMosque()
           && resource.data.mosqueId in myMosques();
+    }
+
+    /* =====================================================================
+       مديرُ المجمّع: سجلّاتُ مجمّعه وحدَها (٤٥٢)
+       ---------------------------------------------------------------------
+       كان يقرأ الطلابَ والمعلّمين والخططَ والحضورَ والتسميعَ في المجمّعات
+       كلِّها، والتطبيقُ يُنزّلها إلى جهازه ثمّ يُخفيها عند العرض (فحصُ مدير
+       مجمّع «العثمان» على الإنتاج: ٣٨٨ حضوراً له منها ٩). صارت قراءتُه في
+       هذه المجموعات لِما يحمل complexId من مجمّعاته (complexId · complexIds
+       في ملفّه)، والتطبيقُ يقرأ له بالاستعلام نفسه (where complexId ==).
+       ومن لا مجمّعَ في ملفّه يبقى كما كان.
+       ===================================================================== */
+    function myComplexes() {
+      return profile().get('complexIds', []).concat([profile().get('complexId', '')]);
+    }
+    function hasComplex() {
+      return profile().get('complexId', '') != '' || profile().get('complexIds', []).size() > 0;
+    }
+    function cxOwn(coll) {
+      return coll in mqColls() && role() == 'complexManager' && hasComplex()
+          && resource.data.complexId in myComplexes();
     }
 
     /* =====================================================================
@@ -577,7 +600,7 @@ service cloud.firestore {
 
     /* ---------------- البيانات التشغيلية ---------------- */
     match /{coll}/{docId} {
-      allow read: if coll in operational() && ((canRead() && !hiddenFrom(coll)) || donorMay(coll) || kidOwn(coll) || mqOwn(coll));
+      allow read: if coll in operational() && ((canRead() && !hiddenFrom(coll)) || donorMay(coll) || kidOwn(coll) || mqOwn(coll) || cxOwn(coll));
       allow create: if coll in operational() && canWrite() && scopeOk();
       allow update: if coll in operational() && canWrite() && scopeOk() && oldScopeOk();
       allow delete: if coll in operational() && canWrite()
@@ -628,7 +651,7 @@ service cloud.firestore {
       /* الطالبُ ووليُّه: سجلّاتُ أبنائه بأعيانها (٤٤٤) */
       allow read: if (canRead() && !hiddenFrom('students')) || isDonor()
                   || (role() in ['student', 'parent'] && docId in kidIds())
-                  || mqOwn('students');
+                  || mqOwn('students') || cxOwn('students');
       allow create: if teacherMayAs('addStudent', 'addStudent', true) && scopeOk();
       /* الملفُّ الشخصيّ للطالب ولوليّ أمره: البريدُ والصورةُ وحدَهما (٤٣٠).
          لا نطاقَ ولا ارتباطَ ولا اسمَ — تلك للإدارة. */
@@ -681,7 +704,7 @@ service cloud.firestore {
        إنشاءٌ بمرحلة await-sup وحدَها: لا يرفع طلباً معتمداً ولا موثَّقاً،
        ولا يعدّل محفوظاً ولا يحذفه. */
     match /exams/{docId} {
-      allow read: if (canRead() && !hiddenFrom('exams')) || kidOwn('exams') || mqOwn('exams');
+      allow read: if (canRead() && !hiddenFrom('exams')) || kidOwn('exams') || mqOwn('exams') || cxOwn('exams');
       allow create: if teacherMayAs('examRequest', 'examRequest', true)
                     && request.resource.data.stage == 'await-sup'
                     && request.resource.data.studentId is string;
@@ -692,7 +715,7 @@ service cloud.firestore {
        الآن: نطاقُه يحصره كسائر الكتابة، وحقولُ الارتباط ممنوعةٌ عليه.
        ولا يُمسّ عملُه: المسارُ والموضعُ والتجميدُ والمقدار كلُّها باقية. */
     match /plans/{docId} {
-      allow read: if (canRead() && !hiddenFrom('plans')) || kidOwn('plans') || mqOwn('plans');
+      allow read: if (canRead() && !hiddenFrom('plans')) || kidOwn('plans') || mqOwn('plans') || cxOwn('plans');
       allow create: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk();
       allow update: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk() && oldScopeOk()
                     && (canWrite() || !changed().hasAny(linkFields()));
@@ -714,7 +737,7 @@ service cloud.firestore {
        وحقولُ الارتباط ممنوعةٌ عليه في التعديل — فلا يَنقل واجباً إلى
        طالبٍ آخرَ ولا إلى مسجدٍ آخر. والحذفُ للإدارة وحدها. */
     match /assignments/{docId} {
-      allow read: if (canRead() && !hiddenFrom('assignments')) || kidOwn('assignments') || mqOwn('assignments');
+      allow read: if (canRead() && !hiddenFrom('assignments')) || kidOwn('assignments') || mqOwn('assignments') || cxOwn('assignments');
       allow create: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk();
       allow update: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk() && oldScopeOk()
                     && (canWrite() || !changed().hasAny(linkFields()));
@@ -731,7 +754,7 @@ service cloud.firestore {
        نطاقه كسائر كتابته. والمراسلةُ بمفتاحها msg_send كما في
        site_messages، فمن مُنع منها هناك مُنع هنا. */
     match /pointsLog/{docId} {
-      allow read: if (canRead() && !hiddenFrom('pointsLog')) || kidOwn('pointsLog') || mqOwn('pointsLog');
+      allow read: if (canRead() && !hiddenFrom('pointsLog')) || kidOwn('pointsLog') || mqOwn('pointsLog') || cxOwn('pointsLog');
       allow create: if (canWrite() || isTeacher()) && scopeOk();
       allow update, delete: if canWrite();
     }
@@ -763,7 +786,7 @@ service cloud.firestore {
     }
 
     match /recitations/{docId} {
-      allow read: if (canRead() && !hiddenFrom('recitations')) || kidOwn('recitations') || mqOwn('recitations');
+      allow read: if (canRead() && !hiddenFrom('recitations')) || kidOwn('recitations') || mqOwn('recitations') || cxOwn('recitations');
       /* الإنشاء عمل يومي، والتعديل على محفوظ صلاحية خاصة */
       /* وداخلَ النطاق: لا يكتب المعلّمُ تسميعاً لطالبٍ في منشأةٍ أخرى ولا يعدّله */
       /* و«تسجيل التسميع» (recite) في بطاقة المعلّم يحرس الإنشاءَ كذلك (٤٣٢):
@@ -774,7 +797,7 @@ service cloud.firestore {
     }
 
     match /mushafMarks/{docId} {
-      allow read: if (canRead() && !hiddenFrom('mushafMarks')) || kidOwn('mushafMarks') || mqOwn('mushafMarks');
+      allow read: if (canRead() && !hiddenFrom('mushafMarks')) || kidOwn('mushafMarks') || mqOwn('mushafMarks') || cxOwn('mushafMarks');
       allow create: if (canWrite() || isTeacher()) && scopeOk();
       /* تأشيرُ اليوم عملٌ عادي، وتعديلُ تأشيرِ يومٍ مضى أو حذفُه صلاحيةٌ خاصة
          (mushaf_past · وفي بطاقة المعلّم editMarks).
@@ -804,7 +827,7 @@ service cloud.firestore {
     }
 
     match /delays/{docId} {
-      allow read: if (canRead() && !hiddenFrom('delays')) || kidOwn('delays') || mqOwn('delays');
+      allow read: if (canRead() && !hiddenFrom('delays')) || kidOwn('delays') || mqOwn('delays') || cxOwn('delays');
       allow create, update: if teacherMay('delay_manage', true);
       allow delete: if teacherMay('delay_manage', true);
     }
@@ -819,7 +842,7 @@ service cloud.firestore {
        سجل لطالب خارج حلقاته. إغلاق ذلك يحتاج ربط circleIds في ملف المستخدم
        وهو ضمن مرحلة تقييد الصلاحيات القادمة. */
     match /attendance/{docId} {
-      allow read: if (canRead() && !hiddenFrom('attendance')) || kidOwn('attendance') || mqOwn('attendance');
+      allow read: if (canRead() && !hiddenFrom('attendance')) || kidOwn('attendance') || mqOwn('attendance') || cxOwn('attendance');
       /* التحضير عمل المعلّم اليومي، وتعديل سجل محفوظ يحتاج attend_edit.
          ⚠ «التحضير بعد انتهاء الوقت» (attend_late) يُفحص في المتصفح فقط:
            التاريخ محفوظ بصيغة النظام لا بطابع زمني، فلا تستطيع القاعدة
@@ -912,7 +935,10 @@ service cloud.firestore {
        السجل دليلاً: سجلّ يمكن تعديله لا يثبت شيئاً. */
     match /auditLog/{entryId} {
 
-      allow read: if isAdmin() || isSupervisor();
+      /* المديرُ والمالكُ وحدَهما (٤٥٢): صفحةُ السجلّ لا يفتحها غيرُهما (SYSTEM_ONLY
+         في app.js)، وكان مديرُ المجمّع ومديرُ المسجد يقرآنه كاملاً — سجلَّ كلِّ
+         حفظٍ في كلّ المنشآت. والكتابةُ (الإلحاقُ) باقيةٌ لكلّ حسابٍ فعّال. */
+      allow read: if isAdmin();
 
       /* وبصيغة app.js (٤٣٦): byUid و act — كانت القاعدةُ تشترط uid و action
          وحدَهما، وهما صيغةُ governance.js غير المحمَّل، فيُردّ كلُّ قيدٍ يكتبه

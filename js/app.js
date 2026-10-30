@@ -673,8 +673,10 @@ function facToolbar(coll, presetCount, opt) {
      فصارت الأعدادُ من القائمة التي تُعرض فعلاً متى مُرِّرت (opt.list)،
      وبمقياس الحالة نفسِه الذي يُرسم به الصفّ. وبطاقاتُ المنشآت على حالها.
      ========================================================================= */
+  /* ومن نطاق المستخدم لا من النظام كلِّه (٤٥٢): كانت DB.mosques، فيقرأ مديرُ
+     المجمّع «متوقف مؤقتاً (٥) · الكل (٧)» — مساجدَ النظام — وبطاقاتُه اثنتان. */
   const list = opt.list ? opt.list
-    : (coll === "mosques" ? DB.mosques : DB.complexes);
+    : (coll === "mosques" ? cur("mosques") : cur("complexes"));
   /* كان الزر مثبّتاً على «إضافة مجمع» مهما كانت الصفحة، فصفحة المدراء
      — وهي تستعمل هذا الشريط — كانت تفتح نافذة المجمع بدل نافذة المدير. */
   const addAction = opt.addAction ||
@@ -56363,9 +56365,30 @@ async function loadAllData(source) {
       arrs.forEach(a => a.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } }));
       return { c, snap: { forEach: fn => docs.forEach(fn) } };
     });
+  /* =====================================================================
+     ومديرُ المجمّع: سجلّاتُ مجمّعه وحدَها (٤٥٢)
+     ---------------------------------------------------------------------
+     القواعدُ تقصر قراءتَه في هذه المجموعات على ما يحمل complexId من
+     مجمّعاته (cxOwn في firestore.rules)، فيُقرأ لكلّ مجمّعٍ استعلامُه.
+     ومن لا مجمّعَ في ملفّه يُقرأ له كما كان.
+     ===================================================================== */
+  const _cxIds = _r === "complexManager"
+    ? [...new Set([_su.complexId].concat((_su.scopeIds || [])
+        .filter(k => String(k).indexOf("complex:") === 0).map(k => String(k).split(":")[1]))
+        .concat(_su.complexIds || []).filter(x => x != null && x !== "").map(String))]
+    : [];
+  const readCx = c => Promise.all(_cxIds.map(k =>
+      db.collection(c).where("complexId", "==", k).get(opts).then(sn => sn.docs, e => {
+        console.warn("تعذّرت قراءة المجموعة:", c, "مجمّع", k, e && e.code); return []; })))
+    .then(arrs => {
+      const seen = {}, docs = [];
+      arrs.forEach(a => a.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } }));
+      return { c, snap: { forEach: fn => docs.forEach(fn) } };
+    });
   const readOne = c => (c === "site_messages" && !_mgrRead ? readMine(c)
     : (_kid && (c === "students" || KID_COLLS.indexOf(c) > -1)) ? readKid(c)
     : (_mqIds.length && MQ_COLLS.indexOf(c) > -1) ? readMq(c)
+    : (_cxIds.length && MQ_COLLS.indexOf(c) > -1) ? readCx(c)
     : db.collection(c).get(opts)
     .then(snap => ({ c, snap }))).then(
     r => r,
@@ -56536,9 +56559,13 @@ async function loadDataFast(onData) {
        ولا طلابَها، فكانت المزامنةُ تحسب حساباتِهم «بلا سجلّ» فتُنشئ لهم سجلّاتٍ
        مكرّرة. تجري من جلسةٍ تقرأ المنشآتِ كلَّها: المدير والمالك ومدير المجمّع. */
     const _u0 = (STATE && STATE.user) || {};
-    const mqScoped = ["mosqueManager", "supervisor"].indexOf(role) > -1 &&
+    const mqScoped = (["mosqueManager", "supervisor"].indexOf(role) > -1 &&
       (_u0.mosqueId || (_u0.scopeIds || []).some(k => String(k).indexOf("mosque:") === 0) ||
-       (_u0.mosqueIds || []).length);
+       (_u0.mosqueIds || []).length)) ||
+      /* ومديرُ المجمّع منذ ٤٥٢ يُقرأ له مجمّعُه وحدَه: لا يُزامِن للسبب نفسه */
+      (role === "complexManager" &&
+       (_u0.complexId || (_u0.scopeIds || []).some(k => String(k).indexOf("complex:") === 0) ||
+        (_u0.complexIds || []).length));
     if ((role === "admin" || isMgrRole(role)) && !mqScoped) {
       /* تلقائيةٌ بالتعريف: تجري بلا طلبٍ من أحدٍ عقب كلّ تحميل، فتُحاط
          بـ linkAuto ليمنعها الحارسُ من مسّ أيّ ارتباط. */
