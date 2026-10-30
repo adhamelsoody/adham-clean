@@ -464,6 +464,30 @@ window.pdfPrint = function (title) {
 function currentComplex() {
   return DB.complexes.find(x => x.id == STATE.complexId) || null;
 }
+/* =========================================================================
+   أسماءُ ارتباط الطالب من معرّفاته (٤٥٥)
+   -------------------------------------------------------------------------
+   جدولُ الطلاب كان يعرض المسجدَ والحلقةَ والمعلّمَ من الحقول النصّية
+   (mosque · circle · teacher): فالطالبُ الذي يحمل mosqueId بلا اسمٍ نصّيّ
+   يظهر «بلا مسجد» — ومنهم من أُكمل مسجدُه بالمعرّف — وبعد تغيير اسم المسجد
+   أو الحلقة يبقى الاسمُ القديمُ معروضاً. والقاعدةُ في المشروع «الربطُ
+   بالمعرّفات لا بالنصوص». يُقرأ الاسمُ من السجلّ المرتبط، وإلا فالنصُّ كما كان.
+   للعرض وحده: لا يُكتب شيء.
+   ========================================================================= */
+function stuLinkName(st) {
+  const s = st || {};
+  const txt = v => (v && v !== "—" ? String(v) : "");
+  const byId = (c, id) => (id == null || id === "") ? null
+    : (Array.isArray(DB[c]) ? DB[c] : []).find(x => x && String(x.id) === String(id)) || null;
+  const cRec = byId("circles", s.circleId);
+  const mRec = byId("mosques", s.mosqueId) || (cRec ? byId("mosques", cRec.mosqueId) : null);
+  const tRec = byId("teachers", s.teacherId) || (cRec ? byId("teachers", cRec.teacherId) : null);
+  return {
+    mosque:  (mRec && mRec.name) || txt(s.mosque),
+    circle:  (cRec && cRec.name) || txt(s.circle),
+    teacher: (tRec && tRec.name) || (cRec && txt(cRec.teacher)) || txt(s.teacher)
+  };
+}
 function complexName(id) {
   const cx = DB.complexes.find(x => x.id == id);
   return cx ? cx.name : "—";
@@ -2839,13 +2863,15 @@ function adminStudents() {
          واحدةٌ في كلّ صفّ لا يفيد، ويأخذ عرضاً في شاشةٍ ضيّقة. */
       ...(facLockedMosqueId() ? [] : [{ h: "المنشأة", cell: p2 => {
           const cxName = p2.complexId ? complexName(p2.complexId) : "";
-          const mq = p2.mosque && p2.mosque !== "—" ? p2.mosque : "";
+          const mq = stuLinkName(p2).mosque;
           return `<td>${mq ? esc(mq) : `<span class="pt-muted">بلا مسجد</span>`}
             ${cxName ? `<div class="pt-muted" style="font-size:11.5px">${esc(cxName)}</div>` : ""}</td>`;
         } }]),
       colIdNo(),
-      { h: "الحلقة", cell: p2 => `<td class="${p2.circle && p2.circle !== "—" ? "" : "pt-muted"}">${esc(p2.circle && p2.circle !== "—" ? p2.circle : "بلا حلقة")}</td>` },
-      { h: "المعلم", cell: p2 => `<td class="${p2.teacher ? "" : "pt-muted"}">${esc(p2.teacher || "بلا معلم")}</td>` },
+      { h: "الحلقة", cell: p2 => { const c = stuLinkName(p2).circle;
+          return `<td class="${c ? "" : "pt-muted"}">${esc(c || "بلا حلقة")}</td>`; } },
+      { h: "المعلم", cell: p2 => { const t = stuLinkName(p2).teacher;
+          return `<td class="${t ? "" : "pt-muted"}">${esc(t || "بلا معلم")}</td>`; } },
       { h: "نوع الدوام", cell: p2 => `<td>${p2.attType === "دوام جزئي"
           ? `<span class="chip t-amber">دوام جزئي</span>` : `<span class="chip t-teal">دوام كامل</span>`}
           ${p2.days ? `<div class="pt-muted" style="font-size:11px;margin-top:3px">${esc(p2.days)}</div>` : ""}</td>` },
@@ -15252,7 +15278,7 @@ window.lvDetail = function (lvId) {
         return `<tr>
           <td class="pt-name">${esc(r.st.name || "—")}</td>
           <td class="${r.st.circle ? "" : "pt-muted"}">${esc(r.st.circle || "بلا حلقة")}</td>
-          <td class="${r.st.teacher ? "" : "pt-muted"}">${esc(r.st.teacher || "بلا معلم")}</td>
+          <td class="${stuLinkName(r.st).teacher ? "" : "pt-muted"}">${esc(stuLinkName(r.st).teacher || "بلا معلم")}</td>
           <td class="pt-num">${esc(r.plan.current || "—")}</td>
           <td style="min-width:120px">${progressRow(pr)}</td>
           <td>${statusBadge(r.plan.status || r.st.status || "نشط")}</td>
@@ -15935,7 +15961,7 @@ window.lvlView = function (id) {
             <tbody>${studs.length ? studs.map(r => `<tr>
               <td class="pt-name">${esc(r.st.name || "—")}</td>
               <td class="${r.st.circle ? "" : "pt-muted"}">${esc(r.st.circle || "بلا حلقة")}</td>
-              <td class="${r.st.teacher ? "" : "pt-muted"}">${esc(r.st.teacher || "بلا معلم")}</td>
+              <td class="${stuLinkName(r.st).teacher ? "" : "pt-muted"}">${esc(stuLinkName(r.st).teacher || "بلا معلم")}</td>
               <td class="${r.plan.level ? "" : "pt-muted"}">${esc(r.plan.level || "بلا مستوى")}</td>
               <td class="pt-num">${esc(r.plan.current || "—")}</td>
               <td style="min-width:130px">${progressRow(Number(r.plan.progress) || 0)}</td>
@@ -58118,6 +58144,11 @@ function facilityFilter(coll, raw) {
     if (toMe(x)) return true;
     if (x.mosqueId || x.complexId) return inScope(x);
     if (x.circleId) return cids.indexOf(String(x.circleId)) > -1;
+    /* جائزةُ المتجر بلا منشأةٍ «للجميع» كما يحفظها rwdSave (٤٥٥): كانت تسقط
+       هنا فلا يراها طالبٌ ولا وليُّ أمر، ويُردّ استبدالُها صامتاً (storeBuy لا
+       يجدها). تُرى لهما وحدَهما، والاستحقاقُ بعدها في rwdEligible؛ والقواعدُ
+       تُجيز لهما قراءةَ rewards أصلاً. ولا تتّسع بها رؤيةُ المدراء. */
+    if (coll === "rewards" && (_me.role === "student" || _me.role === "parent")) return true;
     /* المشتركُ بطبعه: مناهجُ ومستوياتٌ وقوالبُ يضعها النظام للجميع */
     return SCOPE_SHARED.indexOf(String(coll)) > -1;
   });
