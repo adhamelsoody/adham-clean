@@ -601,14 +601,27 @@ service cloud.firestore {
     /* ---------------- البيانات التشغيلية ---------------- */
     match /{coll}/{docId} {
       allow read: if coll in operational() && ((canRead() && !hiddenFrom(coll)) || donorMay(coll) || kidOwn(coll) || mqOwn(coll) || cxOwn(coll));
-      allow create: if coll in operational() && canWrite() && scopeOk();
-      allow update: if coll in operational() && canWrite() && scopeOk() && oldScopeOk();
-      allow delete: if coll in operational() && canWrite()
+      /* المجمّعاتُ لها كتلتُها أدناه (٤٥٤): القواعدُ تُجمع بـ OR، فلو بقيت هنا
+         لأذِن هذا السطرُ لكلّ مدير منشأة — سجلُّ المجمّع بلا نطاقٍ فيمرّ scopeOk */
+      allow create: if coll in operational() && coll != 'complexes' && canWrite() && scopeOk();
+      allow update: if coll in operational() && coll != 'complexes' && canWrite() && scopeOk() && oldScopeOk();
+      allow delete: if coll in operational() && coll != 'complexes' && canWrite()
                     && (unscoped() || inScope(resource.data))
                     /* الفتراتُ لها قاعدةُ حذفٍ خاصّةٌ أدناه: لا تُحذف إلّا
                        مؤرشفة. وقواعدُ Firestore تُجمع بـ OR، فلو بقيت
                        الفتراتُ هنا لأذِنت هذه القاعدةُ بما تمنعه تلك. */
                     && coll != 'terms';
+    }
+
+    /* ---------------- المجمّعات: الإنشاءُ والحذفُ للمدير (٤٥٤) ----------------
+       كان مديرُ المسجد والمشرفُ يُنشئان المجمّعات ويعدّلانها بالرابط المباشر:
+       سجلُّ المجمّع لا يحمل mosqueId ولا complexId (لا يُبصم بنطاق من كتبه)،
+       فيمرّ scopeOk() لكلّ من يملك canWrite(). الآن: الإنشاءُ والحذفُ للمدير
+       والمالك، والتعديلُ لهما ولمدير ذلك المجمّع نفسِه (complexId · complexIds
+       في ملفّه). والقراءةُ كما كانت من الكتلة العامّة. */
+    match /complexes/{docId} {
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (role() == 'complexManager' && docId in myComplexes());
     }
 
     /* ---------------- الفترات: لا حذفَ إلّا بعد الأرشفة ---------------- */

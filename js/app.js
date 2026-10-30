@@ -720,7 +720,7 @@ function facToolbar(coll, presetCount, opt) {
       <button class="fac-tbtn play" onclick="window.facBulk('play','${coll}')" title="تشغيل المحدد">${P}</button>
       <button class="fac-tbtn stop" onclick="window.facBulk('stop','${coll}')" title="إيقاف المحدد">${S}</button>
       <button class="fac-tbtn del" onclick="window.facBulk('delete','${coll}')" title="حذف المحدد">${D}</button>
-      <button class="fac-tbtn add" data-action="${addAction}" title="${esc(addTitle)}">${A}</button>
+      ${coll === "complexes" && !mayCreateComplex() ? "" : `<button class="fac-tbtn add" data-action="${addAction}" title="${esc(addTitle)}">${A}</button>`}
     </div>
   </div>`;
 }
@@ -1568,7 +1568,7 @@ function adminFacilities() {
   const cx = cur("complexes");
 
   if (!cx.length) {
-    return `<div class="page">${pageHead("المنشآت التعليمية", "المجمعات التعليمية", addBtn("إضافة مجمع", "modal-complex"))}
+    return `<div class="page">${pageHead("المنشآت التعليمية", "المجمعات التعليمية", (mayCreateComplex() ? addBtn("إضافة مجمع", "modal-complex") : ""))}
       ${facTabs()}
       <div class="card">${emptyState("لا توجد مجمعات بعد",
         "ابدأ بإضافة مجمع، ثمّ أضف إليه المساجد من تبويب المساجد أعلاه.")}</div></div>`;
@@ -1580,7 +1580,7 @@ function adminFacilities() {
   return `<div class="page">
     ${pageHead("المنشآت التعليمية",
       "المجمعات التعليمية — " + cx.length + " مجمع",
-      addBtn("إضافة مجمع", "modal-complex"))}
+      mayCreateComplex() ? addBtn("إضافة مجمع", "modal-complex") : "")}
     ${facTabs()}
     ${facToolbar("complexes", activeCount)}
     <div class="fac-grid" id="facGrid" data-coll="complexes">
@@ -1635,6 +1635,12 @@ window.facBulk = function (kind, coll) {
   var nodes = document.querySelectorAll("#facGrid .fac-card.sel");
   var ids = []; for (var i = 0; i < nodes.length; i++) ids.push(nodes[i].getAttribute("data-id"));
   if (!ids.length) { showToast("حدد عنصراً واحداً على الأقل", "warn"); return; }
+  /* المجمّعاتُ: الحذفُ للمدير، والتشغيلُ والإيقافُ لمن يعدّل المجمّع (٤٥٤) */
+  if (coll === "complexes") {
+    const okAll = kind === "delete" ? mayCreateComplex()
+      : ids.every(id => mayEditComplex((DB.complexes || []).find(x => x.id == id)));
+    if (!okAll) { showToast("هذا الإجراءُ على المجمّعات لمدير النظام ومدير المجمّع", "warn"); return; }
+  }
   if (kind === "delete") {
     window.__facDelIds = ids; window.__facDelColl = coll;
     openModal("حذف المحدد", "تأكيد الحذف",
@@ -1654,6 +1660,7 @@ window.facBulk = function (kind, coll) {
 window.facBulkDelete = function () {
   var ids = window.__facDelIds || [];
   var coll = window.__facDelColl || "complexes";
+  if (coll === "complexes" && !mayCreateComplex()) { showToast("حذفُ المجمّعات لمدير النظام", "warn"); return; }
   ids.forEach(function (id) {
     if (coll === "mosques") DB.mosques = DB.mosques.filter(function (x) { return x.id != id; });
     else DB.complexes = DB.complexes.filter(function (x) { return x.id != id; });
@@ -11703,7 +11710,25 @@ function urqAutoRun() {
 }
 window.urqAutoRun = urqAutoRun;
 
+/* تفعيلُ القبول التلقائي يعتمد كلَّ الطلبات المعلّقة فوراً (urqAutoRun) — بضغطةٍ واحدةٍ كان
+   (٤٥٤). فيُسأل قبل التفعيل بعدد ما سيُعتمد، والإيقافُ بلا سؤال. */
 window.urqAuto   = function () {
+  if (!URQ.auto) {
+    const mine = {};
+    (cur("mosques") || []).concat(cur("complexes") || []).forEach(f => { if (f) mine[String(f.id)] = 1; });
+    const n = (cur("userRequests") || []).filter(r => r && (r.status || "pending") === "pending" &&
+      !(r.expiresAt && r.expiresAt < Date.now()) && (!r.facId || mine[String(r.facId)])).length;
+    openModal("تفعيل القبول التلقائي", "تأكيد",
+      noteCard(`<p>سيُعتمد من الآن كلُّ طلب إضافةٍ يصل في نطاقك دون مراجعة.</p>
+        <p style="margin-top:8px">و<strong>${toArabicDigits(n)}</strong> طلباً معلّقاً الآن ${n ? "ستُعتمد فوراً" : "— لا شيء يُعتمد الآن"}.</p>`),
+      `<button class="btn btn-primary" onclick="window.urqAutoDo()">نعم، فعّل القبول التلقائي</button>
+       <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
+    return;
+  }
+  window.urqAutoDo();
+};
+window.urqAutoDo = function () {
+  if (typeof closeModal === "function") closeModal();
   URQ.auto = !URQ.auto;
   if (!DB.settings) DB.settings = {};
   DB.settings.autoAcceptRequests = URQ.auto;
@@ -46404,7 +46429,12 @@ const PAGES = {
     /* ومديرُ المسجد بالشكل نفسه — والمشرفُ ومديرُ النظام كما كانا */
     if (r === "mosqueManager") return cxMgrDashboard("mosque");
     return isMgrRole(r) ? supervisorDashboard() : adminDashboard();
-  }, "admin/complexes": adminComplexes,
+  }, "admin/complexes": function () {
+    /* العنوانُ المباشرُ يتجاوز القائمة — الحارسُ هنا (٤٥٤) */
+    if (!canDo("complexes")) return financeDenied("المجمّعات التعليمية",
+      "إدارةُ المجمّعات لمدير النظام ولمدير المجمّع.");
+    return adminComplexes();
+  },
   "admin/mosques": adminMosques, "admin/circles": adminCircles,
   "admin/students": adminStudents, "admin/teachers": adminManagers, "admin/programs": adminPrograms,
   "admin/plans": adminPlans, "admin/attendance": adminAttendance, "admin/reports": adminReports,
@@ -47038,6 +47068,25 @@ function canGrantRole(target, actor) {
   return list.indexOf(String(target || "")) > -1;
 }
 
+/* =========================================================================
+   من يُنشئ المجمّعات ومن يعدّلها (٤٥٤ — P-1 في FAILED_TESTS.md)
+   -------------------------------------------------------------------------
+   كانت صفحةُ المجمّعات تُفتح لمدير المسجد والمشرف بالرابط المباشر (القائمةُ
+   تُخفيها، وتعليقُ shell.js يقول «الحمايةُ في canDo» ولم تكن تُفحص هنا)،
+   فيعدّل مجمّعَه ويُنشئ مجمّعات — والخادمُ يقبل لأنّ سجلّ المجمّع بلا نطاق.
+   الإنشاءُ والحذفُ للمدير والمالك، والتعديلُ لهما ولمدير ذلك المجمّع نفسِه.
+   ========================================================================= */
+function myComplexIds() {
+  const u = (STATE && STATE.user) || {};
+  return [u.complexId].concat(u.complexIds || [], (u.scopeIds || [])
+    .filter(k => String(k).indexOf("complex:") === 0).map(k => String(k).split(":")[1]))
+    .filter(x => x != null && x !== "").map(String);
+}
+function mayCreateComplex() { return isTopAdmin(); }
+function mayEditComplex(cx) {
+  if (isTopAdmin()) return true;
+  return isComplexMgr(myRoleNow()) && !!cx && myComplexIds().indexOf(String(cx.id)) > -1;
+}
 function canDo(area) {
   const r = ((STATE && STATE.user) || {}).role || "";
 
@@ -55199,8 +55248,11 @@ document.addEventListener("click", (e) => {
 
     /* ---- المجمعات ---- */
     case "panel-complex": panelComplex(t.dataset.id); break;
-    case "modal-complex": modalComplex(); break;
+    case "modal-complex":
+      if (!mayCreateComplex()) { showToast("إنشاءُ المجمّعات لمدير النظام", "warn"); break; }
+      modalComplex(); break;
     case "save-complex": {
+      if (!mayCreateComplex()) { showToast("إنشاءُ المجمّعات لمدير النظام", "warn"); break; }
       const name = val("#cx_name");
       if (!name) { showToast("اسم المجمع مطلوب", "warn"); break; }
       const o = {
@@ -55216,10 +55268,14 @@ document.addEventListener("click", (e) => {
       showToast("تمت إضافة المجمع وحفظه في قاعدة البيانات");
       break;
     }
-    case "edit-complex": modalEditComplex(t.dataset.id); break;
+    case "edit-complex": {
+      if (!mayEditComplex(DB.complexes.find(x => x.id == t.dataset.id))) { showToast("تعديلُ المجمّع لمدير النظام ومدير المجمّع", "warn"); break; }
+      modalEditComplex(t.dataset.id); break;
+    }
     case "save-edit-complex": {
       const cx = DB.complexes.find(x => x.id == t.dataset.id);
       if (!cx) { showToast("المجمع غير موجود", "warn"); break; }
+      if (!mayEditComplex(cx)) { showToast("تعديلُ المجمّع لمدير النظام ومدير المجمّع", "warn"); break; }
       const name = val("#ecx_name", cx.name);
       if (!name) { showToast("اسم المجمع مطلوب", "warn"); break; }
       cx.name = name;
@@ -55239,6 +55295,7 @@ document.addEventListener("click", (e) => {
     case "toggle-complex": {
       const cx = DB.complexes.find(x => x.id == t.dataset.id);
       if (!cx) { showToast("المجمع غير موجود", "warn"); break; }
+      if (!mayEditComplex(cx)) { showToast("تعديلُ المجمّع لمدير النظام ومدير المجمّع", "warn"); break; }
       cx.status = cx.status === "نشط" ? "متوقف" : "نشط";
       persistSet("complexes", cx);
       mount();
@@ -55256,6 +55313,7 @@ document.addEventListener("click", (e) => {
     case "delete-complex": {
       const cx = DB.complexes.find(x => x.id == t.dataset.id);
       if (!cx) { showToast("المجمع غير موجود", "warn"); break; }
+      if (!mayCreateComplex()) { showToast("حذفُ المجمّعات لمدير النظام", "warn"); break; }
       openModal("حذف المجمع", "تأكيد الحذف",
         `${noteCard("سيتم حذف مجمع <strong>" + esc(cx.name) + "</strong> نهائياً من قاعدة البيانات. <strong>لن تُحذف</strong> بياناته (المساجد والطلاب) تلقائياً، لكنها ستصبح بلا مجمع. لا يمكن التراجع.")}`,
         `<button class="btn btn-danger" data-action="delete-complex-confirm" data-id="${cx.id}">${ic("x", 16)} نعم، احذف المجمع</button>
@@ -55263,6 +55321,7 @@ document.addEventListener("click", (e) => {
       break;
     }
     case "delete-complex-confirm": {
+      if (!mayCreateComplex()) { showToast("حذفُ المجمّعات لمدير النظام", "warn"); break; }
       const id = t.dataset.id;
       DB.complexes = DB.complexes.filter(x => x.id != id);
       persistDelete("complexes", id);
