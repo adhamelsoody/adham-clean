@@ -28396,6 +28396,11 @@ window.trmPause = function (id, on) {
 
 /* الفترة النشطة: المعلَّمة صراحةً، وإلا التي يقع اليوم في نطاقها */
 function activeTerm() {
+  /* داخل معالج الترحيل: المصدرُ فترةُ العمل (٤٥٣ — migInSrc) */
+  if (MIG_SRC) {
+    const src = (DB.terms || []).find(t => t && String(t.id) === MIG_SRC);
+    if (src) return src;
+  }
   const list = cur("terms") || [];
   if (!list.length) return null;
 
@@ -28489,6 +28494,7 @@ function activeTerms() {
 
 /* الفترة التي اختارها المستخدم للعرض — إن بقيت موجودة */
 function viewTermPicked() {
+  if (MIG_SRC) return MIG_SRC;          /* معالجُ الترحيل يعرض مصدرَه (٤٥٣) */
   if (STATE.viewTerm === undefined) {
     try { STATE.viewTerm = localStorage.getItem(TERM_VIEW_KEY) || ""; }
     catch (e) { STATE.viewTerm = ""; }
@@ -28790,11 +28796,33 @@ const MIG = { from: "", to: "", pick: {}, dest: {}, staff: true,
               pickT: {}, pickS: {}, run: false };
 
 /* مشرفو النظام: مستخدمون أدوارُهم إداريّة — لا يُنشأ لهم سجلٌّ آخر */
+/* =========================================================================
+   معالجُ الترحيل يقرأ في سياق الفترة المصدر (٤٥٣)
+   -------------------------------------------------------------------------
+   كان يجمع المرشَّحين بـ cur() في سياق فترة العمل. والفترةُ الجديدة تُفعَّل
+   عند إنشائها (trmSave) — وهي «تبدأ خالية» — فكان cur("students") وأخواتُها
+   فارغةً: «سيُرحَّل ٠ معلّماً · ٠ مشرفاً · ٠ طالباً»، ولا يُرحَّل أحد. وفي وضع
+   «تخصيص» (افتراضيُّ المعالج) يُوقَف كلُّ من لم يُحدَّد — أي الطلابُ جميعاً.
+   وكذلك زرُّ «ترحيل إليها» على فترةٍ فُعِّلت خالية. ورصيدُ المستوى (asgTermList)
+   يُحسب بالفترة النشطة، فكان يُلتقط من الجديدة الفارغة.
+   فالقراءةُ في المعالج وتنفيذِه تجري والمصدرُ هو فترةُ العمل والعرض، تزامنيّاً
+   داخل migInSrc، ثمّ يعود السياقُ كما كان (finally) — فلا يبقى بعده أثر.
+   ========================================================================= */
+/* var لا let: activeTerm و viewTermPicked تقرآنه وقد تُنادَيان قبل سطره أثناء تحميل الملف */
+var MIG_SRC = "";
+function migInSrc(fn) {
+  const prev = MIG_SRC;
+  const src = String((typeof MIG !== "undefined" && MIG && MIG.from) || "");
+  MIG_SRC = src && (DB.terms || []).some(t => t && String(t.id) === src) ? src : "";
+  if (CUR_MEMO) CUR_MEMO = {};
+  try { return fn(); }
+  finally { MIG_SRC = prev; if (CUR_MEMO) CUR_MEMO = {}; }
+}
 function migSups() {
-  return (cur("users") || []).filter(u => u && isMgrRole(u.role) && u.active !== false);
+  return migInSrc(() => (cur("users") || []).filter(u => u && isMgrRole(u.role) && u.active !== false));
 }
 function migTeachers() {
-  return (cur("teachers") || []).filter(t => t && t.active !== false);
+  return migInSrc(() => (cur("teachers") || []).filter(t => t && t.active !== false));
 }
 /* اسمُ الدور بالعربية — من قائمة الأدوار القائمة لا من جدولٍ ثانٍ */
 function migRoleAr(r) {
@@ -28827,10 +28855,16 @@ window.trmMigrate = function (toId) {
     const others = terms.filter(t => String(t.id) !== MIG.to);
     const withStudents = others.filter(t =>
       (DB.students || []).some(x => String(x.termId || "") === String(t.id)));
+    /* وغيرُ المؤرشفة أولى بأحدثها بدءاً (٤٥٣): كان «آخرُها» بترتيب الحفظ، فتُقترح
+       فترةٌ مؤرشفةٌ قديمة مصدراً والتي كانت فترةَ العمل للتوّ بجوارها */
+    const mainOthers = others.filter(t => !t.parallel);
+    const liveOthers = mainOthers.filter(t => t.archived !== true)
+      .sort((a, b) => String(b.from || "").localeCompare(String(a.from || "")));
     const pickFrom =
       (act && String(act.id) !== MIG.to ? act : null) ||
       withStudents[withStudents.length - 1] ||
-      others.filter(t => !t.parallel)[others.filter(t => !t.parallel).length - 1] ||
+      liveOthers[0] ||
+      mainOthers[mainOthers.length - 1] ||
       others[others.length - 1];
     MIG.from = String((pickFrom || others[0] || terms[0]).id);
   } else {
@@ -28846,7 +28880,7 @@ window.trmMigrate = function (toId) {
   MIG.mode = { teachers: "all", sups: "all", students: "custom" };
 
   /* الجميع مُختارون ابتداءً: الأغلب استمرارٌ لا انقطاع */
-  (cur("students") || []).forEach(s => { if (s.status !== "متوقف") MIG.pick[String(s.id)] = true; });
+  migInSrc(() => (cur("students") || []).forEach(s => { if (s.status !== "متوقف") MIG.pick[String(s.id)] = true; }));
   migTeachers().forEach(t => { MIG.pickT[String(t.id)] = true; });
   migSups().forEach(u => { MIG.pickS[String(u.id)] = true; });
 
@@ -28863,8 +28897,8 @@ window.trmMigMode = function (cat, v) {
   /* «الجميع» و«لا ترحيل» يضبطان الاختيارَ كلَّه، و«تخصيص» يُبقيه كما هو */
   if (m !== "custom") {
     const on = m === "all";
-    if (cat === "students") (cur("students") || []).forEach(s => {
-      if (s.status !== "متوقف") MIG.pick[String(s.id)] = on; });
+    if (cat === "students") migInSrc(() => (cur("students") || []).forEach(s => {
+      if (s.status !== "متوقف") MIG.pick[String(s.id)] = on; }));
     if (cat === "teachers") migTeachers().forEach(t => { MIG.pickT[String(t.id)] = on; });
     if (cat === "sups")     migSups().forEach(u => { MIG.pickS[String(u.id)] = on; });
   }
@@ -28891,7 +28925,7 @@ function migChosenS() {
 }
 function migChosenStu() {
   return MIG.mode.students === "none" ? []
-    : (cur("students") || []).filter(s => s.status !== "متوقف" && MIG.pick[String(s.id)]);
+    : migInSrc(() => (cur("students") || []).filter(s => s.status !== "متوقف" && MIG.pick[String(s.id)]));
 }
 
 /* المواصفات: «ترحيل مخصص: اختيار طلاب محددين — مثلاً نقل طلاب حلقة (أ)
@@ -28917,16 +28951,16 @@ window.trmMigDestAll = function (circleId) {
    واحداً. المواصفات تنصّ على «اختيار حلقات معيّنة ونقلها بالكامل». */
 window.trmMigCircle = function (circleId, on) {
   const cid = String(circleId || "");
-  (cur("students") || []).forEach(s2 => {
+  migInSrc(() => (cur("students") || []).forEach(s2 => {
     if (s2.status === "متوقف") return;
     if (String(s2.circleId || "") !== cid) return;
     MIG.pick[String(s2.id)] = !!on;
-  });
+  }));
   trmMigrateRender();
 };
 
 window.trmMigAll = function (on) {
-  (cur("students") || []).forEach(s => { if (s.status !== "متوقف") MIG.pick[String(s.id)] = !!on; });
+  migInSrc(() => (cur("students") || []).forEach(s => { if (s.status !== "متوقف") MIG.pick[String(s.id)] = !!on; }));
   trmMigrateRender();
 };
 
@@ -28941,7 +28975,8 @@ function trmMigCircleMoves(c, studs) {
     (!MIG.dest[String(x.id)] || String(MIG.dest[String(x.id)]) === cid));
 }
 
-function trmMigrateRender() {
+function trmMigrateRender() { return migInSrc(trmMigrateRenderIn); }
+function trmMigrateRenderIn() {
   const terms = cur("terms") || [];
   const studs = (cur("students") || []).filter(s => s.status !== "متوقف");
   const picked = studs.filter(s => MIG.pick[String(s.id)]).length;
@@ -29133,6 +29168,13 @@ function migAlreadyDone(sig) {
 }
 
 window.trmMigrateDo = function () {
+  /* يُنفَّذ في سياق المصدر، ثمّ يُرسم في سياق فترة العمل الجديدة (٤٥٣) */
+  const r = migInSrc(trmMigrateDoIn);
+  if (CUR_MEMO) CUR_MEMO = {};
+  mount();
+  return r;
+};
+function trmMigrateDoIn() {
   if (MIG.from === MIG.to) return;
   if (!trmCanManage()) { showToast("الترحيلُ لمدير النظام ومدير المنشأة", "warn"); return; }
   /* ضغطتان متتاليتان لا تُنفِّذان مرّتين */
@@ -29360,8 +29402,7 @@ window.trmMigrateDo = function () {
             (stopped ? ` · أُوقف ${toArabicDigits(stopped)}` : "") +
             (frozenC ? ` · بقيت ${toArabicDigits(frozenC)} حلقة في الفترة القديمة` : "") +
             (closedA ? ` · طُويت ${toArabicDigits(closedA)} واجباً معلَّقاً` : ""), "success");
-  mount();
-};
+}
 
 /* لوحة الفترة النشطة — تُلحق بشاشة الفترات */
 function trmActivePanel() {
@@ -54764,7 +54805,8 @@ function attMarkRest() {
   if (!rest.length) { showToast("كل الطلاب لهم حالة"); return; }
   rest.forEach(s => { attDraft()[String(s.id)] = { status: "حاضر", reason: "" }; });
   mount();
-  showToast("عُلّم " + rest.length + " طالباً حاضراً — اضغط حفظ التحضير");
+  /* بالأرقام العربية كنظيرتها «الباقي غائب» (٤٥٣) */
+  showToast("عُلّم " + toArabicDigits(rest.length) + " طالباً حاضراً — اضغط حفظ التحضير");
 }
 
 /* «الباقي غائب» — نظيرةُ «الباقي حاضر»: من بقي بلا حالةٍ يُعلَّم غائباً

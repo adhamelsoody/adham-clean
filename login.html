@@ -20,12 +20,13 @@
     }
 
     /* طبقة 1 — صورة الخلفية
-       ضع ملفاً باسم login-bg.jpg بجانب هذه الصفحة.
-       إن لم يوجد، يظهر التدرّج اللوني تلقائياً. */
+       الملفُّ login-bg.jpg غيرُ موجودٍ في المشروع ولا على الموقع، فكان كلُّ فتحٍ
+       لهذه الصفحة يطلبه فيُردّ 404 في الكونسول والشبكة (٤٥٣). والمرئيُّ لم يتغيّر:
+       يظهر اللونُ الاحتياطيّ كما كان. لإعادة الصورة: ضع login-bg.jpg بجانب هذه
+       الصفحة وأعِد السطر:  background-image: url("login-bg.jpg"); */
     body::before {
       content: ""; position: fixed; inset: 0; z-index: 0;
       background-color: #01282e;
-      background-image: url("login-bg.jpg");
       background-size: cover;
       background-position: center center;
       background-repeat: no-repeat;
@@ -148,7 +149,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
-  <script src="js/firebase-config.js?v=20261030-1530"></script>
+  <script src="js/firebase-config.js?v=20261030-1705"></script>
   <script>
   (function () {
     "use strict";
