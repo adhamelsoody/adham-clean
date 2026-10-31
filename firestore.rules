@@ -632,7 +632,10 @@ service cloud.firestore {
 
     /* ---------------- البيانات التشغيلية ---------------- */
     match /{coll}/{docId} {
-      allow read: if coll in operational() && ((canRead() && !hiddenFrom(coll)) || donorMay(coll) || kidOwn(coll) || mqOwn(coll) || cxOwn(coll) || mgrOwn(coll));
+      /* التنبيهاتُ تُقرأ من كتلتها وحدَها (٤٦٢): كلُّ ما يمنحه هذا السطرُ لها تمنحه
+         كتلتُها — والكتلتان تُقيَّمان معاً في حدِّ الألف تعبير للطلب الواحد، فكان
+         شرطُ «ما وُجِّه إليّ» آخرَها لا يُبلغ فيُرفض تنبيهُ مدير المسجد لنفسه (RL-36) */
+      allow read: if coll in operational() && coll != 'notifications' && ((canRead() && !hiddenFrom(coll)) || donorMay(coll) || kidOwn(coll) || mqOwn(coll) || cxOwn(coll) || mgrOwn(coll));
       /* المجمّعاتُ لها كتلتُها أدناه (٤٥٤): القواعدُ تُجمع بـ OR، فلو بقيت هنا
          لأذِن هذا السطرُ لكلّ مدير منشأة — سجلُّ المجمّع بلا نطاقٍ فيمرّ scopeOk */
       allow create: if coll in operational() && coll != 'complexes' && canWrite() && scopeOk();
@@ -818,8 +821,9 @@ service cloud.firestore {
 
     match /notifications/{docId} {
       /* مديرُ المنشأة: تنبيهاتُ منشأته وما وُجِّه إليه بعينه (٤٥٨) */
-      allow read: if (canRead() && !hiddenFrom('notifications')) || mgrOwn('notifications')
-                  || (isActive() && toMe());
+      /* وأرخصُ الشروط أوّلاً: ما وُجِّه إليّ بعينه (٤٦٢) */
+      allow read: if (toMe() && isActive())
+                  || (canRead() && !hiddenFrom('notifications')) || mgrOwn('notifications');
       allow create: if canWrite() || isTeacher();
       allow update, delete: if canWrite() || isTeacher();
       /* المستلِمُ بعينه يعلّم تنبيهَه مقروءاً — حقلَ read وحدَه (٤٤١). كان
