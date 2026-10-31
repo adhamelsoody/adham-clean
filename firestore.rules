@@ -632,10 +632,12 @@ service cloud.firestore {
 
     /* ---------------- البيانات التشغيلية ---------------- */
     match /{coll}/{docId} {
+      /* والاختباراتُ كذلك (٤٦٣): كتلتُها تمنح كلَّ ما يمنحه هذا السطر، وشرطُ مشرفِها
+         من مسجدٍ آخر كان آخرَها فلا يُبلغ (RL-35). */
       /* التنبيهاتُ تُقرأ من كتلتها وحدَها (٤٦٢): كلُّ ما يمنحه هذا السطرُ لها تمنحه
          كتلتُها — والكتلتان تُقيَّمان معاً في حدِّ الألف تعبير للطلب الواحد، فكان
          شرطُ «ما وُجِّه إليّ» آخرَها لا يُبلغ فيُرفض تنبيهُ مدير المسجد لنفسه (RL-36) */
-      allow read: if coll in operational() && coll != 'notifications' && ((canRead() && !hiddenFrom(coll)) || donorMay(coll) || kidOwn(coll) || mqOwn(coll) || cxOwn(coll) || mgrOwn(coll));
+      allow read: if coll in operational() && coll != 'notifications' && coll != 'exams' && ((canRead() && !hiddenFrom(coll)) || donorMay(coll) || kidOwn(coll) || mqOwn(coll) || cxOwn(coll) || mgrOwn(coll));
       /* المجمّعاتُ لها كتلتُها أدناه (٤٥٤): القواعدُ تُجمع بـ OR، فلو بقيت هنا
          لأذِن هذا السطرُ لكلّ مدير منشأة — سجلُّ المجمّع بلا نطاقٍ فيمرّ scopeOk */
       allow create: if coll in operational() && coll != 'complexes' && canWrite() && scopeOk();
@@ -752,10 +754,11 @@ service cloud.firestore {
        إنشاءٌ بمرحلة await-sup وحدَها: لا يرفع طلباً معتمداً ولا موثَّقاً،
        ولا يعدّل محفوظاً ولا يحذفه. */
     match /exams/{docId} {
-      allow read: if (canRead() && !hiddenFrom('exams')) || kidOwn('exams') || mqOwn('exams') || cxOwn('exams')
-                  /* مشرفُ الاختبار الموجَّه إليه ولو من مسجدٍ آخر (٤٥٧) — آخرَ الشروط:
-                     الاختبارُ بلا examinerUids يُخطئ هنا فيُردّ كما كان */
-                  || (canRead() && request.auth.uid in resource.data.examinerUids);
+      /* مشرفُ الاختبار الموجَّه إليه ولو من مسجدٍ آخر (٤٥٧) — أوّلَ الشروط، فهو أرخصُها
+         (٤٦٣): كان آخرَها فيُستنفد حدُّ التقييم قبله. والاختبارُ بلا examinerUids يُخطئ
+         هذا الشرطُ فيه، والخطأُ في «أو» لا يُسقط ما بعده */
+      allow read: if (request.auth.uid in resource.data.examinerUids && canRead())
+                  || (canRead() && !hiddenFrom('exams')) || kidOwn('exams') || mqOwn('exams') || cxOwn('exams');
       allow create: if teacherMayAs('examRequest', 'examRequest', true)
                     && request.resource.data.stage == 'await-sup'
                     && request.resource.data.studentId is string;
