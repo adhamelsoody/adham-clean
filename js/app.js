@@ -4735,8 +4735,18 @@ window.ptSearch = function (q) {
   });
 };
 /* زر السهم بجوار عنوان الصفحة */
+/* «رجوع» لا يُخرج من النظام (٤٦٠): الصفحةُ المفتوحةُ من رابطٍ مباشر بلا صفحةٍ قبلها
+   كان «رجوع» فيها يخرج من الموقع إلى صفحةٍ فارغة. فيُرجَع إن كان قبلها شاشةٌ من
+   النظام (قيدٌ دُفع في هذه الجلسة، أو جاء منها من صفحةٍ من الموقع نفسِه)، وإلّا
+   فإلى الرئيسية. */
+window.backOrHome = function () {
+  let ref = "";
+  try { ref = document.referrer ? new URL(document.referrer).origin : ""; } catch (e) {}
+  if ((typeof NAV_PUSHED !== "undefined" && NAV_PUSHED > 0) || ref === location.origin) { history.back(); return; }
+  location.href = /\/admin\//.test(location.pathname) ? "dashboard.html" : "index.html";
+};
 function backArrow() {
-  return `<button class="pt-arrow" onclick="history.back()" title="رجوع">
+  return `<button class="pt-arrow" onclick="window.backOrHome()" title="رجوع">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg></button>`;
 }
 
@@ -47675,6 +47685,7 @@ function navSame(a, b) {
   return !!a && !!b && a.page === b.page && a.tstu === b.tstu && a.tcrc === b.tcrc;
 }
 
+let NAV_PUSHED = 0;   /* قيودُ النظام المدفوعة في هذه الجلسة — يقرؤها «رجوع» (٤٦٠) */
 function navPush() {
   if (NAV_BACK) return;
   if (typeof history === "undefined" || !history.pushState) return;
@@ -47682,7 +47693,7 @@ function navPush() {
   if (navSame(s, NAV_LAST)) return;
   /* أوّلُ شاشةٍ تحلّ محلَّ القيد القائم، وما بعدها يُضاف — فلا يُزاد قيدٌ
      بلا سببٍ عند أوّل رسم */
-  if (NAV_LAST === null) history.replaceState(s, ""); else history.pushState(s, "");
+  if (NAV_LAST === null) history.replaceState(s, ""); else { history.pushState(s, ""); NAV_PUSHED++; }
   NAV_LAST = s;
 }
 
@@ -47691,6 +47702,7 @@ if (typeof window !== "undefined" && window.addEventListener) {
     const s = e && e.state;
     /* قيدٌ ليس من شاشاتنا (ما قبل دخولِ النظام): يمضي كما كان */
     if (!s || !s.zat) return;
+    if (NAV_PUSHED > 0) NAV_PUSHED--;
     NAV_BACK = true;
     try {
       if (typeof STATE !== "undefined" && STATE) STATE.page = s.page;
