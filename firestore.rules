@@ -991,6 +991,31 @@ service cloud.firestore {
     }
 
 
+    /* =====================================================================
+       فهرسُ أرقام الهوية بين المساجد (٤٥٦)
+       ---------------------------------------------------------------------
+       مديرُ المسجد لا يقرأ طلابَ غيره، فلا يرى تكرارَ رقم الهوية في مسجدٍ
+       آخر. لكلّ رقمٍ مستندٌ معرّفُه بصمةُ الرقم (لا الرقمُ نفسُه)، وفيه
+       studentId و mosqueId و ts فقط. يُقرأ بمعرّفه وحدَه — لا سردَ للمجموعة
+       — ولمن يسجّل الطلاب فقط. ولا يُنتزع مستندُ طالبٍ لآخر إلّا للمدير أو
+       لمن المستندُ في مسجده. والطالبُ ووليُّه والداعمُ لا شأن لهم به.
+       ===================================================================== */
+    match /idIndex/{h} {
+      allow get:  if canWrite() || isTeacher();
+      allow list: if false;
+      allow create: if (canWrite() || isTeacher())
+                    && request.resource.data.keys().hasOnly(['studentId', 'mosqueId', 'ts'])
+                    && request.resource.data.studentId is string
+                    && request.resource.data.studentId != '';
+      allow update: if (canWrite() || isTeacher())
+                    && request.resource.data.keys().hasOnly(['studentId', 'mosqueId', 'ts'])
+                    && request.resource.data.studentId is string
+                    && (resource.data.studentId == request.resource.data.studentId
+                        || isAdmin() || resource.data.mosqueId in myMosques());
+      allow delete: if isAdmin()
+                    || ((canWrite() || isTeacher()) && resource.data.mosqueId in myMosques());
+    }
+
     /* ---------------- المنع الافتراضي ---------------- */
     /* أي مسار لم يُذكر أعلاه ممنوع تماماً. */
     match /{document=**} {

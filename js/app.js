@@ -30009,11 +30009,113 @@ function stuIdNoError(raw, selfId) {
   if (!/^[0-9]{10}$/.test(id)) return "رقم الهوية عشرة أرقام";
   const dup = (DB.students || []).find(x => x && String(x.id) !== String(selfId == null ? "" : selfId) &&
                                              toLatinDigitsSafe(String(x.idNo || "")).replace(/\s+/g, "") === id);
-  return dup ? "رقم الهوية مسجَّلٌ للطالب «" + (dup.name || "—") + "»" : "";
+  if (dup) return "رقم الهوية مسجَّلٌ للطالب «" + (dup.name || "—") + "»";
+  /* وبين المساجد: ما لا يراه هذا الحساب في DB.students (٤٥٦) */
+  return idIdxError(id, selfId);
 }
 function toLatinDigitsSafe(v) {
   return String(v == null ? "" : v).replace(/[٠-٩]/g, d => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
                                    .replace(/[۰-۹]/g, d => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
+}
+
+/* =========================================================================
+   فهرسُ أرقام الهوية بين المساجد (٤٥٦)
+   -------------------------------------------------------------------------
+   فحصُ التكرار كان في DB.students وحدها، ومديرُ المسجد لا يقرأ منها إلّا
+   طلابَ مسجده (قواعد ٤٤٧) — فيُسجَّل الرقمُ نفسُه في مسجدين ولا يُنبَّه أحد.
+   فلكلّ رقمٍ مستندٌ في idIndex: معرّفُه بصمةُ SHA-256 للرقم (لا يُكتب الرقمُ
+   نفسُه)، وفيه studentId و mosqueId فقط. يُقرأ بمعرّفه (get) ولا تُسرد
+   المجموعة. الفحصُ قبل الحفظ متزامن، فيُجلب الجوابُ مسبقاً عند كتابة الرقم
+   ويُحفظ في ID_IDX؛ وإن لم يصل بعد قيل «جارٍ التحقق» ولم يُكتب شيء.
+   وإن تعذّرت القراءة (بلا اتصال، أو قبل نشر القواعد) بقي الفحصُ المحليُّ
+   وحده كما كان، ويُكتب السببُ في الـ Console — لا يُمنع التسجيل.
+   ========================================================================= */
+const ID_IDX = {};                 /* رقم ← { state, hit, t, p } */
+const ID_IDX_TTL = 5 * 60 * 1000;
+function idIdxNorm(v) {
+  const id = toLatinDigitsSafe(v).replace(/\D+/g, "");
+  return /^[0-9]{10}$/.test(id) ? id : "";
+}
+function idIdxKey(id) {
+  return crypto.subtle.digest("SHA-256", new TextEncoder().encode("zat-id:" + id))
+    .then(b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join(""));
+}
+function idIdxLookup(raw) {
+  const id = idIdxNorm(raw);
+  if (!id) return Promise.resolve(null);
+  const old = ID_IDX[id];
+  if (old && (old.state === "pending" || Date.now() - old.t < ID_IDX_TTL)) return old.p;
+  const db = typeof FDB === "function" ? FDB() : null;
+  const e = ID_IDX[id] = { state: "pending", hit: null, t: Date.now(), p: null };
+  if (!db || !(window.crypto && crypto.subtle) || (typeof isOnline === "function" && !isOnline())) {
+    e.state = "error"; e.p = Promise.resolve(null); return e.p;
+  }
+  e.p = idIdxKey(id)
+    .then(k => db.collection("idIndex").doc(k).get())
+    .then(s => { e.hit = s.exists ? (s.data() || null) : null; e.state = "done"; e.t = Date.now(); return e.hit; })
+    .catch(err => {
+      console.warn("[فهرس الهوية] تعذّر فحصُ الرقم بين المساجد — بقي الفحصُ المحليّ:", (err && err.code) || err);
+      e.state = "error"; e.t = Date.now(); return null;
+    });
+  return e.p;
+}
+function idIdxPrefetch(list) {
+  return Promise.all((list || []).map(idIdxLookup));
+}
+function idIdxReady(list) {
+  return (list || []).every(v => { const id = idIdxNorm(v); const e = id && ID_IDX[id];
+    return !id || (e && e.state !== "pending" && Date.now() - e.t < ID_IDX_TTL); });
+}
+/* "" إن لم يُسجَّل الرقم لطالبٍ آخر في مسجدٍ آخر، وإلّا نصُّ الخطأ */
+function idIdxError(raw, selfId) {
+  const id = idIdxNorm(raw);
+  if (!id) return "";
+  const e = ID_IDX[id];
+  if (!e || (e.state !== "pending" && Date.now() - e.t >= ID_IDX_TTL)) { idIdxLookup(id); return "جارٍ التحقق من رقم الهوية في المساجد الأخرى — أعد المحاولة بعد لحظة"; }
+  if (e.state === "pending") return "جارٍ التحقق من رقم الهوية في المساجد الأخرى — أعد المحاولة بعد لحظة";
+  const h = e.hit;
+  if (!h || !h.studentId || String(h.studentId) === String(selfId == null ? "" : selfId)) return "";
+  /* المستندُ يشير إلى طالبٍ أراه وقد تغيّر رقمُه أو حُذف: أثرٌ قديم لا يمنع */
+  const mine = (DB.students || []).find(s => s && String(s.id) === String(h.studentId));
+  if (mine && idIdxNorm(mine.idNo) !== id) return "";
+  const m = (DB.mosques || []).find(x => x && String(x.id) === String(h.mosqueId || ""));
+  return "رقم الهوية مسجَّلٌ لطالبٍ في " + (m && m.name ? "«" + m.name + "»" : "مسجدٍ آخر");
+}
+/* بعد حفظ الطالب: مستندُ رقمه يشير إليه (مرّةً لكلّ رقمٍ ومسجدٍ في الجلسة) */
+const ID_IDX_PUT = {};
+function idIdxPut(st) {
+  const id = idIdxNorm(st && st.idNo), db = typeof FDB === "function" ? FDB() : null;
+  if (!id || !db || st.id == null || !(window.crypto && crypto.subtle)) return;
+  const sig = String(st.id) + "|" + String(st.mosqueId || "");
+  if (ID_IDX_PUT[id] === sig) return;
+  const e = ID_IDX[id];
+  /* مسجَّلٌ لغيره (رقمٌ قديمٌ حُفظ قبل الفهرس): لا يُنتزع، ويبقى لصاحبه */
+  if (e && e.state === "done" && e.hit && e.hit.studentId && String(e.hit.studentId) !== String(st.id) &&
+      idIdxError(id, st.id)) return;
+  ID_IDX_PUT[id] = sig;
+  const rec = { studentId: String(st.id), mosqueId: String(st.mosqueId || ""), ts: Date.now() };
+  idIdxKey(id).then(k => db.collection("idIndex").doc(k).set(rec))
+    .then(() => { ID_IDX[id] = { state: "done", hit: rec, t: Date.now(), p: Promise.resolve(rec) }; })
+    .catch(err => { delete ID_IDX_PUT[id];
+      console.warn("[فهرس الهوية] لم يُكتب مستندُ الرقم:", (err && err.code) || err); });
+}
+/* رقمٌ تُرك (حُذف الطالب أو تغيّر رقمُه): يُحذف مستندُه إن كان له وحدَه */
+function idIdxDrop(raw, studentId) {
+  const id = idIdxNorm(raw), db = typeof FDB === "function" ? FDB() : null;
+  if (!id || !db || studentId == null || !(window.crypto && crypto.subtle)) return;
+  delete ID_IDX_PUT[id]; delete ID_IDX[id];
+  idIdxKey(id).then(k => { const ref = db.collection("idIndex").doc(k);
+    return ref.get().then(s => s.exists && String((s.data() || {}).studentId) === String(studentId) ? ref.delete() : null); })
+    .catch(err => console.warn("[فهرس الهوية] لم يُحذف مستندُ الرقم:", (err && err.code) || err));
+}
+window.idIdxLookup = idIdxLookup;
+/* الجلبُ المسبق: ما إن يكتمل الرقمُ في حقلٍ من حقول هوية الطالب يُسأل عنه */
+if (typeof document !== "undefined" && document.addEventListener) {
+  ["input", "change"].forEach(ev => document.addEventListener(ev, function (e) {
+    const t = e.target;
+    if (!t || !t.matches || !t.matches("#s_idno, #es_idno, #tsa_idno, .rg-idNo")) return;
+    if (idIdxNorm(t.value)) idIdxLookup(t.value);
+  }, true));
 }
 
 /* فحصُ صفٍّ واحد: ما يمنع كتابتَه، أو لا شيء */
@@ -30026,6 +30128,7 @@ function regRowError(r, mqId, seenIds) {
   if (id) {
     if ((DB.students || []).some(s => s && String(s.idNo || "") === id)) return "رقم الهوية مسجَّلٌ لطالبٍ آخر";
     if (seenIds && seenIds[id]) return "رقم الهوية مكرَّرٌ في القائمة";
+    { const xe = idIdxError(id, null); if (xe) return xe; }   /* وبين المساجد (٤٥٦) */
     if (seenIds) seenIds[id] = true;
   }
   /* التنسيب (التسجيلُ المتعدد وملفُّ الإكسل): المنسوبُ لخطةٍ يُختار له برنامجٌ أو
@@ -30247,6 +30350,9 @@ window.regMultiSave = function () {
   const all = regMultiRead();
   const rows = all.filter(r => r.name || r.idNo || r.phone || r.parent);
   if (!rows.length) { showToast("اكتب اسمَ طالبٍ واحدٍ على الأقلّ", "warn"); return; }
+  /* أرقامُ الهوية تُسأل بين المساجد أوّلاً، ثمّ يُعاد الحفظ بالجواب (٤٥٦) */
+  { const ids = rows.map(r => r.idNo);
+    if (!idIdxReady(ids)) { idIdxPrefetch(ids).then(() => window.regMultiSave()); return; } }
   /* لا يُكتب شيءٌ وفي القائمة خطأ: يُعلَّم الصفُّ ويُقال سببُه */
   const seen = {};
   let bad = 0;
@@ -30425,6 +30531,9 @@ function regMapRows(table) {
 
 function regPreviewHTML() {
   if (!REG_X.rows.length) return "";
+  /* أرقامٌ لم يصل جوابُها بين المساجد: تُسأل ثمّ تُعاد المعاينة بها (٤٥٦) */
+  { const ids = REG_X.rows.map(r => regXRow(r).idNo);
+    if (!idIdxReady(ids)) idIdxPrefetch(ids).then(() => { if (window.regPaintPrev) window.regPaintPrev(); }); }
   const mqId = regMosqueId();
   const seen = {};
   let okN = 0;
@@ -30500,6 +30609,9 @@ window.regFilePick = function (f) {
 };
 window.regImport = function () {
   const rows = REG_X.rows.map(regXRow);
+  /* أرقامُ الهوية تُسأل بين المساجد أوّلاً (٤٥٦) */
+  { const ids = rows.map(r => r.idNo);
+    if (!idIdxReady(ids)) { idIdxPrefetch(ids).then(() => window.regImport()); return; } }
   const mqId = regMosqueId();
   const seen = {};
   const good = rows.filter(r => !regRowError(r, mqId, seen));
@@ -55669,7 +55781,10 @@ document.addEventListener("click", (e) => {
       /* البيانات الشخصية */
       { const eIdErr = stuIdNoError(val("#es_idno", s.idNo || ""), s.id);
         if (eIdErr && String(val("#es_idno", "") || "") !== String(s.idNo || "")) { showToast(eIdErr, "warn"); break; } }
-      s.idNo = toLatinDigitsSafe(val("#es_idno", s.idNo || "")).trim();
+      { const _oldId = s.idNo;
+        s.idNo = toLatinDigitsSafe(val("#es_idno", s.idNo || "")).trim();
+        /* الرقمُ القديمُ يُخلى في الفهرس بين المساجد (٤٥٦) */
+        if (_oldId && idIdxNorm(_oldId) !== idIdxNorm(s.idNo)) idIdxDrop(_oldId, s.id); }
       s.nationality = val("#es_nat", s.nationality || "");
       s.school = val("#es_school", s.school || "");
       s.grade = val("#es_grade", s.grade || "");
@@ -55717,8 +55832,11 @@ document.addEventListener("click", (e) => {
     }
     case "delete-student-confirm": {
       const id = t.dataset.id;
+      const _gone = DB.students.find(x => x.id == id);
       DB.students = DB.students.filter(x => x.id != id);
       persistDelete("students", id);
+      /* رقمُ هويته يُخلى في الفهرس بين المساجد (٤٥٦) */
+      if (_gone && _gone.idNo) idIdxDrop(_gone.idNo, id);
       closeModal(); renderNav(); mount();
       showToast("تم حذف الطالب");
       break;
@@ -57686,7 +57804,11 @@ function persistSet(coll, obj) {
   if (!isOnline()) { offqPush("set", coll, data); return Promise.resolve(true); }
 
   return db.collection(coll).doc(String(obj.id)).set(data)
-    .then(() => true)
+    .then(() => {
+      /* فهرسُ أرقام الهوية بين المساجد يتبع الطالبَ المحفوظ (٤٥٦) */
+      if (coll === "students" && typeof idIdxPut === "function") idIdxPut(data);
+      return true;
+    })
     .catch(err => {
       persistFail("persistSet", coll, err, data);
       /* رفضُ القواعد ليس انقطاعاً: طابورُ الرفع يعيد المحاولة أبداً بلا
