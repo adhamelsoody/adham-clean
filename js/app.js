@@ -1861,7 +1861,7 @@ function cxMgrDashboard(mode) {
     </button>`).join("");
 
   /* ---------- مؤشّرُ الإنجاز: متوسّطُ تقدّم خطط الطلاب ---------- */
-  const prog = total ? Math.round(students.reduce((a, x) => a + (Number(x.progress) || 0), 0) / total) : 0;
+  const prog = total ? Math.round(students.reduce((a, x) => a + stuPctOf(x), 0) / total) : 0;
   const circ = 2 * Math.PI * 52;
   const donut = `<button type="button" class="donut-wrap cxd-donut" data-go="students"
       onclick="window.go('students')" title="تقدّم الطلاب">
@@ -2809,7 +2809,7 @@ function studentsOverview(list) {
     </button>`).join("");
 
   /* مؤشر الإنجاز = متوسط تقدّم خطط الطلاب */
-  const prog = total ? Math.round(list.reduce((a, x) => a + (Number(x.progress) || 0), 0) / total) : 0;
+  const prog = total ? Math.round(list.reduce((a, x) => a + stuPctOf(x), 0) / total) : 0;
   const circ = 2 * Math.PI * 52;
   const donut = `<div class="donut-wrap">
     <svg class="donut" viewBox="0 0 130 130">
@@ -2877,7 +2877,7 @@ function adminStudents() {
           ${p2.days ? `<div class="pt-muted" style="font-size:11px;margin-top:3px">${esc(p2.days)}</div>` : ""}</td>` },
       { h: "البرنامج والمستوى", cell: p2 => `<td>${esc(p2.program || "—")}
           <div class="pt-muted" style="font-size:11.5px">${esc(p2.level || "—")}</div></td>` },
-      { h: "تقدم الخطة", cell: p2 => `<td style="min-width:120px">${progressRow(Number(p2.progress) || 0)}</td>` },
+      { h: "تقدم الخطة", cell: p2 => `<td style="min-width:120px">${progressRow(stuPctOf(p2))}</td>` },
       { h: "حضور اليوم", cell: p2 => {
           /* من سجلات الحضور الفعلية — العمود السابق كان يعرض حقلاً مخزَّناً
              لا يحدّثه شيء، فيبقى صفراً مهما سُجّل الحضور. */
@@ -3058,7 +3058,7 @@ function planActiveTab() {
     <td><div class="td-name"><div class="mini-avatar">${initials(p.student)}</div><div><div class="td-strong">${esc(p.student)}</div><div class="muted" style="font-size:11.5px">${esc(p.circle)}</div></div></div></td>
     <td style="font-size:12.5px">${esc(p.program)}<div class="muted" style="font-size:11.5px">${esc(p.level)}</div></td>
     <td style="font-size:12px">${esc(p.start)} ← <strong>${esc(p.current)}</strong> ← ${esc(p.end)}</td>
-    <td style="min-width:115px">${progressRow(p.progress)}</td>
+    <td style="min-width:115px">${progressRow(planPctOf(p))}</td>
     <td class="center">${p.delays > 0 ? badge(p.delays, "b-red") : badge("0", "b-gray")}</td>
     <td>${badge(h.label, h.cls)}</td>
     <td><div class="row-actions">
@@ -15309,9 +15309,9 @@ window.lvDetail = function (lvId) {
   const prog = (cur("programs") || []).find(x => String(x.id) === String(lv.programId));
   const tr = (typeof lvTransition === "function" ? lvTransition(lv) : {}) || {};
 
-  const done = rows.filter(r => Number(r.plan.progress) >= 100).length;
+  const done = rows.filter(r => planPctOf(r.plan, r.st) >= 100).length;
   const avg = rows.length
-    ? Math.round(rows.reduce((a, r) => a + (Number(r.plan.progress) || 0), 0) / rows.length)
+    ? Math.round(rows.reduce((a, r) => a + planPctOf(r.plan, r.st), 0) / rows.length)
     : 0;
 
   openModal("المستوى: " + (lv.name || "—"),
@@ -15332,7 +15332,7 @@ window.lvDetail = function (lvId) {
     <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
       <thead><tr><th>الطالب</th><th>الحلقة</th><th>المعلم</th><th>الموضع</th><th>الإنجاز</th><th>الحالة</th></tr></thead>
       <tbody>${rows.length ? rows.map(r => {
-        const pr = Number(r.plan.progress) || 0;
+        const pr = planPctOf(r.plan, r.st);
         return `<tr>
           <td class="pt-name">${esc(r.st.name || "—")}</td>
           <td class="${r.st.circle ? "" : "pt-muted"}">${esc(r.st.circle || "بلا حلقة")}</td>
@@ -15854,8 +15854,8 @@ window.lvlView = function (id) {
     .map(st => ({ st: st, plan: sIds[String(st.id)] }));
 
   const avg = studs.length
-    ? Math.round(studs.reduce((a, r) => a + (Number(r.plan.progress) || 0), 0) / studs.length) : 0;
-  const done = studs.filter(r => Number(r.plan.progress) >= 100).length;
+    ? Math.round(studs.reduce((a, r) => a + planPctOf(r.plan, r.st), 0) / studs.length) : 0;
+  const done = studs.filter(r => planPctOf(r.plan, r.st) >= 100).length;
 
   const stat = (label, value, sub, icon) => `
     <div class="sp-stat">
@@ -16022,7 +16022,7 @@ window.lvlView = function (id) {
               <td class="${stuLinkName(r.st).teacher ? "" : "pt-muted"}">${esc(stuLinkName(r.st).teacher || "بلا معلم")}</td>
               <td class="${r.plan.level ? "" : "pt-muted"}">${esc(r.plan.level || "بلا مستوى")}</td>
               <td class="pt-num">${esc(r.plan.current || "—")}</td>
-              <td style="min-width:130px">${progressRow(Number(r.plan.progress) || 0)}</td>
+              <td style="min-width:130px">${progressRow(planPctOf(r.plan, r.st))}</td>
             </tr>`).join("")
             : `<tr><td colspan="6" class="rep-empty">لا طلاب في هذا البرنامج بعد.</td></tr>`}</tbody>
           </table></div></div>
@@ -19752,9 +19752,16 @@ function rangeEnd(fromS, fromA, qty, unit, dir, rev) {
     if (u === "ayah" || u === "surah") return descWalk(fromS, fromA, n, u, false);
     /* ما بقي داخل سورة الابتداء يُقاس كالتصاعديّ بصفحاته (الآياتُ فيها
        تصاعدٌ في الجهتين)، وما عبرها يُمشى على الأسطر إلى التي قبلها */
-    return rangeEnd(fromS, fromA, n, unit, "forward").then(function (e) {
+    /* عددُ آيات السورة من جدول المصحف نفسِه، يُنتظر (٤٥٩): كان من فهرسٍ لا يُحمَّل
+       إلّا إن فتحت شاشةٌ ما سورَها، فإن لم يصل كان صفراً فسقط القياسُ بالصفحة إلى
+       المشي بالأسطر — فوجهٌ من أوّل النبأ (صفحة ٥٨٢: ١–٣٠) صار «النبأ ١–٣٥»،
+       يُكتب في الواجب ولا يُعاد حسابُه. فاختلف المدى نفسُه باختلاف ما فُتح قبله. */
+    const cntP = (Quran.ayahCount ? Promise.resolve(Quran.ayahCount(fromS)).catch(function () { return 0; })
+                                  : Promise.resolve(0));
+    return Promise.all([rangeEnd(fromS, fromA, n, unit, "forward"), cntP]).then(function (r) {
+      const e = r[0];
       /* داخلَ السورة حقّاً: لا عند آخرها (فقد يكون المشيُ وقف عند آخر المصحف) */
-      const c0 = Number(ayahCountOf(fromS)) || 0;
+      const c0 = Number(r[1]) || Number(ayahCountOf(fromS)) || 0;
       if (e && Number(e.surah) === Number(fromS) && c0 > 0 && Number(e.ayah) < c0) return e;
       return descWalk(fromS, fromA, n, u, false);
     }).catch(function () { return descWalk(fromS, fromA, n, u, false); });
@@ -20704,11 +20711,41 @@ function asgId(dateISO, studentId, kind) {
    تاريخَه. ولا تُفتح بهذا قائمةٌ يتصفّحها أحد: هاتان لا تُجيبان إلا عن
    طالبٍ بعينه، والتصفيةُ على القوائم العامّة باقيةٌ كما هي.
    ========================================================================= */
+/* تجميعُ الواجبات بالطالب مرّةً لكلّ حالٍ من المصفوفة (٤٥٩): تقدّمُ الخطة صار
+   يُحسب في كلّ صفٍّ من الجداول، والفرزُ الكاملُ لكلّ طالبٍ يُبطئها. يُعاد
+   التجميعُ متى تبدّلت المصفوفةُ أو طولُها؛ والعناصرُ مراجعُها نفسُها فيظهر
+   تغيّرُ الحالة فوراً. ويُرجَع نسخةٌ فلا يمسّ المنادي التجميع. */
+let ASG_BY = { arr: null, n: -1, map: null };
 function asgOf(studentId) {
   const sid = String(studentId || "");
   if (!sid) return [];
-  return (Array.isArray(DB.assignments) ? DB.assignments : [])
-    .filter(a => a && String(a.studentId) === sid);
+  const arr = Array.isArray(DB.assignments) ? DB.assignments : [];
+  if (ASG_BY.arr !== arr || ASG_BY.n !== arr.length) {
+    const map = {};
+    arr.forEach(a => { if (!a) return; const k = String(a.studentId); (map[k] = map[k] || []).push(a); });
+    ASG_BY = { arr, n: arr.length, map };
+  }
+  return (ASG_BY.map[sid] || []).filter(a => a && String(a.studentId) === sid);
+}
+
+/* =========================================================================
+   تقدّمُ خطة الطالب — مصدرٌ واحدٌ لكلّ الشاشات والأدوار (٤٥٩)
+   -------------------------------------------------------------------------
+   كان المعلّمُ وبطاقةُ الطالب يحسبانه من أوجه الحفظ المغلقة في مستواه
+   (levelProgress)، وجداولُ الطلاب والخطط وصفحةُ «تقدم الخطة» للطالب ووليّ
+   أمره تقرأ حقلَ progress المخزَّن — وهو لا يُحدَّث من العمل أبداً (يُنشأ
+   صفراً ويُعدَّل يدوياً فقط). فرأى المعلّمُ ٤٠٪ والطالبُ ٠٪ للخطة نفسِها.
+   فالرقمُ من levelProgress حيث للمستوى مقدار، وإلّا فالمخزَّنُ كما كان.
+   ========================================================================= */
+function planPctOf(plan, st) {
+  let lp = null;
+  try { lp = plan && typeof levelProgress === "function" ? levelProgress(plan) : null; } catch (e) {}
+  if (lp) return Number(lp.pct) || 0;
+  return Number(plan && plan.progress) || Number(st && st.progress) || 0;
+}
+/* للطالب: خطتُه ثمّ تقدّمُها */
+function stuPctOf(st) {
+  return planPctOf(st && typeof planOfStudent === "function" ? planOfStudent(st) : null, st);
 }
 
 /* واجباتُ طالبٍ في الفترة النشطة — بالفرز نفسِه الذي في asgTermList */
@@ -32195,7 +32232,9 @@ function repFacRows() {
       phone: item.phone || item.managerPhone || "—",
       circles: circles.length, teachers: teachers.length, students: students.length,
       activeStudents: students.filter(st => st.active !== false && st.status !== "متوقف").length,
-      attend: present, realDays: days, attendPct: pct(present, mine.length),
+      /* النسبةُ بالحاضر والمتأخّر كسائر النظام (٤٥٩) */
+      attend: present, realDays: days,
+      attendPct: pct(present + mine.filter(a => a.status === "متأخر").length, mine.length),
       minAttend: vals.length ? Math.min.apply(null, vals) : 0,
       maxAttend: vals.length ? Math.max.apply(null, vals) : 0,
       hifz, hifzDone, fix, fixDone, rev, revDone, revTotal: fixDone + revDone,
@@ -32743,7 +32782,8 @@ function repStuRows() {
       qFix: pct(fixDone, fix) || zero,   qFixText: grade(pct(fixDone, fix)),
       errors: zero,
       attTotal: att.length, attDays: present, lateDays: late,
-      absNoExcuse: abs, absExcuse: exc, attPct: pct(present, att.length),
+      /* النسبةُ بالحاضر والمتأخّر كسائر النظام — كانت بالحاضر وحده (٤٥٩) */
+      absNoExcuse: abs, absExcuse: exc, attPct: pct(present + late, att.length),
       cardGold: zero, cardSilver: zero, cardBronze: zero, cardGreen: zero,
       cardBlue: zero, cardWhite: zero, cardYellow: zero, cardOrange: zero,
       cardRed: zero, cardBlack: zero,
@@ -32852,7 +32892,8 @@ function repCirRows() {
       enrolled: students.length,
       attend: present,
       attendAvg: dates.length ? Math.round(present / dates.length) : zero,
-      attendPct: pct(present, att.length),
+      /* النسبةُ بالحاضر والمتأخّر كسائر النظام (٤٥٩) */
+      attendPct: pct(present + att.filter(a => a.status === "متأخر").length, att.length),
       late: cnt("متأخر"), absent: cnt("غائب"), excused: cnt("مستأذن"),
       realDays: dates.length, workDays: days.length * 4,
       lastAtt: dates.length ? dates[dates.length - 1] : "—",
@@ -36312,13 +36353,15 @@ function tstuAttStats(st) {
   const present = n("حاضر"), late = n("متأخر"), excused = n("مستأذن"), absent = n("غائب");
   const total = recs.length;
   return { total, present, late, excused, absent,
-           pct: total ? Math.round((present + late + excused) / total * 100) : 0 };
+           /* نسبةُ الحضور: الحاضرُ والمتأخّر — تعريفُها في سائر النظام (بطاقةُ الإدارة
+              واللوحاتُ والتقارير). وكانت هنا تضمّ المستأذن فيرى المعلّمُ نسبةً أعلى (٤٥٩) */
+           pct: total ? Math.round((present + late) / total * 100) : 0 };
 }
 
 function tstuStatCards(st) {
   const plan = typeof planOfStudent === "function" ? planOfStudent(st) : null;
   const lp = (plan && typeof levelProgress === "function") ? levelProgress(plan) : null;
-  const prog = lp ? Number(lp.pct) || 0 : (Number(st.progress) || 0);
+  const prog = planPctOf(plan, st);
   const debts = typeof asgDebts === "function" ? asgDebts(st.id).length : 0;
   const att = tstuAttStats(st);
   const d = tstuDay();
@@ -43535,7 +43578,7 @@ function fabDuty() {
           <span class="tp-name">${esc(x.name)}
             <span class="tp-sub">${p ? esc(p.current || "بلا موضع محدَّد")
               : x.attOnly ? "تحضير فقط — بلا واجبات" : "بلا خطة"}</span></span>
-          ${p ? `<span class="chip t-green">${Number(p.progress) || 0}%</span>`
+          ${p ? `<span class="chip t-green">${planPctOf(p, x)}%</span>`
               : x.attOnly ? `<span class="chip t-blue">تحضير فقط</span>`
               : `<span class="chip t-amber">تحتاج خطة</span>`}
         </button>`;
@@ -43962,7 +44005,7 @@ function teacherDuties() {
         : (p.studentId ? `<span class="chip t-green">${ic("checkCircle", 13)} وصل</span>`
                        : `<span class="chip t-red" title="الخطة غير مرتبطة بمعرّف الطالب">لم يصل</span>`)}</td>
 
-      <td style="min-width:110px">${progressRow(Number(p && p.progress) || 0)}</td>
+      <td style="min-width:110px">${progressRow(p ? planPctOf(p, x) : 0)}</td>
 
       <td class="pt-actions">
         <button class="row-btn" data-action="msg-to" data-id="${esc(String(x.uid || x.id))}"
@@ -44054,7 +44097,7 @@ function teacherPlans() {
       <span class="mini-avatar">${initials(x.name)}</span>
       <span class="tp-name">${esc(x.name)}
         <span class="tp-sub">${px ? esc(px.current || "بلا موضع محدَّد") : "بلا خطة"}</span></span>
-      ${px ? `<span class="chip t-green">${Number(px.progress) || 0}%</span>`
+      ${px ? `<span class="chip t-green">${planPctOf(px, x)}%</span>`
            : `<span class="chip t-amber">تحتاج خطة</span>`}
     </button>`;
   }).join("");
@@ -44078,7 +44121,7 @@ function teacherPlans() {
     </div>
 
     <div style="height:16px"></div>
-    <div><span class="muted" style="font-size:12px">نسبة الإنجاز</span>${progressRow(Number(p.progress) || 0)}</div>
+    <div><span class="muted" style="font-size:12px">نسبة الإنجاز</span>${progressRow(planPctOf(p, st))}</div>
     ${p.note ? `<div style="height:12px"></div>${noteCard("<strong>ملاحظة للطالب:</strong> " + esc(p.note))}` : ""}
     ${p.updatedAt ? `<div class="muted" style="font-size:11.5px;margin-top:12px">آخر تعديل: ${new Date(p.updatedAt).toLocaleString("ar-EG")} — ${esc(p.updatedBy || "")}</div>` : ""}`
   : `
@@ -44986,7 +45029,7 @@ function stuStats(st) {
     faces:   recs.reduce((a, r) => a + (Number(r.faces) || 0), 0),
     review:  recs.filter(r => String(r.kind || "").indexOf("مراجع") > -1).length,
     levels:  Number(st && st.levelsDone) || 0,
-    pct:     lp ? (Number(lp.pct) || 0) : (Number(plan && plan.progress) || 0),
+    pct:     planPctOf(plan, st),
     level:   (lp && lp.level && lp.level.name) || (plan && plan.level) || "—"
   };
 }
@@ -46131,7 +46174,7 @@ function studentDashboard() {
   const pct = v => total ? Math.round(v / total * 100) : 0;
 
   const faces = recs.reduce((a, r) => a + (Number(r.faces) || 0), 0);
-  const prog = Number(p && p.progress) || 0;
+  const prog = p ? planPctOf(p, st) : 0;
 
   /* صفوفُ الحضور رُفعت من صدر اللوحة بطلبٍ صريح وحلّ محلَّها «واجب اليوم».
      وسجلُّ الحضور كاملاً باقٍ في شاشة «سجل الحضور» وفي «تقاريري»، وهذه
@@ -46220,7 +46263,7 @@ function studentProgress() {
       <div class="card">${emptyState("لا توجد خطة بعد", "راجع معلمك لإسناد خطة قرآنية.")}</div></div>`;
   }
 
-  const prog = Number(p.progress) || 0;
+  const prog = planPctOf(p, st);
   const faces = recs.reduce((a, r) => a + (Number(r.faces) || 0), 0);
 
   /* منحنى التطور: أوجه كل أسبوع في آخر ثمانية أسابيع */
@@ -50358,7 +50401,7 @@ function modalPromote(id) {
 function modalReport(name) {
   const rows = cur("students").slice(0, 10).map(s => `<tr>
     <td class="td-strong">${esc(s.name)}</td><td>${esc(s.circle)}</td><td style="font-size:12.5px">${esc(s.program)}</td>
-    <td>${progressRow(s.progress)}</td>
+    <td>${progressRow(stuPctOf(s))}</td>
     <td class="center">${s.delays > 0 ? badge(s.delays, "b-red") : badge("0", "b-gray")}</td><td>${statusBadge(s.status)}</td>
   </tr>`).join("");
   openModal(name, "عرض التقرير",
@@ -51244,7 +51287,7 @@ function panelStudent(id, keepDraft) {
   const nPresent = cnt("حاضر"), nLate = cnt("متأخر"), nExc = cnt("مستأذن"), nAbs = cnt("غائب");
   const totalRec = recs.length;
   const attPct = totalRec ? Math.round((nPresent + nLate) / totalRec * 100) : 0;
-  const prog = Number(s.progress) || 0;
+  const prog = stuPctOf(s);
   /* تاريخُ بداية الخطة: من الخطة إن سُجّل، وإلا يومُ انضمام الطالب */
   const startDate = (s.plan || {}).startDate ||
     (s.joinedAt ? new Date(s.joinedAt).toISOString().slice(0, 10) : "");
