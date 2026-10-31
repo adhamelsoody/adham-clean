@@ -127,7 +127,10 @@ service cloud.firestore {
           /* ومن يعمل في مسجد: سجلّاتُ مسجده وحدَها (٤٤٧) — إن كان له مسجدٌ في ملفّه */
           || (r in mqRoles() && coll in mqColls() && hasMosque())
           /* ومديرُ المجمّع: سجلّاتُ مجمّعه وحدَها (٤٥٢) — إن كان له مجمّعٌ في ملفّه */
-          || (r == 'complexManager' && coll in mqColls() && hasComplex());
+          || (r == 'complexManager' && coll in mqColls() && hasComplex())
+          /* ومديرُ المنشأة: المسيّراتُ والقبولُ والصادرُ والتنبيهاتُ لمنشأته وحدَها (٤٥٨) */
+          || (r in ['mosqueManager', 'supervisor'] && coll in mgrColls() && hasMosque())
+          || (r == 'complexManager' && coll in mgrColls() && hasComplex());
     }
 
     /* =====================================================================
@@ -181,6 +184,35 @@ service cloud.firestore {
     function hasComplex() {
       return profile().get('complexId', '') != '' || profile().get('complexIds', []).size() > 0;
     }
+    /* =====================================================================
+       مديرُ المنشأة: المسيّراتُ والقبولُ والصادرُ والتنبيهاتُ (٤٥٨)
+       ---------------------------------------------------------------------
+       كانت تصل كاملةً إلى جهاز مدير المسجد والمشرف ومدير المجمّع — رواتبُ
+       المنشآت الأخرى وطلباتُ قبولها وأرقامُ أولياء أمورها — والتطبيقُ يُخفيها
+       عند العرض (facilityFilter: ما لا يحمل منشأتَه لا يُرى). صارت قراءتُهم
+       فيها لِما يحمل mosqueId من مساجدهم (أو complexId لمدير المجمّع)، وفي
+       التنبيهات كذلك ما وُجِّه إليهم بعينه. فما يصل الجهازَ هو ما تعرضه
+       الشاشةُ نفسُها، لا أقلّ. والمعلّمُ والطالبُ ووليُّ الأمر كما كانوا،
+       ومن لا منشأةَ في ملفّه يبقى كما كان.
+       ===================================================================== */
+    function mgrColls() {
+      return ['paySheets', 'admissions', 'msgOutbox', 'notifications'];
+    }
+    function mgrOwn(coll) {
+      return coll in mgrColls() && (
+           (role() in ['mosqueManager', 'supervisor'] && hasMosque()
+              && resource.data.get('mosqueId', '') in myMosques())
+        || (role() == 'complexManager' && hasComplex()
+              && resource.data.get('complexId', '') in myComplexes()));
+    }
+    /* ما وُجِّه إليّ بعينه: بمعرّف حسابي أو ببريدي */
+    function toMe() {
+      return resource.data.get('toUid', '') == request.auth.uid
+          || resource.data.get('toId', '') == request.auth.uid
+          || (request.auth.token.get('email', '') != ''
+              && resource.data.get('toEmail', '') == request.auth.token.get('email', '').lower());
+    }
+
     function cxOwn(coll) {
       return coll in mqColls() && role() == 'complexManager' && hasComplex()
           && resource.data.complexId in myComplexes();
@@ -600,7 +632,7 @@ service cloud.firestore {
 
     /* ---------------- البيانات التشغيلية ---------------- */
     match /{coll}/{docId} {
-      allow read: if coll in operational() && ((canRead() && !hiddenFrom(coll)) || donorMay(coll) || kidOwn(coll) || mqOwn(coll) || cxOwn(coll));
+      allow read: if coll in operational() && ((canRead() && !hiddenFrom(coll)) || donorMay(coll) || kidOwn(coll) || mqOwn(coll) || cxOwn(coll) || mgrOwn(coll));
       /* المجمّعاتُ لها كتلتُها أدناه (٤٥٤): القواعدُ تُجمع بـ OR، فلو بقيت هنا
          لأذِن هذا السطرُ لكلّ مدير منشأة — سجلُّ المجمّع بلا نطاقٍ فيمرّ scopeOk */
       allow create: if coll in operational() && coll != 'complexes' && canWrite() && scopeOk();
@@ -785,7 +817,9 @@ service cloud.firestore {
     }
 
     match /notifications/{docId} {
-      allow read: if canRead();
+      /* مديرُ المنشأة: تنبيهاتُ منشأته وما وُجِّه إليه بعينه (٤٥٨) */
+      allow read: if (canRead() && !hiddenFrom('notifications')) || mgrOwn('notifications')
+                  || (isActive() && toMe());
       allow create: if canWrite() || isTeacher();
       allow update, delete: if canWrite() || isTeacher();
       /* المستلِمُ بعينه يعلّم تنبيهَه مقروءاً — حقلَ read وحدَه (٤٤١). كان
@@ -799,7 +833,7 @@ service cloud.firestore {
     }
 
     match /msgOutbox/{docId} {
-      allow read: if canRead() && !hiddenFrom('msgOutbox');
+      allow read: if (canRead() && !hiddenFrom('msgOutbox')) || mgrOwn('msgOutbox');
       allow create: if teacherMay('msg_send', true);
       allow update, delete: if canWrite();
     }

@@ -56699,7 +56699,29 @@ async function loadAllData(source) {
       extra.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } });
       return { c, snap: { forEach: fn => docs.forEach(fn) } };
     });
+  /* =====================================================================
+     ومديرُ المنشأة: المسيّراتُ والقبولُ والصادرُ والتنبيهاتُ لمنشأته (٤٥٨)
+     ---------------------------------------------------------------------
+     القواعدُ تقصر قراءتَه فيها على ما يحمل منشأتَه (mgrOwn) — وهو ما تعرضه
+     الشاشةُ له أصلاً (facilityFilter) — وفي التنبيهات ما وُجِّه إليه بعينه.
+     فيُقرأ له بالاستعلامات نفسِها، ومن لا منشأةَ في ملفّه يُقرأ له كما كان.
+     ===================================================================== */
+  const MGR_COLLS = ["paySheets", "admissions", "msgOutbox", "notifications"];
+  const _mgrMq = (_r === "mosqueManager" || _r === "supervisor") && _mqIds.length > 0;
+  const _mgrCx = _r === "complexManager" && _cxIds.length > 0;
+  const withToMe = (c, pr) => c !== "notifications" ? pr : Promise.all([pr].concat(
+      [["toUid", _myUid], ["toId", _myUid], ["toEmail", _myMail]].filter(q => q[1]).map(q =>
+        db.collection(c).where(q[0], "==", q[1]).get(opts)
+          .then(sn => sn.docs, e => { console.warn("تعذّرت قراءة تنبيهاتي:", q[0], e && e.code); return []; }))))
+    .then(all => {
+      const seen = {}, docs = [];
+      all[0].snap.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } });
+      all.slice(1).forEach(a => a.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } }));
+      return { c, snap: { forEach: fn => docs.forEach(fn) } };
+    });
   const readOne = c => (c === "site_messages" && !_mgrRead ? readMine(c)
+    : (_mgrMq && MGR_COLLS.indexOf(c) > -1) ? withToMe(c, readMq(c))
+    : (_mgrCx && MGR_COLLS.indexOf(c) > -1) ? withToMe(c, readCx(c))
     : (_kid && (c === "students" || KID_COLLS.indexOf(c) > -1)) ? readKid(c)
     : (_mqIds.length && MQ_COLLS.indexOf(c) > -1) ? withExaminer(c, readMq(c))
     : (_cxIds.length && MQ_COLLS.indexOf(c) > -1) ? withExaminer(c, readCx(c))
