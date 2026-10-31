@@ -7469,12 +7469,18 @@ window.sheetDelete = function () {
   const ids = sheetSel();
   if (!ids.length) { showToast("حدّد طالباً واحداً على الأقل", "warn"); return; }
   const back = SHEET_STATE.deleted;
+  let n = 0, foreign = 0;
   ids.forEach(id => {
     const e = (DB.exams || []).find(x => String(x.id) === String(id));
-    if (e) { e.deleted = back ? false : true; persistSet("exams", e); }
+    if (!e) return;
+    /* اختبارٌ من مسجدٍ آخر وُجِّه إليّ مشرفاً: أنقل مرحلتَه ولا أحذفه (٤٥٧) —
+       كان يُعلَّم محذوفاً على الشاشة والخادمُ لا يكتب غيرَ المرحلة */
+    if (typeof examForeignToMe === "function" && examForeignToMe(e)) { foreign++; return; }
+    e.deleted = back ? false : true; persistSet("exams", e); n++;
   });
   SHEET_STATE.sel = {};
-  showToast(back ? "استُرجع " + ids.length + " اختبار" : "نُقل " + ids.length + " إلى المحذوفة", "success");
+  if (foreign) showToast(toArabicDigits(foreign) + " من اختبارات مسجدٍ آخر: يحذفها مسجدُها لا مشرفُها", "warn");
+  if (n) showToast(back ? "استُرجع " + n + " اختبار" : "نُقل " + n + " إلى المحذوفة", "success");
   mount();
 };
 
@@ -9069,9 +9075,61 @@ window.xauSave = function () {
   DB.examRouting = XAU.rows.map(r => ({ id: r.id, facId: r.facId, supers: r.supers.slice() }));
   DB.examRouting.forEach(c => persistSet("examRouting", c));
   XAU.dirty = false;
-  showToast("حُدِّث توجيه " + DB.examRouting.length + " منشأة", "success");
+  /* الاختباراتُ الجارية تتبع التوجيهَ الجديد: يُحدَّث مشرفوها (٤٥٧) */
+  let _rx = 0;
+  (DB.exams || []).forEach(e => {
+    if (!e || e.deleted === true || ["approved", "documented"].indexOf(String(e.stage || "")) > -1) return;
+    const u = examinerUidsOf(e);
+    if (JSON.stringify(u) !== JSON.stringify(e.examinerUids || [])) { e.examinerUids = u; persistSet("exams", e); _rx++; }
+  });
+  showToast("حُدِّث توجيه " + DB.examRouting.length + " منشأة" + (_rx ? " و" + _rx + " اختباراً جارياً" : ""), "success");
   mount();
 };
+
+/* =========================================================================
+   مشرفُ الاختبار من مسجدٍ آخر (٤٥٧)
+   -------------------------------------------------------------------------
+   «توجيه الاختبارات» يُسند لكلّ منشأةٍ مشرفين، وقد يكون المشرفُ حساباً في
+   مسجدٍ آخر — وهذا لا يقرأ إلّا اختباراتِ مسجده (قواعد ٤٤٧)، فلا يرى ما
+   وُجِّه إليه. فيحمل كلُّ اختبارٍ examinerUids: حساباتُ مشرفيه من التوجيه
+   (us:<uid> مباشرة، و sv:<id> بحسابه الذي يطابق اسمَ مستخدمه). تقرؤه القواعدُ
+   فتُجيز لهم قراءتَه ونقلَ مرحلته وحدَها، ويُقرأ لهم باستعلامٍ مستقلّ.
+   ========================================================================= */
+function examinerUidsOf(e) {
+  if (!e) return [];
+  const st = (DB.students || []).find(x => x && String(x.id) === String(e.studentId)) || {};
+  const mq = String(e.mosqueId || st.mosqueId || ""), cx = String(e.complexId || st.complexId || "");
+  const users = Array.isArray(DB.users) ? DB.users : [];
+  const out = [];
+  (Array.isArray(DB.examRouting) ? DB.examRouting : []).forEach(r => {
+    if (!r || !r.facId || (String(r.facId) !== mq && String(r.facId) !== cx)) return;
+    (r.supers || []).forEach(k => {
+      k = String(k);
+      if (k.indexOf("us:") === 0) out.push(k.slice(3));
+      else if (k.indexOf("sv:") === 0) {
+        const sv = (DB.examSupervisors || []).find(x => x && String(x.id) === k.slice(3));
+        const un = sv && String(sv.username || "").trim();
+        const u = un && un !== "—" ? users.find(x => x && (String(x.username || "") === un || String(x.idNo || "") === un)) : null;
+        if (u) out.push(String(u.id));   /* معرّفُ المستند هو uid الحساب (users/{uid}) */
+      }
+    });
+  });
+  return [...new Set(out.filter(Boolean))].sort();
+}
+window.examinerUidsOf = examinerUidsOf;
+/* اختبارٌ وُجِّه إليّ من خارج نطاقي على الخادم: لا أملك منه إلّا نقلَ مرحلته.
+   فيُكتب بحقولها وحدَها (persistPatch) — كتابةُ السجلّ كلِّه تُضيف إليه ختمَ
+   الفترة أو المجمّع من حسابي فتردّها القاعدة (٤٥٧) */
+function examForeignToMe(e) {
+  const u = (STATE && STATE.user) || {};
+  const me = String(u.uid || "");
+  if (!e || !me || isTopAdmin() || !Array.isArray(e.examinerUids) || e.examinerUids.indexOf(me) === -1) return false;
+  const mqs = [].concat(u.mosqueIds || [], u.mosqueId ? [u.mosqueId] : []).map(String);
+  const cxs = [].concat(u.complexIds || [], u.complexId ? [u.complexId] : []).map(String);
+  if (mqs.indexOf(String(e.mosqueId || "")) > -1) return false;
+  if (u.role === "complexManager" && cxs.indexOf(String(e.complexId || "")) > -1) return false;
+  return true;
+}
 
 function xsPanelAuto() {
   xauLoad();
@@ -56630,10 +56688,21 @@ async function loadAllData(source) {
       arrs.forEach(a => a.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } }));
       return { c, snap: { forEach: fn => docs.forEach(fn) } };
     });
+  /* ومن وُجِّه إليه اختبارٌ من مسجدٍ آخر يقرؤه باستعلامه (٤٥٧) */
+  const _myUid = String(_su.uid || "");
+  const withExaminer = (c, pr) => (c !== "exams" || !_myUid) ? pr : Promise.all([pr,
+      db.collection("exams").where("examinerUids", "array-contains", _myUid).get(opts)
+        .then(sn => sn.docs, e => { console.warn("تعذّرت قراءة اختبارات المشرف:", e && e.code); return []; })])
+    .then(([r, extra]) => {
+      const seen = {}, docs = [];
+      r.snap.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } });
+      extra.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } });
+      return { c, snap: { forEach: fn => docs.forEach(fn) } };
+    });
   const readOne = c => (c === "site_messages" && !_mgrRead ? readMine(c)
     : (_kid && (c === "students" || KID_COLLS.indexOf(c) > -1)) ? readKid(c)
-    : (_mqIds.length && MQ_COLLS.indexOf(c) > -1) ? readMq(c)
-    : (_cxIds.length && MQ_COLLS.indexOf(c) > -1) ? readCx(c)
+    : (_mqIds.length && MQ_COLLS.indexOf(c) > -1) ? withExaminer(c, readMq(c))
+    : (_cxIds.length && MQ_COLLS.indexOf(c) > -1) ? withExaminer(c, readCx(c))
     : db.collection(c).get(opts)
     .then(snap => ({ c, snap }))).then(
     r => r,
@@ -57766,6 +57835,11 @@ function persistSet(coll, obj) {
     }
   } catch (e) {}
 
+  /* مشرفُ اختبارٍ من مسجدٍ آخر: المرحلةُ وحقلا التحويل وحدَها (٤٥٧) */
+  if (coll === "exams" && typeof examForeignToMe === "function" && examForeignToMe(obj)) {
+    return persistPatch("exams", obj, ["stage", "transferWhy", "transferAt"].filter(k => obj[k] !== undefined));
+  }
+
   /* وسمُ الفترة التي تبدأ خالية: ما يُسجَّل وهي فترةُ العمل يُنسب إليها،
      وإلّا كُتب بلا وسمٍ فلم يظهر فيها — وهي لا تعرض إلا الموسوم بها.
      والسجلُّ غيرُ الموسوم الواصلُ إلى هنا جديدٌ بالضرورة: القديمُ غيرُ
@@ -57778,6 +57852,15 @@ function persistSet(coll, obj) {
     }
   } catch (e) {}
 
+  /* مشرفو الاختبار من التوجيه (٤٥٧): يُختمون عند إنشائه، ويحفظهم المشرفُ نفسُه كما هم */
+  if (coll === "exams" && typeof examinerUidsOf === "function") {
+    const _me = String(((STATE && STATE.user) || {}).uid || "");
+    const _was = Array.isArray(obj.examinerUids) ? obj.examinerUids : null;
+    if (!(_was && _me && _was.indexOf(_me) > -1 && !isTopAdmin())) {
+      const _u = examinerUidsOf(obj);
+      if (_u.length || _was) obj.examinerUids = _u;
+    }
+  }
   const data = scopeStamp(coll, Object.assign({}, obj));
   /* ما ختمه scopeStamp على المكتوب يُختم على السجلّ في الذاكرة كذلك (٤٣٢):
      كان الخادمُ يحمل المسجدَ والمجمّعَ والذاكرةُ فارغةً منهما، فيحجب حصرُ
@@ -58264,6 +58347,8 @@ function facilityFilter(coll, raw) {
   return raw.filter(x => {
     if (!x) return false;
     if (toMe(x)) return true;
+    /* اختبارٌ وُجِّه إليّ مشرفاً ولو من مسجدٍ آخر (٤٥٧) */
+    if (coll === "exams" && _meId && Array.isArray(x.examinerUids) && x.examinerUids.indexOf(_meId) > -1) return true;
     if (x.mosqueId || x.complexId) return inScope(x);
     if (x.circleId) return cids.indexOf(String(x.circleId)) > -1;
     /* جائزةُ المتجر بلا منشأةٍ «للجميع» كما يحفظها rwdSave (٤٥٥): كانت تسقط
@@ -59219,7 +59304,11 @@ function personFilter(coll, rows) {
       ? String((myTeacherRecord() || {}).id || "") : "";
     const mineByTeacher = x => !!myTid && x && x.kind === "teacherRating" &&
       String(x.teacherId || "") === myTid;
-    return rows.filter(x => mineByStudent(x) || mineByCircle(x) || mineByTeacher(x));
+    /* واختبارٌ وُجِّه إليّ مشرفاً ولو من حلقةٍ غيرِ حلقاتي (٤٥٧) */
+    const _uid = String(ps.uid || ((STATE && STATE.user) || {}).uid || "");
+    const mineAsExaminer = x => coll === "exams" && !!_uid && x && Array.isArray(x.examinerUids) &&
+      x.examinerUids.indexOf(_uid) > -1;
+    return rows.filter(x => mineByStudent(x) || mineByCircle(x) || mineByTeacher(x) || mineAsExaminer(x));
   }
 
   if (coll === "teachers") {

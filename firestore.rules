@@ -717,10 +717,16 @@ service cloud.firestore {
        إنشاءٌ بمرحلة await-sup وحدَها: لا يرفع طلباً معتمداً ولا موثَّقاً،
        ولا يعدّل محفوظاً ولا يحذفه. */
     match /exams/{docId} {
-      allow read: if (canRead() && !hiddenFrom('exams')) || kidOwn('exams') || mqOwn('exams') || cxOwn('exams');
+      allow read: if (canRead() && !hiddenFrom('exams')) || kidOwn('exams') || mqOwn('exams') || cxOwn('exams')
+                  /* مشرفُ الاختبار الموجَّه إليه ولو من مسجدٍ آخر (٤٥٧) — آخرَ الشروط:
+                     الاختبارُ بلا examinerUids يُخطئ هنا فيُردّ كما كان */
+                  || (canRead() && request.auth.uid in resource.data.examinerUids);
       allow create: if teacherMayAs('examRequest', 'examRequest', true)
                     && request.resource.data.stage == 'await-sup'
                     && request.resource.data.studentId is string;
+      /* وينقل مرحلتَه وحدَها: لا طالبَ ولا منشأةَ ولا مشرفين ولا حذف (٤٥٧) */
+      allow update: if canRead() && request.auth.uid in resource.data.examinerUids
+                    && changed().hasOnly(['stage', 'transferWhy', 'transferAt']);
     }
 
     /* الخططُ: كانت مفتوحةً لكلّ معلّمٍ بلا حصرِ نطاقٍ ولا حصرِ حقول —
