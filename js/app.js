@@ -19057,6 +19057,9 @@ function quotaRange(period, dateISO) {
 /* المنجز والباقي — لكلّ نوعٍ على حدة */
 function quotaState(studentId, dateISO) {
   const plan = (cur("plans") || []).find(p => String(p.studentId) === String(studentId));
+  /* السردُ بلا مقدار (٤٦٤): كان النصابُ يأخذ لكلّ نوعٍ لا واجبَ له مقدارَه الافتراضيّ،
+     فيُعرض لطالب السرد «حفظ ٠/١ · مراجعة ٠/٢» — نصابٌ ليس من برنامجه */
+  if (plan && typeof planIsSard === "function" && planIsSard(plan)) return null;
   const cfg = quotaCfg(plan);
   if (!cfg) return null;
 
@@ -20265,9 +20268,59 @@ function revFixBound(a) {
 
 /* الحدُّ في جهة السير: التصاعديُّ يقف عند أبعد ما حُفظ، والتنازليُّ عند
    أقربِه — و«أوّلُ المحفوظ» هو الطرفُ الآخر، إليه يعود الدوران. */
+/* =========================================================================
+   ما حُفظ قبل بداية الحفظ في الخطة — لمن لم يُعتمد له حفظٌ بعد (٤٦٥)
+   -------------------------------------------------------------------------
+   «المراجعةُ لا تتجاوز الحفظ — إذا وصلت للحفظ ترجع من الأول خالص من حيث
+   تبدأ المراجعة». وكان الحدُّ يُقاس بواجبات الحفظ المنجَزة وحدَها، فمن لم
+   يُنجز حفظاً بعد (طالبٌ جديد) لا حدَّ له: تمضي مراجعتُه «من الناس إلى
+   النصر» وحفظُه لم يبلغ الإخلاص.
+   فالمحفوظُ عندئذٍ ما قبل بداية حفظه في جهة السير (من التحق بمحفوظٍ سابق):
+   منتهاه الآيةُ التي قبل البداية. وبدايةُ الحفظ بالترتيب الذي يولّده المحرّك
+   نفسُه: الموضعُ المحمول، ثمّ بدايةُ المستوى، ثمّ بدايةُ الخطة.
+   وإن كانت البدايةُ أوّلَ المصحف في جهته فلا محفوظَ يُراجَع: "none".
+   وإن لم يصل فهرسُ السور بعدُ يُرجَع null فيبقى السلوكُ كما كان (لا تُسقَط
+   مراجعةٌ بالخطأ). حسابٌ محض: لا كتابة. */
+function revPriorSpan(a, dir) {
+  try {
+    const st = (cur("students") || []).find(x => String(x.id) === String(a && a.studentId));
+    const plan = (st && typeof planOfStudent === "function") ? planOfStudent(st) : null;
+    if (!plan) return null;
+    let ps = 0, pa = 1;
+    const cp = (plan.carryPos || {}).hifz;
+    if (cp && Number(cp.s) > 0) { ps = Number(cp.s); pa = Number(cp.a) || 1; }
+    else {
+      let p0 = 0;
+      try { p0 = typeof pillarStartOf === "function" ? Number(pillarStartOf("hifz")) || 0 : 0; } catch (e) { p0 = 0; }
+      if (p0 > 0) { ps = p0; pa = Number(pillarStartAyahOf("hifz")) || 1; }
+      else if (Number(plan.hifzFromS) > 0) { ps = Number(plan.hifzFromS); pa = Number(plan.hifzFromA) || 1; }
+    }
+    if (!(ps > 0)) return null;
+    const back = dir === "backward";
+    let prev;
+    if (pa > 1) prev = { s: ps, a: pa - 1 };
+    else {
+      const q = back ? ps + 1 : ps - 1;
+      if (q < 1 || q > 114) return "none";
+      const c = Number(ayahCountOf(q)) || 0;
+      if (!(c > 0)) {
+        try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) {}
+        return null;
+      }
+      prev = { s: q, a: c };
+    }
+    return { lo: back ? { s: 114, a: 1 } : { s: 1, a: 1 }, hi: prev };
+  } catch (e) { return null; }
+}
+
 function hifzLimitFor(a) {
   const dir = dirOf(a && a.direction) === "backward" ? "backward" : "forward";
-  const sp = hifzSpanOf(a && a.studentId, dir);
+  let sp = hifzSpanOf(a && a.studentId, dir);
+  if (!sp) {
+    const pr = revPriorSpan(a, dir);
+    if (pr === "none") return { none: true, dir: dir, back: dir === "backward" };
+    sp = pr;
+  }
   if (!sp) return null;
   const back = dir === "backward";
   const R = q => progRank(q.s, q.a, dir);
@@ -20291,7 +20344,7 @@ function hifzLimitFor(a) {
 
 /* أبلغَ الموضعُ حدَّه؟ — والمستثنى يُعدّ بالغاً ببلوغه لا بتجاوزه */
 function revPastLimit(L, s, a) {
-  if (!L || !(Number(s) > 0)) return false;
+  if (!L || L.none || !(Number(s) > 0)) return false;
   const dir = L.dir || (L.back ? "backward" : "forward");
   const r = progRank(s, Number(a) || 1, dir), l = progRank(L.lim.s, L.lim.a, dir);
   return L.excl ? r >= l : r > l;
@@ -20303,7 +20356,7 @@ function asgCapToHifz(a, end) {
     return Promise.resolve(end);
   }
   const L = hifzLimitFor(a);
-  if (!L) return Promise.resolve(end);
+  if (!L || L.none) return Promise.resolve(end);
   const eS = Number(end.surah) || 0, eA = Number(end.ayah) || 1;
   if (!eS) return Promise.resolve(end);
   if (!revPastLimit(L, eS, eA)) return Promise.resolve(end);
@@ -20339,6 +20392,8 @@ function revClampStart(rec, plan) {
   if (!rec || String(rec.kind || "").replace("_makeup", "") !== "rev") return rec;
   const L = hifzLimitFor(rec);
   if (!L) return rec;
+  /* لا محفوظَ بعد يُراجَع (٤٦٥): لا تُولَّد مراجعةٌ حتى يُنجَز أوّلُ حفظ */
+  if (L.none) { rec._noRev = true; return rec; }
   const s = Number(rec.fromS) || 0, a = Number(rec.fromA) || 1;
   if (!s) return rec;
   if (!revPastLimit(L, s, a)) return rec;
@@ -21678,21 +21733,34 @@ function planHasPillar(plan, kind) {
    فيُولَّد منه واجبٌ وحيدٌ كلَّ يوم دوام. وما لم يُضبط له واجبٌ من طلاب
    البرنامج يمضي كما كان — لا يتغيّر عليه شيء.
    ========================================================================= */
+/* =========================================================================
+   السردُ بلا مقدارٍ ولا مدًى مسبَق (٤٦٤)
+   -------------------------------------------------------------------------
+   «في السرد يُحدَّد بدون بداية ونهاية — البدايةُ والنهايةُ يحدّدها المعلّم،
+   ولا يكون به مقدار مثل ما في الحفظ وجه وغيره». وكان طالبُ السرد الذي لم
+   يُضبط له مدًى في بطاقته يسقط إلى توليد الحفظ والمراجعة بمقدارهما (وجه ·
+   وجهان) — واجباتٌ ليست من برنامجه. فلطالب السرد واجبٌ واحدٌ كلَّ يوم بلا
+   مقدار؛ مداه ما يُدخله المعلّمُ عند التسميع (نوع «السرد» في شاشة التسميع،
+   وبدايتُه تُملأ من حيث انتهى). والمدى المضبوطُ مسبقاً من البطاقة يبقى كما
+   هو لمن ضُبط له، بلا مقدار.
+   ========================================================================= */
 function sardDutyOf(plan, st, studentId, dateISO) {
   if (!planIsSard(plan)) return null;
   const fS = Number(plan.sardFromS) || 0, tS = Number(plan.sardToS) || 0;
-  if (!(fS > 0 && tS > 0)) return null;
+  const preset = fS > 0 && tS > 0;
   const k = "sard";
   const exists = asgFind(dateISO, studentId, k);
+  const dir = plan.sardDir ? (plan.sardDir === "forward" ? "forward" : "backward")
+    : (typeof dirOf === "function" && dirOf(plan.direction) === "forward" ? "forward" : "backward");
   const rec = {
     id: asgId(dateISO, studentId, k), date: dateISO,
     studentId: String(studentId), student: st.name || "",
     circleId: st.circleId || "", planId: plan.id || "",
-    kind: k, kindName: SARD_KIND, unit: "وجه", levelId: "",
-    qty: Number(plan.sardQty) || 0,
-    fromS: fS, fromA: Math.max(1, Number(plan.sardFromA) || 1),
-    toS: tS, toA: Math.max(1, Number(plan.sardToA) || 1),
-    direction: plan.sardDir === "forward" ? "forward" : "backward",
+    kind: k, kindName: SARD_KIND, unit: "", levelId: "",
+    qty: 0,
+    fromS: preset ? fS : 0, fromA: preset ? Math.max(1, Number(plan.sardFromA) || 1) : 0,
+    toS: preset ? tS : 0, toA: preset ? Math.max(1, Number(plan.sardToA) || 1) : 0,
+    direction: dir,
     status: "pending", score: null,
     termId: typeof activeTermId === "function" ? (activeTermId() || "") : "",
     ts: Date.now()
@@ -21870,6 +21938,12 @@ function generateAssignments(studentId, dateISO) {
         rec.direction = planDir;
         if (jump.looped) rec.note = "عاد من بداية نطاقه";
         revClampStart(rec, plan);          /* لا تتجاوز المراجعةُ ما حُفظ */
+        if (rec._noRev) {                  /* (٤٦٥) لا محفوظَ يُراجَع بعد */
+          delete rec._noRev;
+          const touched = exists && (exists.status !== "pending" || exists.edited ||
+                                     (Array.isArray(exists.parts) && exists.parts.length));
+          if (!touched) return;
+        }
         out.push(exists ? asgPlanMerge(exists, rec) : rec);
         return;
       }
@@ -21923,6 +21997,14 @@ function generateAssignments(studentId, dateISO) {
         else if (plan.hifzFromS) { rec.fromS = plan.hifzFromS; rec.fromA = plan.hifzFromA || 1; }
       }
       revClampStart(rec, plan);            /* لا تتجاوز المراجعةُ ما حُفظ */
+    }
+
+    /* لا محفوظَ يُراجَع بعد (٤٦٥): لا مراجعة — إلّا ما مسّه المعلّمُ اليوم فيبقى */
+    if (rec._noRev) {
+      delete rec._noRev;
+      const touched = exists && (exists.status !== "pending" || exists.edited ||
+                                 (Array.isArray(exists.parts) && exists.parts.length));
+      if (!touched) return;
     }
 
     out.push(exists ? asgPlanMerge(exists, rec) : rec);
@@ -22223,7 +22305,7 @@ function asgSkipWhy(studentId, dateISO) {
     const plan = typeof planOfStudent === "function" ? planOfStudent(st) : null;
     if (!plan || planIsFrozen(plan)) return out;
     /* طالبُ السرد بواجبه المضبوط: واجبُه واحدٌ — لا يُقال عن غيره «لم يُضبط» */
-    if (planIsSard(plan) && Number(plan.sardFromS) > 0 && Number(plan.sardToS) > 0) return out;
+    if (planIsSard(plan)) return out;   /* (٤٦٤) واجبُه السردُ وحدَه، مضبوطاً أو لا */
 
     const day = typeof dayNameOf === "function" ? dayNameOf(dateISO) : "";
     const lock = hifzLocked(studentId, dateISO);
@@ -34592,6 +34674,13 @@ function tchCheckInSave(cid, extra) {
   const c = (cur("circles") || []).find(x => String(x.id) === String(cid));
   const old = tchMyAtt(today);
   const rec = old || { id: "sa" + Date.now(), staffId: tchStaffId(), date: today };
+  /* «يحضّر ثمّ يحدّث الصفحةَ فيُطلب منه التحضيرُ ثانيةً، ولا تراه الإدارةُ حاضراً» (٤٦٥):
+     قاعدةُ الحضور على الخادم تشترط studentId نصّاً في كلّ سجلّ، وسجلُّ المعلّم كان
+     يُكتب بلا الحقل — فيُردّ على الخادم ويبقى في ذاكرة الجهاز وحدَها حتى التحديث.
+     وتحضيرُه التلقائيّ (staffAutoIn) يكتبه فارغاً فيمرّ؛ وهنا مثلُه. والفترةُ كذلك. */
+  if (typeof rec.studentId !== "string") rec.studentId = "";
+  if (!rec.termId) rec.termId = (typeof activeTermId === "function" && activeTermId()) ||
+                                (typeof termOfDate === "function" ? termOfDate(today) : "") || "";
   rec.circleId = String(cid);
   rec.circleName = c ? (c.name || "") : "";
   /* خانةُ الحالة رُفعت من النافذة: فالمسجَّلُ حضورٌ، وسجلُّ اليومِ القائمُ
@@ -34621,7 +34710,13 @@ function tchCheckInSave(cid, extra) {
   rec.ts = Date.now();
   if (!Array.isArray(DB.attendance)) DB.attendance = [];
   if (!old) DB.attendance.push(rec);
-  persistSet("attendance", rec);
+  /* لا يُقال «سُجِّل» قبل جواب الخادم (٤٦٥): الرفضُ يُعلَن ولا يُترك في الذاكرة وحدَها */
+  Promise.resolve(persistSet("attendance", rec)).then(ok => {
+    if (ok !== false) return;
+    if (!old) { const i = DB.attendance.indexOf(rec); if (i > -1) DB.attendance.splice(i, 1); }
+    showToast("لم يُحفظ حضورُك على الخادم — أعد المحاولة أو راجع الإدارة", "warn");
+    mount();
+  });
   closeModal();
   showToast("سُجِّل حضورُك: " + rec.status +
     (rec.lateMin ? " — " + toArabicDigits(rec.lateMin) + " دقيقة" : "") +
@@ -34923,7 +35018,9 @@ window.tchEnterCircle = function () {
    المولّد. ولا كتابةَ هنا ألبتّة — عرضٌ محض.
    ========================================================================= */
 function asgMergeByKind(saved, gen) {
-  const g = (gen || []).filter(function (a) { return a && Number(a.fromS) > 0; });
+  /* واجبُ السرد قبل تسميعه بلا مدًى عمداً — مداه يُدخله المعلّم (٤٦٤) — فلا يُسقَط */
+  const g = (gen || []).filter(function (a) { return a && (Number(a.fromS) > 0 ||
+    String(a.kind || "").replace("_makeup", "") === "sard"); });
   if (!(saved || []).length) return g;
   if (!g.length) return saved;
   const byId = {};
@@ -40454,7 +40551,8 @@ function reciteSave() {
   /* إغلاق واجب اليوم من نوع هذا التسميع: بدونه يبقى الواجب معلَّقاً
      فيُرحَّل تعويضاً وقد سُمّع فعلاً. */
   try {
-    const kindMap = { "حفظ": "hifz", "تثبيت": "fix", "مراجعة": "rev", "تلاوة": "tilawah" };
+    /* «السرد» يُغلق واجبَ السرد (٤٦٤): كان يسقط إلى hifz فلا يُغلق واجبُه أبداً */
+    const kindMap = { "حفظ": "hifz", "تثبيت": "fix", "مراجعة": "rev", "تلاوة": "tilawah", "السرد": "sard" };
     const hk = kindMap[rec.kind] || "hifz";
     const asg = asgFind(rec.date, rec.studentId, hk) ||
                 asgFind(rec.date, rec.studentId, hk + "_makeup");
@@ -46116,6 +46214,8 @@ window.stuOpenDuty = function (id) {
 /* نطاقُ الواجب بصيغة «من سورة (آية) إلى سورة (آية)» — كما طُلب في بطاقة
    الطالب. وتبقى tstuRange على صيغتها لشاشات المعلّم التي تستعملها. */
 function stuRangeText(a) {
+  /* واجبُ السرد قبل تسميعه: مداه يُدخله المعلّم (٤٦٤) */
+  if (a && String(a.kind || "").replace("_makeup", "") === "sard" && !a.fromS) return "البدايةُ والنهايةُ يحدّدهما المعلّم";
   if (!a || !a.fromS) return "";
   /* «اسمُ السورة يظهر في البيانات الخارجيّة»: كان السطرُ يقول «سورة 8».
      وفهرسُ المصحف يُجلب عند أوّل حاجةٍ إليه، ولم يكن أحدٌ يطلبه في هذه
@@ -58553,6 +58653,31 @@ function staffLateMin(c, dateISO, inT) {
   return { startT: startT || "", late: (s0 == null || t0 == null) ? 0 : Math.max(0, t0 - s0) };
 }
 
+/* =========================================================================
+   «حلقتي الأصيلة» بمقياسٍ واحد (٤٦٥)
+   -------------------------------------------------------------------------
+   كان تحضيرُ المعلّم التلقائيّ وزرُّه في شاشة التحضير لا يقبلان إلّا أن
+   يطابق teacherId الحلقةِ معرّفَ سجلّه في teachers، بينما شاشاتُه
+   (myCircles) تعرف حلقتَه بمعرّف حسابه أو باسمها في سجلّه أيضاً. فمعلّمٌ
+   يرى حلقتَه ويحضّر طلابَها لا يُسجَّل حضورُه هو أبداً — فلا تراه الإدارةُ
+   حاضراً (فحصُ «مسجد الصديق»: «لا حلقةَ أصيلةً له»). فالمقياسُ هنا هو
+   مقياسُ myCircles بلا المساعدين: والحلقةُ المسندةُ إلى معلّمٍ آخرَ موجودٍ
+   لا تُنسب إليه أبداً. حسابٌ محض: لا كتابة. */
+function staffIsMainOf(c, t, u) {
+  if (!c || !t) return false;
+  u = u || (STATE && STATE.user) || {};
+  const tid = c.teacherId != null && c.teacherId !== "" ? String(c.teacherId) : "";
+  if (tid) {
+    if (tid === String(t.id) || (u.uid && tid === String(u.uid))) return true;
+    /* مسندةٌ إلى معلّمٍ آخر قائم: ليست له */
+    if ((Array.isArray(DB.teachers) ? DB.teachers : []).some(x => x && String(x.id) === tid)) return false;
+  } else if (String(c.teacher || "") && (String(c.teacher) === String(t.name || "") ||
+             (u.name && String(c.teacher) === String(u.name)))) return true;
+  /* وسجلُّه يقول إنها حلقتُه */
+  return (t.circleId != null && t.circleId !== "" && String(t.circleId) === String(c.id)) ||
+         (!!t.circle && t.circle !== "—" && String(t.circle) === String(c.name || ""));
+}
+
 /* يُسجَّل للمعلّم الأصيل وحده — المساعدُ لا يُحتسب دوامه على الحلقة —
    وفي يومه الجاري فقط: تحضيرُ يومٍ مضى لا يعني أنه حضر الآن. */
 function staffAutoIn(circleId, dateISO, manual) {
@@ -58562,8 +58687,7 @@ function staffAutoIn(circleId, dateISO, manual) {
   if (!t) return null;
   const c = (cur("circles") || []).find(x => String(x.id) === String(circleId));
   if (!c) return null;
-  const mine = c.teacherId ? String(c.teacherId) === String(t.id)
-                           : String(c.teacher || "") === String(t.name || "");
+  const mine = staffIsMainOf(c, t, u);
   if (!mine) return null;
   const d = String(dateISO || todayISO());
   if (d !== todayISO()) return null;
@@ -58605,8 +58729,7 @@ function staffSelfBar(circleId) {
   const t = typeof myTeacherRecord === "function" ? myTeacherRecord() : null;
   const c = (cur("circles") || []).find(x => String(x.id) === String(circleId));
   if (!t || !c) return "";
-  const mine = c.teacherId ? String(c.teacherId) === String(t.id)
-                           : String(c.teacher || "") === String(t.name || "");
+  const mine = staffIsMainOf(c, t, u);
   if (!mine) return "";
   const r = staffInOf(todayISO(), t.id, c.id);
   return `<div class="chip-list" style="margin-bottom:10px">
