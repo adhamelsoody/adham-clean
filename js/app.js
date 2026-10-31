@@ -474,6 +474,36 @@ function currentComplex() {
    بالمعرّفات لا بالنصوص». يُقرأ الاسمُ من السجلّ المرتبط، وإلا فالنصُّ كما كان.
    للعرض وحده: لا يُكتب شيء.
    ========================================================================= */
+/* =========================================================================
+   الحلقةُ ومعلّمُها من الجهتين (٤٦٠)
+   -------------------------------------------------------------------------
+   المعلّمُ يحمل حلقتَه (circleId) والحلقةُ تحمل معلّمَها (teacherId)، وشاشاتُ
+   المعلّم تجمع الاثنين (myCircles). وكان نموذجا إضافة المعلّم وتعديله يكتبان
+   جهةَ المعلّم وحدَها: فإن اختير له حلقةٌ لها معلّمٌ آخر صار للحلقة معلّمان
+   أصيلان عند المعلّم، وجدولُ الحلقات يقول غيرَ ما يقوله جدولُ المعلّمين.
+   فلا يُسنَد معلّمٌ إلى حلقةٍ لها معلّمٌ آخر من هنا (ذاك من صفحة الحلقات،
+   ولا يُغيَّر إسنادُ معلّمٍ تلقائياً)، والحلقةُ الخالية تُكتب له من جهتها.
+   ========================================================================= */
+function tCircleClash(c, t) {
+  if (!c || !t) return "";
+  const cur0 = c.teacherId;
+  if (cur0 == null || cur0 === "" || String(cur0) === String(t.id)) return "";
+  const other = (DB.teachers || []).find(x => x && String(x.id) === String(cur0));
+  if (!other) return "";                       /* أثرُ معلّمٍ محذوف: الحلقةُ خالية */
+  return "حلقة «" + (c.name || "—") + "» معلّمُها «" + (other.name || "—") +
+         "» — غيّر معلّمَ الحلقة من صفحة الحلقات أولاً";
+}
+function tCircleClaim(c, t) {
+  if (!c || !t || String(c.teacherId == null ? "" : c.teacherId) === String(t.id)) return;
+  c.teacherId = t.id; c.teacher = t.name || c.teacher || "";
+  persistSet("circles", c);
+}
+function tCircleRelease(c, t) {
+  if (!c || !t || String(c.teacherId == null ? "" : c.teacherId) !== String(t.id)) return;
+  c.teacherId = ""; c.teacher = "";
+  persistSet("circles", c);
+}
+
 function stuLinkName(st) {
   const s = st || {};
   const txt = v => (v && v !== "—" ? String(v) : "");
@@ -52757,7 +52787,19 @@ function stuAdoptLevel(s, _waited) {
   if (!s || s.attOnly || !s.levelId) return;
   if (typeof spIsSardProg === "function" && spIsSardProg(s.program)) return;
   const lv = (DB.levels || []).find(x => String(x.id) === String(s.levelId));
-  if (!lv || !lv.pillars) return;
+  if (!lv) return;
+  /* مستوى بلا منهجٍ (pillars): لا يُطبَّق منهج، لكنّ خطتَه تتبع المستوى (٤٥٩).
+     كانت تبقى على المستوى القديم، فيُعرض للطالب مستوى ويُحسب تقدّمُه
+     (levelProgress) بمقدار مستوى آخر — في كلّ مسارات تغيير المستوى الخمسة. */
+  if (!lv.pillars) {
+    const rec0 = typeof planOfStudent === "function" ? planOfStudent(s) : null;
+    if (rec0 && String(rec0.levelId || "") !== String(s.levelId)) {
+      rec0.levelId = String(s.levelId); rec0.level = s.level || lv.name || rec0.level;
+      delete rec0.levelDoneCarry;
+      persistSet("plans", rec0);
+    }
+    return;
+  }
   /* أسماءُ السور تلزم لكتابة الابتداء — كما في spProgLevelSave */
   if (!_waited && (typeof QSURAHS === "undefined" || !QSURAHS) &&
       window.Quran && typeof Quran.surahs === "function") {
@@ -55739,6 +55781,20 @@ document.addEventListener("click", (e) => {
         if (Array.isArray(c.assistants) && c.teacherId) {
           c.assistants = c.assistants.filter(x => String(x) !== String(c.teacherId));
         }
+        /* وسجلّا المعلّمَين من جهتهما (٤٦٠): كان سجلُّ القديم يبقى على اسم الحلقة
+           (circle)، وشاشاتُ المعلّم تنسب الحلقةَ باسمها (myCircles) — فيبقى يراها
+           بعد نقلها عنه. القديمُ يُخلى منها إن كانت حلقتَه، والجديدُ يُكتب له إن
+           لم تكن له حلقة. */
+        try {
+          const _oldT = oldTeacherId ? (DB.teachers || []).find(x => String(x.id) === String(oldTeacherId)) : null;
+          if (_oldT && String(_oldT.id) !== String(ecTRec.id) &&
+              (String(_oldT.circleId || "") === String(c.id) || String(_oldT.circle || "") === String(c.name || ""))) {
+            _oldT.circleId = ""; _oldT.circle = "—"; persistSet("teachers", _oldT);
+          }
+          if (!ecTRec.circleId && (!ecTRec.circle || ecTRec.circle === "—")) {
+            ecTRec.circleId = String(c.id); ecTRec.circle = c.name || "—"; persistSet("teachers", ecTRec);
+          }
+        } catch (e) { console.warn("سجلّا المعلّمَين:", e); }
 
         /* نطاق المعلّمَين يتغيّر: القديم يفقد الحلقة والجديد يكسبها.
            بدونه يبقى القديم قادراً على الكتابة فيها والجديد ممنوعاً. */
@@ -55955,6 +56011,14 @@ document.addEventListener("click", (e) => {
          ولا يُمنع تعديلُ بقيّة البيانات بسببه (٤٣١). */
       const keepMail = String(tc.username || "");
       if (!gmailUser && (!keepMail || keepMail === "—")) { showToast("البريد الإلكتروني مطلوب", "warn"); break; }
+      /* الحلقةُ الجديدة: لا تُنتزع من معلّمها — يُفحص قبل أيّ تغيير (٤٦٠) */
+      let _etOld = null, _etNew = null, _etChg = false;
+      { const elC0 = document.getElementById("et_circle");
+        if (elC0 && String(elC0.value || "") !== String(elC0.dataset.orig || "")) {
+          _etChg = true;
+          _etOld = (DB.circles || []).find(x => String(x.id) === String(elC0.dataset.orig || "")) || null;
+          _etNew = elC0.value ? (DB.circles || []).find(x => String(x.id) === String(elC0.value)) || null : null;
+          const _cl = tCircleClash(_etNew, tc); if (_cl) { showToast(_cl, "warn"); break; } } }
       tc.name = name;
       tc.photo = photoVal("et_photo", tc.photo || "");
       tc.phone = val("#et_phone", tc.phone || "");
@@ -55986,6 +56050,8 @@ document.addEventListener("click", (e) => {
                                   val("#et_pay")));
 
       persistSet("teachers", tc);
+      /* والحلقتان من جهتهما: القديمةُ تُخلى منه، والجديدةُ تُكتب له (٤٦٠) */
+      if (_etChg) { tCircleRelease(_etOld, tc); tCircleClaim(_etNew, tc); }
 
       /* نطاق المعلّم قد يتغيّر بتغيّر حلقته أو مسجده */
       try { if (typeof syncTeacherScope === "function") syncTeacherScope(tc.id); } catch (e) {}
@@ -56275,7 +56341,11 @@ document.addEventListener("click", (e) => {
 
       /* الأجر في حقله وحده — المسيّر يقرؤه منه */
       Object.assign(o, payFields(val("#t_payType", "monthly"), val("#t_pay")));
+      /* الحلقةُ من جهتها أيضاً، ولا تُنتزع من معلّمها (٤٦٠) */
+      const _tcC = o.circleId ? (DB.circles || []).find(x => String(x.id) === String(o.circleId)) : null;
+      { const _cl = tCircleClash(_tcC, o); if (_cl) { showToast(_cl, "warn"); break; } }
       DB.teachers.push(o); persistSet("teachers", o); photoReset("t_photo");
+      tCircleClaim(_tcC, o);
       window.__facTeacherNeedsMosque = false;
       closeModal(); renderNav(); mount(); showToast("تمت إضافة المعلم"); break;
     }
