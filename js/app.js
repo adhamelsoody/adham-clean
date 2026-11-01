@@ -14482,22 +14482,54 @@ const SARD_ID = "sys_sard";
 const SARD_KIND = "السرد";
 function SARD_ID_KIND() { return SARD_KIND; }
 
-/* آخرُ موضعٍ بلغه الطالبُ سرداً: نهايةُ آخر جلسةٍ سُجّلت له */
-function sardLast(studentId) {
+/* آخرُ موضعٍ بلغه الطالبُ سرداً: نهايةُ آخر جلسةٍ سُجّلت له.
+   beforeDate (اختياريّ): ما سُجّل قبل ذلك اليوم وحدَه — فلا تتحرّك بدايةُ
+   واجب اليوم بعد تسميعه (٤٦٧). */
+function sardLast(studentId, beforeDate) {
   const rows = (Array.isArray(DB.recitations) ? DB.recitations : [])
     .filter(r => r && String(r.studentId) === String(studentId) &&
-                 String(r.kind || "") === SARD_KIND)
+                 String(r.kind || "") === SARD_KIND && Number(r.toS) > 0 &&
+                 (!beforeDate || String(r.date || "") < String(beforeDate)))
     .sort((a, b) => String(a.date + "|" + (a.ts || 0)).localeCompare(String(b.date + "|" + (b.ts || 0))));
   if (!rows.length) return null;
   const last = rows[rows.length - 1];
   return { s: Number(last.toS) || 0, a: Number(last.toA) || 0, date: last.date };
 }
 
-/* بدايةُ اليوم: ما بعد آخر موضع. وفي أوّل يومٍ لا بداية — يُدخلها المعلّم. */
-function sardStart(studentId) {
-  const l = sardLast(studentId);
+/* =========================================================================
+   بدايةُ السرد يحدّدها البرنامج بعد أوّل يوم (٤٦٧)
+   -------------------------------------------------------------------------
+   «في سرد المحفوظ المعلّمُ يحدّد أوّلَ يومٍ البدايةَ والنهاية، وبعدها
+   البرنامجُ يحدّد البداية، وكلَّ يومٍ يحدّد (المعلّمُ) النهاية». فالبدايةُ
+   الآيةُ التي بعد نهاية آخر جلسة، على اتجاه السرد. وكانت تُعيد نهايةَ آخر
+   جلسةٍ نفسَها فتتكرّر آيتُها. وفي أوّل يومٍ لا بداية — يُدخلها المعلّم.
+   ========================================================================= */
+function sardDirOfPlan(plan) {
+  if (plan && plan.sardDir) {
+    if (plan.sardDir === "forward") return "forward";
+    if (plan.sardDir === "backward") return "backward";
+    return typeof dirOf === "function" && dirOf(plan.sardDir) === "forward" ? "forward" : "backward";
+  }
+  return typeof dirOf === "function" && plan && dirOf(plan.direction) === "forward" ? "forward" : "backward";
+}
+function sardStart(studentId, dir, beforeDate) {
+  const l = sardLast(studentId, beforeDate);
   if (!l || !l.s) return null;
-  return { s: l.s, a: l.a };
+  let d = dir;
+  if (!d) {
+    const st = (cur("students") || []).find(x => String(x.id) === String(studentId));
+    const pl = st && typeof planOfStudent === "function" ? planOfStudent(st) : null;
+    d = sardDirOfPlan(pl);
+  }
+  const nx = typeof stepFrom === "function" ? stepFrom(l.s, l.a, d) : { s: l.s, a: l.a };
+  /* فهرسُ السور لم يصل: لا تُخمَّن آيةٌ قد لا توجد — تُملأ حين يصل */
+  if (nx && nx.needEnd && !(typeof QSURAHS !== "undefined" && QSURAHS)) {
+    /* يُطلب الفهرس، وهو يُعيد الرسمَ حين يصل فتظهر البداية */
+    try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) { console.warn("فهرس السور:", e); }
+    return null;
+  }
+  const n =typeof reciteNorm === "function" ? reciteNorm(nx, d) : nx;
+  return n && n.s ? { s: Number(n.s), a: Math.max(1, Number(n.a) || 1) } : null;
 }
 
 /* طلابُ البرنامج: من أُسنِد إليهم سرد المحفوظ */
@@ -20326,6 +20358,24 @@ function hifzLimitFor(a) {
   const R = q => progRank(q.s, q.a, dir);
   let lim = sp.hi;                      /* أبعدُ ما حُفظ في جهة السير */
   let excl = false;                     /* حدٌّ مستثنىً: يُوقَف قبلَه لا عندَه */
+  /* =======================================================================
+     ولا تدخل المراجعةُ السورةَ التي يحفظ فيها (٤٦٦)
+     -----------------------------------------------------------------------
+     «المراجعةُ من الناس يسير الطالبُ حتى يصل إلى سورة النبأ التي يحفظ فيها،
+     فيرجع تلقائياً يراجع من الناس». وكان الحدُّ آخرَ آيةٍ سُمِّعت من الحفظ،
+     فتدخل المراجعةُ النبأَ إلى موضعه منها. فالحدُّ آخرُ ما قبل سورة الحفظ
+     الحاليّة — بموضع الحفظ نفسِه الذي يحدُّ به التثبيتُ (fixUpTo) وبحدّه
+     نفسِه (fixSurahBefore)، فالثلاثةُ على ترتيبٍ واحد: الحفظُ ثمّ التثبيتُ
+     ثمّ المراجعة. وإن كانت سورةُ الحفظ أوّلَ المصحف في جهته فلا ما يُراجَع. */
+  try {
+    const up = typeof fixUpTo === "function" ? fixUpTo(a && a.studentId) : null;
+    if (up && Number(up.s) > 0) {
+      const ps0 = back ? Number(up.s) + 1 : Number(up.s) - 1;
+      if (ps0 < 1 || ps0 > 114) return { none: true, dir: dir, back: back };
+      const bnd = typeof fixSurahBefore === "function" ? fixSurahBefore(up.s, back) : null;
+      if (bnd && R(bnd) < R(lim)) lim = bnd;
+    }
+  } catch (e) { console.warn("حدّ المراجعة:", e); }
   const fx = revFixBound(a);
   if (fx && Number(fx.fromS) > 0 && Number(fx.toS) > 0) {
     /* طرفُ التثبيت الذي يستقبل المراجعة: أوّلُه في جهة السير */
@@ -21750,16 +21800,18 @@ function sardDutyOf(plan, st, studentId, dateISO) {
   const preset = fS > 0 && tS > 0;
   const k = "sard";
   const exists = asgFind(dateISO, studentId, k);
-  const dir = plan.sardDir ? (plan.sardDir === "forward" ? "forward" : "backward")
-    : (typeof dirOf === "function" && dirOf(plan.direction) === "forward" ? "forward" : "backward");
+  const dir = sardDirOfPlan(plan);
+  /* بعد أوّل يوم: البدايةُ ما بعد آخر جلسةٍ قبل هذا اليوم، والنهايةُ للمعلّم (٤٦٧) */
+  const auto = sardStart(studentId, dir, dateISO);
   const rec = {
     id: asgId(dateISO, studentId, k), date: dateISO,
     studentId: String(studentId), student: st.name || "",
     circleId: st.circleId || "", planId: plan.id || "",
     kind: k, kindName: SARD_KIND, unit: "", levelId: "",
     qty: 0,
-    fromS: preset ? fS : 0, fromA: preset ? Math.max(1, Number(plan.sardFromA) || 1) : 0,
-    toS: preset ? tS : 0, toA: preset ? Math.max(1, Number(plan.sardToA) || 1) : 0,
+    fromS: auto ? auto.s : preset ? fS : 0,
+    fromA: auto ? auto.a : preset ? Math.max(1, Number(plan.sardFromA) || 1) : 0,
+    toS: auto ? 0 : preset ? tS : 0, toA: auto ? 0 : preset ? Math.max(1, Number(plan.sardToA) || 1) : 0,
     direction: dir,
     status: "pending", score: null,
     termId: typeof activeTermId === "function" ? (activeTermId() || "") : "",
@@ -42886,8 +42938,9 @@ function teacherRecite() {
   /* الطالبُ المعروض ونقطةُ بدئه — السردُ يُملأ من معالجه الخاص */
   const curSid = students.some(x => String(x.id) === String(f.lastStudent || ""))
     ? String(f.lastStudent) : String((students[0] || {}).id || "");
+  /* السرد: البدايةُ ما بعد آخر جلسة (٤٦٧)، وفي أوّل يومٍ يُدخلها المعلّم */
   const nextFrom = (typeof SARD_ID_KIND === "function" && f.kind === SARD_ID_KIND())
-    ? null : reciteNextFrom(curSid, f.kind || "حفظ");
+    ? (typeof sardStart === "function" ? sardStart(curSid) : null) : reciteNextFrom(curSid, f.kind || "حفظ");
   const surahOpts = sel => QSURAHS.map(s =>
     `<option value="${s.i}" ${String(sel) === String(s.i) ? "selected" : ""}>${s.i}. ${esc(s.n)}</option>`).join("");
 
@@ -46232,6 +46285,7 @@ function stuRangeText(a) {
   const one = (s, y, st) => nm(s) + " (" +
     toArabicDigits(asgAyahShown(s, y || 1, !!st)) + ")";
   const from = "من " + one(a.fromS, a.fromA, true);
+  if (!a.toS && String(a.kind || "").replace("_makeup", "") === "sard") return from + " — النهايةُ يحدّدها المعلّم";
   return a.toS ? from + " إلى " + one(a.toS, a.toA) : from;
 }
 
