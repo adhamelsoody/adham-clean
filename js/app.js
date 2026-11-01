@@ -37252,7 +37252,10 @@ window.tstuDutySave = function (id, opts) {
     if (!(next.toS > 0 && next.toA > 0)) {
       showToast("موضعُ الانتهاء غير صحيح", "warn"); return false; }
   }
-  if (cQty && document.getElementById("tsd_qty")) {
+  /* (٤٦٩) السردُ بلا مقدار (٤٦٤): خانتُه صفرٌ دائماً، فكان كلُّ حفظٍ لنهايته
+     يُردّ بـ«المقدار غير صحيح». فلا يُفحص مقدارُه ولا يُكتب — مداه وحده. */
+  const isSardA = String(a.kind || "").replace("_makeup", "") === "sard";
+  if (cQty && !isSardA && document.getElementById("tsd_qty")) {
     const q = Number(val("#tsd_qty") || 0);
     if (!(q > 0)) { showToast("المقدار غير صحيح", "warn"); return false; }
     next.qty = q;
@@ -37500,9 +37503,21 @@ window.tstuDutyResult = function (id, res) {
      بصلاحياته وتحقّقه — فلا يُسمَّع غيرُ ما يرى المعلّم. وإن ردَّه
      التحقّقُ لم يُفتح التقييمُ: مدىً مردودٌ لا يُعتمد. */
   if (String(res) === "done") {
-    if (typeof tsdPending === "function" && tsdPending(a) &&
+    /* والسردُ بلا نهايةٍ مخزونة: ما في خانتَي النهاية هو تأكيدُ المعلّم — يُحفظ
+       ولو لم يُبدَّل المعروض (٤٦٩) */
+    const sardNoEnd = String(a.kind || "").replace("_makeup", "") === "sard" &&
+      !(Number(a.toS) > 0) && !!document.getElementById("tsd_tS");
+    if (((typeof tsdPending === "function" && tsdPending(a)) || sardNoEnd) &&
         typeof window.tstuDutySave === "function") {
       if (window.tstuDutySave(a.id, { chain: true }) === false) return;
+    }
+    /* (٤٦٩) «في السرد بمجرّد ما يؤكّد المعلّمُ النهايةَ تتمّ العمليةُ فوراً»:
+       واجبُ السرد يُعتمد مباشرةً بمداه الذي حُفظ للتوّ — بمسار علامة الصحّ
+       نفسِه وحرّاسِه — بلا نافذة تقييم. وسائرُ الأنواع كما كانت. */
+    if (String(a.kind || "").replace("_makeup", "") === "sard" &&
+        typeof window.tstuQuickDone === "function") {
+      const fresh = tstuAsgById(a.id) || a;
+      if (Number(fresh.toS) > 0) { closeModal(); window.tstuQuickDone(a.id); return; }
     }
     if (typeof window.recvOpen === "function") window.recvOpen(a.id);
     return;
