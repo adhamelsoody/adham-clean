@@ -20388,6 +20388,11 @@ function hifzLimitFor(a) {
        عن المبتدئ ولا تدور في الفراغ. */
     const room = R(sp.lo) < R(p);
     if (nearer && room) { lim = p; excl = true; }
+    /* (٤٦٩ب) «التثبيتُ يسبق المراجعة ولا تكون بينهما آيةٌ مشتركة»: وكان
+       التثبيتُ إذا غطّى المحفوظَ كلَّه يُترك حدُّه فتُعطى المراجعةُ المدى
+       نفسَه («تثبيت: من الناس ١ إلى الفلق ٥» و«مراجعة: من الناس ١ إلى الفلق
+       ٥»). فلا مراجعةَ حتى يتجاوز المحفوظُ مدى التثبيت. */
+    else if (nearer && !room) return { none: true, dir: dir, back: back };
   }
   return { lim: lim, excl: excl, home: sp.lo, back: back, dir: dir };
 }
@@ -35119,7 +35124,7 @@ function dutiesOfDay(sid, d) {
   const saved = (cur("assignments") || []).filter(a => a &&
     String(a.studentId) === String(sid) && String(a.date) === String(day));
   /* ويومٌ مضى لا يُولَّد له شيءٌ جديد: سجلُّه ما كُتب فيه */
-  if (String(day) < String(todayISO())) return saved;
+  if (String(day) < String(todayISO())) return asgFixBeforeRev(saved);
   let gen = [];
   try { gen = generateAssignments(sid, day) || []; } catch (e) { gen = []; }
   const out = asgMergeByKind(asgDropOldPlan(sid, saved, gen), gen);
@@ -35127,7 +35132,21 @@ function dutiesOfDay(sid, d) {
      بينهما من أيّام ركنه — للعرض وحدَه، بلا كتابةٍ في السجلّ. */
   try { asgProjectStarts(out, sid, day, saved); } catch (e) { console.warn("asgProjectStarts:", e); }
   try { asgTilFollow(out); } catch (e) {}
-  return out;
+  return asgFixBeforeRev(out);
+}
+
+/* (٤٦٩ب) «التثبيتُ يسبق المراجعة»: في العرض يأتي التثبيتُ قبل المراجعة —
+   يُنقل وحدَه إلى ما قبل أوّل مراجعة، وسائرُ الترتيب بحاله. ترتيبٌ لا كتابة. */
+function asgFixBeforeRev(list) {
+  if (!Array.isArray(list) || list.length < 2) return list;
+  const k = a => String((a && a.kind) || "").replace("_makeup", "");
+  const iRev = list.findIndex(a => k(a) === "rev");
+  if (iRev < 0) return list;
+  const fixes = list.filter((a, i) => k(a) === "fix" && i > iRev);
+  if (!fixes.length) return list;
+  const rest = list.filter(a => fixes.indexOf(a) < 0);
+  const at = rest.findIndex(a => k(a) === "rev");
+  return rest.slice(0, at).concat(fixes, rest.slice(at));
 }
 
 /* =========================================================================
@@ -36961,7 +36980,9 @@ window.tstuQuickDone = async function (id, ev) {
     persistSet("assignments", rec);
   }
   RECV.grade = "ممتاز";
+  RECV.full = true;
   window.recvSave();
+  RECV.full = false;
   /* وإن ردّه حارسٌ في الحفظ نفسِه (التحضير) بقيت النافذةُ مفتوحةً بسببه */
 };
 
@@ -37806,11 +37827,15 @@ function tsdReactSheet(cfg) {
         return rec ? rec.n : (surahName(n) || "—");
       };
 
+      /* (٤٦٩ب) «ترتيبُ السور على اتجاه الطالب»: من يسير «من الناس» تُعرض له
+         السورُ من الناس إلى الفاتحة، ومن يسير «من الفاتحة» من الفاتحة إلى
+         الناس. ترتيبُ العرض وحدَه — القائمةُ الأصليّةُ وقيمُها كما هي. */
+      const ordered = props.back ? surahs.slice().reverse() : surahs;
       const hits = function () {
         const s = String(q).trim().replace(/\s+/g, " ");
-        if (!s) return surahs;
+        if (!s) return ordered;
         /* بحثٌ بالاسم وبرقم السورة معاً */
-        return surahs.filter(function (x) {
+        return ordered.filter(function (x) {
           return String(x.n).indexOf(s) > -1 || String(x.i) === s ||
                  String(x.i).indexOf(s) === 0;
         });
@@ -37916,6 +37941,7 @@ function tsdReactSheet(cfg) {
         ? h("span", { className: "tsd-pair tsd-pair-w" },
             h(SurahPick, {
               id: "tsd_fS", value: a.fromS || 1, label: "سورة الابتداء",
+              back: dirOf(a.direction) === "backward",
               onChange: function () {
                 touch();
                 window.ayahCap("tsd_fA", "tsd_fS");
@@ -37938,6 +37964,7 @@ function tsdReactSheet(cfg) {
         ? h("span", { className: "tsd-pair tsd-pair-w" },
             h(SurahPick, {
               id: "tsd_tS", value: a.toS || a.fromS || 1, label: "سورة المنتهى",
+              back: dirOf(a.direction) === "backward",
               onChange: function () {
                 touch();
                 window.ayahCap("tsd_tA", "tsd_tS");
@@ -38107,8 +38134,10 @@ window.tstuDuty = function (id) {
   const aDir = dirOf(a.direction);
   /* الاسمُ وحدَه في الخيارات كذلك — فالصحيفةُ الساقطةُ (بلا React) تقول
      ما تقوله صحيفةُ React سواءً بسواء. والقيمةُ رقمُ السورة كما كانت. */
+  /* (٤٦٩ب) السورُ على اتجاه الطالب: «من الناس» تبدأ بالناس */
   const sOpts = (sel) => (typeof QSURAHS !== "undefined" && QSURAHS)
-    ? QSURAHS.map(x => `<option value="${x.i}"${Number(sel) === x.i ? " selected" : ""}>${
+    ? (dirOf(a.direction) === "backward" ? QSURAHS.slice().reverse() : QSURAHS)
+        .map(x => `<option value="${x.i}"${Number(sel) === x.i ? " selected" : ""}>${
         esc(x.n)}</option>`).join("")
     : `<option value="${Number(sel) || 1}" selected>${esc(surahName(sel) || "—")}</option>`;
   const unitOpts = (sel) => (typeof HW_UNITS !== "undefined" ? HW_UNITS : [{ k: "وجه", h: "وجه" }])
@@ -38747,7 +38776,7 @@ window.reptCfgSave = function () {
    ثمّ «اعتماد التسميع» فتُحفظ النتيجةُ والأخطاءُ والتقييم، وتخضرُّ علامةُ
    الواجب، وينقص المتبقّي في إحصاء الحلقة، وينتقل إلى الواجب التالي.
    ========================================================================= */
-const RECV = { asgId: "", grade: "ممتاز", saving: false };
+const RECV = { asgId: "", grade: "ممتاز", saving: false, full: false };
 
 /* أخطاءُ المصحف في مدى الواجب — تُقرأ ولا تُكتب يدوياً */
 function recvMarks(a) {
@@ -38960,7 +38989,13 @@ window.recvSave = function () {
   const mk = recvMarks(a);
   const vals = {};
   evalItemsOn().forEach(x => { vals[x.k] = Number(val("#rcv_" + x.k) || 0); });
-  const score = typeof reciteScore === "function" ? reciteScore({ grade: RECV.grade }) : null;
+  /* (٤٦٩ب) «النسبةُ دقيقةٌ على حسب ما سمّع: سمّع الحفظَ كلَّه فهي ١٠٠٪»:
+     الاعتمادُ بعلامة الصحّ أو بتأكيد نهاية السرد اعتمادٌ للمدى كاملاً،
+     فنسبتُه ١٠٠٪ لا ٩٠٪ «ممتاز». ونافذةُ التقييم كما كانت بتقديرها. */
+  const fullDone = RECV.full === true;
+  RECV.full = false;
+  const score = fullDone ? 100
+    : (typeof reciteScore === "function" ? reciteScore({ grade: RECV.grade }) : null);
   const c = (cur("circles") || []).find(x => String(x.id) === String(a.circleId || st.circleId));
 
   const rec = {
