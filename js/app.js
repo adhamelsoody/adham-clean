@@ -36846,9 +36846,10 @@ function tstuDutyCards(st) {
   const d = tstuDay();
   const list = tstuAsgOf(st, d);
   /* ما غاب من الأنواع وسببُه — يُكتب تحت القائمة ولو كان فيها واجب */
-  const gone = (typeof asgSkipWhy === "function") ? asgSkipWhy(st.id, d) : [];
-  const goneBox = gone.length ? `<div class="tdt-why">${gone.map(x =>
-    `<span><b>${esc(x.h)}</b> — ${esc(x.why)}</span>`).join("")}</div>` : "";
+  /* (٤٦٨) «ألغِ التنبيهات التي تظهر تحت»: سطورُ «تثبيت — مُطفأٌ في خطة
+     الطالب» وأخواتُها لا تُعرض تحت الواجبات بعد الآن. ولم تُحذف asgSkipWhy:
+     باقيةٌ كما هي لمن يقرؤها، والعرضُ وحدَه رُفع. */
+  const goneBox = "";
   if (!list.length) {
     /* =====================================================================
        «أضفتُ واجباً ولا يظهر هنا ولا على بطاقة الطالب»
@@ -36901,7 +36902,8 @@ function tstuDutyCards(st) {
       style="--sls-k:${esc(t.color || "#4bdee4")}"
       onclick="window.tstuDuty('${jsAttr(a.id)}')">
       <span class="sls-tick${done ? " on" : ""}"
-        role="img" aria-label="${done ? "منجَز" : "لم يُنجَز بعد"}">${ic("check", 14)}</span>
+        role="button" aria-label="${done ? "منجَز" : "اعتماد الواجب"}"
+        onclick="window.tstuQuickDone('${jsAttr(a.id)}', event)">${ic("check", 14)}</span>
       <span class="sls-mid">
         <span class="sls-line"><strong>${esc(a.kindName || t.h || "واجب")}:</strong>${
           rng ? ` <span class="sls-rng">${esc(rng)}</span>` : ""}</span>
@@ -36917,6 +36919,51 @@ function tstuDutyCards(st) {
   }).join("")}</div>
   ${goneBox}`;
 }
+
+/* =========================================================================
+   علامةُ الصحّ تعتمد الواجبَ مباشرةً (٤٦٨)
+   -------------------------------------------------------------------------
+   «لو المعلّم داس على علامة الصحّ يعتمد الواجب على طول ويكون باللون
+   الأخضر». فالعلامةُ تعتمد بتقدير «ممتاز» عبر مسار الاعتماد نفسِه
+   (recvOpen ثمّ recvSave) — بحرّاسه كلِّها: صلاحيةُ التسميع، والتحضيرُ
+   قبله، والغائب، وواجبُ يومٍ لم يأتِ، والمعتمَدُ أصلاً. فلا كتابةَ من
+   طريقٍ ثانٍ. والضغطُ على بقيّة الصفّ يفتح التفاصيلَ كما كان.
+   وما لا يُعتمد بنقرة يُفتح بتفاصيله: سردٌ لم تُدخَل نهايتُه، وواجبٌ
+   مقسَّمٌ على جلسات.
+   ========================================================================= */
+window.tstuQuickDone = async function (id, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  let a = tstuAsgById(id);
+  if (!a) { showToast("لا واجبَ بهذا المعرّف", "warn"); return; }
+  if (asgDone(a)) { showToast("هذا الواجبُ معتمَدٌ أصلاً", "info"); return; }
+  const k = String(a.kind || "").replace("_makeup", "");
+  const parts = typeof asgParts === "function" ? asgParts(a) : [];
+  if ((k === "sard" && !(Number(a.toS) > 0)) || parts.length) {
+    window.tstuDuty(id); return;
+  }
+  /* المدى يُحسب قبل الاعتماد: سجلُّ التسميع يُكتب من منتهى الواجب */
+  let end = null;
+  if (Number(a.fromS) > 0 && Number(a.qty) > 0 && !a.edited && !(Number(a.toS) > 0) &&
+      typeof rangeEnd === "function") {
+    try {
+      end = await rangeEnd(a.fromS, a.fromA, a.qty, a.unit, a.direction);
+      if (typeof asgCapToHifz === "function") end = await asgCapToHifz(a, end);
+    } catch (e) { console.warn("مدى الواجب:", e); end = null; }
+  }
+  RECV.asgId = "";
+  window.recvOpen(id);
+  /* حارسٌ ردَّ الفتح (غائب · لا صلاحية · يومٌ لم يأتِ…) فقال سببَه: لا اعتماد */
+  if (String(RECV.asgId) !== String(a.id) || !document.querySelector(".rcv-sheet")) return;
+  /* recvOpen ثبّت الواجبَ سجلّاً: يُكتب فيه المنتهى المحسوب إن غاب */
+  const rec = tstuAsgById(id);
+  if (rec && end && Number(end.surah) > 0 && !(Number(rec.toS) > 0)) {
+    rec.toS = Number(end.surah); rec.toA = Number(end.ayah) || 1;
+    persistSet("assignments", rec);
+  }
+  RECV.grade = "ممتاز";
+  window.recvSave();
+  /* وإن ردّه حارسٌ في الحفظ نفسِه (التحضير) بقيت النافذةُ مفتوحةً بسببه */
+};
 
 /* نتائجُ اليوم: التسميعُ وتقييمُه والأخطاءُ المسجَّلة — لليوم المختار */
 function tstuDayResults(st) {
@@ -40246,7 +40293,8 @@ const RECITE_KINDS_SARD = ["السرد"];
 function reciteKindsFor(studentId) {
   if (!studentId) return RECITE_KINDS;
   const isSard = sardStudents().some(x => String(x.id) === String(studentId));
-  return isSard ? RECITE_KINDS_SARD.concat(RECITE_KINDS) : RECITE_KINDS;
+  /* (٤٦٨) «السرد لا يسبق المراجعة»: يأتي بعدها لا قبل الحفظ */
+  return isSard ? RECITE_KINDS.slice(0, 2).concat(RECITE_KINDS_SARD, RECITE_KINDS.slice(2)) : RECITE_KINDS;
 }
 const RECITE_GRADES = ["ممتاز", "جيد جداً", "جيد", "إعادة"];
 const GRADE_TINT = { "ممتاز": "t-green", "جيد جداً": "t-blue", "جيد": "t-amber", "إعادة": "t-red" };
