@@ -2467,9 +2467,12 @@ function adminDashboard() {
     sCard("المدراء",   toArabicDigits(managers.length),  SC.gold,   "person")
   ], 3);
 
-  /* حضورُ اليوم من سجلّات فعلية، لا أرقامٌ ثابتة */
+  /* حضورُ اليوم من سجلّات فعلية، لا أرقامٌ ثابتة — واليومُ هو المختارُ في
+     الشريط العلويّ (٤٧٢)، وهو اليومُ ما لم يُختر غيرُه */
   const ids = {}; students.forEach(x => { ids[String(x.id)] = 1; });
-  const today = todayISO();
+  const today = attDate();
+  const dayTitle = today === todayISO() ? "حضور اليوم"
+    : "حضور " + (typeof hijriOf === "function" ? hijriOf(today) : today);
   const recs = (Array.isArray(DB.attendance) ? DB.attendance : [])
     .filter(r => String(r.date) === today && ids[String(r.studentId)]);
   const cnt = k => recs.filter(r => r.status === k).length;
@@ -2512,7 +2515,7 @@ function adminDashboard() {
     <div style="height:18px"></div>
     <div class="grid g-2" style="align-items:start">
       <div class="card">
-        <div class="section-head"><h3>حضور اليوم</h3>
+        <div class="section-head"><h3>${esc(dayTitle)}</h3>
           <span class="badge b-gray">${toArabicDigits(marked)} / ${toArabicDigits(total)}</span></div>
         <div class="att-rows">${attRows}</div>
         <div style="margin-top:12px"><span class="muted" style="font-size:12px">نسبة تسجيل التحضير</span>
@@ -55020,9 +55023,46 @@ function attMap(dateISO, circleId) {
 
 /* التاريخ المعروض في صفحة التحضير — يبدأ باليوم ويتغيّر بأسهم التنقل */
 function attDate() {
-  if (!STATE.attDate) STATE.attDate = todayISO();
+  if (!STATE.attDate) STATE.attDate = viewDateSaved() || todayISO();
   return STATE.attDate;
 }
+
+/* =========================================================================
+   «تحديد تاريخ» في الشريط العلويّ يعرض بياناتِ ذلك اليوم (٤٧٢)
+   -------------------------------------------------------------------------
+   «عندما أرجع بالتاريخ إلى يوم أمس يظهر لي بياناتُ أمس، وعشرة أيامٍ إلى
+   الوراء بياناتُ ما قبل عشرة أيام». وكان الشريطُ يبدّل عنوانَه وحدَه ولا
+   يُخبر النظام. واليومُ المعروضُ في النظام واحدٌ أصلاً: attDate — تقرؤه
+   لوحاتُ المدراء والتحضيرُ وحلقةُ المعلّم وبطاقةُ الطالب. فالشريطُ يكتبه.
+   ويُحفظ في الجلسة (sessionStorage) لأنّ صفحاتِ الإدارة تُحمَّل من جديد
+   مع كلّ انتقال فيبدأ STATE فارغاً؛ ويُنسى بإغلاق التبويب فيعود اليوم.
+   ولا مستقبل: ما بعد اليوم يُردّ إلى اليوم كما في أسهم التحضير.
+   ========================================================================= */
+const VIEW_DATE_KEY = "zat.viewDate";
+function viewDateSaved() {
+  try {
+    const v = sessionStorage.getItem(VIEW_DATE_KEY) || "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(v) && v < todayISO() ? v : "";
+  } catch (e) { return ""; }
+}
+function viewDateKeep(iso) {
+  try {
+    if (iso && iso < todayISO()) sessionStorage.setItem(VIEW_DATE_KEY, iso);
+    else sessionStorage.removeItem(VIEW_DATE_KEY);
+  } catch (e) {}
+  try { if (typeof window.tbDateSync === "function") window.tbDateSync(iso || todayISO()); } catch (e) {}
+}
+window.viewDateSet = function (iso) {
+  const v = String(iso || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+  const d = v > todayISO() ? todayISO() : v;
+  if (d === attDate()) { viewDateKeep(d); return; }
+  STATE.attDate = d;
+  /* بطاقةُ الطالب تتبع اليومَ المعروض لا يوماً اختاره سابقاً */
+  try { if (typeof TSTU !== "undefined" && TSTU) TSTU.day = ""; } catch (e) {}
+  viewDateKeep(d);
+  mount();
+};
 
 function attShift(days) {
   const d = new Date(attDate() + "T12:00:00");
@@ -55030,6 +55070,8 @@ function attShift(days) {
   const iso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   /* لا تسجيل للمستقبل */
   STATE.attDate = iso > todayISO() ? todayISO() : iso;
+  /* والشريطُ العلويُّ يتبع الأسهم (٤٧٢) */
+  viewDateKeep(STATE.attDate);
   mount();
 }
 

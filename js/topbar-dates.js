@@ -184,6 +184,7 @@
     native.type = "date";
     native.className = "date-native";
     native.value = toInputVal(today);
+    native.max = toInputVal(today);   /* (٤٧٢) لا بياناتَ لما لم يأتِ */
 
     // الزر الأخضر
     const btn = document.createElement("button");
@@ -216,14 +217,23 @@
       days.push(d);
     }
 
-    function selectDate(dt) {
+    function selectDate(dt, fromUser) {
       lblEl.textContent = fmtDay(dt);
       native.value = toInputVal(dt);
       panel.querySelectorAll(".tb-opt.sel").forEach(function (x) { x.classList.remove("sel"); });
       const key = toInputVal(dt);
       const match = panel.querySelector('.tb-opt[data-k="' + key + '"]');
       if (match) match.classList.add("sel");
+      /* (٤٧٢) اختيارُ اليوم يعرض بياناتِه في النظام — لا العنوانَ وحده */
+      if (fromUser && typeof window.viewDateSet === "function") {
+        try { window.viewDateSet(key); } catch (e) { console.warn("viewDateSet:", e); }
+      }
     }
+    /* والنظامُ يُخبر الشريطَ إذا تبدّل اليومُ من غيره (أسهمُ التحضير) */
+    window.tbDateSync = function (iso) {
+      const p = String(iso || "").split("-");
+      if (p.length === 3) selectDate(new Date(+p[0], +p[1] - 1, +p[2]), false);
+    };
 
     days.forEach(function (d, i) {
       const o = document.createElement("div");
@@ -233,7 +243,7 @@
       o.textContent = fmtDay(d);
       o.addEventListener("click", function (ev) {
         ev.stopPropagation();
-        selectDate(d);
+        selectDate(d, true);
         panel.hidden = true;
         pill.setAttribute("aria-expanded", "false");
         pill.classList.remove("open");
@@ -260,8 +270,13 @@
     native.addEventListener("change", function () {
       if (!native.value) return;
       const p = native.value.split("-");
-      selectDate(new Date(+p[0], +p[1] - 1, +p[2]));
+      selectDate(new Date(+p[0], +p[1] - 1, +p[2]), true);
     });
+    /* البدايةُ باليوم المعروض في النظام إن كان غيرَ اليوم (محفوظٌ في الجلسة) */
+    try {
+      const saved = sessionStorage.getItem("zat.viewDate") || "";
+      if (/^\d{4}-\d{2}-\d{2}$/.test(saved)) window.tbDateSync(saved);
+    } catch (e) {}
 
     wrap.appendChild(pill);
     wrap.appendChild(panel);
