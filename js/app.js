@@ -1857,13 +1857,42 @@ function perfChart(months) {
 /* ولوحةُ مدير المسجد بالشكل نفسه (mode="mosque"): «أريد مثل هذه في مدير
    المسجد». ثلاثُ بطاقاتٍ بلا «المساجد»، وتحت المؤشّر «حلقات بدأت» و«حلقات
    لم تبدأ» اليوم، والأوجهُ لكلّ معلّمٍ من معلّمي مسجده لا لكلّ مسجد. */
+/* =========================================================================
+   أرقامُ اللوحة في اليوم المختار (٤٧٤)
+   -------------------------------------------------------------------------
+   «لما أرجع بالتاريخ ليوم التلات يجيب لي إحصائيات يوم التلات: عدد الطلاب
+   والحلقات وكلّ شيء». فيُعدّ من كلّ مجموعةٍ ما كان قائماً في ذلك اليوم:
+   ما أُنشئ بعده لا يُعدّ. وتاريخُ إنشاء السجلّ من حقله إن وُجد (joinedAt ·
+   createdAt · joinDate)، وإلّا من معرّفه — والمعرّفُ لحظةُ إنشائه
+   (Date.now()) في المجمّعات والمساجد والحلقات والطلاب والمعلّمين. وما لا
+   يُعرف تاريخُه يُعدّ قائماً — فلا يسقط سجلٌّ قديمٌ بلا دليل.
+   وحدُّه ما يملكه المشروع: المحذوفُ لا سجلَّ له فلا يُستعاد في يومٍ مضى.
+   واليومُ نفسُه بلا تصفية: الأرقامُ كما كانت حرفاً بحرف.
+   ========================================================================= */
+function recCreatedISO(r) {
+  if (!r) return "";
+  const one = v => {
+    if (v == null || v === "") return "";
+    const n = Number(v);
+    if (n > 1000000000000 && n < 4102444800000) return new Date(n).toISOString().slice(0, 10);
+    const s = String(v);
+    return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : "";
+  };
+  return one(r.joinedAt) || one(r.createdAt) || one(r.joinDate) || one(r.id);
+}
+function asOfDay(list, day) {
+  const d = day || (typeof attDate === "function" ? attDate() : todayISO());
+  if (!Array.isArray(list) || d >= todayISO()) return list || [];
+  return list.filter(r => { const c = recCreatedISO(r); return !c || c <= d; });
+}
+
 function cxMgrDashboard(mode) {
   const MQ = mode === "mosque";
   const d = typeof attDate === "function" ? attDate() : todayISO();
-  const mosques  = cur("mosques")  || [];
-  const teachers = (cur("teachers") || []).filter(x => !(typeof isStaffManager === "function" && isStaffManager(x)));
-  const circles  = cur("circles")  || [];
-  const students = (cur("students") || []).filter(s => s && s.status !== "متوقف");
+  const mosques  = asOfDay(cur("mosques")  || [], d);
+  const teachers = asOfDay((cur("teachers") || []).filter(x => !(typeof isStaffManager === "function" && isStaffManager(x))), d);
+  const circles  = asOfDay(cur("circles")  || [], d);
+  const students = asOfDay((cur("students") || []).filter(s => s && s.status !== "متوقف"), d);
   const total = students.length;
   const n2 = x => toArabicDigits(x);
 
@@ -2314,10 +2343,11 @@ function supervisorDashboard() {
   const sc = myScope();
   const day = attDate();
 
-  const myMosques  = (cur("mosques") || []);
-  const myCircles  = (cur("circles") || []).filter(c => c && c.status !== "متوقف");
-  const myStuds    = (cur("students") || []).filter(s => s && s.status !== "متوقف");
-  const myTeachers = (cur("teachers") || []).filter(t => t && t.active !== false);
+  /* في اليوم المختار: ما كان قائماً فيه (٤٧٤) */
+  const myMosques  = asOfDay(cur("mosques") || [], day);
+  const myCircles  = asOfDay((cur("circles") || []).filter(c => c && c.status !== "متوقف"), day);
+  const myStuds    = asOfDay((cur("students") || []).filter(s => s && s.status !== "متوقف"), day);
+  const myTeachers = asOfDay((cur("teachers") || []).filter(t => t && t.active !== false), day);
 
   /* ---------- ما ينتظر تدخّله ---------- */
   const pend = [];
@@ -2457,11 +2487,12 @@ function adminDashboard() {
      كانت تعرض بطاقاتِ المجمّعات والمساجد، وهي عينُ ما تعرضه صفحةُ
      «المنشآت التعليمية» — فشاشتان لشيءٍ واحد. البطاقاتُ بقيت في مكانها
      هناك، وهذه صارت للأرقام: ما في النظام، وحضورُ اليوم. */
-  const complexes = cur("complexes");
-  const mosques   = cur("mosques");
-  const circles   = cur("circles");
-  const students  = cur("students");
-  const staff     = cur("teachers");
+  /* الأرقامُ في اليوم المختار في الشريط العلويّ: ما كان قائماً فيه (٤٧٤) */
+  const complexes = asOfDay(cur("complexes"));
+  const mosques   = asOfDay(cur("mosques"));
+  const circles   = asOfDay(cur("circles"));
+  const students  = asOfDay(cur("students"));
+  const staff     = asOfDay(cur("teachers"));
   const teachers  = staff.filter(x => !isStaffManager(x));
   const managers  = staff.filter(isStaffManager);
 
@@ -2516,7 +2547,8 @@ function adminDashboard() {
     : `<div class="muted" style="padding:14px;text-align:center">لا توجد مجمعات بعد.</div>`;
 
   return `<div class="page">
-    ${pageHead("لوحة التحكم", "إحصاءات النظام العامة", "")}
+    ${pageHead("لوحة التحكم", today === todayISO() ? "إحصاءات النظام العامة"
+      : "إحصاءات النظام في " + (typeof hijriOf === "function" ? hijriOf(today) : today), "")}
     ${dataBanner()}
     ${counts}
     <div style="height:18px"></div>

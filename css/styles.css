@@ -14361,3 +14361,12 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
 .mus-cnt.m-tajweed { background: var(--mus-tajweed, #2377b8); }
 .mus-mode.on.m-excel { background: var(--mus-excel, #0c585b); }
 .mus-cnt.m-excel     { background: var(--mus-excel, #0c585b); }
+
+/* (٤٧٤) «الآياتُ تدخل في رقم الآية، والآيةُ تخرج من صفّها»: علامةُ الآية
+   كانت تُضغط في السطر (min-width:0 مع الانكماش الافتراضيّ لعناصر flex) إلى
+   نحو نصف عرض رسمها، فيركب رسمُها الكلمةَ المجاورة — ويُقاس السطرُ أقصرَ من
+   حقيقته فيُختار خطٌّ أكبرُ من الورقة فيخرج آخرُه عن الإطار. فلا ينكمش
+   عنصرٌ في السطر: يأخذ كلٌّ عرضَ رسمه، فيُقاس السطرُ بطوله الحقيقيّ ويُصغَّر
+   الخطُّ حتى يسعه، ويُوزَّع الفراغُ بين الكلمات كما كان. */
+.qv-lines .qv-line > * { flex-shrink: 0; }
+.qv-lines .mus-num.qv-end { min-width: max-content; }
