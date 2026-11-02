@@ -1686,6 +1686,13 @@ window.facSearch = function (q) {
 };
 window.facBulk = function (kind, coll) {
   coll = coll || "complexes";
+  /* (٤٧٣) صفحةُ جدولٍ (المعلّمون والمشرفون والمدراء) لا بطاقات: كانت هذه
+     الأزرارُ تبحث عن بطاقاتٍ محدَّدة لا وجودَ لها فتقول «حدّد عنصراً» وقد
+     حُدِّدت الصفوف. فتُسلَّم لأزرار الجدول نفسِها، فتعمل على صفوفه. */
+  if (!document.getElementById("facGrid") && document.getElementById("ptBody") &&
+      typeof window.ptAct === "function") {
+    window.ptAct(kind); return;
+  }
   var nodes = document.querySelectorAll("#facGrid .fac-card.sel");
   var ids = []; for (var i = 0; i < nodes.length; i++) ids.push(nodes[i].getAttribute("data-id"));
   if (!ids.length) { showToast("حدد عنصراً واحداً على الأقل", "warn"); return; }
@@ -2687,7 +2694,7 @@ function adminCircles() {
   return personTable({
     rowPanel: "edit-circle",
     list, title: "الحلقات", showCount: true, toolbar: "add",
-    addLabel: "إضافة حلقة", addAction: "modal-circle", actionsPanel: true,
+    addLabel: "إضافة حلقة", addAction: "modal-circle", actionsPanel: true, coll: "circles",
     searchHint: "إبحث عن حلقة",
     empty: "أضف أول حلقة من زر الإضافة، بعد إضافة المسجد والمعلم.",
     cols: [
@@ -2885,7 +2892,7 @@ function adminStudents() {
     toolbar: "add", addLabel: "إضافة طالب", addAction: "modal-student",
     /* زرُّ «الإعدادات» (الخطة الافتراضية) انتقل إلى ترويسة بطاقة الطالب
        بطلبٍ صريح: «اعمل زرّ إعدادات هنا» — panelStudent ← spPlanSettings */
-    searchHint: "إبحث عن طالب", actionsPanel: true, rowPanel: "panel-student",
+    searchHint: "إبحث عن طالب", actionsPanel: true, rowPanel: "panel-student", coll: "students",
     empty: "أضف أول طالب من زر الإضافة، بعد إضافة المسجد والحلقة.",
     cols: [
       colPhoto(),
@@ -4657,7 +4664,7 @@ function personTable(opt) {
     <div class="pt-holder">
       ${opt.actionsPanel ? personActionsPanel() : ""}
       <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
-        <thead>${head}</thead><tbody id="ptBody" data-pt-tok="${ptTok}">${rows}</tbody>
+        <thead>${head}</thead><tbody id="ptBody" data-pt-tok="${ptTok}" data-coll="${esc(opt.coll || "users")}">${rows}</tbody>
       </table></div></div>
     </div>
   </div>`;
@@ -4826,17 +4833,66 @@ function ptAcctOf(id) {
   return null;
 }
 
+/* =========================================================================
+   أزرارُ اللوحة تعمل على سجلّات الصفحة نفسِها (٤٧٣)
+   -------------------------------------------------------------------------
+   «هذه الأزرار كلّها لا تعمل عند التحديد، والحذفُ لا يحذف». كانت كلُّها
+   تبحث عن المحدَّدين في users وحدَها — وصفوفُ صفحات الطلاب والمعلّمين
+   والحلقات سجلّاتٌ في مجموعاتها لا حسابات. فالإيقافُ يقول «٠ مستخدم»،
+   والحذفُ «لم يُحدَّد مستخدم»، والرسالةُ لا تصل أحداً.
+   فصار الجدولُ يحمل مجموعتَه (data-coll)، وكلُّ زرٍّ يعمل عليها:
+     • الإيقافُ والتفعيل: على السجلّ نفسِه (active + status) كزرّ الصفّ.
+     • الحذف: بحرّاس الحذف الفرديّ نفسِها — حلقةٌ فيها طلاب، ومعلّمٌ له
+       حلقات لا يُحذفان، ورقمُ هوية الطالب يُخلى من الفهرس.
+     • الرسالةُ والإشعار: إلى حساب دخول كلِّ سجلّ، وللحلقة إلى معلّمها.
+   وصفحاتُ الحسابات (المستخدمون والمشرفون والمدراء) كما كانت.
+   ========================================================================= */
+function ptColl() {
+  const b = document.getElementById("ptBody");
+  return String((b && b.dataset.coll) || "users");
+}
+function ptRecs(ids) {
+  const coll = ptColl();
+  const list = Array.isArray(DB[coll]) ? DB[coll] : [];
+  return ids.map(id => list.find(x => x && String(x.id) === String(id))).filter(Boolean);
+}
+/* حساباتُ الدخول لمن حُدِّد — ومن لا حسابَ له يُعدّ ولا يُخترع له */
+function ptRecipients(ids) {
+  const coll = ptColl();
+  const out = [], seen = {};
+  let none = 0;
+  ptRecs(ids).forEach(r => {
+    let u = null;
+    if (coll === "users") u = r;
+    else if (coll === "circles") u = r.teacherId ? ptAcctOf(r.teacherId) : null;
+    else u = ptAcctOf(r.id);
+    if (!u) { none++; return; }
+    const k = String(u.id);
+    if (!seen[k]) { seen[k] = 1; out.push(u); }
+  });
+  return { users: out, none: none };
+}
+
 window.ptAct = function (kind) {
   const ids = ptSelected();
   if (!ids.length) { showToast("حدّد صفاً واحداً على الأقل", "warn"); return; }
+  const coll = ptColl();
+  const recs = ptRecs(ids);
   const people = (DB.users || []).filter(u => ids.indexOf(String(u.id)) > -1);
-  const names = people.map(u => u.name || u.email).join("، ");
+  const names = (coll === "users" ? people : recs).map(u => u.name || u.email || "—").join("، ");
 
   if (kind === "msg" || kind === "bell") {
     const isMsg = kind === "msg";
+    const rc = ptRecipients(ids);
+    if (!rc.users.length) {
+      showToast(coll === "circles" ? "لا حسابَ دخولٍ لمعلّمي الحلقات المحدَّدة"
+        : "لا حسابَ دخولٍ لمن حُدِّد — أنشئ له حساباً أوّلاً", "warn");
+      return;
+    }
     openModal(
       isMsg ? "إرسال رسالة" : "إرسال إشعار",
-      `إلى ${ids.length} مستخدم: ${names}`,
+      `إلى ${rc.users.length} حساب: ${rc.users.map(u => u.name || u.email || "—").join("، ")}` +
+        (rc.none ? ` — و${rc.none} بلا حساب دخول` : ""),
       `<div class="form-grid">
         <div class="field full"><label>العنوان <span class="req">*</span></label>
           <input id="ptMsgTitle" placeholder="${isMsg ? "عنوان الرسالة" : "عنوان الإشعار"}"></div>
@@ -4930,6 +4986,18 @@ window.ptAct = function (kind) {
 
   if (kind === "stop" || kind === "play") {
     const val2 = kind === "play";
+    if (coll !== "users") {
+      /* على السجلّ نفسِه كزرّ الصفّ: active والحالةُ معاً */
+      recs.forEach(r => {
+        r.active = val2;
+        r.status = val2 ? "نشط" : "متوقف";
+        persistSet(coll, r);
+      });
+      const what = { students: "طالب", teachers: "معلّم", circles: "حلقة" }[coll] || "سجلّ";
+      showToast(`${val2 ? "تم تفعيل" : "تم إيقاف"} ${recs.length} ${what}`, "success");
+      mount();
+      return;
+    }
     const n = ptSetActive(ids, val2);
     showToast(`${val2 ? "تم تفعيل" : "تم إيقاف"} ${n} مستخدم`, "success");
     mount();
@@ -4937,8 +5005,13 @@ window.ptAct = function (kind) {
   }
 
   if (kind === "delete") {
+    const what = { students: "طالب", teachers: "معلّم", circles: "حلقة" }[coll] || "مستخدم";
+    const n = coll === "users" ? ids.length : recs.length;
     openModal("تأكيد الحذف", "",
-      noteCard(`سيتم حذف <strong>${ids.length}</strong> مستخدم نهائياً: ${esc(names)}. لا يمكن التراجع.`),
+      noteCard(`سيتم حذف <strong>${n}</strong> ${what} نهائياً: ${esc(names)}. لا يمكن التراجع.`) +
+      (coll !== "users" ? noteCard("تبقى بعد الحذف خططُهم وحضورُهم وتسميعُهم وحساباتُ دخولهم سجلّاً — " +
+        "وما لا يُحذف فرادى لا يُحذف هنا: الحلقةُ التي فيها طلاب، والمعلّمُ المسؤولُ عن حلقة. " +
+        "إن أردتَ حفظَ كلِّ شيء فأوقِفهم بدل حذفهم.") : ""),
       `<button class="btn btn-danger" data-action="pt-delete">حذف نهائي</button>
        <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`
     );
@@ -5005,7 +5078,8 @@ window.ptSend = function (kind) {
   const text  = (val("#ptMsgBody") || "").trim();
   if (!title || !text) { showToast("العنوان والنص مطلوبان", "warn"); return; }
   const ids = ptSelected();
-  const people = (DB.users || []).filter(u => ids.indexOf(String(u.id)) > -1);
+  /* (٤٧٣) إلى حسابات من حُدِّد في أيّ صفحة — لا إلى users وحدَها */
+  const people = ptRecipients(ids).users;
   const coll = kind === "msg" ? "site_messages" : "notifications";
   if (!Array.isArray(DB[coll])) DB[coll] = [];
   people.forEach(u => {
@@ -5037,6 +5111,8 @@ const PT_DEL_HARD_REFUSE = ["functions/permission-denied", "permission-denied",
                             "functions/unauthenticated", "unauthenticated"];
 
 window.ptDelete = async function () {
+  /* (٤٧٣) صفحاتُ السجلّات تُحذف سجلّاتُها بحرّاس الحذف الفرديّ نفسِها */
+  if (ptColl() !== "users") { ptDeleteRecs(); return; }
   const ids = ptSelected().filter(id => (DB.users || []).some(x => String(x.id) === String(id)));
   closeModal();
   if (!ids.length) { showToast("لم يُحدَّد مستخدمٌ للحذف", "warn"); return; }
@@ -5112,6 +5188,37 @@ window.ptDelete = async function () {
   mount();
 };
 
+
+function ptDeleteRecs() {
+  const coll = ptColl();
+  const recs = ptRecs(ptSelected());
+  closeModal();
+  if (!recs.length) { showToast("لم يُحدَّد سجلٌّ للحذف", "warn"); return; }
+  let done = 0;
+  const kept = [];
+  recs.forEach(r => {
+    const id = r.id;
+    if (coll === "circles") {
+      const n = (DB.students || []).filter(s => s && String(s.circleId || "") === String(id)).length;
+      if (n) { kept.push((r.name || "حلقة") + ": فيها " + toArabicDigits(n) + " طالباً"); return; }
+    }
+    if (coll === "teachers") {
+      const tc = (DB.circles || []).filter(c => c && c.teacherId != null && c.teacherId !== "" &&
+                   String(c.teacherId) === String(id));
+      if (tc.length) { kept.push((r.name || "معلّم") + ": مسؤولٌ عن " + toArabicDigits(tc.length) + " حلقة"); return; }
+    }
+    DB[coll] = (DB[coll] || []).filter(x => String(x.id) !== String(id));
+    persistDelete(coll, id);
+    if (coll === "students" && r.idNo && typeof idIdxDrop === "function") {
+      try { idIdxDrop(r.idNo, id); } catch (e) { console.warn("idIdxDrop:", e); }
+    }
+    done++;
+  });
+  const what = { students: "طالب", teachers: "معلّم", circles: "حلقة" }[coll] || "سجلّ";
+  if (done) showToast("حُذف " + toArabicDigits(done) + " " + what, "success");
+  if (kept.length) showToast("لم يُحذف: " + kept.join(" · ") + " — انقل أو أسنِد أوّلاً", "warn");
+  renderNav(); mount();
+}
 
 /* ---- أعمدة الجداول ---- */
 function colPhoto() { return { h: "الصورة", cell: p2 => `<td class="pt-photo"><span class="pt-avatar">${personAvatar(p2)}</span></td>` }; }
@@ -5282,6 +5389,7 @@ function adminManagers() {
 
   return personTable({
     list: _list, title: _title, toolbar: "circles", actionsPanel: true,
+    coll: _tab === "teachers" ? "teachers" : "users",
     /* صفُّ المشرف والمديرِ يفتح بطاقةَ حسابه: هما حسابان في users لا
        سجلّا كادرٍ في teachers، فنموذجُ المعلّم لا يجدهما. والمعلّمون
        وحدهم يفتحون نموذجَهم. */
