@@ -38402,6 +38402,15 @@ const MUSD = { asgId: "", kind: "", name: "" };
 function musDutyColor(kindOrName) {
   const k = String(kindOrName || "");
   if (!k) return "";
+  /* (٤٧١) السردُ ليس من أركان الخطة الافتراضية، فكان pillarRule لا يجده
+     فيُرسم خطؤه بلون نوع الخطأ — والإدارةُ ضبطت له «لون الخطأ في المصحف»
+     في شاشة برنامج السرد. فيُقرأ من هناك، وبافتراضيّها نفسِه. */
+  if (k === "sard" || k === SARD_KIND) {
+    try {
+      const v = (sysPrgCfg(SARD_ID).pillars || {}).sard || {};
+      return v.colorOn === false ? "" : String(v.color || "#7c3aed");
+    } catch (e) { return ""; }
+  }
   let c = "";
   try {
     const t = typeof hwType === "function" ? hwType(k) : null;
@@ -38809,6 +38818,14 @@ window.recvOpen = function (asgId) {
     showToast("صلاحيةُ التسميع غيرُ مفعَّلةٍ لحسابك", "warn"); return;
   }
   if (a.status === "done") { showToast("هذا الواجبُ معتمَدٌ أصلاً", "warn"); return; }
+  /* (٤٧١) سردٌ بلا نهاية: كان يُعتمد من المصحف بلا خانة نهاية فيُكتب المدى
+     «قريش ٤ – قريش ٤». فتُفتح تفاصيلُه لتُحدَّد النهاية، و«تم التسميع» فيها
+     يعتمده فوراً بمداه (٤٦٩). */
+  if (String(a.kind || "").replace("_makeup", "") === "sard" && !(Number(a.toS) > 0) &&
+      typeof window.tstuDuty === "function") {
+    showToast("حدّد نهايةَ السرد ثمّ اضغط «تم التسميع»", "info");
+    window.tstuDuty(a.id); return;
+  }
   /* والغائبُ لا يُسمَّع له: حالتُه اليومَ تمنع قبل أن يُثبَّت له سجلّ */
   if (typeof attBlocksRecite === "function" &&
       attBlocksRecite(a.studentId, a.date)) return;
@@ -42849,7 +42866,9 @@ function mushafPage() {
       ${a.fromS ? `<span class="muted">${esc(typeof tstuRange === "function" ? tstuRange(a) : "")}</span>` : ""}
       ${a.status === "pending" && typeof teacherCan === "function" && teacherCan("recite")
         ? `<button type="button" class="btn btn-primary btn-sm"
-            onclick="window.recvOpen('${jsAttr(a.id)}')">${ic("check", 15)} تقييم واعتماد التسميع</button>`
+            onclick="window.recvOpen('${jsAttr(a.id)}')">${ic("check", 15)} ${
+            String(a.kind || "").replace("_makeup", "") === "sard" && !(Number(a.toS) > 0)
+              ? "تحديد النهاية والاعتماد" : "تقييم واعتماد التسميع"}</button>`
         : `<span class="chip t-green">معتمد</span>`}
     </div>`;
   })();

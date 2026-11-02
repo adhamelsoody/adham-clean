@@ -14348,3 +14348,16 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
   .modal:focus { outline: none; }
 }
 .modal:focus { outline: none; }
+
+/* (٤٧١) «ألوانُ الأخطاء عند المعلّم غيرُ ألوان الإدارة»: زرُّ نوع الخطأ المختار
+   وعدّادُه كانا بلونٍ ثابت (#c62f2f …) لا بلون «لوحة ألوان المصحف» التي تضبطها
+   الإدارة، والكلماتُ نفسُها بلونها. فصارا يقرآن متغيّراتِ اللوحة نفسَها،
+   والافتراضيُّ كما كان. */
+.mus-mode.on.m-forget  { background: var(--mus-forget, #c62f2f); }
+.mus-mode.on.m-tashkil { background: var(--mus-tashkil, #d97a17); }
+.mus-mode.on.m-tajweed { background: var(--mus-tajweed, #2377b8); }
+.mus-cnt.m-forget  { background: var(--mus-forget, #c62f2f); }
+.mus-cnt.m-tashkil { background: var(--mus-tashkil, #d97a17); }
+.mus-cnt.m-tajweed { background: var(--mus-tajweed, #2377b8); }
+.mus-mode.on.m-excel { background: var(--mus-excel, #0c585b); }
+.mus-cnt.m-excel     { background: var(--mus-excel, #0c585b); }
