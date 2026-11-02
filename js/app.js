@@ -6080,6 +6080,9 @@ const TEACHER_PERMS = [
   { k: "planStart",   h: "تعديل «آية من»", d: "موضعُ بداية الواجب — فرعيّةٌ من تعديل المسار" },
   { k: "planQty",     h: "تغيير عدد الأوجه أو الأسطر المحددة", d: "فرعيّةٌ من تعديل المسار" },
   { k: "planEnd",     h: "تعديل «آية إلى»", d: "موضعُ نهاية الواجب — تعطيلُ الثلاث: المعلّم ملتزمٌ حرفياً بالخطة المبرمجة" },
+  /* (٤٧٦) «زرٌّ يحدّد انتسابَ الطالب لخطةٍ يحدّدها المعلّمُ أو الإدارة» */
+  { k: "planProgram", h: "نسب الطالب إلى برنامج أو خطة",
+    d: "إلحاقُ طالب حلقته ببرنامجٍ ومستوى — كسرد المحفوظ بدل المقدار اليدويّ" },
   { k: "viewPlan",    h: "الاطلاع على الخطة",
     d: "تعطيلُها يحجب مسارَ الخطة عن المعلّم ويُبقي التحضير" },
   { k: "recite",      h: "تسجيل التسميع", d: "رصدُ ما سمّعه الطالب وأخطائه" },
@@ -36197,6 +36200,10 @@ function teacherStudent() {
       onclick="window.tstuEdit()">${ic("edit", 16)} تعديل بيانات الطالب</button>` : ""}
     ${teacherCan("moveStudent") ? `<button type="button" class="tst-tool"
       onclick="window.tstuMove()">${ic("swap", 16)} نقل الطالب</button>` : ""}
+    ${/* (٤٧٦) نسبُ الطالب إلى برنامجٍ ومستوى — نافذةُ الإدارة نفسُها */
+      teacherCan("planProgram") ? `<button type="button" class="tst-tool"
+      onclick="window.spProgLevel('${jsAttr(String(st.id))}')">${ic("grid", 16)} الانتساب إلى خطة${
+        stuProgramName(st) ? " · " + esc(stuProgramName(st)) : ""}</button>` : ""}
   </div>`;
 
   /* =======================================================================
@@ -52841,6 +52848,9 @@ function spPlanLiveCard(s) {
 window.spProgLevel = function (id) {
   const s = DB.students.find(x => x.id == id);
   if (!s) return;
+  if (!teacherCan("planProgram")) {
+    showToast("نسبُ الطالب إلى برنامجٍ غيرُ مفعَّلٍ لحسابك", "warn"); return;
+  }
   stuDraftKeep(id);                      /* لا يضيع ما حُرِّر قبل فتح النافذة */
 
   const progs = (typeof programsForPick === "function" ? programsForPick() : (cur("programs") || []))
@@ -53075,7 +53085,7 @@ window.spProgLevelSave = function () {
     } catch (e) { console.warn("spProgLevel/sard:", e); }
     closeModal();
     showToast("حُفظ البرنامج — اضبط واجبَ السرد في خطة الطالب", "success");
-    panelStudent(s.id, true);
+    spProgLevelAfter(s);
     return;
   }
 
@@ -53108,8 +53118,15 @@ window.spProgLevelSave = function () {
                      : "حُفظ البرنامج والمستوى", "success");
   /* مسوّدةُ البطاقة القديمة لا تغطّي ما طُبِّق من المستوى */
   try { stuDraftReset(String(s.id)); } catch (e) {}
-  panelStudent(s.id, true);
+  spProgLevelAfter(s);
 };
+
+/* (٤٧٦) بعد النسب: المعلّمُ يبقى في صفحة طالبه، والإدارةُ في بطاقته كما كانت */
+function spProgLevelAfter(s) {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  if (r === "teacher") { mount(); return; }
+  panelStudent(s.id, true);
+}
 
 /* =========================================================================
    المنهجُ المُسنَد هو ما يمشي عليه الطالب

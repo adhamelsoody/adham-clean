@@ -270,6 +270,16 @@ service cloud.firestore {
         ((profile().get('teacherId', '') != '' && string(profile().get('teacherId', '')) == docId)
          || resource.data.get('uid', '') == request.auth.uid);
     }
+    /* طالبُ حلقة المعلّم (٤٧٦): حلقتُه في قائمة حلقات المعلّم، أو معلّمُ حلقته هو */
+    function stuOfMyCircle() {
+      return isTeacher() && (
+        string(resource.data.get('circleId', '')) in profile().get('circleIds', [])
+        || (profile().get('teacherId', '') != '' && resource.data.get('circleId', '') != ''
+            && exists(/databases/$(database)/documents/circles/$(string(resource.data.circleId)))
+            && string(get(/databases/$(database)/documents/circles/$(string(resource.data.circleId))).data.get('teacherId', ''))
+               == string(profile().get('teacherId', ''))));
+    }
+
     /* حلقةُ المعلّم: في circleIds ملفه، أو معلّمُها المسجَّلُ هو */
     function ownsCircle(docId) {
       return isTeacher() &&
@@ -714,6 +724,16 @@ service cloud.firestore {
                     && changed().hasOnly(['points', 'balance'])
                     && permOf('points', 'points', true)
                     && oldScopeOk();
+      /* نسبُ الطالب إلى برنامجٍ ومستوى (٤٧٦): «إذا كان مقدارُه يدويّاً وقرّر
+         المعلّمُ إلحاقَه بسرد المحفوظ — زرٌّ يحدّد انتسابَه لخطةٍ يحدّدها المعلّم».
+         لطالب حلقته وحدَه، وبالحقول الأربعة لا غير — لا نطاقَ ولا حلقةَ ولا اسم.
+         وصلاحيتُه planProgram: مسموحةٌ ما لم تُطفئها الإدارة. */
+      allow update: if isTeacher()
+                    && permOf('plan_program', 'planProgram', true)
+                    && changed().hasOnly(['program', 'levelId', 'level', 'plan', '_o', 'id'])
+                    && string(request.resource.data.get('id', docId)) == docId
+                    && stuOfMyCircle()
+                    && oldScopeOk();
     }
 
     /* =====================================================================
@@ -774,8 +794,13 @@ service cloud.firestore {
     match /plans/{docId} {
       allow read: if (canRead() && !hiddenFrom('plans')) || kidOwn('plans') || mqOwn('plans') || cxOwn('plans');
       allow create: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk();
+      /* (٤٧٦) ونسبُ الخطة إلى برنامجٍ ومستوى (planProgram): الحقلان وحدَهما من
+         حقول الارتباط — لا مسجدَ ولا حلقةَ ولا طالبَ ولا معلّم */
       allow update: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk() && oldScopeOk()
-                    && (canWrite() || !changed().hasAny(linkFields()));
+                    && (canWrite() || !changed().hasAny(linkFields())
+                        || (isTeacher() && permOf('plan_program', 'planProgram', true)
+                            && !changed().hasAny(['mosqueId', 'complexId', 'circleId',
+                                                  'planId', 'studentId', 'teacherId'])));
       /* الحذف للإدارة وحدها: إزالة خطة طالب أخطر من تعديلها،
          والمعلّم يملك التجميد وتعديل المسار وهما يكفيان عمله. */
       allow delete: if canWrite();
