@@ -375,15 +375,47 @@
 
     buildDateGroup(bar);
 
-    bar.appendChild(buildDropdown("الاسبوع", WEEKS,   { onPick: function (v) { syncHidden(selWeek, v); } }));
-    bar.appendChild(buildDropdown("الشهر",   MONTHS,  { onPick: function (v) { syncHidden(selMonth, v); } }));
+    /* (٤٧٥) الشهرُ والأسبوعُ يعرضان بياناتِهما في النظام — لا العنوانَ وحده.
+       الشهرُ من سنة قائمة «العام»، والأسبوعُ من الشهر المختار (وإلّا شهرِ اليوم). */
+    const pickSel = { y: CUR_YEAR, m: 0, w: 0 };
+    function hijriToday() {
+      try { const t = new Date(); const h = window.hijriParts(t.getFullYear(), t.getMonth() + 1, t.getDate()); return h; }
+      catch (e) { return { y: CUR_YEAR, m: 1 }; }
+    }
+    function applyRange() {
+      if (typeof window.viewRangeSet !== "function") return;
+      if (!pickSel.m) { const h = hijriToday(); pickSel.m = h.m; if (!pickSel.y) pickSel.y = h.y; }
+      try { window.viewRangeSet({ y: pickSel.y, m: pickSel.m, w: pickSel.w }); } catch (e) { console.warn("viewRangeSet:", e); }
+    }
+    const weekDD = buildDropdown("الاسبوع", WEEKS, { onPick: function (v) {
+      syncHidden(selWeek, v); pickSel.w = WEEKS.indexOf(v) + 1; applyRange(); } });
+    const monthDD = buildDropdown("الشهر", MONTHS, { onPick: function (v) {
+      syncHidden(selMonth, v); pickSel.m = MONTHS.indexOf(v) + 1; pickSel.w = 0;
+      weekDD._setItems(WEEKS, null); applyRange(); } });
+    bar.appendChild(weekDD);
+    bar.appendChild(monthDD);
+    /* النظامُ يُخبر الشريطَ: مدىً محفوظٌ يُعرض في القائمتين، ويومٌ مختارٌ يمسحهما */
+    window.tbRangeSync = function (r) {
+      if (!r) { pickSel.m = 0; pickSel.w = 0; weekDD._setItems(WEEKS, null); monthDD._setItems(MONTHS, null); return; }
+      pickSel.y = r.y || pickSel.y; pickSel.m = r.m || 0; pickSel.w = r.w || 0;
+      monthDD._setItems(MONTHS, pickSel.m ? MONTHS[pickSel.m - 1] : null);
+      weekDD._setItems(WEEKS, pickSel.w ? WEEKS[pickSel.w - 1] : null);
+    };
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("zat.viewRange") || "null");
+      if (saved && saved.m) window.tbRangeSync(saved);
+    } catch (e) {}
     periodDD = buildDropdown("الفترة",  PERIODS, { onPick: function (v) { syncHidden(selPeriod, v); } });
     bar.appendChild(periodDD);
     periodSig = "";
     /* وتُخفى عند البناء كذلك إن كان الدورُ معروفاً، فلا تَلمع ثمّ تختفي */
     periodApplyRole();
     if (typeof window.tbPeriodSync === "function") window.tbPeriodSync();
-    bar.appendChild(buildDropdown("السنوات", YEARS,   { selected: "العام " + CUR_YEAR + "هـ", onPick: function (v) { syncHidden(selYear, v); } }));
+    bar.appendChild(buildDropdown("السنوات", YEARS,   { selected: "العام " + (pickSel.y || CUR_YEAR) + "هـ", onPick: function (v) {
+      syncHidden(selYear, v);
+      const y = parseInt(String(v).replace(/[^0-9]/g, ""), 10);
+      if (y) { pickSel.y = y; if (pickSel.m) applyRange(); }
+    } }));
   }
 
   /* =======================================================================

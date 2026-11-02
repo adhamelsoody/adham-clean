@@ -2509,13 +2509,23 @@ function adminDashboard() {
      الشريط العلويّ (٤٧٢)، وهو اليومُ ما لم يُختر غيرُه */
   const ids = {}; students.forEach(x => { ids[String(x.id)] = 1; });
   const today = attDate();
-  const dayTitle = today === todayISO() ? "حضور اليوم"
+  /* والمدى: شهرٌ أو أسبوعٌ مختار (٤٧٥) — وإلّا اليومُ وحدَه كما كان */
+  const VR = viewRange();
+  const isRange = VR.kind !== "day";
+  const dayTitle = isRange ? "حضور " + VR.label
+    : today === todayISO() ? "حضور اليوم"
     : "حضور " + (typeof hijriOf === "function" ? hijriOf(today) : today);
   const recs = (Array.isArray(DB.attendance) ? DB.attendance : [])
-    .filter(r => String(r.date) === today && ids[String(r.studentId)]);
+    .filter(r => r && ids[String(r.studentId)] &&
+                 (isRange ? (String(r.date) >= VR.from && String(r.date) <= VR.toCap) : String(r.date) === today));
   const cnt = k => recs.filter(r => r.status === k).length;
-  const marked = recs.length, total = students.length;
-  const pct = total ? Math.round(marked / total * 100) : 0;
+  /* في المدى: النسبُ من سجلّات التحضير فيه، ونسبةُ التسجيل من أيّامه التي
+     حُضِّر فيها أحد (الطلاب × تلك الأيّام) — فلا تُحسب الإجازاتُ أيّاماً فائتة */
+  const nDays = isRange ? Object.keys(recs.reduce((m, r) => (m[r.date] = 1, m), {})).length : 1;
+  const marked = recs.length, total = isRange ? marked : students.length;
+  const pct = isRange
+    ? (students.length && nDays ? Math.min(100, Math.round(marked / (students.length * nDays) * 100)) : 0)
+    : (total ? Math.round(marked / total * 100) : 0);
 
   const ATT_IC = { "حاضر": "check", "متأخر": "clock", "مستأذن": "eye", "غائب": "x" };
   /* صفوفُ الحضور أزرارٌ تفتح صفحةَ المتابعة: كانت div بلا فعل، فيضغطها
@@ -2547,7 +2557,8 @@ function adminDashboard() {
     : `<div class="muted" style="padding:14px;text-align:center">لا توجد مجمعات بعد.</div>`;
 
   return `<div class="page">
-    ${pageHead("لوحة التحكم", today === todayISO() ? "إحصاءات النظام العامة"
+    ${pageHead("لوحة التحكم", isRange ? "إحصاءات النظام في " + VR.label
+      : today === todayISO() ? "إحصاءات النظام العامة"
       : "إحصاءات النظام في " + (typeof hijriOf === "function" ? hijriOf(today) : today), "")}
     ${dataBanner()}
     ${counts}
@@ -2555,7 +2566,8 @@ function adminDashboard() {
     <div class="grid g-2" style="align-items:start">
       <div class="card">
         <div class="section-head"><h3>${esc(dayTitle)}</h3>
-          <span class="badge b-gray">${toArabicDigits(marked)} / ${toArabicDigits(total)}</span></div>
+          <span class="badge b-gray">${isRange ? toArabicDigits(marked) + " سجلّ · " + toArabicDigits(nDays) + " يوم"
+            : toArabicDigits(marked) + " / " + toArabicDigits(total)}</span></div>
         <div class="att-rows">${attRows}</div>
         <div style="margin-top:12px"><span class="muted" style="font-size:12px">نسبة تسجيل التحضير</span>
           ${progressRow(pct)}</div>
@@ -55195,12 +55207,86 @@ function viewDateKeep(iso) {
 window.viewDateSet = function (iso) {
   const v = String(iso || "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+  /* اختيارُ يومٍ بعينه يُنهي اختيارَ الشهر والأسبوع (٤٧٥) */
+  if (viewRangeSaved()) {
+    try { sessionStorage.removeItem(VIEW_RANGE_KEY); } catch (e) {}
+    try { if (typeof window.tbRangeSync === "function") window.tbRangeSync(null); } catch (e) {}
+    const d0 = v > todayISO() ? todayISO() : v;
+    STATE.attDate = d0;
+    try { if (typeof TSTU !== "undefined" && TSTU) TSTU.day = ""; } catch (e) {}
+    viewDateKeep(d0); mount(); return;
+  }
   const d = v > todayISO() ? todayISO() : v;
   if (d === attDate()) { viewDateKeep(d); return; }
   STATE.attDate = d;
   /* بطاقةُ الطالب تتبع اليومَ المعروض لا يوماً اختاره سابقاً */
   try { if (typeof TSTU !== "undefined" && TSTU) TSTU.day = ""; } catch (e) {}
   viewDateKeep(d);
+  mount();
+};
+
+/* =========================================================================
+   «الشهر» و«الأسبوع» في الشريط العلويّ (٤٧٥)
+   -------------------------------------------------------------------------
+   «عايز لما أغيّر التاريخ الإحصائيات دي تتغيّر على حسب بيانات اليوم أو
+   الشهر اللي أنا مختاره». كانت القائمتان تبدّلان عنوانَيهما وحدَهما. فصار
+   اختيارُ شهرٍ هجريٍّ (من سنة القائمة) مدىً من أوّل يومه إلى آخره، والأسبوعُ
+   سبعةَ أيّامٍ منه (الرابعُ إلى آخر الشهر). ويُحفظ في الجلسة كاليوم.
+   واليومُ المعروضُ في سائر الصفحات (attDate) آخرُ يومٍ في المدى لم يأتِ
+   بعده — فالتحضيرُ وحلقةُ المعلّم يعرضان يوماً واحداً كما كانا.
+   ========================================================================= */
+const VIEW_RANGE_KEY = "zat.viewRange";
+const HIJRI_MONTHS = ["محرم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى", "جمادى الآخرة",
+  "رجب", "شعبان", "رمضان", "شوال", "ذو القعدة", "ذو الحجة"];
+const HM_CACHE = {};
+/* أوّلُ يومٍ ميلاديٍّ وآخرُه لشهرٍ هجريّ — بالمحوّل نفسِه الذي تُعرض به التواريخ */
+function hijriMonthRange(hy, hm) {
+  const k = hy + "-" + hm;
+  if (HM_CACHE[k]) return HM_CACHE[k];
+  /* بدايةُ البحث: تقديرٌ بطول السنة الهجرية، ثمّ يُمشى يوماً يوماً */
+  const est = new Date(Date.UTC(622, 6, 16) + ((hy - 1) * 354.367 + (hm - 1) * 29.53) * 86400000);
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  let from = "", to = "";
+  for (let i = -40; i <= 70; i++) {
+    const t = est.getTime() + i * 86400000, dt = new Date(t);
+    const h = hijriParts(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+    if (h.y === hy && h.m === hm) { if (!from) from = iso(t); to = iso(t); }
+    else if (from) break;
+  }
+  return (HM_CACHE[k] = from ? { from: from, to: to } : null);
+}
+function viewRangeSaved() {
+  try {
+    const o = JSON.parse(sessionStorage.getItem(VIEW_RANGE_KEY) || "null");
+    return o && /^\d{4}-\d{2}-\d{2}$/.test(o.from) && /^\d{4}-\d{2}-\d{2}$/.test(o.to) ? o : null;
+  } catch (e) { return null; }
+}
+/* المدى المعروض: الشهرُ أو الأسبوعُ المختار، وإلّا اليومُ المختار */
+function viewRange() {
+  const r = viewRangeSaved();
+  if (r) return Object.assign({}, r, { toCap: r.to > todayISO() ? todayISO() : r.to });
+  const d = attDate();
+  return { kind: "day", from: d, to: d, toCap: d, label: "" };
+}
+window.viewRange = viewRange;
+/* {y, m, w}: سنةٌ هجريّةٌ وشهرٌ (١–١٢) وأسبوعٌ اختياريّ (١–٤) */
+window.viewRangeSet = function (sel) {
+  if (!sel || !(Number(sel.y) > 0) || !(Number(sel.m) >= 1 && Number(sel.m) <= 12)) return;
+  const mr = hijriMonthRange(Number(sel.y), Number(sel.m));
+  if (!mr) { showToast("تعذّر حسابُ الشهر", "warn"); return; }
+  let from = mr.from, to = mr.to;
+  const w = Number(sel.w) || 0;
+  const add = (iso, n) => new Date(new Date(iso + "T12:00:00Z").getTime() + n * 86400000).toISOString().slice(0, 10);
+  if (w >= 1 && w <= 4) { from = add(mr.from, (w - 1) * 7); to = w === 4 ? mr.to : add(from, 6); }
+  if (from > todayISO()) { showToast("هذا " + (w ? "الأسبوع" : "الشهر") + " لم يأتِ بعد", "warn"); return; }
+  const label = (w ? "الأسبوع " + toArabicDigits(w) + " من " : "") + "شهر " + HIJRI_MONTHS[Number(sel.m) - 1] +
+    " " + toArabicDigits(sel.y) + "هـ";
+  const r = { kind: w ? "week" : "month", y: Number(sel.y), m: Number(sel.m), w: w, from: from, to: to, label: label };
+  try { sessionStorage.setItem(VIEW_RANGE_KEY, JSON.stringify(r)); } catch (e) {}
+  const end = to > todayISO() ? todayISO() : to;
+  STATE.attDate = end;
+  try { if (typeof TSTU !== "undefined" && TSTU) TSTU.day = ""; } catch (e) {}
+  viewDateKeep(end);
   mount();
 };
 
