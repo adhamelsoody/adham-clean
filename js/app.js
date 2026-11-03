@@ -35648,11 +35648,19 @@ function teacherCircle() {
   const d = typeof attDate === "function" ? attDate() : todayISO();
   const map = attMap(d, String(c.id));
 
-  const asg = (cur("assignments") || []).filter(a => a && String(a.date) === String(d) &&
-    studs.some(s => String(s.id) === String(a.studentId)));
+  /* «الواجباتُ المتبقية ٢ والحقيقةُ ٧» (٤٧٨): كان العدُّ من الواجبات المحفوظة
+     وحدَها، وواجبُ اليوم المولَّدُ من الخطة لا يُحفظ حتى يُعمل عليه —
+     والعلاماتُ تحت الأسماء من tcrcDuties (المحفوظُ والمولَّدُ معاً). فصار العدُّ
+     من المصدر نفسِه: الرماديُّ متبقٍّ والأخضرُ منجَز. */
+  const asg = [];
+  studs.forEach(s => {
+    try { (typeof tcrcDuties === "function" ? (tcrcDuties(s.id) || []) : []).forEach(a => asg.push(a)); }
+    catch (e) { console.warn("tcrcDuties:", e); }
+  });
   const left = asg.filter(a => a.status !== "done").length;
   const pct = asg.length ? Math.round((asg.length - left) / asg.length * 100) : 0;
   const marked = studs.filter(s => map[String(s.id)]).length;
+  const attPct = studs.length ? Math.round(marked / studs.length * 100) : 0;
 
   /* إحصاءُ التحضير بعد اعتماده: الحضورُ والتأخّرُ والغياب. يُحسب من سجلّ
      اليوم في كلّ رسمٍ للشاشة، فيتجدّد وحدَه بعد «اعتماد التحضير» بلا
@@ -35676,7 +35684,7 @@ function teacherCircle() {
     { t: "t-red",    n: nAbsent,  h: attLabel("غائب") },
     { t: "t-green",  n: toArabicDigits(pct) + "٪", h: "إنجاز الحلقة" },
     { t: "t-amber",  n: left,         h: "واجبات متبقية" },
-    { t: "t-blue",   n: toArabicDigits(marked) + " / " + toArabicDigits(studs.length),
+    { t: "t-blue",   n: toArabicDigits(marked) + " / " + toArabicDigits(studs.length) + " · " + toArabicDigits(attPct) + "٪",
       h: "حُضِّروا" }
   ].concat(ptsOn ? [{ t: "t-gold", n: pts, h: "النقاط المتاحة" }] : [])
    .map(x => `<div class="facility-card ${x.t}">
@@ -55755,11 +55763,19 @@ function tcrcView() {
   const d = (typeof attDate === "function") ? attDate() : todayISO();
   const map = attMap(d, String(c.id));
 
-  const asg = (cur("assignments") || []).filter(a => a && String(a.date) === String(d) &&
-    studs.some(s => String(s.id) === String(a.studentId)));
+  /* «الواجباتُ المتبقية ٢ والحقيقةُ ٧» (٤٧٨): كان العدُّ من الواجبات المحفوظة
+     وحدَها، وواجبُ اليوم المولَّدُ من الخطة لا يُحفظ حتى يُعمل عليه —
+     والعلاماتُ تحت الأسماء من tcrcDuties (المحفوظُ والمولَّدُ معاً). فصار العدُّ
+     من المصدر نفسِه: الرماديُّ متبقٍّ والأخضرُ منجَز. */
+  const asg = [];
+  studs.forEach(s => {
+    try { (typeof tcrcDuties === "function" ? (tcrcDuties(s.id) || []) : []).forEach(a => asg.push(a)); }
+    catch (e) { console.warn("tcrcDuties:", e); }
+  });
   const left = asg.filter(a => a.status !== "done").length;
   const pct = asg.length ? Math.round((asg.length - left) / asg.length * 100) : 0;
   const marked = studs.filter(s => map[String(s.id)]).length;
+  const attPct = studs.length ? Math.round(marked / studs.length * 100) : 0;
 
   const attCount = st => studs.filter(s => {
     const r = map[String(s.id)];
@@ -55850,8 +55866,9 @@ function tcrcView() {
     <div class="tcl-prog">
       <div class="tcl-bar"><i style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>
       <div class="tcl-prow">
-        <span>${toArabicDigits(pct)}٪</span>
-        <span class="muted">حُضِّروا ${toArabicDigits(marked)} من ${toArabicDigits(studs.length)}</span>
+        <span>إنجاز الواجبات ${toArabicDigits(pct)}٪ <small class="muted">(${
+          toArabicDigits(asg.length - left)} من ${toArabicDigits(asg.length)})</small></span>
+        <span class="muted">حُضِّروا ${toArabicDigits(marked)} من ${toArabicDigits(studs.length)} · ${toArabicDigits(attPct)}٪</span>
       </div>
     </div>
 
