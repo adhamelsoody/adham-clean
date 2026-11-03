@@ -39508,6 +39508,10 @@ window.tstuEditSave = function () {
   }
   const nm = val("#tse_name");
   if (!nm) { showToast("اسم الطالب مطلوب", "warn"); return; }
+  /* (٤٧٩) النجاحُ بعد ردّ الخادم: كان «حُفظت» يظهر قبل الردّ ويبقى التغييرُ المرفوض
+     في الشاشة. تُحفظ الحقولُ قبل التعديل لتُعاد إن رُفض الحفظ (رسالةُ الرفض من persistFail) */
+  const _keys = ["name", "birth", "age", "idNo", "phone", "parent", "levelId", "level", "status", "active"];
+  const _prev = {}; _keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(st, k)) _prev[k] = st[k]; });
   st.name = nm;
   st.birth = val("#tse_birth", "");
   const age = typeof ageFromBirth === "function" ? ageFromBirth(st.birth) : null;
@@ -39521,11 +39525,18 @@ window.tstuEditSave = function () {
   st.levelId = lv; st.level = lv ? lvNameById(lv) : (st.level || "");
   st.status = val("#tse_status", "نشط");
   st.active = st.status === "نشط";
-  persistSet("students", st);
-  if (lvChg && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
-  closeModal();
-  showToast("حُفظت بياناتُ «" + nm + "»", "success");
-  mount();
+  return Promise.resolve(persistSet("students", st)).then(ok => {
+    if (!ok) {
+      _keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(_prev, k)) st[k] = _prev[k]; else delete st[k]; });
+      mount();
+      return false;
+    }
+    if (lvChg && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
+    closeModal();
+    showToast("حُفظت بياناتُ «" + nm + "»", "success");
+    mount();
+    return true;
+  });
 };
 
 window.tstuMove = function () {
