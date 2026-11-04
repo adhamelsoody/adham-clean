@@ -794,10 +794,12 @@ function facToolbar(coll, presetCount, opt) {
 
 /* أبناء المنشأة: مساجد المجمع، أو حلقات المسجد */
 function facChildren(item, coll) {
+  /* (D12) من بوّابة القراءة المصفّاة cur() كسائر الشاشات — كانت تقرأ DB مباشرةً فتعدّ
+     حلقاتِ الأرشيف والفترات الأخرى، فيختلف عددُ البطاقة عن القائمة */
   if (coll === "mosques") {
-    return DB.circles.filter(c => c.mosqueId == item.id);
+    return (cur("circles") || []).filter(c => c && c.mosqueId == item.id);
   }
-  return DB.mosques.filter(m => m.complexId == item.id);
+  return (cur("mosques") || []).filter(m => m && m.complexId == item.id);
 }
 
 /* طلاب المنشأة — المجمع يشمل طلاب مساجده */
@@ -29606,6 +29608,8 @@ function termOfDate(dateISO) {
   return t ? String(t.id) : "";
 }
 
+/* (D14) والحضورُ يُختم بفترة يومه (termOfDate) قبل الفترة الفعّالة: كان حضورُ يومٍ ماضٍ من
+   فترةٍ سابقة يُختم بالفترة الحالية، فيُعدّ فيها ويغيب عن فترته */
 /* فترة سجلٍّ: وسمُه إن وُجد، وإلا المشتقّة من تاريخه */
 function recordTerm(rec) {
   if (!rec) return "";
@@ -36378,8 +36382,7 @@ window.tcrcOpenDuty = function (sid, asgId) {
 
 /* طلابُ الحلقة مرتَّبين أبجدياً — نصَّت الوثيقةُ على هذا الترتيب */
 function tcrcStudents(c) {
-  const list = (cur("students") || []).filter(s =>
-    String(s.circleId || "") === String((c && c.id) || "") && s.status !== "متوقف");
+  const list = circleMembers(c).slice();
   return list.sort((a, b) =>
     String(a.name || "").localeCompare(String(b.name || ""), "ar"));
 }
@@ -41759,7 +41762,7 @@ function reciteSave() {
       return c && c.dataset.fromMushaf ? "mushaf" : "manual";
     })(),
     note: val("#r_note") || "",
-    termId: activeTermId() || termOfDate(attDate()),
+    termId: termOfDate(attDate()) || activeTermId(),
     by: u.email || "", ts: Date.now()
   };
 
@@ -42176,7 +42179,7 @@ function saveMark(st, key, kind) {
     asgKind: (typeof MUSD !== "undefined" && MUSD.kind) ? String(MUSD.kind) : "",
     asgId:   (typeof MUSD !== "undefined" && MUSD.asgId) ? String(MUSD.asgId) : "",
     /* وسم الدورة: بدونه تختلط أخطاء فصلٍ بفصل، ولا تُفرز شهادةُ دورةٍ قديمة */
-    termId: typeof activeTermId === "function" ? (activeTermId() || termOfDate(attDate())) : "",
+    termId: typeof activeTermId === "function" ? (termOfDate(attDate()) || activeTermId()) : "",
     complexId: st.complexId || "", mosqueId: st.mosqueId || "",
     by: u.email || "", ts: Date.now()
   };
@@ -45596,9 +45599,7 @@ function studentSessionLocked(st, dateISO) {
 }
 
 function circleStudentsOf(c) {
-  return cur("students").filter(s =>
-    studentCircleIds(s).indexOf(String(c.id)) > -1 ||
-    String(s.circle || "") === String(c.name || ""));
+  return circleMembers(c);
 }
 
 /* حساب جاهزية الحلقة للاعتماد */
@@ -49748,10 +49749,7 @@ window.pubMosqueIndexSync = function () {
 
 function circleCount(c) {
   if (!c) return 0;
-  return (cur("students") || []).filter(s =>
-    s && s.status !== "متوقف" &&
-    (String(s.circleId) === String(c.id) ||
-     (!s.circleId && String(s.circle) === String(c.name)))).length;
+  return circleMembers(c).length;
 }
 
 /* السعة: يُحذّر قبل التجاوز لا بعده */
@@ -51172,10 +51170,15 @@ function facTwoFields(idCx, idMq, curCxId, curMqId) {
    وينقلهم المخوَّلُ بنفسه أوّلاً ثمّ يحذف.
    ========================================================================= */
 function circleDelBlocked(cid) {
-  const n = (DB.students || []).filter(s => s && String(s.circleId || "") === String(cid)).length;
-  if (!n) return false;
-  showToast("لا تُحذف الحلقة وفيها " + toArabicDigits(n) +
-    " طالباً — انقلهم إلى حلقةٍ أخرى أوّلاً", "warn");
+  /* (D11) ومن ضُمّ إليها من حلقةٍ أخرى (circleIds) والموقوفُ كذلك: كانوا لا يُعدّون، فتُحذف
+     الحلقةُ ويبقى في سجلّاتهم معرّفُ حلقةٍ لا وجود لها. ويُسمّى المتأثّرون، ولا يُحذف تابعٌ تلقائياً */
+  const k = String(cid);
+  const hit = (DB.students || []).filter(s => s && (String(s.circleId || "") === k ||
+    (Array.isArray(s.circleIds) && s.circleIds.map(String).indexOf(k) > -1)));
+  if (!hit.length) return false;
+  const nm = hit.slice(0, 5).map(s => s.name || "—").join("، ") + (hit.length > 5 ? "…" : "");
+  showToast("لا تُحذف الحلقة وفيها " + toArabicDigits(hit.length) +
+    " طالباً (" + nm + ") — انقلهم إلى حلقةٍ أخرى أوّلاً", "warn");
   return true;
 }
 
@@ -51912,7 +51915,10 @@ function panelComplex(id) {
   const cx = DB.complexes.find(x => x.id == id);
   /* كان return صامتاً: لو لم يُطابق المعرّف لا يفتح شيء ولا يظهر سبب. */
   if (!cx) { showToast("تعذّر العثور على المجمع (" + id + ")", "warn"); return; }
-  const mosques = DB.mosques.filter(m => m.complexId == cx.id);
+  /* (D12) الأعدادُ من الدوالّ نفسِها التي تعدّ بها بطاقةُ المجمّع وصفحتُه (cur وfacility*) */
+  const mosques = (cur("mosques") || []).filter(m => m && m.complexId == cx.id);
+  const _mids = new Set(mosques.map(m => String(m.id)));
+  const _cxCircles = (cur("circles") || []).filter(c => c && (c.complexId == cx.id || _mids.has(String(c.mosqueId || ""))));
   openPanel(`<div class="panel-back" data-action="close-panel"></div>
     <aside class="side-panel" data-stop>
       <div class="panel-head"><div><h3>${esc(cx.name)}</h3><div class="ph-sub">${esc(cx.region || "—")}</div></div>
@@ -51920,14 +51926,14 @@ function panelComplex(id) {
       <div class="panel-body">
         <div class="panel-block"><div class="grid g-3" style="gap:9px">
           <div class="stat-pill"><b>${mosques.length}</b><span>مساجد</span></div>
-          <div class="stat-pill"><b>${DB.circles.filter(c => c.complexId == cx.id).length}</b><span>حلقات</span></div>
-          <div class="stat-pill"><b>${DB.students.filter(s => s.complexId == cx.id).length}</b><span>طلاب</span></div>
+          <div class="stat-pill"><b>${_cxCircles.length}</b><span>حلقات</span></div>
+          <div class="stat-pill"><b>${facilityStudents("complex", cx.id).length}</b><span>طلاب</span></div>
         </div></div>
         <div class="panel-block"><h4>${ic("user", 15)} البيانات الأساسية</h4>
           <div class="kv"><span>المشرف العام</span><strong>${esc(cx.manager || "—")}</strong></div>
           <div class="kv"><span>رقم التواصل</span><strong dir="ltr">${esc(cx.phone || "—")}</strong></div>
           <div class="kv"><span>الحالة</span><strong>${statusBadge(cx.status)}</strong></div>
-          <div class="kv"><span>المعلمون</span><strong>${DB.teachers.filter(t => t.complexId == cx.id).length}</strong></div>
+          <div class="kv"><span>المعلمون</span><strong>${facilityTeachers("complex", cx.id).length}</strong></div>
           <div class="kv"><span>البرامج القرآنية</span><strong>${DB.programs.filter(p => p.complexId == cx.id).length}</strong></div>
         </div>
         <div class="panel-block"><h4>${ic("graph", 15)} المؤشرات</h4>
@@ -51961,7 +51967,7 @@ function panelMosque(id) {
           <div class="kv"><span>رقم التواصل</span><strong dir="ltr">${esc(m.phone || "—")}</strong></div>
         </div>
         <div class="panel-block"><h4>${ic("book", 15)} حلقات المسجد</h4>
-          ${DB.circles.filter(c => c.mosqueId ? String(c.mosqueId) === String(m.id) : c.mosque === m.name).map(c => `<div class="kv"><span>${esc(c.name)}</span><strong>${toArabicDigits(circleCount(c))} طالب</strong></div>`).join("") || '<div class="muted">لا توجد حلقات.</div>'}
+          ${(cur("circles") || []).filter(c => c && (c.mosqueId ? String(c.mosqueId) === String(m.id) : c.mosque === m.name)).map(c => `<div class="kv"><span>${esc(c.name)}</span><strong>${toArabicDigits(circleCount(c))} طالب</strong></div>`).join("") || '<div class="muted">لا توجد حلقات.</div>'}
         </div>
         <div class="panel-block"><div class="panel-actions">
           <button class="btn btn-ghost btn-sm" data-action="edit-mosque" data-id="${m.id}">${ic("edit", 15)} تعديل البيانات</button>
@@ -56101,11 +56107,34 @@ function stuMoveFollow(st) {
   });
 }
 
+/* =========================================================================
+   (D13 · N7) أعضاءُ الحلقة — تعريفٌ واحدٌ لكلّ الشاشات
+   -------------------------------------------------------------------------
+   كانت أربعُ دوالّ تعدّ أعضاء الحلقة بأربع قواعد: بالحلقة الأساسية وحدها،
+   أو بها وبالحلقات المضمومة، أو بالاسم، مع الموقوف أو بدونه — فتقول البطاقة
+   ٨ والقائمة ٩ وشاشةُ المعلّم ٨، ولا يظهر طالبُ الحلقتين في حلقته الثانية.
+   العضوُ: غيرُ موقوف، وحلقتُه هذه بمعرّفها (أساسيةً أو مضمومة)، أو — لسجلٍّ
+   قديمٍ لا معرّفَ حلقةٍ فيه — باسمها.
+   ========================================================================= */
+function circleMembers(c, withStopped) {
+  if (!c) return [];
+  const cid = String(c.id == null ? "" : c.id), cname = String(c.name || "");
+  return (cur("students") || []).filter(s => {
+    if (!s || (!withStopped && s.status === "متوقف")) return false;
+    const ids = studentCircleIds(s);
+    if (ids.length) return ids.indexOf(cid) > -1;
+    return !!cname && String(s.circle || "") === cname;
+  });
+}
+window.circleMembers = circleMembers;
+
 /* طلابُ حلقةٍ بعينها — يشمل من كانت إحدى حلقاته */
 function circleStudents(circleId) {
   const cid = String(circleId || "");
   if (!cid) return [];
-  return (cur("students") || []).filter(x => studentCircleIds(x).indexOf(cid) > -1);
+  const c = (Array.isArray(DB.circles) ? DB.circles : []).find(x => x && String(x.id) === cid);
+  if (c) return circleMembers(c);
+  return (cur("students") || []).filter(x => x && x.status !== "متوقف" && studentCircleIds(x).indexOf(cid) > -1);
 }
 window.circleStudents = circleStudents;
 
@@ -56518,7 +56547,7 @@ function attSaveAll() {
       onDuty: isDutyDay(st, dateISO),
       /* وسم الفترة: بدونه لا يُعرف السجل من أي دورة، ولا تُفرَز التقارير
          بينها، ولا تُؤرشف فترة دون أن تختلط ببقيّتها. */
-      termId: activeTermId() || termOfDate(dateISO),
+      termId: termOfDate(dateISO) || activeTermId(),
       by: u.email || "", ts: Date.now()
     };
 
@@ -56775,7 +56804,7 @@ function attSet(studentId, status, circleId, kind) {
     inTime: (status === "حاضر" || status === "متأخر") ? nowHHMM() : "",
     lateMin: status === "متأخر" ? lateMinutesOf(st, nowHHMM(), dateISO) : 0,
     onDuty: isDutyDay(st, dateISO),
-    termId: activeTermId() || termOfDate(dateISO),
+    termId: termOfDate(dateISO) || activeTermId(),
     by: u.email || "",
     ts: Date.now()
   };
@@ -60403,7 +60432,7 @@ function staffAutoIn(circleId, dateISO, manual) {
     status: lt.late > 0 ? "متأخر" : "حاضر",
     inTime: inT, startAt: lt.startT, lateMin: lt.late,
     auto: !manual,
-    termId: activeTermId() || termOfDate(d),
+    termId: termOfDate(d) || activeTermId(),
     by: u.email || "", ts: Date.now()
   };
   if (!Array.isArray(DB.attendance)) DB.attendance = [];
