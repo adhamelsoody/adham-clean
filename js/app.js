@@ -12247,12 +12247,21 @@ window.urqSave = function () {
 
   if (!Array.isArray(DB.userRequests)) DB.userRequests = [];
   DB.userRequests.push(r);
-  persistSet("userRequests", r);
-  closeModal();
-  showToast("أُرسل الطلب — تجده في «طلباتي»", "success");
-  URQ.tab = "mine"; URQ.status = "pending";
-  if (urqAutoOn()) urqAutoRun();
-  mount();
+  /* (٤٨٨) «أُرسل» بعد ردّ الخادم: كان يظهر ويبقى في «طلباتي» طلبٌ لم يُحفظ، ويُشغَّل عليه
+     القبولُ التلقائي. إن رُفض يُرفع وتبقى النافذة (رسالةُ الرفض من persistFail) */
+  return Promise.resolve(persistSet("userRequests", r)).then(ok => {
+    if (!ok) {
+      const i = DB.userRequests.indexOf(r); if (i > -1) DB.userRequests.splice(i, 1);
+      mount();
+      return false;
+    }
+    closeModal();
+    showToast("أُرسل الطلب — تجده في «طلباتي»", "success");
+    URQ.tab = "mine"; URQ.status = "pending";
+    if (urqAutoOn()) urqAutoRun();
+    mount();
+    return true;
+  });
 };
 
 function adminUserRequests() {
@@ -24729,15 +24738,20 @@ window.storeBuyDo = function (rewardId) {
   PTS_HOLD_VER++;
   /* الطلبُ من الطالب يُكتب بحقوله وحدَها — لا ختمَ نطاقٍ ولا ترتيب: القاعدةُ
      تفحص شكلَه، والمسجدُ فيه من سجلّ الطالب نفسِه */
+  /* (٤٨٧) طلبُ الطالب: «تم الاستبدال» وتنبيهُ المشرف بعد ردّ الخادم — كانا يسبقانه،
+     فيُبشَّر الطالبُ ويُنبَّه المشرفُ بطلبٍ رُفض (والطلبُ نفسُه كان يُرفع إن رُفض) */
   if (selfBuy) {
-    Promise.resolve(persistPatch("storeOrders", order, Object.keys(order).filter(k => k !== "id")))
+    return Promise.resolve(persistPatch("storeOrders", order, Object.keys(order).filter(k => k !== "id")))
       .then(ok => {
         if (ok === false) {
           const i = DB.storeOrders.indexOf(order);
           if (i > -1) DB.storeOrders.splice(i, 1);
           PTS_HOLD_VER++;
           mount();
+          return false;
         }
+        _finish();
+        return true;
       });
   } else {
     persistSet("storeOrders", order);
@@ -24755,21 +24769,25 @@ window.storeBuyDo = function (rewardId) {
     persistSet("pointsLog", plog);
   }
 
-  try {
-    if (typeof pushNotif === "function") {
-      pushNotif({
-        key: "order|" + order.id, toRole: "supervisor",
-        title: "طلب استلام جائزة",
-        text: (st.name || "طالب") + " استبدل " + toArabicDigits(need) +
-              " نقطة بـ«" + (r.name || "") + "» — بانتظار التسليم.",
-        type: "info", label: "متجر"
-      });
-    }
-  } catch (e) {}
+  _finish();
 
-  closeModal();
-  showToast("تم الاستبدال — راجع المشرف لاستلام جائزتك", "success");
-  mount();
+  function _finish() {
+    try {
+      if (typeof pushNotif === "function") {
+        pushNotif({
+          key: "order|" + order.id, toRole: "supervisor",
+          title: "طلب استلام جائزة",
+          text: (st.name || "طالب") + " استبدل " + toArabicDigits(need) +
+                " نقطة بـ«" + (r.name || "") + "» — بانتظار التسليم.",
+          type: "info", label: "متجر"
+        });
+      }
+    } catch (e) {}
+
+    closeModal();
+    showToast("تم الاستبدال — راجع المشرف لاستلام جائزتك", "success");
+    mount();
+  }
 };
 
 /* =========================================================================
@@ -37534,13 +37552,14 @@ window.tstuDutySave = function (id, opts) {
      يُنقضه حفظٌ مضى، ولو وقع مداه في المحفوظ (كإعادةِ موضعٍ ضعيف). */
   a.editedTs = Date.now();
   const _saved = persistSet("assignments", a);
-  if (opts && opts.chain) return true;
+  /* (٤٨٩) ومسارُ «تم التسميع» (chain) ينتظر الردَّ كذلك: كان يُعتمد مدىً رفضه الخادم */
   return Promise.resolve(_saved).then(ok => {
   if (!ok) {
     _keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(_prev, k)) a[k] = _prev[k]; else delete a[k]; });
     mount();
     return false;
   }
+  if (opts && opts.chain) return true;
   {
     closeModal();
     /* وإن خالف مداه اتجاهَ خطته قيل له — إعلامٌ بعد الحفظ لا حجْبٌ له */
@@ -37739,10 +37758,8 @@ window.tstuDutyResult = function (id, res) {
        ولو لم يُبدَّل المعروض (٤٦٩) */
     const sardNoEnd = String(a.kind || "").replace("_makeup", "") === "sard" &&
       !(Number(a.toS) > 0) && !!document.getElementById("tsd_tS");
-    if (((typeof tsdPending === "function" && tsdPending(a)) || sardNoEnd) &&
-        typeof window.tstuDutySave === "function") {
-      if (window.tstuDutySave(a.id, { chain: true }) === false) return;
-    }
+    /* (٤٨٩) ما بعد الحفظ لا يبدأ إلا بعد قبول الخادم: كان التقييمُ يُفتح بمدىً رُفض */
+    const _go = () => {
     /* (٤٦٩) «في السرد بمجرّد ما يؤكّد المعلّمُ النهايةَ تتمّ العمليةُ فوراً»:
        واجبُ السرد يُعتمد مباشرةً بمداه الذي حُفظ للتوّ — بمسار علامة الصحّ
        نفسِه وحرّاسِه — بلا نافذة تقييم. وسائرُ الأنواع كما كانت. */
@@ -37752,6 +37769,14 @@ window.tstuDutyResult = function (id, res) {
       if (Number(fresh.toS) > 0) { closeModal(); window.tstuQuickDone(a.id); return; }
     }
     if (typeof window.recvOpen === "function") window.recvOpen(a.id);
+    };
+    if (((typeof tsdPending === "function" && tsdPending(a)) || sardNoEnd) &&
+        typeof window.tstuDutySave === "function") {
+      const _sv = window.tstuDutySave(a.id, { chain: true });
+      if (_sv === false) return;
+      return Promise.resolve(_sv).then(ok => { if (ok !== false) _go(); });
+    }
+    _go();
     return;
   }
 
