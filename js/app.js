@@ -36561,6 +36561,9 @@ window.tstuPlanSave = function () {
   const g = id => { const e = document.getElementById(id); return e ? String(e.value) : ""; };
   if (!document.getElementById("spHifzQty")) { showToast("النافذة غير مفتوحة", "warn"); return; }
 
+  /* (٤٨١) «حُدِّثت» بعد ردّ الخادم: كان يظهر ويُزامَن محرّكُ الخطة ولو رُفض الحفظ.
+     تُحفظ الخطةُ السابقة لتُعاد إن رُفض (رسالةُ الرفض من persistFail) */
+  const _had = Object.prototype.hasOwnProperty.call(st, "plan"), _prev = st.plan;
   st.plan = Object.assign({}, st.plan, {
     hifzOn:   g("spHifzOn") === "1",
     hifzType: g("spHifzType"), hifzQty: g("spHifzQty"), hifzDir: g("spHifzDir"),
@@ -36571,13 +36574,20 @@ window.tstuPlanSave = function () {
     tatOn:    g("spTatOn") === "1",
     tatCount: Number(g("spTatCount")) || 0
   }, document.getElementById("spTilOn") ? { tilOn: g("spTilOn") === "1" } : {});
-  persistSet("students", st);
-  try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(st); } catch (e) {
-    console.warn("tstuPlanSave sync:", e);
-  }
-  closeModal();
-  showToast("حُدِّثت خطةُ التسميع", "success");
-  mount();
+  return Promise.resolve(persistSet("students", st)).then(ok => {
+    if (!ok) {
+      if (_had) st.plan = _prev; else delete st.plan;
+      mount();
+      return false;
+    }
+    try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(st); } catch (e) {
+      console.warn("tstuPlanSave sync:", e);
+    }
+    closeModal();
+    showToast("حُدِّثت خطةُ التسميع", "success");
+    mount();
+    return true;
+  });
 };
 
 /* الزرُّ الأعلى يفتحها — ولا يُرسم إلّا لمن يملك تعديلَها */
