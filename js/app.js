@@ -5286,8 +5286,22 @@ window.ptDelete = async function () {
         console.warn("deleteUserFully:", e);
       }
     }
+    /* (S2) الملفُّ المصدرُ الذي رُبط منه الحساب (linkedFrom) يُحذف معه — كان يبقى بلا uid فيعود
+       الحسابُ المحذوف عند دخوله التالي بدوره ونطاقه القديمَين (login.html يجده ويربطه ثانيةً).
+       ولا يُحذف مصدرٌ ربطه حسابٌ آخر (uid غيرُ هذا) */
+    const _src = String(u.linkedFrom || "");
+    const _srcRecs = (DB.users || []).filter(x => x && String(x.id) !== String(id) && (
+      (_src && String(x.id) === _src) || (String(x.uid || "") === uid && String(x.id) !== uid) ||
+      /* وربطٌ قديمٌ سبق حفظَ linkedFrom: الملفُّ بلا uid بالهويّة نفسِها أو بريدِ الدخول نفسِه */
+      (!_src && !x.uid && u.username && String(x.username || "") === String(u.username)) ||
+      (!_src && !x.uid && u.loginEmail && String(x.loginEmail || "").toLowerCase() === String(u.loginEmail).toLowerCase())))
+      .filter(x => !x.uid || String(x.uid) === uid);
     const i = (DB.users || []).findIndex(x => String(x.id) === String(id));
     if (i > -1) DB.users.splice(i, 1);
+    _srcRecs.forEach(x => {
+      const k = (DB.users || []).indexOf(x); if (k > -1) DB.users.splice(k, 1);
+      persistDelete("users", x.id);
+    });
     if (viaFn) {
       full++;
       /* الدالّةُ حذفت users/{uid}؛ ويُحذف المستندُ بمعرّفه إن اختلف عن uid */
@@ -44472,7 +44486,8 @@ function teacherRecite() {
 
 function teacherCan(k) {
   const u = (STATE && STATE.user) || {};
-  if (u.role === "admin" || isMgrRole(u.role)) return true;
+  /* (S17) والمالكُ كالمدير العامّ — كان يُعامَل معاملةَ المعلّم فتُحجب عنه أفعالٌ بصلاحيات المعلّمين */
+  if (u.role === "admin" || u.role === "owner" || isMgrRole(u.role)) return true;
   const p = u.perms || {};
   /* ما ضُبط في بطاقة المعلّم صراحةً يغلب، وما لم يُضبط يرث الافتراضيَّ
      العامَّ من «إدارة الصلاحيات»، وما لم يُذكر في الاثنين فمسموح. */
@@ -48329,7 +48344,13 @@ const PAGES = {
     if (!canSeeFinance()) return financeDenied("مسيّرات الرواتب");
     return adminPayroll();
   },
-  "admin/audit": adminAudit, "admin/outbox": adminOutbox,
+  "admin/audit": function () {
+    /* (S17) العنوانُ المباشر يتجاوز القائمة: سجلُّ التدقيق يقرؤه مديرُ النظام وحده على الخادم
+       (auditLog: isAdmin)، فكان غيرُه يفتح صفحةً فارغةً بلا سبب — يُقال له السبب هنا */
+    if (typeof isTopAdmin === "function" && !isTopAdmin()) return financeDenied("سجلّ التدقيق",
+      "سجلُّ التدقيق لمدير النظام وحده.");
+    return adminAudit();
+  }, "admin/outbox": adminOutbox,
   "admin/library": planLibrary,
   "donor/dashboard": donorDashboard, "donor/honor": donorHonor,
   "admin/admissions": adminAdmissions,

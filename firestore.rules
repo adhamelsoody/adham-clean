@@ -1114,6 +1114,15 @@ service cloud.firestore {
          ومعرّفُها. كان يرسل fromEmail مديرٍ أو طالبٍ فتظهر الرسالةُ منه */
       allow create: if (isAdmin() || isSupervisor()
                         || (teacherMay('msg_send', true)
+                            /* (S14) ومفتاحُ البطاقة لوجهة الرسالة: مراسلةُ الإدارة msgAdmin، والرسالةُ العامّة
+                               للحلقة msgCircle، والخاصّةُ للطالب أو وليّه msgStudents — كانت تُطفأ في بطاقة
+                               المعلّم فلا يمنعها الخادم (msg_send وحده). والإداريُّ لا تلزمه */
+                            && (canWrite()
+                                || (request.resource.data.get('toRole', '') == 'admin'
+                                      ? permOf('msg_send', 'msgAdmin', true)
+                                      : (request.resource.data.get('circleMsg', false) == true
+                                          ? permOf('msg_send', 'msgCircle', true)
+                                          : permOf('msg_send', 'msgStudents', true))))
                             && (!('fromEmail' in request.resource.data) || request.resource.data.fromEmail == myMail())
                             && (!('fromUid' in request.resource.data) || request.resource.data.fromUid == request.auth.uid))
                         || ((role() == "student" || role() == "parent")
