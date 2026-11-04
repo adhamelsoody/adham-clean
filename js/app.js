@@ -18847,6 +18847,7 @@ function hwTypes(includeOff) {
    ========================================================================= */
 
 /* هل يُمنع رصد هذا الواجب الآن؟ يُرجَع اسم ما يسبقه، أو "" */
+let ASG_GATE_GEN = false;
 function asgGate(a) {
   if (!a) return "";
 
@@ -18861,7 +18862,14 @@ function asgGate(a) {
   const before = hwBlockedBy(kind);
   if (!before) return "";
 
-  const prev = asgFind(a.date, a.studentId, before);
+  let prev = asgFind(a.date, a.studentId, before);
+  /* (E11) والسابقُ المولَّدُ لليوم ولم يُحفظ بعد يحبس كذلك — كان asgFind يقرأ المحفوظ وحده،
+     فيُسمَّع الحفظُ قبل مراجعةٍ ظاهرةٍ في الشاشة لم تُفتح بعد */
+  if (!prev && typeof generateAssignments === "function" && a.date && !ASG_GATE_GEN) {
+    ASG_GATE_GEN = true;
+    try { prev = (generateAssignments(a.studentId, a.date) || []).find(x => x && String(x.kind || "").replace("_makeup", "") === before) || null; }
+    catch (e) { prev = null; } finally { ASG_GATE_GEN = false; }
+  }
   if (!prev) return "";                    /* لم يُولَّد له: لا يُحبس عليه */
 
   /* «لم ينجح أو لم يسمّع» — نصّ المواصفات: الرسوب كالترك */
@@ -19702,7 +19710,8 @@ function quotaState(studentId, dateISO) {
     const list = mine.filter(a => String(a.kind).indexOf(t.k) === 0);
     /* المنجز: ما سُمّع فعلاً — الجلسات الجزئية تُحسب بمقدارها */
     const done = list.reduce((n, a) => {
-      if (a.status === "done") return n + (Number(a.doneQty) || Number(a.qty) || 0);
+      /* (E12) المنجَزُ بالمعيار الواحد asgDone كعلامات الحلقة */
+      if (typeof asgDone === "function" ? asgDone(a) : a.status === "done") return n + (Number(a.doneQty) || Number(a.qty) || 0);
       return n + (Number(a.doneQty) || 0);        /* جلساتٌ جزئية على واجبٍ مفتوح */
     }, 0);
     const need = list.reduce((n, a) => n + (Number(a.qty) || 0), 0) || Number(t.qty) || 0;
@@ -21395,7 +21404,11 @@ function scopeNext(kind, lastToS, lastToA, dir) {
     : (back ? Number(lastToS) < Number(endS) ||
               (Number(lastToS) === Number(endS) && Number(ayahCountOf(endS)) > 0 &&
                Number(lastToA) >= Number(ayahCountOf(endS)))
-            : Number(lastToS) >= Number(endS));
+            /* (E15) والتصاعديُّ كذلك: سورةُ النهاية تُراجع إلى آخر آياتها — كان يلفّ بمجرّد
+               دخولها («حتى المائدة» يلفّ عند المائدة ١٠، فلا تُراجع ١١–١٢٠ أبداً) */
+            : Number(lastToS) > Number(endS) ||
+              (Number(lastToS) === Number(endS) && (!(Number(ayahCountOf(endS)) > 0) ||
+               Number(lastToA) >= Number(ayahCountOf(endS)))));
 
   if (reached) return { surah: startS, ayah: startA, looped: true };
   /* داخل النطاق يمضي بالاتجاه: التنازليّ يعود القهقرى فيه كذلك */
@@ -22027,10 +22040,13 @@ function nextHifzFrom(plan, forDate) {
      وواجبُ اليومِ نفسِه لا يُحرّكه: الشرطُ «قبل» لا «حتى».
      ======================================================================= */
   const _day = String(forDate || (typeof todayISO === "function" ? todayISO() : ""));
+  /* (E2 · Q2) الحفظُ الراسبُ أو الفائتُ ولم يُسوَّ ليس تقدّماً: يُعاد من بدايته في يوم الحفظ
+     التالي — القاعدةُ المكتوبة. كان يُعدّ مرجعاً فيبدأ الغدُ بعد منتهاه (2:6 بعد راسب 2:1–2:5) */
+  const _bad = a => a && (a.status === "failed" || a.status === "missed") && a.settled !== true;
   const hifzDone = function (list) {
     return (list || [])
       .filter(a => a && String(a.kind || "").replace("_makeup", "") === "hifz" &&
-                   a.toS &&
+                   a.toS && !_bad(a) &&
                    (a.status === "done" || (_day && String(a.date) < _day)))
       .sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
                       (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
@@ -22107,6 +22123,18 @@ function nextHifzFrom(plan, forDate) {
                a: skipBasmala(Number(edPend.fromS), Number(edPend.fromA) || 1),
                after: false, byTeacher: true,
                dir: dirOf(edPend.direction) };
+    }
+  }
+
+  /* (E2) آخرُ حفظٍ قبل اليوم راسبٌ أو فائت: يُعاد من مبتدئه */
+  {
+    const _all = (asgTermOf(plan.studentId) || []).concat((typeof asgOf === "function") ? asgOf(plan.studentId) : []);
+    const _last = _all.filter(a => a && String(a.kind || "").replace("_makeup", "") === "hifz" &&
+                    Number(a.fromS) > 0 && _day && String(a.date) < _day)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) || (Number(b.ts) || 0) - (Number(a.ts) || 0))[0];
+    if (_last && _bad(_last) && (!done || String(_last.date) >= String(done.date || ""))) {
+      return { s: Number(_last.fromS), a: skipBasmala(Number(_last.fromS), Number(_last.fromA) || 1),
+               after: false, retry: true, dir: dirOf(_last.direction || plan.direction) };
     }
   }
 
@@ -22461,6 +22489,11 @@ function generateAssignments(studentId, dateISO) {
   /* «تحضير فقط»: يُحضَّر ولا يُسمَّع — ولو بقيت في سجلّه خطةٌ من قبل */
   if (st.attOnly) return [];
 
+  /* (E13 · Q5) يومُ إجازة الحلقة لا يولّد واجبات — القاعدةُ المكتوبة. كان isHoliday لا يُسأل
+     إلّا في الترحيل، فتُولَّد واجباتُ يومٍ أُعلن إجازة */
+  if (typeof isHoliday === "function" && st.circleId != null && st.circleId !== "" &&
+      isHoliday(String(st.circleId), dateISO)) return [];
+
   /* =======================================================================
      الخطةُ تُقرأ كما تقرؤها شاشاتُ العرض — لا عبر cur()
      -----------------------------------------------------------------------
@@ -22488,7 +22521,14 @@ function generateAssignments(studentId, dateISO) {
 
   /* الشرط اليومي: من ترك واجباً مصيرياً أمس لا يُولَّد له حفظٌ جديد
      اليوم حتى يُغلق متأخّراته — وإلا تراكم الدَّين وهو لا يشعر. */
-  const lock = hifzLocked(studentId, dateISO);
+  let lock = hifzLocked(studentId, dateISO);
+  /* (E3) دَينٌ هو الحفظُ نفسُه (راسبٌ «يتوقّف حتى يجتاز») لا يمنع الحفظ: كان القفلُ يمنع
+     توليدَه فلا يُعاد فلا يُجتاز أبداً — قفلٌ دائم. الحفظُ المولَّدُ يومَئذٍ هو إعادتُه
+     (nextHifzFrom يبدأ من مبتدأ الراسب) */
+  if (lock) {
+    const _dbt = criticalDebt(studentId, dateISO);
+    if (_dbt.length && _dbt.every(x => String(x.kind || "").replace("_makeup", "") === "hifz")) lock = null;
+  }
 
   hwTypes().forEach(t => {
     /* الجدولة: هذا اليوم من أيام هذا الواجب؟
@@ -23172,6 +23212,24 @@ window.asgClose = function (asgIdStr, score, recitationId) {
 
   persistSet("assignments", a);
 
+  /* (E3) إغلاقُ التعويض أو الإعادة ناجحاً يسوّي الأصل: كان الأصلُ يبقى دَيناً مفتوحاً،
+     فيبقى القفلُ قائماً بعد أن عُوّض. التعويضُ بمعرّف أصله (makeupOf)، وإعادةُ الحفظ
+     الراسب بمبتدئه نفسِه في يومٍ لاحق */
+  if (a.status === "done") {
+    const _settle = o => { if (!o || o === a || o.settled === true) return;
+      o.settled = true; o.settledBy = String(a.id); o.settledAt = Date.now(); persistSet("assignments", o); };
+    const _all = Array.isArray(DB.assignments) ? DB.assignments : [];
+    if (a.makeupOf) _settle(_all.find(o => o && String(o.id) === String(a.makeupOf)));
+    if (String(a.kind || "").replace("_makeup", "") === "hifz" && Number(a.fromS) > 0) {
+      _all.filter(o => o && o !== a && String(o.studentId) === String(a.studentId) &&
+          String(o.kind || "").replace("_makeup", "") === "hifz" &&
+          (o.status === "failed" || o.status === "missed") && o.settled !== true &&
+          String(o.date) < String(a.date) &&
+          Number(o.fromS) === Number(a.fromS) && (Number(o.fromA) || 1) === (Number(a.fromA) || 1))
+        .forEach(_settle);
+    }
+  }
+
   /* بلوغ آخر السورة يُرصد هنا: عليه يقوم عدّ التكرار */
   if (a.status === "done" && String(a.kind).indexOf("hifz") === 0) {
     try { if (typeof markSurahEnd === "function") markSurahEnd(a); } catch (e) {}
@@ -23240,6 +23298,14 @@ function rollForward(studentId, fromDate, toDate) {
     return 0;
   }
 
+  /* (E6 · Q3) من لم تُفتح شاشتُه يومَها لم تُحفظ واجباتُه، فكان لا يُعوَّض: تعويضُ الغائب يجري
+     على الجميع — القاعدةُ المكتوبة. فإن لم يُحفظ لذلك اليوم شيءٌ ثُبّتت واجباتُه المولَّدة
+     أوّلاً (ما يفعله فتحُ الشاشة نفسُه)، ثمّ تُعامَل كغيرها. ولا يعمل بأثرٍ رجعيّ: الترحيلُ
+     يومٌ بيوم من حين يُنادى */
+  if (!(cur("assignments") || []).some(a => a && String(a.studentId) === String(studentId) &&
+        String(a.date) === String(fromDate)) && typeof todayAssignments === "function") {
+    try { todayAssignments(studentId, fromDate, true); } catch (e) { console.warn("rollForward/gen:", e); }
+  }
   const pend = (cur("assignments") || []).filter(a =>
     String(a.studentId) === String(studentId) &&
     String(a.date) === String(fromDate) &&
@@ -23508,10 +23574,20 @@ window.runDailyRoll = function (force) {
   const yest = prevDay(today);
   if (!yest) return 0;
 
+  /* (E14) الأيّامُ منذ آخر ترحيلٍ كلُّها لا الأمسُ وحدَه — كان واجبُ الخميس لا يُرحَّل أبداً إن
+     كانت الجمعةُ عطلةً لم يُفتح فيها التطبيق. سبعةُ أيّامٍ حدٌّ، ومن آخر ترحيلٍ فقط (لا بأثرٍ
+     رجعيّ قبل أوّل تشغيل). والتعويضُ بمعرّفٍ ثابت فلا يتكرّر إن رحّل جهازان */
+  const days = [yest];
+  const last = String(lastRollDate() || "");
+  if (last && last < yest) {
+    let d = prevDay(yest);
+    for (let i = 0; i < 6 && d && d > last; i++) { days.unshift(d); d = prevDay(d); }
+  }
+
   let total = 0;
   (cur("students") || []).forEach(st => {
     if (st.status === "متوقف") return;
-    try { total += rollForward(st.id, yest, today) || 0; } catch (e) {}
+    days.forEach(dd => { try { total += rollForward(st.id, dd, today) || 0; } catch (e) { console.warn("ترحيلُ " + dd + " للطالب " + st.id + " تعذّر:", e); } });
   });
 
   setRollDate(today);
@@ -35886,10 +35962,12 @@ function attAcrossTerms(fn) {
 }
 
 /* هل سُجِّلت حالةُ الطالب في تحضير اليوم؟ شرطُ التسميع */
-function attRecordedFor(sid) {
+function attRecordedFor(sid, dateISO) {
   const st = (cur("students") || []).find(x => String(x.id) === String(sid));
   const cid = st ? String(st.circleId || "") : "";
-  const d = typeof attDate === "function" ? attDate() : todayISO();
+  /* (E5) ويومُ التحضير يومُ الواجب إن أُعطي — كان تاريخُ الشاشة، فيُعتمد واجبُ اليوم
+     بتحضير الأمس إن كانت الشاشةُ على الأمس */
+  const d = dateISO || (typeof attDate === "function" ? attDate() : todayISO());
   if (attAcrossTerms(() => attMap(d, cid))[String(sid)]) return true;
   /* حلقةُ الجلسة المفتوحة: التحضيرُ يُكتب بحلقةِ الجلسة التي يُحضَّر فيها،
      وقد تختلف عن حلقة الطالب المحفوظة إن نُقل بينهما أو تأخّر تحديثُ سجلّه.
@@ -36297,6 +36375,11 @@ function tcrcNoneWhy(sid, dayISO) {
   }
 
   if (typeof planOfStudent === "function" && !planOfStudent(st)) return "لا خطةَ له";
+  /* (E20) وأيّامُ خطته هو لا الأيّامُ العامّة: يومٌ في الجدول العامّ ليس من أيّام خطته */
+  try {
+    if (typeof generateAssignments === "function" && !(generateAssignments(st.id, d) || []).length && day)
+      return "لا دروسَ في خطته يومَ " + day;
+  } catch (e) { console.warn("tcrcNoneWhy: تعذّر توليدُ واجبات الطالب " + st.id + ":", e); }
   return "لا واجبات";
 }
 
@@ -36432,8 +36515,11 @@ function teacherCircle() {
     try { (typeof tcrcDuties === "function" ? (tcrcDuties(s.id) || []) : []).forEach(a => asg.push(a)); }
     catch (e) { console.warn("tcrcDuties:", e); }
   });
-  const left = asg.filter(a => a.status !== "done").length;
-  const pct = asg.length ? Math.round((asg.length - left) / asg.length * 100) : 0;
+  /* (E12 · E20) «منجَز» بالمعيار الواحد asgDone، والمستأذنُ المُعفى ليس متبقّياً ولا مطلوباً —
+     كان المستأذنُ يُعدّ متبقّياً، والمنجَزُ يُقرأ بالحالة وحدها هنا وبغيرها هناك */
+  const _req = asg.filter(a => a && a.status !== "excused");
+  const left = _req.filter(a => !(typeof asgDone === "function" ? asgDone(a) : a.status === "done")).length;
+  const pct = _req.length ? Math.round((_req.length - left) / _req.length * 100) : 0;
   const marked = studs.filter(s => map[String(s.id)]).length;
   const attPct = studs.length ? Math.round(marked / studs.length * 100) : 0;
 
@@ -37664,7 +37750,9 @@ function tstuAsgOf(st, d) {
   const stored = (cur("assignments") || []).filter(a => a &&
     String(a.studentId) === String(st.id) && String(a.date) === String(d));
   let gen = [];
-  if (String(d) >= String(tstuToday()) && typeof todayAssignments === "function") {
+  /* (E9) ويومٌ مضى لا يُولَّد له — كما في dutiesOfDay: كانت المقارنةُ بتاريخ الشاشة، فإن
+     كانت الشاشةُ على الأمس وُلّد للأمس هنا ولم يُولَّد في شاشة الحلقة */
+  if (String(d) >= String(todayISO()) && typeof todayAssignments === "function") {
     try {
       gen = todayAssignments(st.id, d, false) || [];
       tstuPreEnds(gen);
@@ -38083,8 +38171,13 @@ function asgDone(a) {
   if (!a) return false;
   if (a.status === "done") return true;
   if (a.id == null) return false;
+  /* (E1) معيارٌ واحد: حالةٌ صريحةٌ غيرُ منجَزة (راسب · لم يُسمَّع · مستأذن) تغلب، والتسميعُ
+     السابقُ للنقض شاهدٌ تاريخيٌّ لا اعتماد — كان «له تسميع» يُعدّ منجَزاً بعد النقض، فتخضرّ
+     صفحةُ الطالب والحلقةُ رمادية، ويرفض التسميعُ السريع «معتمَدٌ أصلاً» */
+  if (["failed", "missed", "excused"].indexOf(String(a.status || "")) > -1) return false;
+  const after = Number(a.undoneAt) || 0;
   const recs = cur("recitations") || [];
-  return recs.some(r => r && String(r.asgId) === String(a.id));
+  return recs.some(r => r && String(r.asgId) === String(a.id) && (!after || (Number(r.ts) || 0) > after));
 }
 
 function tsplRow(i, a) {
@@ -38571,15 +38664,33 @@ window.tstuDutyResult = function (id, res) {
     return;
   }
 
-  a.status = repeat ? "failed" : "missed";
-  /* يُحتسب دَيناً حتى يُعوَّض: asgDebts تقرأ الحالةَ مع settled */
-  a.settled = false;
-  persistSet("assignments", a);
-  closeModal();
-  showToast(repeat
-    ? "سُجّل: يُعاد التسميع — ويُحتسب في المتأخّرات"
-    : "سُجّل: لم يتم التسميع — ويُحتسب في المتأخّرات", "warn");
-  mount();
+  /* (E17) الواجبُ المولَّدُ الذي لم يُكتب بعد: يُثبَّت سجلّاً في الذاكرة ويُتمّ مداه قبل الحفظ —
+     كان يُكتب في القاعدة بلا «إلى» ولا يدخل الذاكرة، فتبقى الشاشةُ «معلّقاً» */
+  const _stored = Array.isArray(DB.assignments) && DB.assignments.indexOf(a) > -1;
+  const _snap = JSON.parse(JSON.stringify(a));
+  const _end = (Number(a.fromS) > 0 && Number(a.qty) > 0 && !(Number(a.toS) > 0) && typeof rangeEnd === "function")
+    ? Promise.resolve(rangeEnd(a.fromS, a.fromA, a.qty, a.unit, a.direction))
+        .then(e => (typeof asgCapToHifz === "function" ? asgCapToHifz(a, e) : e)).catch(() => null)
+    : Promise.resolve(null);
+  return _end.then(end => {
+    if (end && Number(end.surah) > 0) { a.toS = Number(end.surah); a.toA = Number(end.ayah) || 1; }
+    a.status = repeat ? "failed" : "missed";
+    /* يُحتسب دَيناً حتى يُعوَّض: asgDebts تقرأ الحالةَ مع settled */
+    a.settled = false;
+    if (!_stored) { if (!Array.isArray(DB.assignments)) DB.assignments = []; DB.assignments.push(a); }
+    return saveOrUndo("assignments", a, () => {
+      recRestore(a, _snap);
+      if (!_stored) { const k = DB.assignments.indexOf(a); if (k > -1) DB.assignments.splice(k, 1); }
+    }).then(ok => {
+      if (!ok) return false;
+      closeModal();
+      showToast(repeat
+        ? "سُجّل: يُعاد التسميع — ويُحتسب في المتأخّرات"
+        : "سُجّل: لم يتم التسميع — ويُحتسب في المتأخّرات", "warn");
+      mount();
+      return true;
+    });
+  });
 };
 
 /* =========================================================================
@@ -40012,16 +40123,35 @@ window.recvSave = function () {
     showToast(asgNotYetMsg(a), "warn"); return;
   }
   if (RECV.saving) return;
-  RECV.saving = true;
-  setTimeout(function () { RECV.saving = false; }, 4000);
   const st = (cur("students") || []).find(x => String(x.id) === String(a.studentId));
   if (!st) { showToast("الطالب غير موجود", "warn"); return; }
-  /* الشرطُ نفسُه: لا تسميعَ قبل التحضير */
-  if (typeof attRecordedFor === "function" && !attRecordedFor(st.id)) {
+  /* الشرطُ نفسُه: لا تسميعَ قبل التحضير — تحضيرِ يوم الواجب نفسِه (E5) */
+  /* (E19) والحرّاسُ قبل علم الحفظ: كان العلمُ يُرفع ثمّ يردّ الحارسُ، فيبقى مرفوعاً أربع ثوانٍ
+     وتُردّ المحاولةُ التالية بعد التحضير صامتة */
+  if (typeof attRecordedFor === "function" && !attRecordedFor(st.id, a.date || undefined)) {
     const why1 = (typeof attWhyMissing === "function") ? attWhyMissing(st.id) : "";
     showToast("سجّل حالةَ «" + (st.name || "الطالب") + "» في التحضير أوّلاً" +
               (why1 ? " — " + why1 : ""), "warn"); return;
   }
+  /* (E4) والشرطُ السابق (مراجعةٌ قبل الحفظ…) يمنع قبل كتابة التسميع لا بعدها — كان يُكتب
+     التسميعُ ويُعلن «اعتُمد» ثمّ يقول الحارسُ «سمّعه أولاً» عند الإغلاق */
+  if (typeof asgGateCheck === "function" && asgGateCheck(a)) return;
+  /* (E8) منتهى المدى يُحسب قبل الكتابة: كان يُحسب في وعدٍ عند فتح التقييم، فالحفظُ قبل وصول
+     جداول المصحف يكتب نطاقاً منهاراً إلى آيةٍ واحدة ولا تتقدّم الخطة */
+  if (!(Number(a.toS) > 0) && Number(a.fromS) > 0 && Number(a.qty) > 0 && !a.edited &&
+      typeof rangeEnd === "function" && !RECV.endWait) {
+    RECV.endWait = true;
+    return Promise.resolve(rangeEnd(a.fromS, a.fromA, a.qty, a.unit, a.direction))
+      .then(e => (e && typeof asgCapToHifz === "function") ? asgCapToHifz(a, e) : e)
+      .catch(() => null)
+      .then(end => {
+        if (end && Number(end.surah) > 0 && !(Number(a.toS) > 0)) { a.toS = Number(end.surah); a.toA = Number(end.ayah) || 1; }
+        return window.recvSave();
+      })
+      .finally(() => { RECV.endWait = false; });
+  }
+  RECV.saving = true;
+  setTimeout(function () { RECV.saving = false; }, 4000);
 
   const u = (STATE && STATE.user) || {};
   const mk = recvMarks(a);
@@ -40081,6 +40211,9 @@ window.recvSave = function () {
     RECV.full = fullDone; RECV.saving = false;
   }).then(ok => {
     if (!ok) return false;
+    /* حارسُ الضغطتين المتتاليتين يُرفع بقبول الخادم لا بمرور أربع ثوانٍ: كان اعتمادٌ ثانٍ
+       بعد نقضٍ سريع يُردّ صامتاً (E1) — والواجبُ المعتمَدُ يمنعه حارسُ «معتمَدٌ أصلاً» */
+    RECV.saving = false;
 
     /* اعتمادُ الواجب: تخضرُّ علامتُه وينقص المتبقّي في إحصاء الحلقة */
     try { if (typeof window.asgClose === "function") window.asgClose(a.id, score, rec.id); }
@@ -40169,7 +40302,7 @@ function recvNotifyAdmin(a, score) {
     });
   };
 
-  const tom = (typeof nextDayISO === "function") ? nextDayISO(a.date) : "";
+  const tom = (typeof nextLessonDay === "function") ? nextLessonDay(a.studentId, a.date) : "";
   let list = [];
   try {
     list = tom && typeof dutiesOfDay === "function"
@@ -46141,6 +46274,17 @@ function nextDayISO(dateISO) {
   d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
+/* (E18 · Q7) «الدرسُ القادم» يومُ الواجب التالي لا الغدُ التقويميّ — القاعدةُ المكتوبة: يومَ
+   الخميس والجمعةُ عطلة يكون السبت. كان يُعرض «لا واجبات» للجمعة. أسبوعٌ حدٌّ، ثمّ الغد */
+function nextLessonDay(sid, fromISO) {
+  let d = nextDayISO(fromISO);
+  for (let i = 0; i < 7; i++) {
+    try { if (sid && (dutiesOfDay(sid, d) || []).length) return d; } catch (e) { break; }
+    d = nextDayISO(d);
+  }
+  return nextDayISO(fromISO);
+}
+window.nextLessonDay = nextLessonDay;
 
 
 function studentToday() {
@@ -47422,8 +47566,12 @@ window.stuLessonTab = function (k) { SLSN.tab = String(k || "today"); mount(); }
 
 function stuLessonDate() {
   const t = todayISO();
-  return SLSN.tab === "prev" ? stuPrevDay(t, 1)
-       : SLSN.tab === "next" ? stuPrevDay(t, -1) : t;
+  if (SLSN.tab === "next") {
+    const _st = typeof activeStudent === "function" ? activeStudent() : null;
+    const _sid = (_st && _st.id) || ((STATE && STATE.user) || {}).studentId || "";
+    return _sid && typeof nextLessonDay === "function" ? nextLessonDay(_sid, t) : stuPrevDay(t, -1);
+  }
+  return SLSN.tab === "prev" ? stuPrevDay(t, 1) : t;
 }
 
 function stuLessonRows(st) {
@@ -47481,7 +47629,9 @@ function stuLessonRows(st) {
    ========================================================================= */
 window.stuOpenDuty = function (id) {
   const sid = ((STATE && STATE.user) || {}).studentId || "";
-  const list = (cur("assignments") || []).concat(dutiesOfDay(sid, stuLessonDate()));
+  /* (E10) المعروضُ أوّلاً: ما تعرضه الشاشةُ (dutiesOfDay — بموضعه المحدَّث) يسبق المحفوظ —
+     كان المحفوظُ القديمُ يسبقه، فيُعرض «٣:١٠» ويُفتح «٢:١» */
+  const list = dutiesOfDay(sid, stuLessonDate()).concat(cur("assignments") || []);
   const a = list.find(x => x && String(x.id) === String(id));
   if (!a) { showToast("الواجب غير موجود", "warn"); return; }
   if (!a.fromS) { showToast("لا موضعَ محدَّدٌ لهذا الواجب", "warn"); return; }
@@ -56891,8 +57041,11 @@ function tcrcView() {
     try { (typeof tcrcDuties === "function" ? (tcrcDuties(s.id) || []) : []).forEach(a => asg.push(a)); }
     catch (e) { console.warn("tcrcDuties:", e); }
   });
-  const left = asg.filter(a => a.status !== "done").length;
-  const pct = asg.length ? Math.round((asg.length - left) / asg.length * 100) : 0;
+  /* (E12 · E20) «منجَز» بالمعيار الواحد asgDone، والمستأذنُ المُعفى ليس متبقّياً ولا مطلوباً —
+     كان المستأذنُ يُعدّ متبقّياً، والمنجَزُ يُقرأ بالحالة وحدها هنا وبغيرها هناك */
+  const _req = asg.filter(a => a && a.status !== "excused");
+  const left = _req.filter(a => !(typeof asgDone === "function" ? asgDone(a) : a.status === "done")).length;
+  const pct = _req.length ? Math.round((_req.length - left) / _req.length * 100) : 0;
   const marked = studs.filter(s => map[String(s.id)]).length;
   const attPct = studs.length ? Math.round(marked / studs.length * 100) : 0;
 
@@ -61426,7 +61579,14 @@ function cur(coll) {
 }
 
 function archiveFilter(coll, list) {
-  if (ARCHIVE_VIEW) return list;
+  /* (E16) وفي وضع الأرشيف تبقى المستبدَلةُ مقروءةً، لكنّ الحاليةَ تتقدّمها: كلُّ بحثٍ
+     بـ cur("plans").find كان يأخذ المستبدلةَ إن سبقت في الترتيب، فيُكتب النقضُ عليها */
+  if (ARCHIVE_VIEW) {
+    if (coll === "plans" && list.some(x => x && x.superseded === true)) {
+      return list.filter(x => !x || x.superseded !== true).concat(list.filter(x => x && x.superseded === true));
+    }
+    return list;
+  }
   /* الخطةُ المستبدَلة بخطةٍ أُسندت بعدها لا تُقرأ — تبقى في السجلّ ولا تُحذف */
   if (coll === "plans") return list.filter(x => !x || x.superseded !== true);
   if (coll !== "students" && coll !== "teachers") return list;
