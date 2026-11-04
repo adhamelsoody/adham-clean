@@ -1197,7 +1197,8 @@ function facilityDetail(coll, id) {
 
   /* ---- الحضور اليوم من سجلات فعلية ---- */
   const ids = {}; students.forEach(s => { ids[String(s.id)] = 1; });
-  const today = todayISO();
+  /* (C10) اليومُ المختار في الشريط العلويّ (attDate) كلوحة التحكّم — كان اليومَ الفعليّ دائماً */
+  const today = typeof attDate === "function" ? attDate() : todayISO();
   const recs = (Array.isArray(DB.attendance) ? DB.attendance : [])
     .filter(r => String(r.date) === today && ids[String(r.studentId)]);
   const n = s => recs.filter(r => r.status === s).length;
@@ -1876,7 +1877,9 @@ function recCreatedISO(r) {
   const one = v => {
     if (v == null || v === "") return "";
     const n = Number(v);
-    if (n > 1000000000000 && n < 4102444800000) return new Date(n).toISOString().slice(0, 10);
+    /* (C17) اليومُ المحلّيّ لا يومُ غرينتش — سجلٌّ أُنشئ ١:٠٠ صباحاً بتوقيت القاهرة كان يُنسب لأمس */
+    if (n > 1000000000000 && n < 4102444800000) { const t = new Date(n);
+      return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
     const s = String(v);
     return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : "";
   };
@@ -2421,10 +2424,22 @@ function supervisorDashboard() {
   /* ---------- حال الحلقات ---------- */
   const rows = myCircles.map(c => {
     const kids = myStuds.filter(s => String(s.circleId) === String(c.id));
+    /* (C13) شهرٌ أو أسبوعٌ مختار في الشريط العلويّ: سجلّاتُ المدى كلِّه لا يومِ البداية وحدَه —
+       كانت الحلقةُ المحضَّرةُ في المدى تظهر «لم يُحضَّر» لأنّ اليومَ المقروء يومٌ واحد */
+    const _VR = typeof viewRange === "function" ? viewRange() : null;
+    const _rng = _VR && _VR.kind && _VR.kind !== "day";
     const att = (cur("attendance") || []).filter(a =>
-      !a.staffId && String(a.date) === day && String(a.circleId) === String(c.id));
-    const here = att.filter(a => a.status === "حاضر" || a.status === "متأخر").length;
-    const pct = kids.length ? Math.round(here * 100 / kids.length) : 0;
+      !a.staffId && String(a.circleId) === String(c.id) &&
+      (_rng ? (String(a.date) >= _VR.from && String(a.date) <= (_VR.toCap || _VR.to)) : String(a.date) === day));
+    /* (C5) الحاضرُ يُعدّ من طلاب الحلقة النشطين وحدهم، وطالبٌ واحدٌ مرّةً في اليوم — كان سجلُّ
+       الموقوف يُعدّ حاضراً فتبلغ النسبةُ ٢٠٠٪ */
+    const _kid = {}; kids.forEach(k => { _kid[String(k.id)] = 1; });
+    const _seen = {};
+    att.forEach(a => { if ((a.status === "حاضر" || a.status === "متأخر") && _kid[String(a.studentId)])
+      _seen[String(a.studentId) + "|" + a.date] = 1; });
+    const here = Object.keys(_seen).length;
+    const _nd = _rng ? Math.max(1, new Set(att.map(a => a.date)).size) : 1;
+    const pct = kids.length ? Math.min(100, Math.round(here * 100 / (kids.length * _nd))) : 0;
 
     const rec = (cur("recitations") || []).filter(r =>
       r && String(r.date) === day && String(r.circleId) === String(c.id)).length;
@@ -2520,11 +2535,20 @@ function adminDashboard() {
   const recs = (Array.isArray(DB.attendance) ? DB.attendance : [])
     .filter(r => r && ids[String(r.studentId)] &&
                  (isRange ? (String(r.date) >= VR.from && String(r.date) <= VR.toCap) : String(r.date) === today));
-  const cnt = k => recs.filter(r => r.status === k).length;
+  /* (C4 · C6) اليومُ الواحد بحساب «متابعة الحضور» نفسِه (attvStudents): طالبٌ واحدٌ لا سجلّاتُه،
+     ولا يُعدّ الموقوفُ ولا من ليس اليومُ يومَ دوامه — كان سجلّا طالبِ الحلقتين وسجلُّ الموقوف تُعدّ
+     فيظهر «٣ / ٢» و١٥٠٪، والمقامُ يشمل من ليس اليومُ يومَه. وفي المدى يبقى العدُّ بالسجلّات كما كان */
+  const AV = !isRange && typeof attvStudents === "function" ? (() => {
+    const v = attvStudents(today); const due = (cur("students") || []).filter(s => s && s.status !== "متوقف" && ids[String(s.id)] &&
+      (typeof isDutyDay === "function" ? (() => { try { return isDutyDay(s, today); } catch (e) { return true; } })() : true));
+    const one = due.map(s => v.by[String(s.id)]).filter(Boolean);
+    return { due: due.length, one };
+  })() : null;
+  const cnt = k => (AV ? AV.one : recs).filter(r => r.status === k).length;
   /* في المدى: النسبُ من سجلّات التحضير فيه، ونسبةُ التسجيل من أيّامه التي
      حُضِّر فيها أحد (الطلاب × تلك الأيّام) — فلا تُحسب الإجازاتُ أيّاماً فائتة */
   const nDays = isRange ? Object.keys(recs.reduce((m, r) => (m[r.date] = 1, m), {})).length : 1;
-  const marked = recs.length, total = isRange ? marked : students.length;
+  const marked = AV ? AV.one.length : recs.length, total = isRange ? marked : (AV ? AV.due : students.length);
   const pct = isRange
     ? (students.length && nDays ? Math.min(100, Math.round(marked / (students.length * nDays) * 100)) : 0)
     : (total ? Math.round(marked / total * 100) : 0);
@@ -3166,6 +3190,9 @@ function planDetailPage(id) {
   const h = HEALTH[pl.ext.health];
   const frozen = planIsFrozen(pl);
   const blocked = pl.ext.health === "blocked";
+  /* (N1 · Q8) نسبةُ الخطة من مصدرها الواحد planPctOf كالقائمة — كانت تقرأ حقلَ progress المخزَّن
+     الذي لا يُحدَّث من العمل، فتعرض التفاصيلُ ٠٪ والقائمةُ نسبتَها الفعليّة */
+  const _pp = typeof planPctOf === "function" ? planPctOf(pl) : (Number(pl.progress) || 0);
 
   return `<div class="page">
     <div style="margin-bottom:16px"><button class="btn btn-ghost btn-sm" data-action="plan-back">${ic("arrowLeft", 15)} رجوع لقائمة الخطط</button></div>
@@ -3187,8 +3214,8 @@ function planDetailPage(id) {
           <div class="pp-node"><small>النهاية</small><strong>${esc(pl.end)}</strong></div>
         </div>
         <div style="margin-top:14px;max-width:420px">
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span class="muted">نسبة الإنجاز</span><strong style="color:var(--brand-dark)">${pl.progress}%</strong></div>
-          ${progressRow(pl.progress, "gold")}
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span class="muted">نسبة الإنجاز</span><strong style="color:var(--brand-dark)">${_pp}%</strong></div>
+          ${progressRow(_pp, "gold")}
         </div>
       </div>
       <div class="plan-health ${h.tint}">
@@ -19689,7 +19716,10 @@ function quotaRange(period, dateISO) {
   const back = dt.getDay() === 6 ? 0 : dt.getDay() + 1;   /* الأسبوع يبدأ السبت */
   const from = new Date(dt); from.setDate(dt.getDate() - back);
   const to = new Date(from); to.setDate(from.getDate() + 6);
-  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+  /* (N2) بالتاريخ المحلّيّ: toISOString بتوقيت غرينتش كانت تُرجع كلَّ يومٍ يوماً شرقَ غرينتش،
+     فيبدأ أسبوعُ النصاب الجمعةَ وينتهي الخميس */
+  const loc = x => new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  return { from: loc(from), to: loc(to) };
 }
 
 /* المنجز والباقي — لكلّ نوعٍ على حدة */
@@ -19704,6 +19734,10 @@ function quotaState(studentId, dateISO) {
   const r = quotaRange(cfg.period, dateISO);
   const mine = asgTermOf(studentId).filter(a =>
     String(a.date) >= r.from && String(a.date) <= r.to);
+  /* (C14) المقدارُ الافتراضيّ للنوع بديلٌ عن واجباتٍ لم تُولَّد بعد — يصحّ لمدىً فيه اليومُ أو ما
+     بعده. أمّا مدىً مضى كلُّه بلا واجبات فلم يُطلب فيه شيء: كان يُعرض نصابٌ مطلوبٌ و٠٪ ليومٍ
+     لا واجبَ فيه (إجازةٌ أو يومٌ ليس من أيّام خطته) */
+  const _fb = String(r.to) >= (typeof todayISO === "function" ? todayISO() : "");
 
   const byKind = {};
   hwTypes().forEach(t => {
@@ -19714,14 +19748,14 @@ function quotaState(studentId, dateISO) {
       if (typeof asgDone === "function" ? asgDone(a) : a.status === "done") return n + (Number(a.doneQty) || Number(a.qty) || 0);
       return n + (Number(a.doneQty) || 0);        /* جلساتٌ جزئية على واجبٍ مفتوح */
     }, 0);
-    const need = list.reduce((n, a) => n + (Number(a.qty) || 0), 0) || Number(t.qty) || 0;
+    const need = list.reduce((n, a) => n + (Number(a.qty) || 0), 0) || (_fb ? Number(t.qty) || 0 : 0);
 
     if (!need && !done) return;
     byKind[t.k] = { h: t.h, unit: t.unit || cfg.unit, need, done,
                     left: Math.max(0, need - done), color: t.color };
   });
 
-  const totalNeed = Object.keys(byKind).reduce((n, k) => n + byKind[k].need, 0) || cfg.total;
+  const totalNeed = Object.keys(byKind).reduce((n, k) => n + byKind[k].need, 0) || (_fb ? cfg.total : 0);
   const totalDone = Object.keys(byKind).reduce((n, k) => n + byKind[k].done, 0);
 
   return {
@@ -32934,7 +32968,12 @@ function statBody(k) {
   const plT = (pl || []).map(tally);
   const hifzD = sum(plT, x => x.hifzDone), revD = sum(plT, x => x.revDone), fixD = sum(plT, x => x.fixDone);
   const totAll = sum(pl, x => (Number(x.hifzTotal)||0)+(Number(x.revTotal)||0)+(Number(x.fixTotal)||0));
-  const ach = totAll ? Math.round((hifzD + revD + fixD) * 100 / totAll) : 0;
+  /* (C1 · Q8) «مؤشر الإنجاز» متوسّطُ تقدّم الخطط من مصدره الواحد planPctOf كبطاقة المعلّم وقائمة
+     الخطط — كان المنجزُ يُشتقّ من الواجبات والمطلوبُ يُقرأ من حقولٍ مخزَّنة لا يكتبها شيء، فيبقى ٠٪ */
+  const ppOf = ps => { const v = (ps || []).filter(y => y && y.studentId)
+      .map(y => typeof planPctOf === "function" ? planPctOf(y) : (Number(y.progress) || 0));
+    return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : 0; };
+  const ach = ppOf(pl);
   const cnt = s2 => att.filter(a => a.status === s2).length;
 
   const SCOPE = facScope();
@@ -32957,7 +32996,8 @@ function statBody(k) {
         return sGroupRow(c.name || "—", [
           sCard("الطلاب", ss.length, SC.blue, "users"),
           sCard("أوجه الحفظ", sum(ps.map(y => Object.assign({}, y, planTally(y))), y => y.hifzDone), SC.blue, "book"),
-          sCard("أوجه المراجعة", sum(ps, y => y.revDone), SC.blue, "book"),
+          /* (C2) المراجعةُ من الواجبات كالحفظ — كانت تُقرأ من حقلٍ مخزَّن لا يكتبه شيء */
+          sCard("أوجه المراجعة", sum(ps.map(tally), y => y.revDone), SC.blue, "book"),
           sCard("الأيام الفعلية", days, SC.blue, "calendar")]);
       }).join("");
 
@@ -32973,10 +33013,11 @@ function statBody(k) {
         const t2 = sum(ps, y => (Number(y.hifzTotal)||0)+(Number(y.revTotal)||0)+(Number(y.fixTotal)||0));
         const d2 = sum(ps.map(y => Object.assign({}, y, planTally(y))), y => (Number(y.hifzDone)||0)+(Number(y.revDone)||0)+(Number(y.fixDone)||0));
         return sGroupRow(c.name || "—", [
-          sCard("مؤشر الإنجاز", (t2 ? Math.round(d2 * 100 / t2) : 0) + " %", SC.green, "graph"),
+          /* (C1 · Q8) كالمؤشر العامّ: متوسّطُ planPctOf، والمراجعةُ والتثبيتُ من الواجبات */
+          sCard("مؤشر الإنجاز", ppOf(ps) + " %", SC.green, "graph"),
           sCard("أوجه الحفظ", sum(ps.map(y => Object.assign({}, y, planTally(y))), y => y.hifzDone), SC.orange, "book"),
-          sCard("أوجه المراجعة", sum(ps, y => y.revDone), SC.blue, "book"),
-          sCard("أوجه التثبيت", sum(ps, y => y.fixDone), SC.gray, "target")]);
+          sCard("أوجه المراجعة", sum(ps.map(tally), y => y.revDone), SC.blue, "book"),
+          sCard("أوجه التثبيت", sum(ps.map(tally), y => y.fixDone), SC.gray, "target")]);
       }).join("");
 
     case "facGeneral":
@@ -33012,10 +33053,11 @@ function statBody(k) {
         const t2 = sum(ps, y => (Number(y.hifzTotal)||0)+(Number(y.revTotal)||0)+(Number(y.fixTotal)||0));
         const d2 = sum(ps.map(y => Object.assign({}, y, planTally(y))), y => (Number(y.hifzDone)||0)+(Number(y.revDone)||0)+(Number(y.fixDone)||0));
         return sGroupRow(x.f.name || "—", [
-          sCard("مؤشر الإنجاز", (t2 ? Math.round(d2 * 100 / t2) : 0) + " %", SC.green, "graph"),
+          /* (C1 · Q8) كالمؤشر العامّ: متوسّطُ planPctOf، والمراجعةُ والتثبيتُ من الواجبات */
+          sCard("مؤشر الإنجاز", ppOf(ps) + " %", SC.green, "graph"),
           sCard("أوجه الحفظ", sum(ps.map(y => Object.assign({}, y, planTally(y))), y => y.hifzDone), SC.orange, "book"),
-          sCard("أوجه المراجعة", sum(ps, y => y.revDone), SC.blue, "book"),
-          sCard("أوجه التثبيت", sum(ps, y => y.fixDone), SC.gray, "target")]);
+          sCard("أوجه المراجعة", sum(ps.map(tally), y => y.revDone), SC.blue, "book"),
+          sCard("أوجه التثبيت", sum(ps.map(tally), y => y.fixDone), SC.gray, "target")]);
       }).join("");
 
     case "general":
@@ -33912,6 +33954,9 @@ function repStuRows() {
     const rev  = Number(pl.revTotal)  || ty.revTotal,  revDone  = Number(pl.revDone)  || ty.revDone;
     const fix  = Number(pl.fixTotal)  || ty.fixTotal,  fixDone  = Number(pl.fixDone)  || ty.fixDone;
     const avg  = pct(hifzDone + revDone + fixDone, hifz + rev + fix);
+    /* (C3 · K02 · Q8) تقدّمُ الخطة من مصدره الواحد planPctOf كقائمة الخطط وبطاقة المعلّم —
+       كان هنا نسبةَ الواجبات المنجزة، فاختلف الرقمُ بين التقرير والقائمة للخطة نفسِها */
+    const _pp = pl.studentId && typeof planPctOf === "function" ? planPctOf(pl, st) : null;
     /* العجزُ يُقرأ من الواجبات لا من حقلٍ مخزَّن، فلا يتناقض مع مصدره */
     const _def = deficitOf(st.id);
 
@@ -33936,11 +33981,11 @@ function repStuRows() {
       circle: c.name || "—", circleType: c.type || "حلقة تحفيظ", teacher: t.name || "—",
       circleTime: c.time || "—", circleDays: Array.isArray(c.days) ? c.days.join("، ") : (c.days || "—"),
       recitePlan: pl.reciteMode || "—", hifzStart: pl.hifzFrom || "—", revStart: pl.revFrom || "—",
-      program: pr.name || "—", level: pl.level || "—", progress: avg,
+      program: pr.name || "—", level: pl.level || "—", progress: _pp,
       hifzPart: pl.hifzPart || "—", revPart: pl.revPart || "—",
       hifzDir: pl.hifzDir || "—", revDir: pl.revDir || "—",
       levelStart: pl.levelStart || "—", levelsDone: Number(pl.levelsDone) || zero,
-      planAvg: avg, daysLeft: Number(pl.daysLeft) || zero, levelPct: pct(pl.levelDone, pl.levelTotal),
+      planAvg: _pp, daysLeft: Number(pl.daysLeft) || zero, levelPct: pct(pl.levelDone, pl.levelTotal),
       planHifz: pct(hifzDone, hifz), planRev: pct(revDone, rev), planFix: pct(fixDone, fix),
       hifz, hifzPages: pl.hifzPages || "—", rev, revPages: pl.revPages || "—", fix,
       hifzDone, fixDone, revDone,
@@ -34033,11 +34078,17 @@ function repCirRows() {
     const plans = cur("plans").filter(pl => students.some(st => String(st.id) === String(pl.studentId)));
 
     const sum = (a, f) => a.reduce((x, y) => x + (Number(f(y)) || 0), 0);
-    const hifz = sum(plans, x => x.hifzTotal), hifzDone = sum(plans, x => x.hifzDone);
-    const fix  = sum(plans, x => x.fixTotal),  fixDone  = sum(plans, x => x.fixDone);
-    const rev  = sum(plans, x => x.revTotal),  revDone  = sum(plans, x => x.revDone);
+    /* (C3) الحقولُ المخزَّنة لا يكتبها شيء — المشتقُّ من الواجبات حيث تكون فارغةً، كتقرير الطلاب */
+    const tl = plans.map(x => (Number(x.hifzTotal) || Number(x.revTotal) || Number(x.fixTotal))
+      ? x : Object.assign({}, x, planTally(x)));
+    const hifz = sum(tl, x => x.hifzTotal), hifzDone = sum(tl, x => x.hifzDone);
+    const fix  = sum(tl, x => x.fixTotal),  fixDone  = sum(tl, x => x.fixDone);
+    const rev  = sum(tl, x => x.revTotal),  revDone  = sum(tl, x => x.revDone);
     const pct  = (d, tt) => tt > 0 ? Math.round(d * 100 / tt) : null;
     const avg  = pct(hifzDone + fixDone + revDone, hifz + fix + rev);
+    /* (C3 · Q8) متوسّطُ تقدّم خطط الحلقة من planPctOf — الرقمُ نفسُه في تقرير الطلاب والقائمة */
+    const _ppv = plans.filter(x => x.studentId).map(x => typeof planPctOf === "function" ? planPctOf(x) : 0);
+    const _pp = _ppv.length ? Math.round(_ppv.reduce((a, b) => a + b, 0) / _ppv.length) : null;
 
     const att = (cur("attendance") || []).filter(a => String(a.circleId) === String(c.id));
     const cnt = k => att.filter(a => a.status === k).length;
@@ -34068,7 +34119,7 @@ function repCirRows() {
       realDays: dates.length, workDays: days.length * 4,
       lastAtt: dates.length ? dates[dates.length - 1] : "—",
       hifz, hifzDone, fix, fixDone, rev, revDone, revTotal: fixDone + revDone,
-      achieve: avg, planAvg: avg,
+      achieve: avg, planAvg: _pp,
       planHifz: pct(hifzDone, hifz), planRev: pct(revDone, rev), planFix: pct(fixDone, fix),
       recHifz: zero, recRev: zero, recFix: zero, recNone: zero, recRepeat: zero,
       levelsDone: sum(plans, x => x.levelsDone),
@@ -34210,10 +34261,14 @@ function repRecRows() {
     const mine = recs.filter(r => String(r.studentId) === String(st.id));
     const pct = (d, t) => t > 0 ? Math.round((Number(d) || 0) * 100 / t) : null;
 
-    const hifz = Number(pl.hifzTotal) || 0, hifzDone = Number(pl.hifzDone) || 0;
-    const rev  = Number(pl.revTotal)  || 0, revDone  = Number(pl.revDone)  || 0;
-    const fix  = Number(pl.fixTotal)  || 0, fixDone  = Number(pl.fixDone)  || 0;
+    /* (C3) المخزَّنُ إن وُجد وإلّا المشتقُّ من الواجبات — كتقرير الطلاب؛ كان يُقرأ المخزَّنُ وحده فيظهر «—» */
+    const ty = typeof planTally === "function" ? planTally(pl) : {};
+    const hifz = Number(pl.hifzTotal) || Number(ty.hifzTotal) || 0, hifzDone = Number(pl.hifzDone) || Number(ty.hifzDone) || 0;
+    const rev  = Number(pl.revTotal)  || Number(ty.revTotal)  || 0, revDone  = Number(pl.revDone)  || Number(ty.revDone)  || 0;
+    const fix  = Number(pl.fixTotal)  || Number(ty.fixTotal)  || 0, fixDone  = Number(pl.fixDone)  || Number(ty.fixDone)  || 0;
     const avg  = pct(hifzDone + revDone + fixDone, hifz + rev + fix);
+    /* (C3 · Q8) تقدّمُ الخطة من planPctOf كتقرير الطلاب والقائمة */
+    const _pp = pl.studentId && typeof planPctOf === "function" ? planPctOf(pl, st) : null;
 
     const att = byTerm(curAll("attendance") || []).filter(a => String(a.studentId) === String(st.id));
     const cnt = k => att.filter(a => a.status === k).length;
@@ -34224,12 +34279,12 @@ function repRecRows() {
     const perf = marks.length ? Math.round(marks.reduce((a, b) => a + b, 0) / marks.length) : null;
 
     return {
-      student: st.name || "—", level: pl.level || "—", progress: avg,
+      student: st.name || "—", level: pl.level || "—", progress: _pp,
       attDays: cnt("حاضر"), lateDays: cnt("متأخر"), excDays: cnt("مستأذن"), absDays: cnt("غائب"),
       attTotal: att.length, lastAtt: dates.length ? dates[dates.length - 1] : "—",
       hifz, hifzDone, fix, fixDone, rev, revDone, revTotal: fixDone + revDone,
       planHifz: pct(hifzDone, hifz), planRev: pct(revDone, rev),
-      planFix: pct(fixDone, fix), planAvg: avg,
+      planFix: pct(fixDone, fix), planAvg: _pp,
       lessons: mine.length,
       perf: perf == null ? 0 : perf,
       quality: avg == null ? 0 : avg, qualityText: grade(avg),
@@ -37653,9 +37708,13 @@ function tstuStatCards(st) {
               (lp && lp.level && lp.level.name))) || "—";
 
   /* جودةُ الأداء: متوسّطُ درجات تسميعاته المرصودة — وشرطتان إن لم تُرصد */
-  const scored = recs.filter(r => r && r.score != null && !isNaN(Number(r.score)));
-  const qual = scored.length
-    ? Math.round(scored.reduce((n, r) => n + Number(r.score), 0) / scored.length)
+  /* (C15) الدرجةُ بمقياس التقارير reciteScore: الدرجةُ الرقميّة وإلّا التقديرُ — كانت الدرجةُ
+     الفارغة "" تُقرأ صفراً (Number("") = 0) فيُعدّ تسميعُ «ممتاز» بلا درجةٍ صفراً ويظهر ٥٠٪ */
+  const _sc = recs.map(r => typeof reciteScore === "function" ? reciteScore(r)
+    : (r && r.score !== "" && r.score != null && !isNaN(Number(r.score)) ? Number(r.score) : null))
+    .filter(v => v != null);
+  const qual = _sc.length
+    ? Math.round(_sc.reduce((n, v) => n + v, 0) / _sc.length)
     : null;
 
   const three = [
@@ -40836,8 +40895,10 @@ function tdashStats() {
     s.status !== "متوقف" && cids.has(String(s.circleId || ""))).length;
 
   const sid = typeof tchStaffId === "function" ? tchStaffId() : "";
+  /* (C8) أيّامُ الحضور: الحاضرُ والمتأخّر وحدهما — كان يومُ الغياب يُعدّ يومَ حضور */
   const days = new Set((cur("attendance") || []).filter(a => a && a.staffId &&
-    String(a.staffId) === String(sid)).map(a => String(a.date || ""))).size;
+    String(a.staffId) === String(sid) && (a.status === "حاضر" || a.status === "متأخر"))
+    .map(a => String(a.date || ""))).size;
 
   /* أوجهُ الحفظ: ما اعتُمد في تسميع حلقاته من واجبات الحفظ وحدَها */
   const faces = (cur("recitations") || []).filter(r => r &&
@@ -46583,7 +46644,11 @@ function stuJoinDate(st) {
 /* إحصاءُ الطالب كاملاً — رقمٌ واحدٌ لكلّ بندٍ في المواصفات */
 function stuStats(st) {
   const recs = typeof studentRecs === "function" ? studentRecs(st) : [];
-  const att  = typeof studentAtt  === "function" ? studentAtt(st)  : [];
+  /* (C9 · K01) الحضورُ من مصدر المعلّم نفسِه (tstuAttStats): cur يحصره في الفترة النشطة ويُسقط
+     سجلّاتِ الدوام — كان الطالبُ ووليُّه يريان كلَّ الفترات فتختلف النسبةُ عمّا يراه المعلّم */
+  const att  = (typeof cur === "function" && st)
+    ? (cur("attendance") || []).filter(a => a && !a.staffId && String(a.studentId) === String(st.id))
+    : (typeof studentAtt === "function" ? studentAtt(st) : []);
   const plan = typeof studentPlan === "function" ? studentPlan(st) : null;
   const lp = (plan && typeof levelProgress === "function") ? levelProgress(plan) : null;
 
