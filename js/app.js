@@ -6215,7 +6215,9 @@ function canPermsSetup() {
   if (typeof isTopAdmin === "function" && isTopAdmin()) return true;
   const r = typeof myRoleNow === "function" ? myRoleNow() : "";
   if (typeof isMgrRole === "function" && isMgrRole(r)) return true;
-  return r === "teacher";
+  /* (S3) المعلّمُ لا يضبط الافتراضيَّ العامّ لصلاحيات المعلّمين — قاعدةُ الخادم صارت
+     لمدير المنشأة وحده، فكان سيرى الشاشةَ ثمّ يُردّ حفظُه */
+  return false;
 }
 
 function permsField(u, hidden) {
@@ -58412,7 +58414,21 @@ async function loadAllData(source) {
       all.slice(1).forEach(a => a.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } }));
       return { c, snap: { forEach: fn => docs.forEach(fn) } };
     });
+  /* (S9) مديرُ المسجد والمشرف: حساباتُ مسجده وطلباتُ الانضمام إليه وحدَها — القواعدُ
+     لا تُجيز له سردَ users كلِّها. يُقرأ لكلّ مسجدٍ استعلاماه ويُدمجان في شكل اللقطة */
+  const readUsersMq = c => Promise.all([].concat(..._mqIds.map(m => ["mosqueId", "requestedMosqueId"].map(f =>
+      db.collection(c).where(f, "==", m).get(opts).then(sn => sn.docs, e => {
+        console.warn("تعذّرت قراءة الحسابات:", f, m, e && e.code); return []; }))),
+      /* وطلباتُ الانضمام المعلّقة بلا مسجدٍ مختار: يسندها مديرُ المسجد إلى مسجده (٤٣٥) */
+      [db.collection(c).where("selfSignup", "==", true).where("active", "==", false).get(opts).then(sn => sn.docs, e => {
+        console.warn("تعذّرت قراءة طلبات الانضمام:", e && e.code); return []; })]))
+    .then(arrs => {
+      const seen = {}, docs = [];
+      arrs.forEach(a => a.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } }));
+      return { c, snap: { forEach: fn => docs.forEach(fn) } };
+    });
   const readOne = c => (c === "site_messages" && !_mgrRead ? readMine(c)
+    : (c === "users" && _mgrMq) ? readUsersMq(c)
     : (_mgrMq && MGR_COLLS.indexOf(c) > -1) ? withToMe(c, readMq(c))
     : (_mgrCx && MGR_COLLS.indexOf(c) > -1) ? withToMe(c, readCx(c))
     : (_kid && (c === "students" || KID_COLLS.indexOf(c) > -1)) ? readKid(c)

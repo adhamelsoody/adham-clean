@@ -138,6 +138,9 @@ service cloud.firestore {
           || (r in ['student', 'parent'] && coll == 'students')
           /* ومن يعمل في مسجد: سجلّاتُ مسجده وحدَها (٤٤٧) — إن كان له مسجدٌ في ملفّه */
           || (r in mqRoles() && coll in mqColls() && hasMosque())
+          /* (S12) ومن يعمل في المنشآت بلا منشأةٍ في ملفّه: لا شيءَ من سجلّاتها — كان يقرؤها كلَّها */
+          || (r in ['teacher', 'mosqueManager', 'supervisor', 'complexManager'] && coll in mqColls()
+              && !hasMosque() && !hasComplex())
           /* ومديرُ المجمّع: سجلّاتُ مجمّعه وحدَها (٤٥٢) — إن كان له مجمّعٌ في ملفّه */
           || (r == 'complexManager' && coll in mqColls() && hasComplex())
           /* ومديرُ المنشأة: المسيّراتُ والقبولُ والصادرُ والتنبيهاتُ لمنشأته وحدَها (٤٥٨) */
@@ -292,6 +295,31 @@ service cloud.firestore {
                == string(profile().get('teacherId', ''))));
     }
 
+    /* =====================================================================
+       (S13) تحضيرُ المعلّم: طلابُ حلقاته، وفي فترةٍ غير مؤرشفة
+       ---------------------------------------------------------------------
+       كان المعلّمُ يحضّر أيَّ طالبٍ في مسجده ولو في حلقةٍ ليست له، وفي فترةٍ
+       أُرشفت. فالحلقةُ في سجلّ الحضور حلقتُه (circleIds ملفّه، أو معلّمُها أو
+       مساعدُها هو)، والفترةُ إن كُتبت غيرُ مؤرشفة. وتحضيرُ المعلّم نفسِه
+       (studentId فارغ) كما كان.
+       ===================================================================== */
+    function myCircleOf(cid) {
+      let p = /databases/$(database)/documents/circles/$(cid);
+      let tid = string(profile().get('teacherId', ''));
+      return cid != '' && (cid in profile().get('circleIds', [])
+          || (tid != '' && exists(p)
+              && (string(get(p).data.get('teacherId', '')) == tid
+                  || tid in get(p).data.get('assistants', []))));
+    }
+    function termOpen(d) {
+      return sv(d, 'termId') == ''
+          || !exists(/databases/$(database)/documents/terms/$(sv(d, 'termId')))
+          || get(/databases/$(database)/documents/terms/$(sv(d, 'termId'))).data.get('archived', false) != true;
+    }
+    function teacherAttOk(d) {
+      return termOpen(d) && (sv(d, 'studentId') == '' || myCircleOf(sv(d, 'circleId')));
+    }
+
     /* حلقةُ المعلّم: في circleIds ملفه، أو معلّمُها المسجَّلُ هو */
     function ownsCircle(docId) {
       return isTeacher() &&
@@ -436,8 +464,13 @@ service cloud.firestore {
     }
 
     /* حساب بلا أي ارتباط بمنشأة — المدير العام وحده يبقى بلا حدّ */
+    /* (S12) والمديرُ العامّ وحدَه حقاً: كان كلُّ حسابٍ بلا منشأةٍ — معلّماً أو مديرَ منشأة —
+       يكتب في كلّ المنشآت. فمن لا منشأةَ له ولا يملك دورَ مدير النظام لا يكتب إلّا
+       ما لا منشأةَ فيه (scopeOk). قيس قبل التغيير: لا مديرَ منشأةٍ بلا منشأة، ومعلّمٌ
+       واحدٌ لا سجلَّ معلّمٍ له. */
     function unscoped() {
-      return profile().get('mosqueIds', []).size() == 0
+      return role() in ['admin', 'owner']
+             && profile().get('mosqueIds', []).size() == 0
              && profile().get('complexIds', []).size() == 0
              && profile().get('mosqueId', '') == ''
              && profile().get('complexId', '') == '';
@@ -561,8 +594,14 @@ service cloud.firestore {
         || (d.get('email', '') == request.auth.token.email
             && request.auth.token.email_verified == true));
     }
+    /* (S1) وملفُّ غيرِ الطالب ووليِّ الأمر لا يُربط إلّا ببريدٍ موثَّق: حسابُ Authentication
+       يُنشأ بأيّ بريدٍ بلا تحقّق — فكان من سبق صاحبَه إلى «{رقم الهوية}@mirath.id» أو
+       إلى بريد الدخول الذي كتبته الإدارةُ يأخذ ملفَّ مديرٍ أو معلّمٍ لم يُربط بعد.
+       وملفُّ الطاقم بلا حسابٍ يربطه مديرُ النظام (approveUser / تعديل بيانات الدخول). */
     function linkSrcOk(src) {
-      return linkMatch(src)
+      return (src.get('role', '') in ['student', 'parent']
+              || request.auth.token.get('email_verified', false) == true)
+        && linkMatch(src)
         && (src.get('uid', '') == '' || src.get('uid', '') == request.auth.uid)
         && request.resource.data.diff(src).affectedKeys().hasOnly(['uid', 'linkedAt', 'linkedFrom']);
     }
@@ -595,7 +634,16 @@ service cloud.firestore {
       /* سرد المجموعة (استعلامات login.html و admin/users.js و loadAllData):
          للإدارة فقط. login.html يلتقط الرفض ويكمل بالبريد الاصطناعي
          {id}@mirath.id، و loadAllData يعزل الرفض ويكمل بباقي المجموعات. */
-      allow list: if isAdmin() || isSupervisor();
+      /* (S9) ومديرُ المسجد والمشرف: حساباتُ مسجده وطلباتُ الانضمام إليه وحدَها —
+         كان يسرد حساباتِ كلِّ المنشآت. والتطبيقُ يقرأ له بالاستعلام نفسِه
+         (where mosqueId / requestedMosqueId ==). ومديرُ المجمّع كما كان: حساباتُ
+         المساجد في مجمّعه لا تحمل المجمّعَ كلُّها. */
+      allow list: if isAdmin() || role() in ['complexManager']
+                  || (role() in ['mosqueManager', 'supervisor'] && hasMosque()
+                      && (resource.data.mosqueId in myMosques()
+                          || resource.data.requestedMosqueId in myMosques()
+                          /* وطلباتُ الانضمام المعلّقة بلا مسجدٍ مختار يسندها إلى مسجده (٤٣٥) */
+                          || (resource.data.selfSignup == true && resource.data.active == false)));
 
       /* =================================================================
          ربطُ الحساب بملفّه القائم عند أوّل دخول (٤٣٢)
@@ -996,11 +1044,14 @@ service cloud.firestore {
            التاريخ محفوظ بصيغة النظام لا بطابع زمني، فلا تستطيع القاعدة
            مقارنته بوقت الخادم. لإغلاقه على الخادم أضف حقل ts رقمياً
            إلى سجل الحضور ثم قارنه بـ request.time هنا. */
-      allow create: if (canWrite() || isTeacher()) && scopeOk()
+      allow create: if (canWrite() || (isTeacher() && teacherAttOk(d0()))) && scopeOk()
                     && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
                     && request.resource.data.date is string
                     && request.resource.data.studentId is string;
+      /* (S13) وتعديلُ المعلّم كذلك: إن حمل السجلُّ حلقةً فهي حلقتُه، وفترتُه غيرُ مؤرشفة */
       allow update: if teacherMayAs('attend_edit', 'attEdit', true) && scopeOk() && oldScopeOk()
+                    && (canWrite() || (termOpen(d0())
+                        && (sv(d0(), 'studentId') == '' || sv(d0(), 'circleId') == '' || myCircleOf(sv(d0(), 'circleId')))))
                     && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
                     && request.resource.data.date is string
                     && request.resource.data.studentId is string;
@@ -1023,8 +1074,9 @@ service cloud.firestore {
 
          ⚠ أثرُها المقصود: المعلّمُ يستطيع رفعَ قيدٍ وُضع عليه — وعلى
          زملائه، فالمستندُ واحدٌ لكلّ المعلّمين. */
+      /* (S3) لمدير المنشأة وحده — كان المعلّمُ يرفع عن نفسه وعن زملائه قيدَ الإدارة */
       allow write: if docId == "teacherPerms"
-                   && (isTeacher() || isManager())
+                   && isManager()
                    && request.resource.data.keys().hasOnly(['id', 'teacherPerms']);
 
       /* مكتبةُ الشارات — صارت بيدِ مديرِ المسجد ومديرِ المجمّع والمشرف
