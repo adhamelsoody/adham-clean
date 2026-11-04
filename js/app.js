@@ -12727,8 +12727,12 @@ window.dcfgBioOk = function (tid) {
   const p = t && dcfgPendingBio(t);
   if (!p) return;
   const u = (STATE && STATE.user) || {};
+  /* (٥٠٢) «اعتُمدت» بعد قبول الخادم — وإن رُفض تعود البصمةُ كما كانت */
+  const _had = Object.prototype.hasOwnProperty.call(t, "bioCred"), _prev = t.bioCred;
   t.bioCred = { id: String(p.bioCredNew), ts: Date.now(), by: u.name || "" };
-  Promise.resolve(persistSet("teachers", t)).then(() => { showToast("اعتُمدت بصمة " + (t.name || ""), "success"); mount(); });
+  Promise.resolve(persistSet("teachers", t)).then(ok => {
+    if (ok === false) { if (_had) t.bioCred = _prev; else delete t.bioCred; mount(); return; }
+    showToast("اعتُمدت بصمة " + (t.name || ""), "success"); mount(); });
 };
 window.dcfgBioReset = function (tid) {
   const t = (DB.teachers || []).find(x => String(x.id) === String(tid));
@@ -12739,9 +12743,17 @@ window.dcfgBioReset = function (tid) {
      <button class="btn btn-ghost" data-action="close-modal">رجوع</button>`);
   const b = document.getElementById("dcfgRst");
   if (b) b.onclick = function () {
+    /* (٥٠٣) «أُلغيت» بعد قبول الخادم — وإن رُفض تعود البصمةُ كما كانت */
+    const _hc = Object.prototype.hasOwnProperty.call(t, "bioCred"), _pc = t.bioCred;
+    const _hr = Object.prototype.hasOwnProperty.call(t, "bioReset"), _pr = t.bioReset;
     delete t.bioCred;
     t.bioReset = Date.now();
-    Promise.resolve(persistSet("teachers", t)).then(() => { closeModal(); showToast("أُلغيت البصمة", "success"); mount(); });
+    Promise.resolve(persistSet("teachers", t)).then(ok => {
+      if (ok === false) {
+        if (_hc) t.bioCred = _pc; if (_hr) t.bioReset = _pr; else delete t.bioReset;
+        mount(); return;
+      }
+      closeModal(); showToast("أُلغيت البصمة", "success"); mount(); });
   };
 };
 
@@ -18268,6 +18280,7 @@ window.hwAddTypeDo = function () {
   if (!name) { showToast("الاسم مطلوب", "warn"); return; }
 
   const s = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   if (!s.hwTypes) s.hwTypes = {};
 
   /* المفتاح مولَّد وثابت: الواجبات المحفوظة تحمله، فتغييره يقطعها عنه */
@@ -18281,7 +18294,7 @@ window.hwAddTypeDo = function () {
   };
 
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => { closeModal(); showToast("أُضيف «" + name + "»", "success"); mount(); });
+    .then(ok => { if (ok === false) { cfgUndo(_snap); mount(); return false; } closeModal(); showToast("أُضيف «" + name + "»", "success"); mount(); return true; });
 };
 
 window.hwDelType = function (k) {
@@ -18298,9 +18311,10 @@ window.hwDelType = function (k) {
 
 window.hwDelTypeDo = function (k) {
   const s = DB.settings || {};
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   if (s.hwTypes && s.hwTypes[k]) delete s.hwTypes[k];
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => { closeModal(); showToast("حُذف النوع", "success"); mount(); });
+    .then(ok => { if (ok === false) { cfgUndo(_snap); mount(); return false; } closeModal(); showToast("حُذف النوع", "success"); mount(); return true; });
 };
 
 /* =========================================================================
@@ -18597,9 +18611,10 @@ window.hwCfgSave = function () {
 
 window.hwCfgReset = function () {
   const s = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   delete s.hwTypes;
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => { showToast("أُعيدت الأنواع الافتراضية", "success"); mount(); });
+    .then(ok => { if (ok === false) { cfgUndo(_snap); mount(); return false; } showToast("أُعيدت الأنواع الافتراضية", "success"); mount(); return true; });
 };
 
 window.hwDaysToggle = function (k, day, on) {
@@ -19373,10 +19388,11 @@ window.elderlySet = function (studentId, on) {
 
 window.elderlyCfgSet = function (field, v) {
   const s = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   if (field === "age") s.elderlyAge = Math.max(0, Number(v) || 0);
   else s.elderlyEase = !!v;
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => { showToast("حُفظ", "success"); mount(); });
+    .then(ok => { if (ok === false) { cfgUndo(_snap); mount(); return false; } showToast("حُفظ", "success"); mount(); return true; });
 };
 
 function maqraahCfg(mosqueId) {
@@ -19457,17 +19473,20 @@ function maqraahBtn(circle) {
 /* إعدادات المقرأة — تُلحق بإعدادات المصحف */
 window.maqSave = function () {
   const s = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   s.maqraahOn = !!document.getElementById("mq_on").checked;
   s.maqraahUrl = val("#mq_url") || "";
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => { showToast("حُفظت إعدادات المقرأة", "success"); mount(); });
+    .then(ok => { if (ok === false) { cfgUndo(_snap); mount(); return false; } showToast("حُفظت إعدادات المقرأة", "success"); mount(); return true; });
 };
 
 window.offDutySet = function (mode) {
   const s = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   s.offDutyMode = mode === "split" ? "split" : "dim";
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => {
+    .then(ok => {
+      if (ok === false) { cfgUndo(_snap); mount(); return false; }
       showToast(mode === "split"
         ? "سيُعزل من ليس اليوم يوم دوامه في قسمٍ مستقل"
         : "سيظهر من ليس اليوم يوم دوامه باهتاً في القائمة", "success");
@@ -27091,9 +27110,10 @@ window.msgEvSave = function () {
 
 window.msgEvReset = function () {
   const s = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   delete s.msgEvents;
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => { showToast("أُعيدت النصوص الافتراضية", "success"); mount(); });
+    .then(ok => { if (ok === false) { cfgUndo(_snap); mount(); return false; } showToast("أُعيدت النصوص الافتراضية", "success"); mount(); return true; });
 };
 
 function setPanelMessages() {
@@ -27152,13 +27172,15 @@ function setPanelMessages() {
    ========================================================================= */
 window.praySave = function () {
   const s = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   s.prayerOn = !!document.getElementById("pr_on").checked;
   s.prayerCity = val("#pr_city") || "";
   s.prayerCountry = val("#pr_country") || "SA";
   s.prayerMethod = Number(val("#pr_method")) || 4;
 
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => {
+    .then(ok => {
+      if (ok === false) { cfgUndo(_snap); mount(); return false; }   /* (٤٩٠) */
       /* تُجلب فوراً ليرى المستخدم أثر ما ضبط */
       if (s.prayerOn && s.prayerCity) {
         window.fetchPrayerTimes(null, true).then(t => {
@@ -27901,9 +27923,10 @@ window.recPassSave = function () {
   const v = Number(val("#rec_pass"));
   if (!isFinite(v) || v < 1 || v > 100) { showToast("النسبة بين ١ و ١٠٠", "warn"); return; }
   const s = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   s.recPass = v;
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => { showToast("حُفظ حدّ الاعتماد", "success"); mount(); });
+    .then(ok => { if (ok === false) { cfgUndo(_snap); mount(); return false; } showToast("حُفظ حدّ الاعتماد", "success"); mount(); return true; });
 };
 
 /* =========================================================================
@@ -41158,9 +41181,10 @@ window.musCfgSave = function () {
 
 window.musCfgReset = function () {
   const s = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   delete s.musMarks;
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => { showToast("أُعيدت الألوان الافتراضية", "success"); mount(); });
+    .then(ok => { if (ok === false) { cfgUndo(_snap); mount(); return false; } showToast("أُعيدت الألوان الافتراضية", "success"); mount(); return true; });
 };
 
 function musCfgPanel() {
@@ -44811,9 +44835,11 @@ function sessionCheck(c, dateISO) {
    ========================================================================= */
 window.autoApproveSet = function (on) {
   const st = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   st.autoApprove = !!on;
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, st)))
-    .then(() => {
+    .then(ok => {
+      if (ok === false) { cfgUndo(_snap); mount(); return false; }
       showToast(on ? "ستُعتمد الجلسات تلقائياً عند اكتمال التحضير"
                    : "الاعتماد يدويٌّ الآن", "success");
       mount();
@@ -45519,7 +45545,15 @@ window.parentSend = function () {
   if (!Array.isArray(DB.site_messages)) DB.site_messages = [];
   DB.site_messages.push(rec);
 
-  Promise.resolve(persistSet("site_messages", rec)).then(() => {
+  Promise.resolve(persistSet("site_messages", rec)).then(ok => {
+    /* (٥٠٥) «وصلت رسالتك» وتنبيهُ الإدارة بعد قبول الخادم: كانا يظهران لرسالةٍ رُفضت،
+       وتبقى في الشاشة ويُمحى نصُّها. إن رُفضت تُرفع ويبقى النصّ ليُعاد إرساله */
+    if (ok === false) {
+      const i = DB.site_messages.indexOf(rec); if (i > -1) DB.site_messages.splice(i, 1);
+      mount();
+      const tx = document.getElementById("pmText"); if (tx) tx.value = txt;
+      return;
+    }
     /* تُرسَل للإدارة كذلك: المعلّم قد لا يفتح النظام اليوم — إلا أن
        تكون الإدارةُ غيرَ مسموحةٍ جهةً، فتُترك لصاحبها وحده. */
     try {
@@ -55641,9 +55675,10 @@ window.attClear = function (studentId) {
 /* حدّ الإعفاء: نسبةُ ما يجب حضوره ليُعفى ممّا لم يُسمَّع */
 window.partialPctSet = function (v) {
   const s = DB.settings || (DB.settings = {});
+  const _snap = JSON.stringify(DB.settings || {});   /* (٤٩٠) لقطةٌ لإعادتها إن رُفض الحفظ */
   s.partialExemptPct = Math.max(1, Math.min(100, Number(v) || 50));
   Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, s)))
-    .then(() => showToast("حُفظ حدّ الإعفاء", "success"));
+    .then(ok => { if (ok === false) { cfgUndo(_snap); mount(); return false; } showToast("حُفظ حدّ الإعفاء", "success"); return true; });
 };
 
 function leaveCfg() {
@@ -58738,6 +58773,14 @@ function persistSet(coll, obj) {
       offqPush("set", coll, data);
       return true;
     });
+}
+/* (٤٩٠) إعاداتُ الإعدادات بعد رفض الخادم: الإعداداتُ تُعدَّل في الذاكرة ثمّ تُحفظ، فإن
+   رُفض الحفظ بقي التعديلُ في الشاشة. لقطةٌ تُؤخذ قبل التعديل وتُعاد بها كما كانت */
+function cfgUndo(snap) {
+  const s = DB.settings || (DB.settings = {});
+  const o = JSON.parse(snap || "{}");
+  Object.keys(s).forEach(k => { if (!Object.prototype.hasOwnProperty.call(o, k)) delete s[k]; });
+  Object.assign(s, o);
 }
 function persistPlan(id) {
   const db = FDB(); if (!db) return;
