@@ -46284,6 +46284,8 @@ window.parentSend = function () {
     id: "pm" + Date.now(),
     kind: "parent",
     fromUid: String(u.uid || u.id || ""),
+    /* قاعدةُ site_messages تشترط على وليّ الأمر بريدَه مرسِلاً — كانت الرسالةُ تُردّ بدونه */
+    fromEmail: String(u.email || "").toLowerCase(),
     fromName: u.name || "وليّ الأمر",
     toId: to === "teacher" ? String(st.teacherId || "") : "",
     toWhom: to,
@@ -58239,8 +58241,9 @@ async function loadAllData(source) {
      لا تقرؤه شاشةٌ من شاشاته، فلا يُطلب ولا يُنزَّل إلى جهازه. */
   const _hidden = ({
     teacher: ["paySheets", "admissions"],
-    student: ["paySheets", "admissions", "msgOutbox", "moveLog", "procLog", "sysAlerts"],
-    parent:  ["paySheets", "admissions", "msgOutbox", "moveLog", "procLog", "sysAlerts"]
+    /* (S6) وبنكُ الأسئلة ومجموعاتُه: لا تقرؤهما شاشةٌ للطالب ولا لوليّه، والقواعدُ تحجبهما */
+    student: ["paySheets", "admissions", "msgOutbox", "moveLog", "procLog", "sysAlerts", "questions", "questionGroups"],
+    parent:  ["paySheets", "admissions", "msgOutbox", "moveLog", "procLog", "sysAlerts", "questions", "questionGroups"]
   })[_r] || [];
   const _cols = ((_r && _r !== "admin" && !isMgrRole(_r))
     ? COLLECTIONS.filter(c => _adminOnly.indexOf(c) === -1 && _hidden.indexOf(c) === -1)
@@ -58342,7 +58345,8 @@ async function loadAllData(source) {
      ومن لا مسجدَ في ملفّه يُقرأ له كما كان — والقاعدةُ تُبقيه كذلك.
      ===================================================================== */
   const _su = (STATE && STATE.user) || {};
-  const _mqIds = ["teacher", "mosqueManager", "supervisor"].indexOf(_r) > -1
+  /* (S7) والداعمُ كذلك: القواعدُ تقصر قراءتَه على منشأته (donorMay) */
+  const _mqIds = ["teacher", "mosqueManager", "supervisor", "donor"].indexOf(_r) > -1
     ? [...new Set([_su.mosqueId].concat((_su.scopeIds || [])
         .filter(k => String(k).indexOf("mosque:") === 0).map(k => String(k).split(":")[1]))
         .concat(_su.mosqueIds || []).filter(x => x != null && x !== "").map(String))]
@@ -58364,7 +58368,7 @@ async function loadAllData(source) {
      مجمّعاته (cxOwn في firestore.rules)، فيُقرأ لكلّ مجمّعٍ استعلامُه.
      ومن لا مجمّعَ في ملفّه يُقرأ له كما كان.
      ===================================================================== */
-  const _cxIds = _r === "complexManager"
+  const _cxIds = (_r === "complexManager" || _r === "donor")
     ? [...new Set([_su.complexId].concat((_su.scopeIds || [])
         .filter(k => String(k).indexOf("complex:") === 0).map(k => String(k).split(":")[1]))
         .concat(_su.complexIds || []).filter(x => x != null && x !== "").map(String))]

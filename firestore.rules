@@ -102,7 +102,15 @@ service cloud.firestore {
       return ['complexes', 'mosques', 'circles', 'students', 'teachers',
               'recitations', 'attendance', 'programs', 'levels', 'terms'];
     }
-    function donorMay(coll) { return isDonor() && coll in donorColls(); }
+    /* (S7) وفي سجلّات المنشآت (الطلابُ والمعلّمون والتسميعُ والحضور): منشأتُه وحدَها —
+       مسجدُه أو مجمّعُه — كان يقرأ طلابَ كلِّ المساجد والمجمّعات. والتطبيقُ يقرأ له
+       بالاستعلام نفسِه (where mosqueId/complexId ==). */
+    function donorMay(coll) {
+      return isDonor() && coll in donorColls()
+          && (!(coll in mqColls())
+              || (hasMosque() && resource.data.get('mosqueId', '') in myMosques())
+              || (hasComplex() && resource.data.get('complexId', '') in myComplexes()));
+    }
 
     /* =====================================================================
        ما لا يقرؤه الدورُ أصلاً (٤٤٠)
@@ -120,6 +128,10 @@ service cloud.firestore {
       let r = role();
       return (r in ['teacher', 'student', 'parent'] && coll in ['paySheets', 'admissions'])
           || (r in ['student', 'parent'] && coll in ['msgOutbox', 'moveLog', 'procLog', 'sysAlerts'])
+          /* (S6) طلباتُ الانضمام بجوالاتها لا يقرؤها إلّا من يبتّ فيها، وبنكُ الأسئلة
+             ومجموعاتُه لا يقرؤها الطالبُ ولا وليُّه — ولا تطلبها شاشاتُهم (loadAllData) */
+          || (r in ['teacher', 'student', 'parent'] && coll == 'userRequests')
+          || (r in ['student', 'parent'] && coll in ['questions', 'questionGroups'])
           || (r in ['student', 'parent'] && coll in kidColls())
           /* و students تُقرأ لهما من كتلتها وحدها (سجلّاتُ أبنائهما بأعيانها): كانت
              هذه الكتلةُ العامّة تُجيزها لهما كاملةً — والقواعدُ تُجمع بـ OR (٤٤٥) */
@@ -709,7 +721,7 @@ service cloud.firestore {
        مُنع هنا كما يُخفى الزرُّ هناك. */
     match /students/{docId} {
       /* الطالبُ ووليُّه: سجلّاتُ أبنائه بأعيانها (٤٤٤) */
-      allow read: if (canRead() && !hiddenFrom('students')) || isDonor()
+      allow read: if (canRead() && !hiddenFrom('students')) || donorMay('students')
                   || (role() in ['student', 'parent'] && docId in kidIds())
                   || mqOwn('students') || cxOwn('students');
       allow create: if teacherMayAs('addStudent', 'addStudent', true) && scopeOk();
@@ -803,7 +815,8 @@ service cloud.firestore {
                                                   'planId', 'studentId', 'teacherId'])));
       /* الحذف للإدارة وحدها: إزالة خطة طالب أخطر من تعديلها،
          والمعلّم يملك التجميد وتعديل المسار وهما يكفيان عمله. */
-      allow delete: if canWrite();
+      /* (S5) وداخلَ نطاقه: كان مديرُ مسجدٍ يحذف خططَ مسجدٍ آخر */
+      allow delete: if canWrite() && oldScopeOk();
     }
 
     /* ---------------- الواجبات اليومية ----------------
@@ -823,7 +836,8 @@ service cloud.firestore {
       allow create: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk();
       allow update: if teacherMayAs('plan_edit', 'editPlan', true) && scopeOk() && oldScopeOk()
                     && (canWrite() || !changed().hasAny(linkFields()));
-      allow delete: if canWrite();
+      /* (S5) وداخلَ نطاقه */
+      allow delete: if canWrite() && oldScopeOk();
     }
 
     /* ---------------- عملُ المعلّم اليوميُّ: سجلّاتٌ تُضاف ولا تُعدَّل ----
@@ -838,13 +852,17 @@ service cloud.firestore {
     match /pointsLog/{docId} {
       allow read: if (canRead() && !hiddenFrom('pointsLog')) || kidOwn('pointsLog') || mqOwn('pointsLog') || cxOwn('pointsLog');
       allow create: if (canWrite() || isTeacher()) && scopeOk();
-      allow update, delete: if canWrite();
+      /* (S5) التعديلُ والحذفُ داخلَ النطاق: ما كان وما سيكون */
+      allow update: if canWrite() && scopeOk() && oldScopeOk();
+      allow delete: if canWrite() && oldScopeOk();
     }
 
     match /procLog/{docId} {
       allow read: if canRead() && !hiddenFrom('procLog');
       allow create: if canWrite() || isTeacher();
-      allow update, delete: if canWrite();
+      /* (S5) */
+      allow update: if canWrite() && scopeOk() && oldScopeOk();
+      allow delete: if canWrite() && oldScopeOk();
     }
 
     match /notifications/{docId} {
@@ -867,7 +885,9 @@ service cloud.firestore {
     match /msgOutbox/{docId} {
       allow read: if (canRead() && !hiddenFrom('msgOutbox')) || mgrOwn('msgOutbox');
       allow create: if teacherMay('msg_send', true);
-      allow update, delete: if canWrite();
+      /* (S5) */
+      allow update: if canWrite() && scopeOk() && oldScopeOk();
+      allow delete: if canWrite() && oldScopeOk();
     }
 
     match /recitations/{docId} {
@@ -892,13 +912,14 @@ service cloud.firestore {
          الآن «اليوم» بساعة الخادم لا بما يكتبه المتصفّح (anyToday). */
       /* تأشيرُ اليوم يبقى تأشيرَ اليوم: تاريخُه لا يتغيّر، فيكفي فحصُ اليوم مرّة
          واحدة (٤٣٤) — والانتقالُ بتأشيرٍ قديمٍ إلى اليوم تعديلٌ لماضٍ يحتاج الصلاحية. */
-      allow update: if canWrite()
+      /* (S5) والإدارةُ داخلَ نطاقها كذلك */
+      allow update: if (canWrite() && scopeOk() && oldScopeOk())
                     || (isTeacher()
                         && (permOf('mushaf_past', 'editMarks', true)
                             || (request.resource.data.get('date', '') == resource.data.get('date', '')
                                 && anyToday(resource.data.get('date', ''))))
                         && oldScopeOk() && scopeOk());
-      allow delete: if canWrite()
+      allow delete: if (canWrite() && oldScopeOk())
                     || (isTeacher()
                         && (permOf('mushaf_past', 'editMarks', true)
                             || anyToday(resource.data.get('date', '')))
@@ -995,7 +1016,12 @@ service cloud.firestore {
 
       /* الإرسال من الإدارة والمعلمين، ومن الطالب ووليّ الأمر باسمهما هما
          (fromEmail بريدُ الجلسة) — ولا يجوز انتحال حالة القراءة. */
-      allow create: if (isAdmin() || isSupervisor() || teacherMay('msg_send', true)
+      /* (S10) والمعلّمُ باسمه هو: بريدُ المرسِل ومعرّفُه — إن كُتبا — بريدُ الجلسة
+         ومعرّفُها. كان يرسل fromEmail مديرٍ أو طالبٍ فتظهر الرسالةُ منه */
+      allow create: if (isAdmin() || isSupervisor()
+                        || (teacherMay('msg_send', true)
+                            && (!('fromEmail' in request.resource.data) || request.resource.data.fromEmail == myMail())
+                            && (!('fromUid' in request.resource.data) || request.resource.data.fromUid == request.auth.uid))
                         || ((role() == "student" || role() == "parent")
                             && request.resource.data.get('fromEmail', '') == myMail()))
                     && request.resource.data.toEmail is string
