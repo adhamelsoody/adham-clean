@@ -36134,10 +36134,19 @@ window.tcrcAddSave = function () {
   };
   if (!Array.isArray(DB.students)) DB.students = [];
   DB.students.push(o);
-  persistSet("students", o);
-  closeModal();
-  showToast("أُضيف الطالبُ «" + name + "» إلى الحلقة", "success");
-  mount();
+  /* (٤٨٤) «أُضيف» بعد ردّ الخادم: كان يظهر ويبقى في الحلقة طالبٌ لم يُحفظ.
+     إن رُفض يُرفع من الذاكرة وتبقى النافذةُ بما كُتب فيها (رسالةُ الرفض من persistFail) */
+  return Promise.resolve(persistSet("students", o)).then(ok => {
+    if (!ok) {
+      const i = DB.students.indexOf(o); if (i > -1) DB.students.splice(i, 1);
+      mount();
+      return false;
+    }
+    closeModal();
+    showToast("أُضيف الطالبُ «" + name + "» إلى الحلقة", "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -36720,10 +36729,19 @@ window.tstuExamSave = function () {
 
   if (!Array.isArray(DB.exams)) DB.exams = [];
   DB.exams.push(rec);
-  persistSet("exams", rec);
-  closeModal();
-  showToast("أُرسل طلبُ الاختبار إلى الإدارة", "success");
-  mount();
+  /* (٤٨٣) «أُرسل» بعد ردّ الخادم: كان يظهر ويبقى في الشاشة طلبٌ لم يصل الإدارة.
+     إن رُفض يُرفع من الذاكرة وتبقى النافذة (رسالةُ الرفض من persistFail) */
+  return Promise.resolve(persistSet("exams", rec)).then(ok => {
+    if (!ok) {
+      const i = DB.exams.indexOf(rec); if (i > -1) DB.exams.splice(i, 1);
+      mount();
+      return false;
+    }
+    closeModal();
+    showToast("أُرسل طلبُ الاختبار إلى الإدارة", "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -37501,6 +37519,11 @@ window.tstuDutySave = function (id, opts) {
   /* وتُكتب جهتُه إن تبدّلت — فلا يبقى في السجلّ وصفٌ يخالف مداه */
   if (rangeDir && rangeDir !== dirOf(a.direction)) next.direction = rangeDir;
 
+  /* (٤٨٢) زرُّ «حفظ التعديل» ينتظر ردَّ الخادم: كان «حُفظ» يظهر ويبقى المدى المرفوض في
+     الشاشة. تُحفظ الحقولُ قبل الكتابة لتُعاد إن رُفض (رسالةُ الرفض من persistFail).
+     ومسارُ «تم التسميع» (chain) كما كان — يُصلَح على حدة */
+  const _keys = Object.keys(next).concat(["shortQty", "edited", "editedTs"]);
+  const _prev = {}; _keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(a, k)) _prev[k] = a[k]; });
   Object.keys(next).forEach(k => { a[k] = next[k]; });
   a.shortQty = typeof asgRemain === "function" ? asgRemain(a) : a.shortQty;
   /* وسمُ يدِ المعلّم على السجلّ: ما عدّله بنفسه لا يُعيد المولّدُ حسابَه
@@ -37510,8 +37533,15 @@ window.tstuDutySave = function (id, opts) {
      وعليه وحدَه يُنقض الوسمُ في asgEditStale. فما عدّله المعلّمُ الآن لا
      يُنقضه حفظٌ مضى، ولو وقع مداه في المحفوظ (كإعادةِ موضعٍ ضعيف). */
   a.editedTs = Date.now();
-  persistSet("assignments", a);
-  if (!(opts && opts.chain)) {
+  const _saved = persistSet("assignments", a);
+  if (opts && opts.chain) return true;
+  return Promise.resolve(_saved).then(ok => {
+  if (!ok) {
+    _keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(_prev, k)) a[k] = _prev[k]; else delete a[k]; });
+    mount();
+    return false;
+  }
+  {
     closeModal();
     /* وإن خالف مداه اتجاهَ خطته قيل له — إعلامٌ بعد الحفظ لا حجْبٌ له */
     let tail = "";
@@ -37532,6 +37562,7 @@ window.tstuDutySave = function (id, opts) {
     mount();
   }
   return true;
+  });
 };
 
 /* =========================================================================
@@ -53110,12 +53141,24 @@ window.spProgLevelSave = function () {
   const lvName = lvEl && lvEl.selectedIndex >= 0
     ? String(lvEl.options[lvEl.selectedIndex].text).split(" — ")[0] : "";
 
+  /* (٤٨٦) «حُفظ البرنامج» بعد ردّ الخادم: كان يظهر وتُكتب الخطةُ على برنامجٍ لم يُحفظ
+     ويبقى في الشاشة. يُحفظ سجلُّ الطالب كما كان ليُعاد إن رُفض، ولا تُمسّ الخطة
+     (رسالةُ الرفض من persistFail) */
+  const _snap = JSON.parse(JSON.stringify(s));
+  const _undo = () => {
+    Object.keys(s).forEach(k => { if (!Object.prototype.hasOwnProperty.call(_snap, k)) delete s[k]; });
+    Object.assign(s, _snap);
+    mount();
+    return false;
+  };
+
   /* برنامجُ سرد المحفوظ بلا مستويات: لا يبقى عليه مستوى برنامجٍ سابق.
      وواجبُه يُضبط في بطاقة الطالب مكانَ أقسام الخطة الافتراضية. */
   if (spIsSardProg(prog)) {
     const _sdChg = String(s.program || "") !== String(prog || "");
     s.program = prog; s.levelId = ""; s.level = "";
-    persistSet("students", s);
+    return Promise.resolve(persistSet("students", s)).then(ok => {
+    if (!ok) return _undo();
     try {
       const rec = spSyncEnginePlan(s);
       if (rec) {
@@ -53127,7 +53170,8 @@ window.spProgLevelSave = function () {
     closeModal();
     showToast("حُفظ البرنامج — اضبط واجبَ السرد في خطة الطالب", "success");
     spProgLevelAfter(s);
-    return;
+    return true;
+    });
   }
 
   /* تغيّر البرنامجُ أو المستوى؟ فهو منهجُه الجديد (stuCurriculumWins) */
@@ -53140,7 +53184,8 @@ window.spProgLevelSave = function () {
   /* برنامجٌ مقدارُه في اسمه: مقدارُ حفظ الطالب يتبعه */
   { const _fq = prgFixedQty(prog);
     if (_fq) s.plan = Object.assign({}, s.plan || {}, { hifzType: PLAN_QTY_TYPE[0], hifzQty: _fq }); }
-  persistSet("students", s);
+  return Promise.resolve(persistSet("students", s)).then(ok => {
+  if (!ok) return _undo();
 
   /* الخطةُ نفسُها تتبع الاختيار — لا تبقى على مستوىً هُجر */
   try {
@@ -53160,6 +53205,8 @@ window.spProgLevelSave = function () {
   /* مسوّدةُ البطاقة القديمة لا تغطّي ما طُبِّق من المستوى */
   try { stuDraftReset(String(s.id)); } catch (e) {}
   spProgLevelAfter(s);
+  return true;
+  });
 };
 
 /* (٤٧٦) بعد النسب: المعلّمُ يبقى في صفحة طالبه، والإدارةُ في بطاقته كما كانت */
@@ -55673,12 +55720,23 @@ window.attLeaveClear = function (studentId) {
     !a.staffId && String(a.studentId) === String(studentId) &&
     String(a.date) === String(attDate()));
   if (!rec) return;
+  /* (٤٨٥) «أُلغيت» بعد ردّ الخادم: كان يظهر وتختفي المغادرةُ من الشاشة ولو رُفض الحفظ.
+     تُحفظ الحقولُ لتُعاد إن رُفض (رسالةُ الرفض من persistFail) */
+  const _keys = ["leftAt", "leaveReason", "attendedPct", "attendedMin"];
+  const _prev = {}; _keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(rec, k)) _prev[k] = rec[k]; });
   delete rec.leftAt; delete rec.leaveReason;
   delete rec.attendedPct; delete rec.attendedMin;
-  persistSet("attendance", rec);
-  closeModal();
-  showToast("أُلغيت المغادرة — حضورٌ كامل", "success");
-  mount();
+  return Promise.resolve(persistSet("attendance", rec)).then(ok => {
+    if (!ok) {
+      Object.keys(_prev).forEach(k => { rec[k] = _prev[k]; });
+      mount();
+      return false;
+    }
+    closeModal();
+    showToast("أُلغيت المغادرة — حضورٌ كامل", "success");
+    mount();
+    return true;
+  });
 };
 
 function attSet(studentId, status, circleId, kind) {
