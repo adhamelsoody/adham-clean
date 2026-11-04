@@ -531,6 +531,28 @@ service cloud.firestore {
       return l.size() == 0 || (l.size() == 1 && string(l[0]) == single);
     }
 
+    /* =====================================================================
+       (S8) أبناءُ الحساب داخلَ نطاق المدير
+       ---------------------------------------------------------------------
+       كان مديرُ المسجد يربط وليَّ أمرٍ (أو حسابَ طالب) بطالبٍ في مسجدٍ آخر،
+       فيقرأ الحسابُ سجلّاتِ ذلك الطالب كلَّها. فكلُّ طالبٍ يُكتب في studentIds
+       أو studentId بيد مدير المنشأة يُقرأ سجلُّه ويُشترط أن يكون في نطاقه
+       (أو بلا منشأة). خمسةُ أبناءٍ حدٌّ للحساب الواحد بيد المدير — القواعدُ
+       لا تعرف الحلقات، وكلُّ ابنٍ قراءةُ مستند. ومديرُ النظام بلا حدّ.
+       ===================================================================== */
+    function stuInScope(id) {
+      let s = get(/databases/$(database)/documents/students/$(string(id))).data;
+      return (sv(s, 'mosqueId') == '' && sv(s, 'complexId') == '') || inScope(s);
+    }
+    function kidsOk(d) {
+      let l = d.get('studentIds', []);
+      return l.size() <= 5
+          && (l.size() < 1 || stuInScope(l[0])) && (l.size() < 2 || stuInScope(l[1]))
+          && (l.size() < 3 || stuInScope(l[2])) && (l.size() < 4 || stuInScope(l[3]))
+          && (l.size() < 5 || stuInScope(l[4]))
+          && (sv(d, 'studentId') == '' || stuInScope(sv(d, 'studentId')));
+    }
+
     /* الملفُّ القائمُ يحمل بريدَ هذا الحساب — انظر «ربط الحساب» في users */
     function linkMatch(d) {
       return request.auth.token.email != null && (
@@ -608,7 +630,14 @@ service cloud.firestore {
                     && request.auth.uid == uid
                     && request.resource.data.role in selfRoles()
                     && request.resource.data.active == false
-                    && !request.resource.data.keys().hasAny(privilegedUserKeys());
+                    && !request.resource.data.keys().hasAny(privilegedUserKeys())
+                    /* (S16) ولا اسمَ دخولٍ ولا بريدَ دخولٍ لغيره: كان المسجِّلُ يكتب رقمَ
+                       هويةِ غيره أو بريدَ موظّفٍ، فيجده الدخولُ به (login.html يبحث بهما) */
+                    && !('username' in request.resource.data)
+                    && (!('loginEmail' in request.resource.data)
+                        || (request.resource.data.loginEmail is string
+                            && request.resource.data.loginEmail.lower() == request.auth.token.get('email', '').lower()))
+                    && (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid);
 
       /* تعديل ذاتي: حقول العرض فقط — لا role ولا active ولا نطاق. */
       allow update: if signedIn()
@@ -632,7 +661,10 @@ service cloud.firestore {
                     && request.resource.data.role in grantableRoles()
                     && !changed().hasAny(['phone', 'email', 'loginEmail', 'username', 'uid'])
                     && (unscoped() || userScopeOk(resource.data))
-                    && (unscoped() || targetScopeOk(request.resource.data));
+                    && (unscoped() || targetScopeOk(request.resource.data))
+                    /* (S8) */
+                    && (unscoped() || (!changed().hasAny(['kids'])
+                        && (!changed().hasAny(['studentIds', 'studentId']) || kidsOk(request.resource.data))));
 
       /* =================================================================
          مديرُ المنشأة يُنشئ حساباً بدورٍ تحت سقفه وداخل نطاقه (٤٣٥)
@@ -645,7 +677,10 @@ service cloud.firestore {
       allow create: if isManager()
                     && request.auth.uid != uid
                     && request.resource.data.role in grantableRoles()
-                    && (unscoped() || targetScopeOk(request.resource.data));
+                    && (unscoped() || targetScopeOk(request.resource.data))
+                    /* (S8) */
+                    && (unscoped() || (request.resource.data.get('kids', []).size() == 0
+                        && kidsOk(request.resource.data)));
 
       /* المدير وحده يُنشئ الحسابات ويغيّر الأدوار والحالة ويحذف. */
       allow create, update, delete: if isAdmin();
@@ -791,12 +826,19 @@ service cloud.firestore {
          هذا الشرطُ فيه، والخطأُ في «أو» لا يُسقط ما بعده */
       allow read: if (request.auth.uid in resource.data.examinerUids && canRead())
                   || (canRead() && !hiddenFrom('exams')) || kidOwn('exams') || mqOwn('exams') || cxOwn('exams');
+      /* (S11) وداخلَ نطاقه، ولا يكون مقدّمُ الطلب ممتحِنَه: كان المعلّمُ يطلب اختباراً
+         لطالب مسجدٍ آخر، ويضع نفسَه مشرفاً فينقله بعدُ كما يشاء */
       allow create: if teacherMayAs('examRequest', 'examRequest', true)
                     && request.resource.data.stage == 'await-sup'
-                    && request.resource.data.studentId is string;
+                    && request.resource.data.studentId is string
+                    && scopeOk()
+                    && !(request.auth.uid in request.resource.data.get('examinerUids', []));
       /* وينقل مرحلتَه وحدَها: لا طالبَ ولا منشأةَ ولا مشرفين ولا حذف (٤٥٧) */
+      /* (S11) والتوثيقُ لإدارة المنشأة: لا ينقله المشرفُ إلى «موثَّق» ولا يُخرجه منه */
       allow update: if canRead() && request.auth.uid in resource.data.examinerUids
-                    && changed().hasOnly(['stage', 'transferWhy', 'transferAt']);
+                    && changed().hasOnly(['stage', 'transferWhy', 'transferAt'])
+                    && request.resource.data.get('stage', '') != 'documented'
+                    && resource.data.get('stage', '') != 'documented';
     }
 
     /* الخططُ: كانت مفتوحةً لكلّ معلّمٍ بلا حصرِ نطاقٍ ولا حصرِ حقول —
