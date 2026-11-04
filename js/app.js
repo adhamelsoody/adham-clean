@@ -3965,8 +3965,10 @@ function facilityStudents(kind, id) {
     const cids = new Set((cur("circles") || [])
       .filter(c => c && String(c.mosqueId || "") === String(id))
       .map(c => String(c.id)));
-    return all.filter(x =>
-      String(x.mosqueId || "") === String(id) || cids.has(String(x.circleId)));
+    /* (D4) مسجدُ الطالب في سجلّه إن كُتب، وإلّا مسجدُ حلقته — كان يُعدّ في المسجدين
+       إن نُقلت حلقتُه دونه، فيزيد مجموعُ المساجد على عدد الطلاب */
+    return all.filter(x => (x.mosqueId != null && x.mosqueId !== "")
+      ? String(x.mosqueId) === String(id) : cids.has(String(x.circleId)));
   }
 
   if (kind === "complex") {
@@ -3977,10 +3979,11 @@ function facilityStudents(kind, id) {
       .filter(c => c && (mids.has(String(c.mosqueId || "")) ||
                          String(c.complexId || "") === String(id)))
       .map(c => String(c.id)));
-    return all.filter(x =>
-      String(x.complexId || "") === String(id) ||
-      mids.has(String(x.mosqueId || "")) ||
-      cids.has(String(x.circleId)));
+    /* (D4) والمجمّعُ كذلك: مجمّعُ مسجده إن عُرف مسجدُه، وإلّا ما في سجلّه ثمّ حلقته */
+    const knownMq = new Set((cur("mosques") || []).filter(Boolean).map(m => String(m.id)));
+    return all.filter(x => (x.mosqueId != null && x.mosqueId !== "" && knownMq.has(String(x.mosqueId)))
+      ? mids.has(String(x.mosqueId))
+      : (String(x.complexId || "") === String(id) || cids.has(String(x.circleId))));
   }
 
   return [];
@@ -5798,6 +5801,8 @@ function syncStudentRecord(u) {
 
 function syncTeacherRecord(u) {
   if (!u || u.role !== "teacher") return null;
+  /* (D5) سجلُّه حُذف عمداً: لا يُعاد إنشاؤه تلقائياً (يُضاف من صفحة المعلّمين إن أُريد) */
+  const _rm = !!u.teacherRemovedAt;
   if (!Array.isArray(DB.teachers)) DB.teachers = [];
 
   const key = x =>
@@ -5881,6 +5886,7 @@ function syncTeacherRecord(u) {
     if (!Object.keys(patch).length) return t;
     Object.assign(t, patch);
   } else {
+    if (_rm) return null;
     t = Object.assign({ id: freshNumId("teachers"), circle: "—", circleId: "", students: 0,
                         session: "لم تعتمد", attDone: false, recite: 0, late: 0 }, fields);
     DB.teachers.push(t);
@@ -9908,7 +9914,7 @@ window.mvsRunDo = function () {
   let full = 0;
   /* (٥٦٧) يُنقل الطلابُ ويُصفَّر رصيدُهم في الذاكرة ثمّ يُحفظون معاً: من رفضه الخادمُ
      عاد كما كان (حلقتُه ونقاطُه)، ولا يُسجَّل في سجلّ النقل، ولا يُعلن «نُقل» إلا للمقبول */
-  const items = [], refused = new Set();
+  const items = [], refused = new Set(), refusedSt = new Set(), resets = [];
   ids.forEach(id => {
     const st = (DB.students || []).find(x => String(x.id) === String(id));
     if (!st) return;
@@ -9918,6 +9924,7 @@ window.mvsRunDo = function () {
     }
     const _snap = JSON.parse(JSON.stringify(st)), _nm = st.name || id;
     names.push(_nm);
+    stuCircleSwap(st, st.circleId, MVS.toCir);
     st.circleId = MVS.toCir;
     /* اسمُ الحلقة ومعلّمُها يتبعان المعرّف (٤٣٢): كان يُغيَّر circleId وحده،
        فيبقى اسمُ الحلقة القديمة والمعلّمُ القديم في السجلّ والتقارير */
@@ -9930,9 +9937,11 @@ window.mvsRunDo = function () {
       else if (toC.mosqueId) { const _m = (DB.mosques || []).find(m => String(m.id) === String(toC.mosqueId)); if (_m) st.mosque = _m.name || st.mosque; }
     }
     st.points = 0; st.balance = 0;
-    items.push([st, () => { recRestore(st, _snap); refused.add(_nm); }]);
+    items.push([st, () => { recRestore(st, _snap); refused.add(_nm); refusedSt.add(st); }]);
+    resets.push([st, _snap.points]);
   });
   return saveManyOrUndo("students", items).then(res => {
+    resets.forEach(([st, p0]) => { if (!refusedSt.has(st)) { ptsMoveReset(st, p0, "تصفير بالنقل إلى " + (toC ? toC.name : "حلقة أخرى")); stuMoveFollow(st); } });
     const moved = names.filter(n => !refused.has(n));
     if (!moved.length) { mount(); return false; }
     if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
@@ -10367,6 +10376,7 @@ window.blkApplyDo = function () {
       if (c && typeof circleCapBlock === "function" &&
           circleCapBlock(c.id, st.id, true)) { blkFull++; return; }
       if (c) {
+        stuCircleSwap(st, st.circleId, c.id);
         st.circleId = c.id;
         st.circle   = c.name || "—";
         /* المعلّمُ يتبع الحلقة: نقلُ الطالب دون معلّمه يترك سجلَّه متناقضاً */
@@ -10382,6 +10392,7 @@ window.blkApplyDo = function () {
 
     jobs.push(Promise.resolve(persistSet("students", st)).then(ok => {
       if (ok === false) { recRestore(st, _snap); refused++; return; }
+      if (cid) stuMoveFollow(st);
       /* المستوى المُسنَد منهجُه: تُطبَّق إعداداتُه ويبدأ من ابتدائه */
       if (lvChg && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
       done++;
@@ -10729,6 +10740,7 @@ window.bplApplyDo = function () {
     const st = DB.students.find(x => String(x.id) === String(sid));
     if (!st) return Promise.resolve(null);
     const had = Object.prototype.hasOwnProperty.call(st, "plan"), prev = st.plan;
+    const _ek = Object.keys(BPL.edit[sid] || {});
     st.plan = Object.assign({}, st.plan || {}, BPL.edit[sid]);
     return Promise.resolve(persistSet("students", st)).then(ok => {
       if (ok === false) { if (had) st.plan = prev; else delete st.plan; return false; }
@@ -10736,7 +10748,7 @@ window.bplApplyDo = function () {
          — وإلّا بقي الابتداءُ والمقدارُ في st.plan لا يقرؤهما مولّدُ الواجبات.
          ومن سُجّل «تحضير فقط» لا تُنشأ له خطة. */
       if (st.enrollType !== "attend") {
-        try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(st); } catch (e) { console.warn("bplApply/sync:", e); }
+        try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(st, { keys: _ek }); } catch (e) { console.warn("bplApply/sync:", e); }
       }
       done.push(String(sid));
       return true;
@@ -11897,15 +11909,20 @@ window.mvcRunDo = function () {
     return Promise.resolve(persistSet("circles", c)).then(ok => {
       if (ok === false) { recRestore(c, cs); bad++; return false; }
       nCir++;
-      const items = [];
+      const items = [], resets = [];
       (DB.students || []).forEach(st => {
         if (String(st.circleId) !== String(id)) return;
         const ss = JSON.parse(JSON.stringify(st));
         st.mosqueId = c.mosqueId || ""; st.complexId = c.complexId || ""; st.mosque = c.mosque || "";
         st.points = 0; st.balance = 0;
-        items.push([st, () => recRestore(st, ss)]);
+        items.push([st, () => { recRestore(st, ss); st.__mvRef = 1; }]);
+        resets.push([st, ss.points]);
       });
-      return saveManyOrUndo("students", items).then(r => { nStud += r.ok; bad += r.bad; return true; });
+      return saveManyOrUndo("students", items).then(r => {
+        /* (D2) */
+        resets.forEach(([st, p0]) => { if (st.__mvRef) delete st.__mvRef; else { ptsMoveReset(st, p0, "تصفير بنقل الحلقة"); stuMoveFollow(st); } });
+        nStud += r.ok; bad += r.bad; return true;
+      });
     });
   });
 
@@ -24668,6 +24685,34 @@ function ptsHeld(sid) {
   return PTS_HOLD_MEMO.map[String(sid)] || 0;
 }
 function ptsOf(st) { return (Number((st || {}).points) || 0) - (st ? ptsHeld(st.id) : 0); }
+/* (D1) الرصيدُ المحفوظ كما هو — ptsOf تطرح منه المحجوزَ للطلبات المعلّقة للعرض وللفحص.
+   والكتابةُ تُبنى على المحفوظ: كان المنحُ يكتب (المحفوظ − المحجوز + n)، ثمّ يطرح الاعتمادُ
+   المحجوزَ ثانيةً، فيُخصم الطلبُ مرّتين (100 محجوز 30 +5 ← 45 بدل 75) */
+function ptsStored(st) { return Number((st || {}).points) || 0; }
+/* (D2) تصفيرُ النقاط بالنقل — القاعدةُ المكتوبة باقية — يُسجَّل في سجلّ النقاط ويُلغي طلباتِ
+   المتجر المعلّقة التي لم تُخصم: كان الرصيدُ يُصفَّر بلا أثرٍ في السجلّ، ويبقى الطلبُ معلّقاً
+   يُخصم من رصيدٍ صار صفراً. يُنادى بعد قبول الخادم نقلَ الطالب */
+function ptsMoveReset(st, prev, why) {
+  if (!st) return;
+  const p0 = Number(prev) || 0;
+  const u = (STATE && STATE.user) || {};
+  if (p0 !== 0) {
+    const plog = { id: "pt" + Date.now() + "-" + st.id, studentId: String(st.id), student: st.name || "",
+      n: -p0, why: why || "تصفير بالنقل", by: u.name || u.email || "—",
+      ts: Date.now(), date: todayISO(), after: 0,
+      mosqueId: st.mosqueId || "", complexId: st.complexId != null ? st.complexId : "",
+      termId: typeof activeTermId === "function" ? activeTermId() : "" };
+    if (!Array.isArray(DB.pointsLog)) DB.pointsLog = [];
+    DB.pointsLog.push(plog);
+    persistSet("pointsLog", plog);
+  }
+  (Array.isArray(DB.storeOrders) ? DB.storeOrders : []).forEach(o => {
+    if (!o || String(o.studentId) !== String(st.id) || o.status !== "pending" || o.debited !== false) return;
+    o.status = "canceled"; o.canceledAt = Date.now(); o.cancelWhy = why || "تصفير بالنقل";
+    persistSet("storeOrders", o);
+  });
+  PTS_HOLD_VER++;
+}
 function ptsTotal(st) { return Number((st || {}).balance) || 0; }
 
 /* أسباب المنح الجاهزة — تُختصر على المعلّم كتابةَ السبب كل مرة */
@@ -24748,7 +24793,7 @@ window.ptsGrantDo = function () {
      ولم يُبلَّغ الطالب، وبقيت النافذةُ — ولا يُعلن «مُنح» */
   const _pts = { had: Object.prototype.hasOwnProperty.call(st, "points"), p: st.points,
                  hadB: Object.prototype.hasOwnProperty.call(st, "balance"), b: st.balance };
-  st.points = ptsOf(st) + n;
+  st.points = ptsStored(st) + n;
   /* المكتسب الكلّي لا ينقص: هو سجلّ التميّز لا رصيد الإنفاق */
   if (n > 0) st.balance = ptsTotal(st) + n;
   if (st.points < 0) st.points = 0;
@@ -25201,7 +25246,7 @@ window.storeBuyDo = function (rewardId) {
   const selfBuy = _role === "student" || _role === "parent";
 
   if (!selfBuy) {
-    st.points = ptsOf(st) - need;
+    st.points = ptsStored(st) - need;
     persistSet("students", st);
     if (r.qty != null && r.qty > 0) { r.qty = r.qty - 1; persistSet("rewards", r); }
   }
@@ -25363,7 +25408,7 @@ function orderGiveBack(o, why) {
   const st = (cur("students") || []).find(x => String(x.id) === String(o.studentId));
   if (st) {
     /* تُردّ النقاط: الإلغاء لا يُضيع رصيد الطالب */
-    st.points = ptsOf(st) + (Number(o.cost) || 0);
+    st.points = ptsStored(st) + (Number(o.cost) || 0);
     persistSet("students", st);
 
     const plog = {
@@ -40408,9 +40453,10 @@ window.tstuMoveDo = function (confirmed) {
   }
   /* (٤٨٠) النقلُ بعد ردّ الخادم: كان «نُقل» يظهر ويُكتب سجلُّ النقل ويُنبَّه المعلّمُ الجديد
      ولو رُفض الحفظ، ويبقى الطالبُ في الشاشة بحلقته الجديدة. تُحفظ الحقولُ لتُعاد إن رُفض */
-  const _keys = ["circleId", "circle", "teacher", "teacherId", "mosqueId", "mosque", "complexId"];
-  const _prev = {}; _keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(st, k)) _prev[k] = st[k]; });
+  const _keys = ["circleId", "circle", "teacher", "teacherId", "mosqueId", "mosque", "complexId", "circleIds"];
+  const _prev = {}; _keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(st, k)) _prev[k] = Array.isArray(st[k]) ? st[k].slice() : st[k]; });
   const _why = val("#tsm_why");
+  stuCircleSwap(st, st.circleId, c.id);
   st.circleId = String(c.id);
   st.circle = c.name || "";
   st.teacher = c.teacher || st.teacher || "";
@@ -40423,6 +40469,7 @@ window.tstuMoveDo = function (confirmed) {
     mount();
     return false;
   }
+  stuMoveFollow(st);
 
   /* سجلُّ النقل: بالشكل الذي تكتبه شاشةُ الترحيل — طالبٌ وسببٌ وفاعل */
   try {
@@ -44291,9 +44338,17 @@ function planOfStudent(st) {
   /* تُسوّى الهمزات والمسافات كذلك — لا يكفي تسوية المسافات وحدها */
   const sid = String(st.id), sname = nameKey(st.name);
   /* الخطةُ المستبدَلة (superseded) ليست خطتَه — آخرُ ما أُسند هو المعتمَد */
-  const p = (Array.isArray(DB.plans) ? DB.plans : []).find(x => x && x.superseded !== true && (
-    (x.studentId != null && String(x.studentId) === sid) ||
-    (sname && nameKey(x.student) === sname))) || null;
+  const plans = Array.isArray(DB.plans) ? DB.plans : [];
+  /* (D8) بالمعرّف أوّلاً. والاسمُ لخطةٍ قديمةٍ لا معرّفَ فيها وحدَها، وبشرط ألّا يشارك
+     الطالبَ اسمَه طالبٌ آخر — كان طالبٌ في مسجدٍ آخر يحمل الاسمَ نفسَه يأخذ خطةَ غيره */
+  let p = plans.find(x => x && x.superseded !== true &&
+    x.studentId != null && x.studentId !== "" && String(x.studentId) === sid) || null;
+  if (!p && sname) {
+    const cand = plans.filter(x => x && x.superseded !== true &&
+      (x.studentId == null || x.studentId === "") && nameKey(x.student) === sname);
+    const twins = (Array.isArray(DB.students) ? DB.students : []).filter(x => x && nameKey(x.name) === sname).length;
+    if (cand.length === 1 && twins <= 1) p = cand[0];
+  }
 
   /* =======================================================================
      قراءةٌ محضة — لا ترميمَ ولا كتابة
@@ -45360,6 +45415,16 @@ function teacherDuties() {
           style="margin-inline-start:6px">${ic("swap", 15)} ربط يدوي</button>`)
     : "";
 
+  /* (D3) خططٌ وواجباتٌ معلّقة بقيت في مسجد الطالب القديم بعد نقله قبل الإصلاح — تقريرٌ وزرٌّ
+     صريحٌ لمدير النظام، لا تحديثٌ تلقائيّ */
+  const movedN = (typeof movedStrays === "function" && typeof isTopAdmin === "function" && isTopAdmin())
+    ? movedStrays().length : 0;
+  const movedBox = movedN
+    ? noteCard(`<strong>${toArabicDigits(movedN)} خطةٍ وواجبٍ معلّق</strong> لطلابٍ نُقلوا ما زالت في مسجدهم القديم — لا يراها مديرُ مسجدهم الجديد.
+        <button class="btn btn-primary btn-sm" data-action="fix-moved-records"
+          style="margin-inline-start:10px">${ic("refresh", 15)} انقلها مع أصحابها</button>`)
+    : "";
+
   const warn = noPlan.length
     ? noteCard(`<strong>${toArabicDigits(noPlan.length)} ${noPlan.length === 1 ? "طالب" : "طلاب"} بلا خطة:</strong>
         ${esc(noPlan.slice(0, 6).map(x => x.name).join(" · "))}${noPlan.length > 6 ? " …" : ""}
@@ -45372,6 +45437,7 @@ function teacherDuties() {
     ${pageHead("الواجبات", "واجب كل طالب في حلقاتك")}
     ${canEdit ? "" : noteCard("صلاحية تعديل الواجبات معطّلة لحسابك — العرض فقط.")}
     ${orphanBox ? orphanBox + `<div style="height:16px"></div>` : ""}
+    ${movedBox ? movedBox + `<div style="height:16px"></div>` : ""}
     ${warn ? warn + `<div style="height:16px"></div>` : ""}
 
     <div class="section">
@@ -53494,7 +53560,12 @@ function spSurahIdx(name) {
    يُكتب المختارُ هنا في سجلّ الخطة نفسِه، فيسري على التسميع اليوميّ وعلى
    الانتقال إلى السورة التالية. ولا تُنشأ خطةٌ لمن سُجّل للتحضير وحده.
    ========================================================================= */
-function spSyncEnginePlan(st) {
+/* (D10) opts.keys: حقولُ البطاقة التي عُدّلت فعلاً (المحرّرُ الجماعيّ). الموضعُ لا يُكتب من
+   البطاقة إلّا إن كان منها — كان تعديلُ المقدار وحدَه يُرجع موضعَ الحفظ إلى ما في البطاقة
+   القديم (٥:١٠ ← ١:١) بعد أن قدّمه المحرّك. وبلا opts يبقى كما كان (حفظُ البطاقة نفسِها) */
+function spSyncEnginePlan(st, opts) {
+  const _only = opts && Array.isArray(opts.keys) ? opts.keys.map(String) : null;
+  const _may = k => !_only || _only.indexOf(k) > -1;
   if (!st || st.attOnly) return null;
   const p = st.plan || {};
   let rec = typeof planOfStudent === "function" ? planOfStudent(st) : null;
@@ -53558,12 +53629,12 @@ function spSyncEnginePlan(st) {
         if (!_l.length) return;
         SP_SURAHS = _l;
         /* ولا يُعاد الجسرُ إلّا إن صار للاسم رقمٌ — وإلّا فالاسمُ ليس سورة */
-        if (spSurahIdx(p.hifzSura) || spSurahIdx(p.revSura)) spSyncEnginePlan(st);
+        if (spSurahIdx(p.hifzSura) || spSurahIdx(p.revSura)) spSyncEnginePlan(st, opts);
       }).catch(function () { delete SP_SURA_RETRY[_k]; });
     }
   }
 
-  const hs = spSurahIdx(p.hifzSura);
+  const hs = (_may("hifzSura") || _may("hifzAyah")) ? spSurahIdx(p.hifzSura) : 0;
   if (hs) {
     const _hA = Math.max(1, Number(p.hifzAyah) || 1);
     if (Number(rec.hifzFromS) !== hs || Number(rec.hifzFromA) !== _hA) {
@@ -53574,7 +53645,7 @@ function spSyncEnginePlan(st) {
   /* تلاوةُ الدرس الجديد: وسمٌ على الخطة يقرؤه المولّد */
   if (p.tilOn !== undefined) rec.tilNew = p.tilOn === true;
 
-  const rs = spSurahIdx(p.revSura);
+  const rs = (_may("revSura") || _may("revAyah")) ? spSurahIdx(p.revSura) : 0;
   if (rs) {
     const _rA = Math.max(1, Number(p.revAyah) || 1);
     if (Number(rec.revFromS) !== rs || Number(rec.revFromA) !== _rA) {
@@ -55980,6 +56051,56 @@ function studentCircleIds(st) {
 }
 window.studentCircleIds = studentCircleIds;
 
+/* =========================================================================
+   (D3) نقلُ الطالب: حلقاتُه وخطتُه وواجباتُه المعلّقة تتبعه
+   -------------------------------------------------------------------------
+   كان النقلُ يغيّر circleId وحده: تبقى الحلقةُ القديمة في circleIds فيُعدّ
+   الطالبُ فيها، وتبقى خطتُه وواجباتُه بمسجدها القديم — والقراءةُ لكلّ مسجد،
+   فلا يرى مديرُ المسجد الجديد خطتَه. stuCircleSwap قبل حفظ الطالب، و
+   stuMoveFollow بعد قبول الخادم له. الواجبُ المنجَز سجلٌّ تاريخيٌّ لا يُمسّ.
+   ========================================================================= */
+function stuCircleSwap(st, oldCid, newCid) {
+  if (!st || !Array.isArray(st.circleIds)) return;
+  const o = String(oldCid == null ? "" : oldCid), n = String(newCid == null ? "" : newCid);
+  const out = [];
+  st.circleIds.forEach(x => { const v = String(x) === o ? n : String(x); if (v && out.indexOf(v) < 0) out.push(v); });
+  st.circleIds = out;
+}
+/* ما بقي بعد نقلٍ قديم: خطةٌ أو واجبٌ معلّق مسجدُه غيرُ مسجد صاحبه */
+function movedStrays() {
+  const byId = {};
+  (Array.isArray(DB.students) ? DB.students : []).forEach(st => { if (st && st.mosqueId) byId[String(st.id)] = st; });
+  const out = [];
+  (Array.isArray(DB.plans) ? DB.plans : []).forEach(p => {
+    const st = p && p.superseded !== true && byId[String(p.studentId)];
+    if (st && p.mosqueId && String(p.mosqueId) !== String(st.mosqueId)) out.push(st);
+  });
+  (Array.isArray(DB.assignments) ? DB.assignments : []).forEach(a => {
+    const st = a && a.status !== "done" && a.deleted !== true && byId[String(a.studentId)];
+    if (st && a.mosqueId && String(a.mosqueId) !== String(st.mosqueId)) out.push(st);
+  });
+  return out;
+}
+window.movedStrays = movedStrays;
+function stuMoveFollow(st) {
+  if (!st) return;
+  const f = { mosqueId: st.mosqueId || "", complexId: st.complexId != null ? st.complexId : "",
+              circleId: st.circleId != null ? String(st.circleId) : "" };
+  const diff = r => r && (String(r.mosqueId || "") !== String(f.mosqueId) ||
+                          String(r.complexId || "") !== String(f.complexId || "") ||
+                          (r.circleId != null && r.circleId !== "" && String(r.circleId) !== f.circleId));
+  const put = (coll, r) => { r.mosqueId = f.mosqueId; r.complexId = f.complexId;
+                             if (r.circleId != null && r.circleId !== "") r.circleId = f.circleId;
+                             /* نقلٌ بإجراءٍ صريحٍ من المستخدم: يُعلَن لحارس الارتباط وإن جاء بعد ردّ الخادم */
+                             window.linkChange(() => persistSet(coll, r)); };
+  (Array.isArray(DB.plans) ? DB.plans : []).forEach(p => {
+    if (p && p.superseded !== true && String(p.studentId) === String(st.id) && diff(p)) put("plans", p);
+  });
+  (Array.isArray(DB.assignments) ? DB.assignments : []).forEach(a => {
+    if (a && String(a.studentId) === String(st.id) && a.status !== "done" && a.deleted !== true && diff(a)) put("assignments", a);
+  });
+}
+
 /* طلابُ حلقةٍ بعينها — يشمل من كانت إحدى حلقاته */
 function circleStudents(circleId) {
   const cid = String(circleId || "");
@@ -57003,6 +57124,15 @@ document.addEventListener("click", (e) => {
     case "save-bulk-duty":  saveBulkDuty(); break;
     case "link-plans":      modalLinkPlan(); break;
     case "save-link-plans": saveLinkPlans(); break;
+    case "fix-moved-records": {
+      if (typeof isTopAdmin !== "function" || !isTopAdmin()) { showToast("لمدير النظام وحده", "warn"); break; }
+      const _list = movedStrays();
+      const _sts = [...new Set(_list)];
+      _sts.forEach(st => stuMoveFollow(st));
+      showToast("نُقلت " + toArabicDigits(_list.length) + " خطةً وواجباً مع " + toArabicDigits(_sts.length) + " طالباً", "info");
+      mount();
+      break;
+    }
     case "fix-plan-links": {
       /* يربط كل خطة بلا معرّف بالطالب صاحب الاسم نفسه */
       const studs = cur("students");
@@ -57473,7 +57603,21 @@ document.addEventListener("click", (e) => {
         if (_newId && String(_newId) !== String(s.circleId || "") &&
             typeof circleCapBlock === "function" && circleCapBlock(_newId, s.id)) { recRestore(s, _esSnap); break; }
       }
-      const esCircleRec = stuCircleRec(s, val("#es_circle", s.circle));
+      let esCircleRec = stuCircleRec(s, val("#es_circle", s.circle));
+      /* (D16) الحلقةُ من المسجد المختار: إن كانت باسمها حلقةٌ فيه فهي هي، وإلّا رُدّ الحفظ —
+         كان يُحفظ الطالبُ في مسجدٍ وحلقتُه في مسجدٍ آخر */
+      if (esCircleRec && s.mosqueId && esCircleRec.mosqueId != null && esCircleRec.mosqueId !== "" &&
+          String(esCircleRec.mosqueId) !== String(s.mosqueId)) {
+        const _n = String(val("#es_circle", s.circle) || "").trim();
+        const _inMq = (Array.isArray(DB.circles) ? DB.circles : []).find(c => c &&
+          String(c.name || "").trim() === _n && String(c.mosqueId || "") === String(s.mosqueId));
+        if (!_inMq) {
+          recRestore(s, _esSnap);
+          showToast("حلقة «" + _n + "» ليست في المسجد المختار — اختر حلقةً منه أو غيّر المسجد", "warn");
+          break;
+        }
+        esCircleRec = _inMq;
+      }
       s.circle = val("#es_circle", s.circle);
       /* مزامنة معرّف الحلقة مع الاسم الجديد — بدونها يتناقض الاثنان */
       s.circleId = esCircleRec ? String(esCircleRec.id) : (s.circleId || "");
@@ -57664,10 +57808,24 @@ document.addEventListener("click", (e) => {
     }
     case "delete-teacher-confirm": {
       const id = t.dataset.id;
+      const _tr = (DB.teachers || []).find(x => x.id == id);
+      const _was = (DB.teachers || []).slice();
       DB.teachers = DB.teachers.filter(x => x.id != id);
-      persistDelete("teachers", id);
-      closeModal(); renderNav(); mount();
-      showToast("تم حذف المعلم");
+      /* حذفٌ ينتظر الخادم: إن رُفض عاد المعلّمُ ولا يُعلن «حُذف» */
+      Promise.resolve(persistDelete("teachers", id)).then(ok => {
+        if (ok === false) { DB.teachers = _was; mount(); return; }
+        /* (D5) حسابُ المعلّم يُعلَّم بأنّ سجلَّه حُذف عمداً، فلا تُعيد المزامنةُ (syncAllTeachers)
+           إنشاءَه بمعرّفٍ جديد عند كلّ تحميل — كان المعلّمُ المحذوف يعود */
+        if (_tr) (Array.isArray(DB.users) ? DB.users : []).forEach(u => {
+          if (!u || u.role !== "teacher") return;
+          const same = (_tr.uid && String(u.uid || u.id) === String(_tr.uid)) ||
+            (u.teacherId != null && u.teacherId !== "" && String(u.teacherId) === String(_tr.id)) ||
+            (!_tr.uid && u.username && String(_tr.username || "") === String(u.username));
+          if (same) { u.teacherRemovedAt = Date.now(); persistSet("users", u); }
+        });
+        closeModal(); renderNav(); mount();
+        showToast("تم حذف المعلم");
+      });
       break;
     }
 
@@ -57833,24 +57991,37 @@ document.addEventListener("click", (e) => {
       if (!sFac.mosqueId && !sFac.complexId && !STATE.complexId) {
         showToast("اختر المسجد أو المجمع الذي يُنسب إليه الطالب", "warn"); break;
       }
-      const sCircle = val("#s_circle", (DB.circles[0] || {}).name || "—");
+      const sCircle = val("#s_circle", "—");
       /* نموذج الطالب لا يحوي حقل معلم، وكان الكود يسند «أول معلم في النظام»
          أياً كانت الحلقة. المعلم الصحيح هو معلم الحلقة المختارة. */
-      const sCircleRec = recByName("circles", sCircle);
+      /* (D9) الحلقةُ باسمها في المسجد المختار أوّلاً ثمّ في المجمّع — كانت أوّلَ حلقةٍ بالاسم
+         في النظام كلِّه، فيُنسب الطالبُ إلى «حلقة أ» في مسجدٍ آخر. ولا حلقةَ افتراضيّة */
+      const sCircleRec = (function () {
+        const n = String(sCircle || "").trim();
+        if (!n || n === "—") return null;
+        const all = (Array.isArray(DB.circles) ? DB.circles : []).filter(c => c && String(c.name || "").trim() === n);
+        return (sFac.mosqueId && all.find(c => String(c.mosqueId || "") === String(sFac.mosqueId)))
+            || (!sFac.mosqueId && sFac.complexId && all.find(c => String(c.complexId || "") === String(sFac.complexId)))
+            || (!sFac.mosqueId && !sFac.complexId ? all[0] : null) || null;
+      })();
+      if (sCircle && sCircle !== "—" && !sCircleRec) {
+        showToast("حلقة «" + sCircle + "» ليست في المسجد المختار — اختر حلقةً منه", "warn"); break;
+      }
       /* السعة كانت بلا أثر: الحلقة تقبل بلا سقف مهما حُدّد لها */
       if (sCircleRec && circleFull(sCircleRec)) {
         showToast("حلقة " + sCircle + " مكتملة (" +
           toArabicDigits(sCircleRec.capacity) + " طالباً) — اختر حلقة أخرى أو ارفع الحد", "warn");
         break;
       }
-      const sTeacher   = sCircleRec && sCircleRec.teacher ? sCircleRec.teacher : ((DB.teachers[0] || {}).name || "—");
-      const sTeacherId = sCircleRec && sCircleRec.teacherId ? String(sCircleRec.teacherId) : idByName("teachers", sTeacher);
+      /* ومعلّمُه معلّمُ تلك الحلقة — لا «أوّلُ معلّمٍ في النظام» */
+      const sTeacher   = sCircleRec && sCircleRec.teacher ? sCircleRec.teacher : "—";
+      const sTeacherId = sCircleRec && sCircleRec.teacherId != null && sCircleRec.teacherId !== "" ? String(sCircleRec.teacherId) : "";
       /* المجمّعُ من المسجد إن وُجد، وإلا من المجمّع الحالي — والمسجدُ
          المستقلُّ يبقى بلا مجمّع، وهو صحيحٌ لا نقص. */
       const o = { id: Date.now(), complexId: sFac.complexId || STATE.complexId || "", name,
         photo: photoVal("s_photo", ""),
         mosque: sFac.mosque, mosqueId: sFac.mosqueId,
-        circle: sCircle,   circleId:  idByName("circles", sCircle),
+        circle: sCircleRec ? sCircle : "—",   circleId:  sCircleRec ? String(sCircleRec.id) : "",
         teacher: sTeacher, teacherId: sTeacherId,
         parent: (function () { const r = phoneRead("s_parent"); return r ? (r.full || "—") : val("#s_parent", "—"); })(),
         parentCC: (function () { const r = phoneRead("s_parent"); return r ? r.cc : ""; })(),
@@ -60395,14 +60566,22 @@ window.syncTeacherScope = function (teacherId) {
   const t = (cur("teachers") || []).find(x => String(x.id) === String(teacherId));
   if (!t) return;
 
-  const rec = (cur("users") || []).find(x =>
-    (t.uid && String(x.uid || x.id) === String(t.uid)) ||
-    (x.name && nameKey(x.name) === nameKey(t.name)));
-  if (!rec) return;                  /* لا حساب له بعد: يُزامَن عند دخوله */
+  /* (D6) حسابُ المعلّم بمعرّفه (uid أو teacherId)، والاسمُ لحسابِ معلّمٍ لا معرّفَ فيه وحدَه
+     وبشرط أن يكون وحيدَ اسمِه — كان حسابُ وليّ أمرٍ يحمل اسمَ المعلّم يأخذ حلقاتِه */
+  const users = cur("users") || [];
+  let rec = users.find(x => x && ((t.uid && String(x.uid || x.id) === String(t.uid)) ||
+    (x.teacherId != null && x.teacherId !== "" && String(x.teacherId) === String(t.id)))) || null;
+  if (!rec && t.name) {
+    const byName = users.filter(x => x && x.role === "teacher" && nameKey(x.name) === nameKey(t.name) &&
+      (x.teacherId == null || x.teacherId === ""));
+    if (byName.length === 1) rec = byName[0];
+  }
+  /* لا حساب له بعد: يُزامَن عند دخوله. ولا يُكتب نطاقُ حلقاتٍ في حساب طالبٍ أو وليّ أمر */
+  if (!rec || ["student", "parent", "donor"].indexOf(String(rec.role || "")) > -1) return;
 
   const ids = (cur("circles") || []).filter(c =>
     c && (String(c.teacherId) === String(t.id) ||
-          (c.teacher && nameKey(c.teacher) === nameKey(t.name)) ||
+          ((c.teacherId == null || c.teacherId === "") && c.teacher && nameKey(c.teacher) === nameKey(t.name)) ||
           (Array.isArray(c.assistants) && c.assistants.indexOf(String(t.id)) > -1))
   ).map(c => String(c.id));
 
@@ -60424,13 +60603,16 @@ function myCircles() {
   if (rec && rec.circle) names.add(String(rec.circle));
 
   (Array.isArray(DB.circles) ? DB.circles : []).forEach(c => {
+    /* (D7) الاسمُ للحلقة القديمة التي لا معرّفَ معلّمٍ فيها وحدَها: كانت حلقتان باسم
+       «حلقة أ» في المسجد تُعدّان حلقتَي المعلّم، فيرى طلابَ الحلقة الأخرى */
+    const noTid = c.teacherId == null || c.teacherId === "";
     const mine =
          ids.has(String(c.id))
-      || names.has(String(c.name || ""))
+      || (noTid && names.has(String(c.name || "")))
       || (u.uid  && String(c.teacherId || "") === String(u.uid))
       || (rec    && String(c.teacherId || "") === String(rec.id))
-      || (u.name && String(c.teacher   || "") === String(u.name))
-      || (rec    && String(c.teacher   || "") === String(rec.name || ""))
+      || (noTid && u.name && String(c.teacher   || "") === String(u.name))
+      || (noTid && rec    && String(c.teacher   || "") === String(rec.name || ""))
 
       /* المعلّم المساعد: معلّمٌ ثانٍ في الحلقة يعمل فيها كالأصيل.
          تُقاس صلاحياته من هنا لأنها بوّابة كلّ ما يراه المعلّم — تحضيراً
@@ -60438,9 +60620,12 @@ function myCircles() {
       || (Array.isArray(c.assistants) && (
            (u.uid && c.assistants.indexOf(String(u.uid)) > -1) ||
            (rec   && c.assistants.indexOf(String(rec.id)) > -1)));
-    if (mine) { ids.add(String(c.id)); if (c.name) names.add(String(c.name)); }
+    if (mine) ids.add(String(c.id));
   });
-  return { ids, names };
+  /* أسماءُ حلقاتي — لمطابقة السجلّات القديمة التي لا circleId فيها وحدَها */
+  const own = new Set();
+  (Array.isArray(DB.circles) ? DB.circles : []).forEach(c => { if (ids.has(String(c.id)) && c.name) own.add(String(c.name)); });
+  return { ids, names: own };
 }
 
 /* أبناء ولي الأمر، أو الطالب نفسه */
@@ -61050,7 +61235,9 @@ function personScope() {
     students.forEach(s => {
       const myIds = typeof studentCircleIds === "function"
         ? studentCircleIds(s) : [String(s.circleId || "")];
-      if (myIds.some(cid => circles.ids.has(cid)) || circles.names.has(String(s.circle || ""))) {
+      /* (D7) واسمُ الحلقة لطالبٍ لا حلقةَ بمعرّفها في سجلّه وحدَه */
+      if (myIds.some(cid => circles.ids.has(cid)) ||
+          ((s.circleId == null || s.circleId === "") && circles.names.has(String(s.circle || "")))) {
         st.ids.add(String(s.id));
         if (s.name) st.names.add(String(s.name));
       }
@@ -61078,11 +61265,16 @@ function personFilter(coll, rows) {
   const S = ps.students, C = ps.circles;
   const u = (STATE && STATE.user) || {};
 
-  const mineByStudent = x => S.ids.has(String(x.studentId || "")) || S.names.has(String(x.student || ""));
-  const mineByCircle  = x => C.ids.has(String(x.circleId  || "")) || C.names.has(String(x.circle  || ""));
+  /* (D7) بالمعرّف، والاسمُ لسجلٍّ قديمٍ لا معرّفَ فيه وحدَه — كان طالبٌ يحمل اسمَ طالبي
+     أو حلقةٌ تحمل اسمَ حلقتي تدخل في حصري */
+  const noId = v => v == null || v === "";
+  const mineByStudent = x => S.ids.has(String(x.studentId || "")) || (noId(x.studentId) && S.names.has(String(x.student || "")));
+  const mineByCircle  = x => C.ids.has(String(x.circleId  || "")) || (noId(x.circleId) && C.names.has(String(x.circle  || "")));
 
-  if (coll === "students") return rows.filter(s => S.ids.has(String(s.id)) || S.names.has(String(s.name || "")));
-  if (coll === "circles")  return rows.filter(c => C.ids.has(String(c.id)) || C.names.has(String(c.name || "")));
+  /* والطالبُ ووليُّ الأمر كما كانا: أبناؤه وحلقاتُهم من سجلّاتهم نفسِها */
+  const tch = ps.role === "teacher";
+  if (coll === "students") return rows.filter(s => S.ids.has(String(s.id)) || (!tch && S.names.has(String(s.name || ""))));
+  if (coll === "circles")  return rows.filter(c => C.ids.has(String(c.id)) || (!tch && C.names.has(String(c.name || ""))));
 
   /* الجوائزُ قائمةُ متجرٍ لا سجلٌّ شخصيّ: جائزةُ المسجد لا studentId فيها
      ولا circleId، فكان الحصرُ الشخصيُّ يُسقطها كلَّها — ويُفتح متجرُ الطالب
