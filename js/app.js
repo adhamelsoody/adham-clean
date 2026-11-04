@@ -39594,13 +39594,23 @@ window.tstuMoveDo = function (confirmed) {
     try { closeModal(); } catch (e) {}
     return;
   }
+  /* (٤٨٠) النقلُ بعد ردّ الخادم: كان «نُقل» يظهر ويُكتب سجلُّ النقل ويُنبَّه المعلّمُ الجديد
+     ولو رُفض الحفظ، ويبقى الطالبُ في الشاشة بحلقته الجديدة. تُحفظ الحقولُ لتُعاد إن رُفض */
+  const _keys = ["circleId", "circle", "teacher", "teacherId", "mosqueId", "mosque", "complexId"];
+  const _prev = {}; _keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(st, k)) _prev[k] = st[k]; });
+  const _why = val("#tsm_why");
   st.circleId = String(c.id);
   st.circle = c.name || "";
   st.teacher = c.teacher || st.teacher || "";
   st.teacherId = c.teacherId ? String(c.teacherId) : (st.teacherId || "");
   if (c.mosqueId) { st.mosqueId = c.mosqueId; st.mosque = c.mosque || st.mosque || ""; }
   if (c.complexId != null) st.complexId = c.complexId;
-  persistSet("students", st);
+  return Promise.resolve(persistSet("students", st)).then(ok => {
+  if (!ok) {
+    _keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(_prev, k)) st[k] = _prev[k]; else delete st[k]; });
+    mount();
+    return false;
+  }
 
   /* سجلُّ النقل: بالشكل الذي تكتبه شاشةُ الترحيل — طالبٌ وسببٌ وفاعل */
   try {
@@ -39609,7 +39619,7 @@ window.tstuMoveDo = function (confirmed) {
       id: "mv" + Date.now(), kind: "students",
       studentId: String(st.id), student: st.name || "",
       from: from, to: c.name || "", count: 1,
-      reason: val("#tsm_why") || "نقلٌ من تطبيق المعلم",
+      reason: _why || "نقلٌ من تطبيق المعلم",
       by: u.name || u.email || "", ts: Date.now(), date: todayISO(),
       mosqueId: st.mosqueId || "", complexId: st.complexId != null ? st.complexId : "",
       termId: typeof activeTermId === "function" ? activeTermId() : ""
@@ -39628,6 +39638,8 @@ window.tstuMoveDo = function (confirmed) {
   closeModal();
   showToast("نُقل «" + (st.name || "") + "» إلى " + (c.name || ""), "success");
   mount();
+  return true;
+  });
 };
 
 /* =========================================================================
