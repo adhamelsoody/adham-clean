@@ -3381,7 +3381,10 @@ window.bulkAssignDo = function () {
   const tid = String(src.templateId || src.id);
   if (!src.templateId) { src.templateId = tid; persistSet("plans", src); }
 
-  let made = 0, replaced = 0;
+  let made = 0, replaced = 0, refused = 0;
+  /* (٥٩٩) خطةُ كلّ طالبٍ تُحفظ وتنتظر الخادم: المرفوضةُ تعود كما كانت (أو تخرج الجديدة)،
+     ولا تُنسخ لها القواعد ولا يُمسّ سجلُّ الطالب ولا بطاقتُه، ولا تُعدّ في «أُسندت» */
+  const jobs = [];
 
   ids.forEach((sid, i) => {
     const st = (cur("students") || []).find(x => String(x.id) === String(sid));
@@ -3419,45 +3422,57 @@ window.bulkAssignDo = function () {
       /* الاستبدال يحفظ ما أُنجز: التقدّم المرصود في assignments لا يُمسّ */
       rec.progress = old.progress || 0;
       rec.delays = old.delays || 0;
-      replaced++;
-    } else made++;
+    }
 
     if (!Array.isArray(DB.plans)) DB.plans = [];
     const k = DB.plans.findIndex(x => String(x.id) === String(rec.id));
+    const _prev = k > -1 ? DB.plans[k] : null;
     if (k > -1) DB.plans[k] = rec; else DB.plans.unshift(rec);
-    persistSet("plans", rec);
-
-    /* قواعد القالب تُنسخ كما هي */
-    try {
-      const srcRules = (cur("planRules") || []).find(r => String(r.planId) === String(src.id));
-      if (srcRules) {
-        const pr = { id: "pr_" + rec.id, planId: String(rec.id),
-                     rules: Object.assign({}, srcRules.rules || {}), ts: Date.now() };
-        if (!Array.isArray(DB.planRules)) DB.planRules = [];
-        const q = DB.planRules.findIndex(x => String(x.planId) === String(rec.id));
-        if (q > -1) DB.planRules[q] = pr; else DB.planRules.push(pr);
-        persistSet("planRules", pr);
+    jobs.push(Promise.resolve(persistSet("plans", rec)).then(ok => {
+      if (ok === false) {
+        const q = DB.plans.indexOf(rec);
+        if (q > -1) { if (_prev) DB.plans[q] = _prev; else DB.plans.splice(q, 1); }
+        refused++;
+        return;
       }
-    } catch (e) {}
+      if (old) replaced++; else made++;
 
-    /* الخطةُ المُسنَدة منهجُه: موضعُها هو القولُ الأحدث، وبطاقتُه تتبعها —
-       فلا تُرجعه سورتُه القديمةُ في البطاقة عند حفظها التالي */
-    stuCurriculumWins(rec, null);
-    persistSet("plans", rec);
-    stuCardFollowPlan(st, rec);
+      /* قواعد القالب تُنسخ كما هي */
+      try {
+        const srcRules = (cur("planRules") || []).find(r => String(r.planId) === String(src.id));
+        if (srcRules) {
+          const pr = { id: "pr_" + rec.id, planId: String(rec.id),
+                       rules: Object.assign({}, srcRules.rules || {}), ts: Date.now() };
+          if (!Array.isArray(DB.planRules)) DB.planRules = [];
+          const q = DB.planRules.findIndex(x => String(x.planId) === String(rec.id));
+          if (q > -1) DB.planRules[q] = pr; else DB.planRules.push(pr);
+          persistSet("planRules", pr);
+        }
+      } catch (e) {}
 
-    /* سجل الطالب يتبع خطته */
-    if (rec.levelId) {
-      st.levelId = rec.levelId; st.level = rec.level;
-      st.program = rec.program;
-      persistSet("students", st);
-    }
+      /* الخطةُ المُسنَدة منهجُه: موضعُها هو القولُ الأحدث، وبطاقتُه تتبعها —
+         فلا تُرجعه سورتُه القديمةُ في البطاقة عند حفظها التالي */
+      stuCurriculumWins(rec, null);
+      persistSet("plans", rec);
+      stuCardFollowPlan(st, rec);
+
+      /* سجل الطالب يتبع خطته */
+      if (rec.levelId) {
+        st.levelId = rec.levelId; st.level = rec.level;
+        st.program = rec.program;
+        persistSet("students", st);
+      }
+    }));
   });
 
-  closeModal();
-  showToast("أُسندت الخطة: " + toArabicDigits(made) + " جديد" +
-            (replaced ? " · " + toArabicDigits(replaced) + " مُستبدَل" : ""), "success");
-  mount();
+  return Promise.all(jobs).then(() => {
+    if (refused) { mount(); return false; }
+    closeModal();
+    showToast("أُسندت الخطة: " + toArabicDigits(made) + " جديد" +
+              (replaced ? " · " + toArabicDigits(replaced) + " مُستبدَل" : ""), "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -3492,17 +3507,20 @@ window.planSyncDo = function (planId) {
 
   const keys = ["program", "programId", "level", "levelId", "amount", "unit",
                 "direction", "weeks", "fixLessons"];
-  let n = 0;
-
-  planSiblings(src).forEach(p => {
+  /* (٥٦٠) «عُمّم» بعد قبول الخادم — وما رُفض من الخطط يعود كما كان */
+  const items = planSiblings(src).map(p => {
+    const snap = JSON.parse(JSON.stringify(p));
     keys.forEach(k => { if (src[k] !== undefined) p[k] = src[k]; });
-    persistSet("plans", p);
-    n++;
+    return [p, () => recRestore(p, snap)];
   });
 
-  closeModal();
-  showToast("عُمّم التعديل على " + toArabicDigits(n) + " خطة", "success");
-  mount();
+  return saveManyOrUndo("plans", items).then(res => {
+    if (res.bad) { mount(); return false; }
+    closeModal();
+    showToast("عُمّم التعديل على " + toArabicDigits(res.ok) + " خطة", "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -5050,22 +5068,23 @@ window.ptAct = function (kind) {
 
   if (kind === "stop" || kind === "play") {
     const val2 = kind === "play";
-    if (coll !== "users") {
+    /* (٥٥٢) «تم تفعيل/إيقاف» بعد قبول الخادم — وما رُفض يعود كما كان ولا يُعلن نجاح */
+    const list = coll !== "users" ? recs
+      : ids.map(id => DB.users && DB.users.find(x => String(x.id) === String(id))).filter(Boolean);
+    const items = list.map(r => {
+      const snap = JSON.parse(JSON.stringify(r));
+      r.active = val2;
       /* على السجلّ نفسِه كزرّ الصفّ: active والحالةُ معاً */
-      recs.forEach(r => {
-        r.active = val2;
-        r.status = val2 ? "نشط" : "متوقف";
-        persistSet(coll, r);
-      });
-      const what = { students: "طالب", teachers: "معلّم", circles: "حلقة" }[coll] || "سجلّ";
-      showToast(`${val2 ? "تم تفعيل" : "تم إيقاف"} ${recs.length} ${what}`, "success");
+      if (coll !== "users") r.status = val2 ? "نشط" : "متوقف";
+      return [r, () => recRestore(r, snap)];
+    });
+    return saveManyOrUndo(coll !== "users" ? coll : "users", items).then(res => {
       mount();
-      return;
-    }
-    const n = ptSetActive(ids, val2);
-    showToast(`${val2 ? "تم تفعيل" : "تم إيقاف"} ${n} مستخدم`, "success");
-    mount();
-    return;
+      if (res.bad) return false;
+      const what = coll !== "users" ? ({ students: "طالب", teachers: "معلّم", circles: "حلقة" }[coll] || "سجلّ") : "مستخدم";
+      showToast(`${val2 ? "تم تفعيل" : "تم إيقاف"} ${res.ok} ${what}`, "success");
+      return true;
+    });
   }
 
   if (kind === "delete") {
@@ -5146,15 +5165,20 @@ window.ptSend = function (kind) {
   const people = ptRecipients(ids).users;
   const coll = kind === "msg" ? "site_messages" : "notifications";
   if (!Array.isArray(DB[coll])) DB[coll] = [];
-  people.forEach(u => {
+  /* (٥٥٣) «تم الإرسال» بعد قبول الخادم — وما رُفض لا يبقى في الشاشة، وتبقى النافذةُ بنصّها */
+  const items = people.map(u => {
     const rec = { id: Date.now() + "-" + u.id, title, text, ts: Date.now(),
                   toEmail: (u.email || "").toLowerCase(), toId: u.id, read: false,
                   type: kind === "msg" ? "info" : "warn" };
     DB[coll].push(rec);
-    persistSet(coll, rec);
+    return [rec, () => { const i = DB[coll].indexOf(rec); if (i > -1) DB[coll].splice(i, 1); }];
   });
-  closeModal();
-  showToast(`تم الإرسال إلى ${people.length} مستخدم`, "success");
+  return saveManyOrUndo(coll, items).then(res => {
+    if (res.bad) return false;
+    closeModal();
+    showToast(`تم الإرسال إلى ${res.ok} مستخدم`, "success");
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -6814,8 +6838,13 @@ window.userApproveDo = function (id) {
     showToast("حساب المالك لا يُعدَّل إلا من مالك", "warn"); return;
   }
 
+  /* (٥٦١) لقطةٌ قبل التعديل: إن رفض الخادمُ الاعتمادَ عاد الحسابُ كما كان،
+     ولا يُرصد منحُ المالك ولا يُنشأ سجلُّ المعلّم أو الطالب ولا يُعلن «اعتُمد» */
+  const _snap = JSON.parse(JSON.stringify(u));
+  const _toOwner = wanted === "owner" && u.role !== "owner";
+  const _ownerLog = () => {
   /* منح دور المالك حركةٌ مصيرية: تُرصد بنصٍّ صريح لا كتعديل حقلٍ عاديّ */
-  if (wanted === "owner" && u.role !== "owner") {
+  if (_toOwner) {
     try {
       const me = (STATE && STATE.user) || {};
       const rec = {
@@ -6823,7 +6852,7 @@ window.userApproveDo = function (id) {
         ts: Date.now(), byUid: String(((STATE && STATE.user) || {}).uid || ""), act: "update", coll: "users", collAr: "المستخدمون",
         docId: String(u.id), subject: u.name || "",
         by: me.name || me.email || "—", role: logRoleAr(me.role),
-        changes: [{ k: "role", h: "الدور", from: u.role || "—", to: "مالك النظام" }],
+        changes: [{ k: "role", h: "الدور", from: _snap.role || "—", to: "مالك النظام" }],
         text: "منح " + (logRoleAr(me.role) || "") + " (" + (me.name || "—") +
               ") دورَ مالك النظام لـ(" + (u.name || "") + ")"
       };
@@ -6833,6 +6862,7 @@ window.userApproveDo = function (id) {
       if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(e => sideFail("auditLog", e));
     } catch (e) {}
   }
+  };
 
   /* ربطُ الأبناء عند الاعتماد: بدونه يدخل وليُّ الأمر ولا يجد شيئاً */
   if (Array.isArray(u.kidsRequested) && u.kidsRequested.length) {
@@ -6860,16 +6890,20 @@ window.userApproveDo = function (id) {
   delete u.selfSignup;          /* يخرج من قائمة الطلبات بعد البتّ */
   delete u.requestedRole;
   /* الاعتمادُ إجراءٌ صريحٌ يُسنِد المنشأة — يُعلَن لحارس الارتباط (٤٣٢) */
-  window.linkChange(() => persistSet("users", u));
+  return window.linkChange(() => saveOrUndo("users", u, () => recRestore(u, _snap))).then(ok => {
+    if (!ok) return false;
+    _ownerLog();
 
-  /* سجلّا المعلّم والطالب يُنشآن هنا كما في مسار الطلبات، وإلا صار
-     الحساب فعّالاً بلا سجلٍّ يربطه بحلقة أو خطة. */
-  try { if (typeof syncTeacherRecord === "function") syncTeacherRecord(u); } catch (e) {}
-  try { if (typeof syncStudentRecord === "function") syncStudentRecord(u); } catch (e) {}
+    /* سجلّا المعلّم والطالب يُنشآن هنا كما في مسار الطلبات، وإلا صار
+       الحساب فعّالاً بلا سجلٍّ يربطه بحلقة أو خطة. */
+    try { if (typeof syncTeacherRecord === "function") syncTeacherRecord(u); } catch (e) {}
+    try { if (typeof syncStudentRecord === "function") syncStudentRecord(u); } catch (e) {}
 
-  closeModal();
-  showToast("اعتُمد حساب " + (u.name || "") + " — يستطيع الدخول الآن", "success");
-  mount();
+    closeModal();
+    showToast("اعتُمد حساب " + (u.name || "") + " — يستطيع الدخول الآن", "success");
+    mount();
+    return true;
+  });
 };
 
 window.userReject = function (id) {
@@ -7358,11 +7392,15 @@ window.recSave = function () {
   };
   if (!Array.isArray(DB.exams)) DB.exams = [];
   DB.exams.push(rec);
-  persistSet("exams", rec);
-  closeModal();
-  REC_STATE.stage = "await-sup";
-  showToast("تم رصد الاختبار ورفعه لتحديد المشرف", "success");
-  mount();
+  /* (٥٣٩) «تم رصد الاختبار» بعد قبول الخادم — وإن رُفض لا يبقى اختبارٌ لم يُحفظ */
+  return saveOrUndo("exams", rec, () => { const i = DB.exams.indexOf(rec); if (i > -1) DB.exams.splice(i, 1); }).then(ok => {
+    if (!ok) return false;
+    closeModal();
+    REC_STATE.stage = "await-sup";
+    showToast("تم رصد الاختبار ورفعه لتحديد المشرف", "success");
+    mount();
+    return true;
+  });
 };
 
 /* ---- نقل الاختبار للمرحلة التالية ---- */
@@ -7372,7 +7410,11 @@ window.recAdvance = function (id) {
   const i = EXAM_STAGES.findIndex(s2 => s2.k === (e.stage || "await-sup"));
   const next = EXAM_STAGES[i + 1];
   if (!next || next.k === "incomplete") { showToast("الاختبار في آخر مرحلة", "info"); return; }
-  e.stage = next.k; persistSet("exams", e);
+  /* (٥٤٠) النقلُ وإبلاغُ الطالب بالاعتماد و«نُقل» بعد قبول الخادم — وإن رُفض تبقى مرحلتُه */
+  const _st = e.stage;
+  e.stage = next.k;
+  return saveOrUndo("exams", e, () => { e.stage = _st; }).then(ok => {
+  if (!ok) return false;
   /* بلوغُ «معتمد» يُبلغ الطالبَ ووليَّه بنتيجته (٤٣٢) — وتُعرض في تقاريره */
   if (next.k === "approved") {
     try {
@@ -7389,6 +7431,8 @@ window.recAdvance = function (id) {
   }
   showToast("نُقل إلى: " + next.h, "success");
   mount();
+  return true;
+  });
 };
 window.recBack = function (id) {
   const e = (DB.exams || []).find(x => String(x.id) === String(id));
@@ -7419,13 +7463,23 @@ window.recTransferDo = function () {
   const to = val("#trTo"), why = (val("#trWhy") || "").trim();
   if (!why) { showToast("سبب التحويل مطلوب", "warn"); return; }
   const ids = recSelected();
+  /* (٥٤١) «حُوِّل» بعد قبول الخادم لكلٍّ منها — وما رُفض يعود لمرحلته وتبقى النافذة */
+  const jobs = [];
   ids.forEach(id => {
     const e = (DB.exams || []).find(x => String(x.id) === String(id));
-    if (e) { e.stage = to; e.transferWhy = why; e.transferAt = Date.now(); persistSet("exams", e); }
+    if (!e) return;
+    const snap = JSON.parse(JSON.stringify(e));
+    e.stage = to; e.transferWhy = why; e.transferAt = Date.now();
+    jobs.push(Promise.resolve(persistSet("exams", e)).then(ok => { if (ok === false) { recRestore(e, snap); return false; } return true; }));
   });
-  REC_STATE.sel = {}; closeModal();
-  showToast("حُوِّل " + ids.length + " اختبار", "success");
-  mount();
+  return Promise.all(jobs).then(r => {
+    const bad = r.filter(x => x === false).length;
+    if (bad) { mount(); return false; }
+    REC_STATE.sel = {}; closeModal();
+    showToast("حُوِّل " + ids.length + " اختبار", "success");
+    mount();
+    return true;
+  });
 };
 
 window.recDelete = function () {
@@ -7630,6 +7684,8 @@ window.sheetSendDo = function () {
   if (!title || !text) { showToast("العنوان والنص مطلوبان", "warn"); return; }
   const ids = sheetSel();
   if (!Array.isArray(DB.notifications)) DB.notifications = [];
+  /* (٥٥٤) «أُرسلت» بعد قبول الخادم — وما رُفض لا يبقى، وتبقى النافذةُ والتحديد */
+  const items = [];
   ids.forEach(id => {
     const e = (DB.exams || []).find(x => String(x.id) === String(id));
     if (!e) return;
@@ -7638,12 +7694,17 @@ window.sheetSendDo = function () {
     const rec = { id: Date.now() + "-" + id, title, text, ts: Date.now(),
                   toId: e.studentId, studentId: String(e.studentId || ""), examId: String(e.id),
                   mosqueId: e.mosqueId || "", type: "info", read: false };
-    DB.notifications.push(rec); persistSet("notifications", rec);
+    DB.notifications.push(rec);
+    items.push([rec, () => { const i = DB.notifications.indexOf(rec); if (i > -1) DB.notifications.splice(i, 1); }]);
   });
-  SHEET_STATE.sel = {};
-  closeModal();
-  showToast("أُرسلت النتائج إلى " + ids.length + " طالب", "success");
-  mount();
+  return saveManyOrUndo("notifications", items).then(res => {
+    if (res.bad) { mount(); return false; }
+    SHEET_STATE.sel = {};
+    closeModal();
+    showToast("أُرسلت النتائج إلى " + res.ok + " طالب", "success");
+    mount();
+    return true;
+  });
 };
 
 /* ---- الشهادات ---- */
@@ -7654,15 +7715,20 @@ window.sheetCert = function (mode) {
 
   if (mode === "send") {
     if (!Array.isArray(DB.notifications)) DB.notifications = [];
-    rows.forEach(e => {
+    /* (٥٥٥) «أُرسلت» بعد قبول الخادم — وما رُفض لا يبقى */
+    const items = rows.map(e => {
       const rec = { id: "cert" + Date.now() + "-" + e.id, title: "شهادة اجتياز",
                     text: "تهانينا! شهادة اجتياز " + (e.part || "") + " متاحة في حسابك.",
                     ts: Date.now(), toId: e.studentId, studentId: String(e.studentId || ""), examId: String(e.id),
                     mosqueId: e.mosqueId || "", type: "success", read: false };
-      DB.notifications.push(rec); persistSet("notifications", rec);
+      DB.notifications.push(rec);
+      return [rec, () => { const i = DB.notifications.indexOf(rec); if (i > -1) DB.notifications.splice(i, 1); }];
     });
-    showToast("أُرسلت " + rows.length + " شهادة", "success");
-    return;
+    return saveManyOrUndo("notifications", items).then(res => {
+      if (res.bad) { mount(); return false; }
+      showToast("أُرسلت " + res.ok + " شهادة", "success");
+      return true;
+    });
   }
 
   /* تحميل: نافذة طباعة تحوي شهادة لكل طالب */
@@ -7704,19 +7770,27 @@ window.sheetDelete = function () {
   const ids = sheetSel();
   if (!ids.length) { showToast("حدّد طالباً واحداً على الأقل", "warn"); return; }
   const back = SHEET_STATE.deleted;
-  let n = 0, foreign = 0;
+  let foreign = 0;
+  /* (٥٥٦) «نُقل/استُرجع» بعد قبول الخادم — وما رُفض يعود لحاله */
+  const items = [];
   ids.forEach(id => {
     const e = (DB.exams || []).find(x => String(x.id) === String(id));
     if (!e) return;
     /* اختبارٌ من مسجدٍ آخر وُجِّه إليّ مشرفاً: أنقل مرحلتَه ولا أحذفه (٤٥٧) —
        كان يُعلَّم محذوفاً على الشاشة والخادمُ لا يكتب غيرَ المرحلة */
     if (typeof examForeignToMe === "function" && examForeignToMe(e)) { foreign++; return; }
-    e.deleted = back ? false : true; persistSet("exams", e); n++;
+    const had = Object.prototype.hasOwnProperty.call(e, "deleted"), prev = e.deleted;
+    e.deleted = back ? false : true;
+    items.push([e, () => { if (had) e.deleted = prev; else delete e.deleted; }]);
   });
-  SHEET_STATE.sel = {};
   if (foreign) showToast(toArabicDigits(foreign) + " من اختبارات مسجدٍ آخر: يحذفها مسجدُها لا مشرفُها", "warn");
-  if (n) showToast(back ? "استُرجع " + n + " اختبار" : "نُقل " + n + " إلى المحذوفة", "success");
-  mount();
+  return saveManyOrUndo("exams", items).then(res => {
+    if (res.bad) { mount(); return false; }
+    SHEET_STATE.sel = {};
+    if (res.ok) showToast(back ? "استُرجع " + res.ok + " اختبار" : "نُقل " + res.ok + " إلى المحذوفة", "success");
+    mount();
+    return true;
+  });
 };
 
 function adminExamsSheet() {
@@ -7994,14 +8068,23 @@ window.rwdMove = function (to) {
   if (!ids.length) { showToast("حدّد مكافأة واحدة على الأقل", "warn"); return; }
   if (RWD_STATE.merge) { showToast("أوقف «دمج المكافآت» قبل تغيير الحالة", "warn"); return; }
   const name = (RWD_STATUS.find(x => x.k === to) || {}).h || to;
-  let n = 0;
+  /* (٥٤٢) «حُوِّل» بعد قبول الخادم لكلٍّ منها — وما رُفض يعود لحالته */
+  const jobs = [];
   ids.forEach(id => {
     const r = (DB.rewards || []).find(x => String(x.id) === String(id));
-    if (r) { r.status = to; r.statusAt = Date.now(); persistSet("rewards", r); n++; }
+    if (!r) return;
+    const snap = JSON.parse(JSON.stringify(r));
+    r.status = to; r.statusAt = Date.now();
+    jobs.push(Promise.resolve(persistSet("rewards", r)).then(ok => { if (ok === false) { recRestore(r, snap); return false; } return true; }));
   });
-  RWD_STATE.sel = {};
-  showToast("حُوِّل " + n + " إلى: " + name, "success");
-  mount();
+  return Promise.all(jobs).then(res => {
+    const n = res.filter(x => x === true).length;
+    if (res.some(x => x === false)) { mount(); return false; }
+    RWD_STATE.sel = {};
+    showToast("حُوِّل " + n + " إلى: " + name, "success");
+    mount();
+    return true;
+  });
 };
 
 window.rwdExport = function (kind) {
@@ -8203,16 +8286,25 @@ window.xsPathSave = function () {
   const id = val("#xpId");
   const data = { name, owner: val("#xpOwner") || "—", count: Number(val("#xpCount")) || 0,
                  status: val("#xpStatus") || "فعال", num: "" };
+  /* (٥٤٣) «حُفظ/أُضيف» بعد قبول الخادم — وإن رُفض يعود السجلُّ كما كان أو يُرفع */
   if (id) {
     const r = DB.examPaths.find(x => String(x.id) === String(id));
-    if (r) { Object.assign(r, data); persistSet("examPaths", r); }
-    showToast("حُفظ المسار", "success");
-  } else {
-    const r = Object.assign({ id: "xp" + Date.now() }, data);
-    DB.examPaths.push(r); persistSet("examPaths", r);
-    showToast("أُضيف المسار", "success");
+    if (!r) { closeModal(); mount(); return; }
+    const snap = JSON.parse(JSON.stringify(r));
+    Object.assign(r, data);
+    return saveOrUndo("examPaths", r, () => recRestore(r, snap)).then(ok => {
+      if (!ok) return false;
+      showToast("حُفظ المسار", "success");
+      closeModal(); mount(); return true;
+    });
   }
-  closeModal(); mount();
+  const r = Object.assign({ id: "xp" + Date.now() }, data);
+  DB.examPaths.push(r);
+  return saveOrUndo("examPaths", r, () => { const i = DB.examPaths.indexOf(r); if (i > -1) DB.examPaths.splice(i, 1); }).then(ok => {
+    if (!ok) return false;
+    showToast("أُضيف المسار", "success");
+    closeModal(); mount(); return true;
+  });
 };
 window.xsPathEdit = function () {
   const ids = xsSel();
@@ -8239,20 +8331,31 @@ window.xsPathDeleteDo = function () {
 window.xsPathStatus = function (to) {
   const ids = xsSel();
   if (!ids.length) { showToast("حدّد مساراً واحداً على الأقل", "warn"); return; }
+  /* (٥٦٢) «فُعِّل/أُوقف» بعد قبول الخادم — وما رُفض يعود كما كان */
+  const items = [];
   ids.forEach(id => {
     const r = (DB.examPaths || []).find(x => String(x.id) === String(id));
-    if (r) { r.status = to; persistSet("examPaths", r); }
+    if (r) { const prev = r.status; r.status = to; items.push([r, () => { r.status = prev; }]); }
   });
-  XS_STATE.sel = {};
-  showToast((to === "فعال" ? "فُعِّل " : "أُوقف ") + ids.length + " مسار", "success"); mount();
+  return saveManyOrUndo("examPaths", items).then(res => {
+    if (res.bad) { mount(); return false; }
+    XS_STATE.sel = {};
+    showToast((to === "فعال" ? "فُعِّل " : "أُوقف ") + res.ok + " مسار", "success"); mount();
+    return true;
+  });
 };
 
 /* ---- حفظ إعداد عام ---- */
 window.xsSaveOpt = function (key, v) {
+  /* (٥٤٤) «حُفظ» بعد قبول الخادم — وإن رُفض يعود الإعدادُ كما كان */
+  const _snap = JSON.stringify(DB.settings || {});
   if (!DB.settings) DB.settings = {};
   DB.settings[key] = v;
-  persistSet("settings", { id: "exams", ...DB.settings });
-  showToast("حُفظ الإعداد", "success");
+  return saveOrUndo("settings", { id: "exams", ...DB.settings }, () => cfgUndo(_snap)).then(ok => {
+    if (!ok) return false;
+    showToast("حُفظ الإعداد", "success");
+    return true;
+  });
 };
 
 function xsPanelPaths() {
@@ -8415,9 +8518,13 @@ window.xrAdd = function () {
     round: XR.round, createdAt: Date.now()
   };
   DB.rewardRules.push(rec);
-  persistSet("rewardRules", rec);
-  showToast("أُضيفت قاعدة المكافآت", "success");
-  mount();
+  /* (٥٤٥) «أُضيفت» بعد قبول الخادم — وإن رُفضت لا تبقى قاعدةٌ لم تُحفظ */
+  return saveOrUndo("rewardRules", rec, () => { const i = DB.rewardRules.indexOf(rec); if (i > -1) DB.rewardRules.splice(i, 1); }).then(ok => {
+    if (!ok) return false;
+    showToast("أُضيفت قاعدة المكافآت", "success");
+    mount();
+    return true;
+  });
 };
 window.xrRuleDel = function (id) {
   if (!needDelOk("هذه القاعدة", function () { window.xrRuleDel(id); })) return;
@@ -8555,14 +8662,19 @@ window.xtSet  = function (k, v) {
 window.xtStep = function (d) { window.xtSet("limit", (Number(XT.limit) || 0) + d); };
 window.xtSave = function () {
   if (!DB.settings) DB.settings = {};
+  /* (٥٦٣) «حُفظت» بعد قبول الخادم — وإن رُفض عادت الإعداداتُ كما كانت */
+  const _snap = JSON.stringify(DB.settings);
   if (!DB.settings.transferByPath) DB.settings.transferByPath = {};
   DB.settings.transferByPath[xtKey()] = {
     order: !!XT.order, seq: !!XT.seq, limit: Number(XT.limit) || 0, fromApp: !!XT.fromApp
   };
-  persistSet("settings", Object.assign({ id: "exams" }, DB.settings));
-  const paths = xsPaths();
-  const p2 = paths.find(x => String(x.id) === String(XT.path));
-  showToast("حُفظت إعدادات " + (p2 ? "مسار «" + p2.name + "»" : "كل المسارات"), "success");
+  return saveOrUndo("settings", Object.assign({ id: "exams" }, DB.settings), () => cfgUndo(_snap)).then(ok => {
+    if (!ok) return false;
+    const paths = xsPaths();
+    const p2 = paths.find(x => String(x.id) === String(XT.path));
+    showToast("حُفظت إعدادات " + (p2 ? "مسار «" + p2.name + "»" : "كل المسارات"), "success");
+    return true;
+  });
 };
 
 /* مفتاح تبديل بعنوان */
@@ -8671,7 +8783,9 @@ window.qbAdd = function () {
   const rec = { id: "qb" + Date.now(), surah: QB.surah, surahName: s2.n,
                 ayah: QB.ayah, level: QB.level, levelName: lv.h, text: "", createdAt: Date.now() };
   DB.questions.push(rec);
-  persistSet("questions", rec);
+  /* (٥٤٦) «أُضيف السؤال» وجلبُ نصّه بعد قبول الخادم — وإن رُفض لا يبقى سؤالٌ لم يُحفظ */
+  return saveOrUndo("questions", rec, () => { const i = DB.questions.indexOf(rec); if (i > -1) DB.questions.splice(i, 1); }).then(ok => {
+  if (!ok) return false;
   showToast("أُضيف السؤال: " + s2.n + " — آية " + QB.ayah, "success");
 
   /* جلب نص الآية من المصحف وتخزينه */
@@ -8685,6 +8799,8 @@ window.qbAdd = function () {
     }).catch(() => {});
   }
   mount();
+  return true;
+  });
 };
 window.qbDel = function (id) {
   if (!needDelOk("هذا السؤال", function () { window.qbDel(id); })) return;
@@ -8822,10 +8938,15 @@ window.qgLines = function (d) {
   if (el) el.textContent = QG.lines;
 };
 window.qgSaveOpts = function () {
+  /* (٥٤٨) «حُفظت» بعد قبول الخادم — وإن رُفض تعود الإعداداتُ كما كانت */
+  const _snap = JSON.stringify(DB.settings || {});
   if (!DB.settings) DB.settings = {};
   DB.settings.questionGen = { mode: QG.mode, lines: QG.lines, dist: QG.dist, level: QG.level };
-  persistSet("settings", Object.assign({ id: "exams" }, DB.settings));
-  showToast("حُفظت إعدادات التوليد", "success");
+  return saveOrUndo("settings", Object.assign({ id: "exams" }, DB.settings), () => cfgUndo(_snap)).then(ok => {
+    if (!ok) return false;
+    showToast("حُفظت إعدادات التوليد", "success");
+    return true;
+  });
 };
 
 /* التوليد الفعلي — يقرأ من المصحف */
@@ -8889,9 +9010,15 @@ window.qgSaveGroup = function () {
                 mode: QG.mode, dist: QG.dist, level: QG.level, lines: QG.lines,
                 count: QG.preview.length, items: QG.preview.slice(), createdAt: Date.now() };
   DB.questionGroups.push(rec);
-  persistSet("questionGroups", rec);
-  showToast("حُفظت المجموعة (" + rec.count + " سؤال)", "success");
-  QG.preview = []; mount();
+  /* (٥٦٤) «حُفظت» بعد قبول الخادم — وإن رُفض خرجت المجموعةُ وبقيت المعاينة */
+  return saveOrUndo("questionGroups", rec, () => {
+    const i = DB.questionGroups.indexOf(rec); if (i > -1) DB.questionGroups.splice(i, 1);
+  }).then(ok => {
+    if (!ok) return false;
+    showToast("حُفظت المجموعة (" + rec.count + " سؤال)", "success");
+    QG.preview = []; mount();
+    return true;
+  });
 };
 
 function xsPanelGen() {
@@ -9066,16 +9193,25 @@ window.xsupSave = function () {
   const data = { name, username: val("#xsupUser") || "—", phone: val("#xsupPhone") || "—",
                  nationality: val("#xsupNat") || "المملكة العربية السعودية",
                  status: val("#xsupStatus") || "فعال" };
+  /* (٥٤٧) «حُفظ/أُضيف» بعد قبول الخادم — وإن رُفض يعود السجلُّ كما كان أو يُرفع */
   if (id) {
     const r = DB.examSupervisors.find(x => String(x.id) === String(id));
-    if (r) { Object.assign(r, data); persistSet("examSupervisors", r); }
-    showToast("حُفظت البيانات", "success");
-  } else {
-    const r = Object.assign({ id: "sv" + Date.now() }, data);
-    DB.examSupervisors.push(r); persistSet("examSupervisors", r);
-    showToast("أُضيف المشرف", "success");
+    if (!r) { closeModal(); mount(); return; }
+    const snap = JSON.parse(JSON.stringify(r));
+    Object.assign(r, data);
+    return saveOrUndo("examSupervisors", r, () => recRestore(r, snap)).then(ok => {
+      if (!ok) return false;
+      showToast("حُفظت البيانات", "success");
+      closeModal(); mount(); return true;
+    });
   }
-  closeModal(); mount();
+  const r = Object.assign({ id: "sv" + Date.now() }, data);
+  DB.examSupervisors.push(r);
+  return saveOrUndo("examSupervisors", r, () => { const i = DB.examSupervisors.indexOf(r); if (i > -1) DB.examSupervisors.splice(i, 1); }).then(ok => {
+    if (!ok) return false;
+    showToast("أُضيف المشرف", "success");
+    closeModal(); mount(); return true;
+  });
 };
 window.xsupDel = function (id) {
   if (!needDelOk("هذا المشرف", function () { window.xsupDel(id); })) return;
@@ -9193,14 +9329,19 @@ window.xcmSave = function () {
   const empty = XCM.rows.filter(r => !r.members.length);
   if (empty.length) { showToast("اختر عضواً واحداً على الأقل لكل لجنة", "warn"); return; }
 
-  (DB.examCommittees || []).slice().forEach(c => {
-    if (!XCM.rows.some(r => r.id === c.id)) persistDelete("examCommittees", c.id);
-  });
+  /* (٥٥٠) اللجانُ تُحفظ أوّلاً، وحذفُ ما أُزيل منها و«حُفظت» بعد قبول الخادم لها كلِّها —
+     كان المحذوفُ يُحذف ولو رُفض حفظُ الباقي. وإن رُفض شيءٌ تعود القائمةُ كما كانت */
+  const _prev = DB.examCommittees || [];
+  const _gone = _prev.filter(c => !XCM.rows.some(r => r.id === c.id));
   DB.examCommittees = XCM.rows.map(r => ({ id: r.id, name: String(r.name).trim(), members: r.members.slice() }));
-  DB.examCommittees.forEach(c => persistSet("examCommittees", c));
-  XCM.dirty = false;
-  showToast("حُفظت " + DB.examCommittees.length + " لجنة", "success");
-  mount();
+  return Promise.all(DB.examCommittees.map(c => Promise.resolve(persistSet("examCommittees", c)))).then(res => {
+    if (res.some(x => x === false)) { DB.examCommittees = _prev; mount(); return false; }
+    _gone.forEach(c => persistDelete("examCommittees", c.id));
+    XCM.dirty = false;
+    showToast("حُفظت " + DB.examCommittees.length + " لجنة", "success");
+    mount();
+    return true;
+  });
 };
 
 function xsPanelBoards() {
@@ -9304,21 +9445,26 @@ window.xauSave = function () {
   if (XAU.rows.some(r => !r.facId))       { showToast("اختر المنشأة في كل صف", "warn"); return; }
   if (XAU.rows.some(r => !r.supers.length)) { showToast("اختر مشرفاً واحداً على الأقل لكل منشأة", "warn"); return; }
 
-  (DB.examRouting || []).slice().forEach(c => {
-    if (!XAU.rows.some(r => r.id === c.id)) persistDelete("examRouting", c.id);
-  });
+  /* (٥٦٥) يُحفظ التوجيهُ الجديد أوّلاً؛ فإن رُفض منه شيءٌ عاد التوجيهُ كلُّه كما كان
+     ولم يُحذف القديمُ ولم يُمسّ مشرفو الاختبارات الجارية ولا يُعلن «حُدِّث» */
+  const _old = (DB.examRouting || []).slice();
+  const _removed = _old.filter(c => !XAU.rows.some(r => r.id === c.id));
   DB.examRouting = XAU.rows.map(r => ({ id: r.id, facId: r.facId, supers: r.supers.slice() }));
-  DB.examRouting.forEach(c => persistSet("examRouting", c));
-  XAU.dirty = false;
-  /* الاختباراتُ الجارية تتبع التوجيهَ الجديد: يُحدَّث مشرفوها (٤٥٧) */
-  let _rx = 0;
-  (DB.exams || []).forEach(e => {
-    if (!e || e.deleted === true || ["approved", "documented"].indexOf(String(e.stage || "")) > -1) return;
-    const u = examinerUidsOf(e);
-    if (JSON.stringify(u) !== JSON.stringify(e.examinerUids || [])) { e.examinerUids = u; persistSet("exams", e); _rx++; }
+  return saveManyOrUndo("examRouting", DB.examRouting.map(c => [c, null])).then(res => {
+    if (res.bad) { DB.examRouting = _old; mount(); return false; }
+    _removed.forEach(c => persistDelete("examRouting", c.id));
+    XAU.dirty = false;
+    /* الاختباراتُ الجارية تتبع التوجيهَ الجديد: يُحدَّث مشرفوها (٤٥٧) */
+    let _rx = 0;
+    (DB.exams || []).forEach(e => {
+      if (!e || e.deleted === true || ["approved", "documented"].indexOf(String(e.stage || "")) > -1) return;
+      const u = examinerUidsOf(e);
+      if (JSON.stringify(u) !== JSON.stringify(e.examinerUids || [])) { e.examinerUids = u; persistSet("exams", e); _rx++; }
+    });
+    showToast("حُدِّث توجيه " + DB.examRouting.length + " منشأة" + (_rx ? " و" + _rx + " اختباراً جارياً" : ""), "success");
+    mount();
+    return true;
   });
-  showToast("حُدِّث توجيه " + DB.examRouting.length + " منشأة" + (_rx ? " و" + _rx + " اختباراً جارياً" : ""), "success");
-  mount();
 };
 
 /* =========================================================================
@@ -9481,27 +9627,42 @@ window.xctSave = function () {
                  examiner: !!(el("ctExaminer") && el("ctExaminer").checked),
                  status: "فعال" };
   const id = val("#ctId");
+  /* (٥٤٩) «حُفظ/أُضيف» بعد قبول الخادم — وإن رُفض يعود السجلُّ كما كان أو يُرفع */
   if (id) {
     const r = DB.certTemplates.find(x => String(x.id) === String(id));
-    if (r) { Object.assign(r, data); persistSet("certTemplates", r); }
-    showToast("حُفظ النموذج", "success");
-  } else {
-    const r = Object.assign({ id: "ct" + Date.now() }, data);
-    DB.certTemplates.push(r); persistSet("certTemplates", r);
+    if (!r) { closeModal(); mount(); return; }
+    const snap = JSON.parse(JSON.stringify(r));
+    Object.assign(r, data);
+    return saveOrUndo("certTemplates", r, () => recRestore(r, snap)).then(ok => {
+      if (!ok) return false;
+      showToast("حُفظ النموذج", "success");
+      closeModal(); mount(); return true;
+    });
+  }
+  const r = Object.assign({ id: "ct" + Date.now() }, data);
+  DB.certTemplates.push(r);
+  return saveOrUndo("certTemplates", r, () => { const i = DB.certTemplates.indexOf(r); if (i > -1) DB.certTemplates.splice(i, 1); }).then(ok => {
+    if (!ok) return false;
     XCT.tab = r.kind;
     showToast("أُضيف النموذج", "success");
-  }
-  closeModal(); mount();
+    closeModal(); mount(); return true;
+  });
 };
 window.xctStatus = function (to) {
   const ids = xctSel();
   if (!ids.length) { showToast("حدّد نموذجاً واحداً على الأقل", "warn"); return; }
+  /* (٥٦٦) «فُعِّل/أُوقف» بعد قبول الخادم — وما رُفض يعود كما كان */
+  const items = [];
   ids.forEach(id => {
     const r = (DB.certTemplates || []).find(x => String(x.id) === String(id));
-    if (r) { r.status = to; persistSet("certTemplates", r); }
+    if (r) { const prev = r.status; r.status = to; items.push([r, () => { r.status = prev; }]); }
   });
-  XCT.sel = {};
-  showToast((to === "فعال" ? "فُعِّل " : "أُوقف ") + ids.length + " نموذج", "success"); mount();
+  return saveManyOrUndo("certTemplates", items).then(res => {
+    if (res.bad) { mount(); return false; }
+    XCT.sel = {};
+    showToast((to === "فعال" ? "فُعِّل " : "أُوقف ") + res.ok + " نموذج", "success"); mount();
+    return true;
+  });
 };
 window.xctDel = function (id) {
   if (!needDelOk("نموذج الشهادة هذا", function () { window.xctDel(id); })) return;
@@ -9743,6 +9904,9 @@ window.mvsRunDo = function () {
   const fromC = cur("circles").find(c => String(c.id) === String(MVS.fromCir));
   const names = [];
   let full = 0;
+  /* (٥٦٧) يُنقل الطلابُ ويُصفَّر رصيدُهم في الذاكرة ثمّ يُحفظون معاً: من رفضه الخادمُ
+     عاد كما كان (حلقتُه ونقاطُه)، ولا يُسجَّل في سجلّ النقل، ولا يُعلن «نُقل» إلا للمقبول */
+  const items = [], refused = new Set();
   ids.forEach(id => {
     const st = (DB.students || []).find(x => String(x.id) === String(id));
     if (!st) return;
@@ -9750,7 +9914,8 @@ window.mvsRunDo = function () {
     if (typeof circleCapBlock === "function" && circleCapBlock(MVS.toCir, st.id, true)) {
       full++; return;
     }
-    names.push(st.name || id);
+    const _snap = JSON.parse(JSON.stringify(st)), _nm = st.name || id;
+    names.push(_nm);
     st.circleId = MVS.toCir;
     /* اسمُ الحلقة ومعلّمُها يتبعان المعرّف (٤٣٢): كان يُغيَّر circleId وحده،
        فيبقى اسمُ الحلقة القديمة والمعلّمُ القديم في السجلّ والتقارير */
@@ -9763,17 +9928,23 @@ window.mvsRunDo = function () {
       else if (toC.mosqueId) { const _m = (DB.mosques || []).find(m => String(m.id) === String(toC.mosqueId)); if (_m) st.mosque = _m.name || st.mosque; }
     }
     st.points = 0; st.balance = 0;
-    persistSet("students", st);
+    items.push([st, () => { recRestore(st, _snap); refused.add(_nm); }]);
   });
-  if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
-  const log = { id: "mv" + Date.now(), kind: "students", ts: Date.now(),
-                from: fromC ? fromC.name : "كل الحلقات", to: toC ? toC.name : "—",
-                count: names.length, names: names.slice(0, 50) };
-  DB.moveLog.push(log); persistSet("moveLog", log);
+  return saveManyOrUndo("students", items).then(res => {
+    const moved = names.filter(n => !refused.has(n));
+    if (!moved.length) { mount(); return false; }
+    if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
+    const log = { id: "mv" + Date.now(), kind: "students", ts: Date.now(),
+                  from: fromC ? fromC.name : "كل الحلقات", to: toC ? toC.name : "—",
+                  count: moved.length, names: moved.slice(0, 50) };
+    DB.moveLog.push(log); persistSet("moveLog", log);
 
-  MVS.sel = {}; closeModal();
-  showToast("نُقل " + names.length + " طالب إلى " + (toC ? toC.name : ""), "success");
-  mount();
+    if (res.bad) { mount(); return false; }
+    MVS.sel = {}; closeModal();
+    showToast("نُقل " + moved.length + " طالب إلى " + (toC ? toC.name : ""), "success");
+    mount();
+    return true;
+  });
 };
 
 window.mvsHistory = function () {
@@ -10174,7 +10345,10 @@ window.blkApplyDo = function () {
   if (!n) { closeModal(); showToast("لم تختر تعديلاً لأحد", "warn"); return; }
   const planned = blkPlan();
   const logRows = [];
-  let done = 0, blkFull = 0;
+  let done = 0, blkFull = 0, refused = 0;
+  /* (٥٩٣) كلُّ طالبٍ يُحفظ وينتظر الخادم: من رُفض عاد كما كان، ولا يُطبَّق عليه
+     المستوى ولا يدخل سجلَّ النقل، ولا يُعلن «عُدّل» إلا لما قُبل */
+  const jobs = [];
   const all = {};
   Object.keys(BLK.circle).forEach(k => all[k] = 1);
   Object.keys(BLK.level).forEach(k => all[k] = 1);
@@ -10182,6 +10356,7 @@ window.blkApplyDo = function () {
   Object.keys(all).forEach(function (sid) {
     const st = DB.students.find(x => String(x.id) === String(sid));
     if (!st) return;
+    const _snap = JSON.parse(JSON.stringify(st));
 
     const cid = BLK.circle[sid];
     if (cid) {
@@ -10203,36 +10378,42 @@ window.blkApplyDo = function () {
     const lvChg = lid && String(st.levelId || "") !== String(lid);
     if (lid) { st.levelId = lid; st.level = lvNameById(lid); }
 
-    persistSet("students", st);
-    /* المستوى المُسنَد منهجُه: تُطبَّق إعداداتُه ويبدأ من ابتدائه */
-    if (lvChg && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
-    done++;
-    const pr = planned.find(r => String(r.st.id) === String(sid));
-    if (pr) logRows.push(pr);
+    jobs.push(Promise.resolve(persistSet("students", st)).then(ok => {
+      if (ok === false) { recRestore(st, _snap); refused++; return; }
+      /* المستوى المُسنَد منهجُه: تُطبَّق إعداداتُه ويبدأ من ابتدائه */
+      if (lvChg && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
+      done++;
+      const pr = planned.find(r => String(r.st.id) === String(sid));
+      if (pr) logRows.push(pr);
+    }));
   });
 
-  /* سجلُّ النقل: ما نُفِّذ فعلاً، بأسماء الحلقات والمستويات من ← إلى */
-  if (logRows.length) {
-    if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
-    const pg = String((STATE && STATE.page) || "");
-    const log = { id: "mvb" + Date.now(), kind: "bulk", ts: Date.now(),
-                  screen: pg, from: "تعديل جماعي", to: ((document.getElementById("blkApply") || {}).dataset || {}).label || "تعديل جماعي",
-                  count: logRows.length,
-                  names: logRows.slice(0, 50).map(r => r.name),
-                  changes: logRows.slice(0, 100).map(r => ({
-                    studentId: String(r.st.id), name: r.name,
-                    circleFrom: r.cFrom || "", circleTo: r.cTo || "",
-                    levelFrom: r.lFrom || "", levelTo: r.lTo || "" })),
-                  by: ((STATE && STATE.user) || {}).name || "" };
-    DB.moveLog.push(log); persistSet("moveLog", log);
-  }
+  return Promise.all(jobs).then(() => {
+    /* سجلُّ النقل: ما نُفِّذ فعلاً، بأسماء الحلقات والمستويات من ← إلى */
+    if (logRows.length) {
+      if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
+      const pg = String((STATE && STATE.page) || "");
+      const log = { id: "mvb" + Date.now(), kind: "bulk", ts: Date.now(),
+                    screen: pg, from: "تعديل جماعي", to: ((document.getElementById("blkApply") || {}).dataset || {}).label || "تعديل جماعي",
+                    count: logRows.length,
+                    names: logRows.slice(0, 50).map(r => r.name),
+                    changes: logRows.slice(0, 100).map(r => ({
+                      studentId: String(r.st.id), name: r.name,
+                      circleFrom: r.cFrom || "", circleTo: r.cTo || "",
+                      levelFrom: r.lFrom || "", levelTo: r.lTo || "" })),
+                    by: ((STATE && STATE.user) || {}).name || "" };
+      DB.moveLog.push(log); persistSet("moveLog", log);
+    }
 
-  closeModal();
-  blkReset();
-  showToast("عُدّل " + done + " طالباً" +
-    (blkFull ? " · تُخطّي " + toArabicDigits(blkFull) + " لامتلاء حلقتهم" : ""),
-    blkFull && !done ? "warn" : "success");
-  mount();
+    if (refused) { mount(); return false; }
+    closeModal();
+    blkReset();
+    showToast("عُدّل " + done + " طالباً" +
+      (blkFull ? " · تُخطّي " + toArabicDigits(blkFull) + " لامتلاء حلقتهم" : ""),
+      blkFull && !done ? "warn" : "success");
+    mount();
+    return true;
+  });
 };
 
 /* مولّدُ الشاشات: cols تحدّد ما يُعرض وما يُختار */
@@ -10539,25 +10720,38 @@ window.bplApplyDo = function () {
   const ids = Object.keys(BPL.edit);
   if (!ids.length) { closeModal(); showToast("لم تعدّل خطة أحد", "warn"); return; }
   const planned = BPL.__rows || [];
-  let n = 0;
-  ids.forEach(function (sid) {
+  /* (٥٥٧) المحرّكُ لا يُزامَن إلا لمن قُبل حفظُ خطته، و«عُدّلت» بعد قبول الخادم لهم كلِّهم —
+     ومن رُفض تعود خطتُه كما كانت وتبقى النافذةُ بتعديلاته */
+  const done = [];
+  const jobs = ids.map(function (sid) {
     const st = DB.students.find(x => String(x.id) === String(sid));
-    if (!st) return;
+    if (!st) return Promise.resolve(null);
+    const had = Object.prototype.hasOwnProperty.call(st, "plan"), prev = st.plan;
     st.plan = Object.assign({}, st.plan || {}, BPL.edit[sid]);
-    persistSet("students", st);
-    /* وتصل الخطةُ إلى المحرّك كما يصلها حفظُ بطاقة الطالب (spSyncEnginePlan)
-       — وإلّا بقي الابتداءُ والمقدارُ في st.plan لا يقرؤهما مولّدُ الواجبات.
-       ومن سُجّل «تحضير فقط» لا تُنشأ له خطة. */
-    if (st.enrollType !== "attend") {
-      try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(st); } catch (e) { console.warn("bplApply/sync:", e); }
-    }
-    n++;
+    return Promise.resolve(persistSet("students", st)).then(ok => {
+      if (ok === false) { if (had) st.plan = prev; else delete st.plan; return false; }
+      /* وتصل الخطةُ إلى المحرّك كما يصلها حفظُ بطاقة الطالب (spSyncEnginePlan)
+         — وإلّا بقي الابتداءُ والمقدارُ في st.plan لا يقرؤهما مولّدُ الواجبات.
+         ومن سُجّل «تحضير فقط» لا تُنشأ له خطة. */
+      if (st.enrollType !== "attend") {
+        try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(st); } catch (e) { console.warn("bplApply/sync:", e); }
+      }
+      done.push(String(sid));
+      return true;
+    });
   });
-  bulkLog("bulk-plans", "تعديل الخطة", planned.filter(r => ids.indexOf(String(r.id)) > -1));
-  closeModal();
-  BPL.edit = {}; BPL.__rows = null;
-  showToast("عُدّلت خطة " + n + " طالباً", "success");
-  mount();
+  return Promise.all(jobs).then(r => {
+    if (done.length) bulkLog("bulk-plans", "تعديل الخطة", planned.filter(x => done.indexOf(String(x.id)) > -1));
+    if (r.some(x => x === false)) {
+      done.forEach(sid => { delete BPL.edit[sid]; });
+      mount(); return false;
+    }
+    closeModal();
+    BPL.edit = {}; BPL.__rows = null;
+    showToast("عُدّلت خطة " + done.length + " طالباً", "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -11221,10 +11415,14 @@ window.jzmApplyDo = function () {
   if (!ids.length) { closeModal(); showToast("لم تختر تعديلاً لأحد", "warn"); return; }
   const planned = JZM.__rows || [];
   const logged = [];
-  let done = 0, miss = 0;
+  let done = 0, miss = 0, refused = 0;
+  /* (٥٩٤) كلُّ طالبٍ يُحفظ وينتظر الخادم: من رُفض عاد كما كان، ولا تُزامَن خطتُه
+     ولا يُطبَّق عليه المستوى ولا يدخل السجلّ — ولا يُعلن «حُفظ» إلا لما قُبل */
+  const jobs = [];
   ids.forEach(sid => {
     const st = (DB.students || []).find(x => String(x.id) === String(sid));
     if (!st) return;
+    const _snap = JSON.parse(JSON.stringify(st));
     const pid = jzmRowJuz(st);
     const moved = !!JZM.to[sid] && JZM.to[sid] !== jzmProgId(st);
     /* نُقل بلا اختيار مستوى: المستوى الأول من البرنامج المنقول إليه (إن كان له مستويات) */
@@ -11233,21 +11431,27 @@ window.jzmApplyDo = function () {
     if (!moved && String(st.levelId || "") === String(l.id)) return;
     if (moved) { const pr = jzmProgById(pid); if (pr) st.program = pr.name || st.program; }
     st.levelId = l ? String(l.id) : ""; st.level = l ? lvNameById(l.id) : "";
-    persistSet("students", st);
-    /* سجلُّ الخطة يتبع ملفَّ الطالب (البرنامج والمستوى) بالطريق القائم نفسِه */
-    if (moved && typeof spSyncEnginePlan === "function") { try { spSyncEnginePlan(st); } catch (e) {} }
-    /* والمستوى المُسنَد منهجُه: تُطبَّق إعداداتُه ويبدأ من ابتدائه */
-    if (st.levelId && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
-    done++;
-    const pr = planned.find(r => String(r.id) === String(st.id));
-    if (pr) logged.push(pr);
+    jobs.push(Promise.resolve(persistSet("students", st)).then(ok => {
+      if (ok === false) { recRestore(st, _snap); refused++; return; }
+      /* سجلُّ الخطة يتبع ملفَّ الطالب (البرنامج والمستوى) بالطريق القائم نفسِه */
+      if (moved && typeof spSyncEnginePlan === "function") { try { spSyncEnginePlan(st); } catch (e) {} }
+      /* والمستوى المُسنَد منهجُه: تُطبَّق إعداداتُه ويبدأ من ابتدائه */
+      if (st.levelId && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
+      done++;
+      const pr = planned.find(r => String(r.id) === String(st.id));
+      if (pr) logged.push(pr);
+    }));
   });
-  bulkLog("bulk-movelevel", "تعديل البرامج والمستويات", logged);
-  closeModal();
-  JZM.to = {}; JZM.lv = {}; JZM.__rows = null;
-  showToast("حُفظ تعديل " + toArabicDigits(done) + " طالباً" +
-            (miss ? " · تُخطّي " + toArabicDigits(miss) + " لا يوجد المستوى في برنامجه" : ""), done ? "success" : "warn");
-  mount();
+  return Promise.all(jobs).then(() => {
+    bulkLog("bulk-movelevel", "تعديل البرامج والمستويات", logged);
+    if (refused) { mount(); return false; }
+    closeModal();
+    JZM.to = {}; JZM.lv = {}; JZM.__rows = null;
+    showToast("حُفظ تعديل " + toArabicDigits(done) + " طالباً" +
+              (miss ? " · تُخطّي " + toArabicDigits(miss) + " لا يوجد المستوى في برنامجه" : ""), done ? "success" : "warn");
+    mount();
+    return true;
+  });
 };
 
 function jzmScreen() {
@@ -11433,10 +11637,13 @@ window.lvmEdit = function (id) {
 window.lvmApply = function () {
   const progs = lvmProgs();
   const ids = Object.keys(Object.assign({}, LVM.to, LVM.st));
-  let done = 0, linked = 0, clash = 0;
+  let linked = 0, clash = 0;
+  /* (٥٦٨) «عُدّل» بعد قبول الخادم — وما رُفض من المستويات يعود كما كان */
+  const items = [];
   ids.forEach(id => {
     const l = (DB.levels || []).find(x => String(x.id) === String(id));
     if (!l) return;
+    const _snap = JSON.parse(JSON.stringify(l));
     let ch = false;
     const to = LVM.to[id];
     if (to && to !== String(l.programId)) {
@@ -11454,13 +11661,18 @@ window.lvmApply = function () {
     }
     const st = LVM.st[id];
     if (st && st !== (l.status || "فعال")) { l.status = st; ch = true; }
-    if (ch) { persistSet("levels", l); done++; }
+    if (ch) items.push([l, () => recRestore(l, _snap)]);
   });
-  LVM.to = {}; LVM.st = {};
-  const skip = (linked ? " · تُخطّي " + toArabicDigits(linked) + " لارتباطه بطلاب" : "") +
-               (clash ? " · تُخطّي " + toArabicDigits(clash) + " لوجود مستوى بالاسم نفسه في البرنامج" : "");
-  showToast("عُدّل " + toArabicDigits(done) + " مستوى" + skip, done ? "success" : "warn");
-  mount();
+  return saveManyOrUndo("levels", items).then(res => {
+    if (res.bad) { mount(); return false; }
+    const done = res.ok;
+    LVM.to = {}; LVM.st = {};
+    const skip = (linked ? " · تُخطّي " + toArabicDigits(linked) + " لارتباطه بطلاب" : "") +
+                 (clash ? " · تُخطّي " + toArabicDigits(clash) + " لوجود مستوى بالاسم نفسه في البرنامج" : "");
+    showToast("عُدّل " + toArabicDigits(done) + " مستوى" + skip, done ? "success" : "warn");
+    mount();
+    return true;
+  });
 };
 
 function lvmScreen() {
@@ -11669,33 +11881,46 @@ window.mvcRunDo = function () {
   const to = mvsFacs().find(f => String(f.id) === String(MVC.toFac));
   const from = mvsFacs().find(f => String(f.id) === String(MVC.fromFac));
   const isMosque = (cur("mosques") || []).some(m => String(m.id) === String(MVC.toFac));
-  let nStud = 0;
-
-  ids.forEach(id => {
+  /* (٥٥٨) الحلقةُ تُحفظ أوّلاً، وطلابُها لا يُمسّون إلا بعد قبول الخادم نقلَها — كانوا يُنقلون
+     وتُصفَّر نقاطُهم ولو رُفض نقلُ الحلقة. وما رُفض يعود كما كان، و«نُقلت» بعد قبول الجميع */
+  let nStud = 0, nCir = 0, bad = 0;
+  const jobs = ids.map(id => {
     const c = (DB.circles || []).find(x => String(x.id) === String(id));
-    if (!c) return;
+    if (!c) return Promise.resolve(null);
+    const cs = JSON.parse(JSON.stringify(c));
     /* واسمُ المسجد النصّيّ يتبع معرّفَه (٤٣٢): كان يبقى القديمُ فتعرض
        الشاشاتُ الحلقةَ وطلابَها في مسجدهم السابق */
     if (isMosque) { c.mosqueId = MVC.toFac; c.complexId = to && to.complexId ? to.complexId : ""; c.mosque = (to && to.name) || c.mosque || ""; }
     else { c.complexId = MVC.toFac; c.mosqueId = ""; c.mosque = ""; }
-    persistSet("circles", c);
-    (DB.students || []).forEach(st => {
-      if (String(st.circleId) !== String(id)) return;
-      st.mosqueId = c.mosqueId || ""; st.complexId = c.complexId || ""; st.mosque = c.mosque || "";
-      st.points = 0; st.balance = 0;
-      persistSet("students", st); nStud++;
+    return Promise.resolve(persistSet("circles", c)).then(ok => {
+      if (ok === false) { recRestore(c, cs); bad++; return false; }
+      nCir++;
+      const items = [];
+      (DB.students || []).forEach(st => {
+        if (String(st.circleId) !== String(id)) return;
+        const ss = JSON.parse(JSON.stringify(st));
+        st.mosqueId = c.mosqueId || ""; st.complexId = c.complexId || ""; st.mosque = c.mosque || "";
+        st.points = 0; st.balance = 0;
+        items.push([st, () => recRestore(st, ss)]);
+      });
+      return saveManyOrUndo("students", items).then(r => { nStud += r.ok; bad += r.bad; return true; });
     });
   });
 
-  if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
-  const log = { id: "mvc" + Date.now(), kind: "circles", ts: Date.now(),
-                from: from ? from.name : "—", to: to ? to.name : "—",
-                count: ids.length, students: nStud };
-  DB.moveLog.push(log); persistSet("moveLog", log);
-
-  MVC.sel = {}; closeModal();
-  showToast("نُقلت " + ids.length + " حلقة و" + nStud + " طالب", "success");
-  mount();
+  return Promise.all(jobs).then(() => {
+    if (nCir) {
+      if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
+      const log = { id: "mvc" + Date.now(), kind: "circles", ts: Date.now(),
+                    from: from ? from.name : "—", to: to ? to.name : "—",
+                    count: nCir, students: nStud };
+      DB.moveLog.push(log); persistSet("moveLog", log);
+    }
+    if (bad) { mount(); return false; }
+    MVC.sel = {}; closeModal();
+    showToast("نُقلت " + nCir + " حلقة و" + nStud + " طالب", "success");
+    mount();
+    return true;
+  });
 };
 
 function adminMoveCircles() {
@@ -12048,13 +12273,18 @@ window.urqAuto   = function () {
 };
 window.urqAutoDo = function () {
   if (typeof closeModal === "function") closeModal();
+  /* (٥٣٧) «فُعِّل/أُوقف» وتشغيلُ القبول التلقائي بعد قبول الخادم — وإن رُفض يعود كما كان */
+  const _snap = JSON.stringify(DB.settings || {}), _was = URQ.auto;
   URQ.auto = !URQ.auto;
   if (!DB.settings) DB.settings = {};
   DB.settings.autoAcceptRequests = URQ.auto;
-  persistSet("settings", Object.assign({ id: "exams" }, DB.settings));
-  showToast(URQ.auto ? "فُعِّل القبول التلقائي" : "أُوقف القبول التلقائي", "success");
-  if (URQ.auto) urqAutoRun();
-  mount();
+  return Promise.resolve(persistSet("settings", Object.assign({ id: "exams" }, DB.settings))).then(ok => {
+    if (ok === false) { URQ.auto = _was; cfgUndo(_snap); mount(); return false; }
+    showToast(URQ.auto ? "فُعِّل القبول التلقائي" : "أُوقف القبول التلقائي", "success");
+    if (URQ.auto) urqAutoRun();
+    mount();
+    return true;
+  });
 };
 window.urqToggle = function (btn, id) {
   btn.classList.toggle("on");
@@ -12146,7 +12376,12 @@ function urqApplyFacility(u) {
 window.urqDecide = function (to, ids, auto) {
   ids = ids || urqSel();
   if (!ids.length) { showToast("حدّد طلباً واحداً على الأقل", "warn"); return; }
-  let n = 0;
+  let n = 0, refused = 0;
+  /* (٦٠١) كلُّ طلبٍ يُحفظ وينتظر الخادم: المرفوضُ يعود كما كان (معلّقاً)، ولا يُنشأ له
+     سجلُّ معلّمٍ أو طالب ولا حساب، ولا يُعدّ في «ووفق/رُفض». والوعدُ يحمل معرّفاتِ
+     ما قُبل لمن ينتظره (صفحةُ روابط التسجيل) */
+  const jobs = [], accepted = [];
+  const later = fn => auto ? window.linkChange(fn) : fn();
   ids.forEach(id => {
     /* طلب تسجيل ذاتي: الحساب موجود في users، فيُفعَّل ويُرفع دوره المطلوب.
        إنشاء مستخدم جديد هنا كان سينتج حساباً ثانياً بلا معرّف Firebase،
@@ -12155,6 +12390,7 @@ window.urqDecide = function (to, ids, auto) {
       const uid = String(id).slice(5);
       const u = (DB.users || []).find(x => String(x.id) === String(uid));
       if (!u) return;
+      const _snapU = JSON.parse(JSON.stringify(u));
       if (to === "approved") {
         u.active = true;
         u.pending = false;
@@ -12192,28 +12428,39 @@ window.urqDecide = function (to, ids, auto) {
         u.rejectedAt = Date.now();
       }
       delete u.selfSignup;          /* يخرج من قائمة الطلبات بعد البتّ */
-      persistSet("users", u);
-      if (to === "approved") { syncTeacherRecord(u); syncStudentRecord(u); }
-      n++;
+      jobs.push(Promise.resolve(persistSet("users", u)).then(ok => {
+        if (ok === false) { recRestore(u, _snapU); refused++; return; }
+        if (to === "approved") later(() => { syncTeacherRecord(u); syncStudentRecord(u); });
+        n++; accepted.push(String(id));
+      }));
       return;
     }
 
     const r = (DB.userRequests || []).find(x => String(x.id) === String(id));
     if (!r || (r.status || "pending") !== "pending") return;
+    const _prevR = { status: r.status, decidedAt: r.decidedAt };
     r.status = to; r.decidedAt = Date.now();
-    persistSet("userRequests", r); n++;
-    if (to === "approved") {
-      if (!Array.isArray(DB.users)) DB.users = [];
-      const u = { id: "u" + Date.now() + n, name: r.name, username: r.username,
-                  role: r.roleKey || "teacher", active: true, complexId: r.facId || "" };
-      DB.users.push(u); persistSet("users", u);
-    }
+    jobs.push(Promise.resolve(persistSet("userRequests", r)).then(ok => {
+      if (ok === false) { r.status = _prevR.status; r.decidedAt = _prevR.decidedAt; refused++; return; }
+      n++; accepted.push(String(id));
+      if (to === "approved") later(() => {
+        if (!Array.isArray(DB.users)) DB.users = [];
+        const u = { id: "u" + Date.now() + n, name: r.name, username: r.username,
+                    role: r.roleKey || "teacher", active: true, complexId: r.facId || "" };
+        DB.users.push(u); persistSet("users", u);
+      });
+    }));
   });
-  URQ.sel = {};
-  showToast(n ? (auto ? "قُبل تلقائياً " : (to === "approved" ? "ووفق على " : "رُفض ")) + n + " طلب"
-              : "لا توجد طلبات معلّقة ضمن المحدَّد",
-            n ? "success" : "warn");
-  if (!auto) mount();
+  return Promise.all(jobs).then(() => {
+    if (!refused) URQ.sel = {};
+    if (n || !refused) {
+      showToast(n ? (auto ? "قُبل تلقائياً " : (to === "approved" ? "ووفق على " : "رُفض ")) + n + " طلب"
+                  : "لا توجد طلبات معلّقة ضمن المحدَّد",
+                n ? "success" : "warn");
+    }
+    if (!auto || refused) mount();
+    return accepted;
+  });
 };
 
 /* =========================================================================
@@ -13471,14 +13718,22 @@ window.setSave = function () {
     showToast("حسابك غير مرتبط بمنشأة — لا تُحفظ بيانات الفرع", "warn");
     return;
   }
+  /* (٥٢٩) «حُفظت» بعد قبول الخادم لبيانات الفرع والتقويم معاً — وما رُفض يعود كما كان */
+  const _pn = cx.name, _pm = cx.manager, _snap = JSON.stringify(DB.settings || {});
   cx.name = name;
   cx.manager = val("#stManager") || "";
-  persistSet(fac.coll, cx);
+  const j1 = Promise.resolve(persistSet(fac.coll, cx));
   if (!DB.settings) DB.settings = {};
   DB.settings.calendar = val("#stCal") || "هجري";
-  persistSet("settings", Object.assign({ id: "general" }, DB.settings));
-  showToast("حُفظت التعديلات", "success");
-  mount();
+  const j2 = Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, DB.settings)));
+  return Promise.all([j1, j2]).then(([a, b]) => {
+    if (a === false) { cx.name = _pn; cx.manager = _pm; }
+    if (b === false) cfgUndo(_snap);
+    if (a === false || b === false) { mount(); return false; }
+    showToast("حُفظت التعديلات", "success");
+    mount();
+    return true;
+  });
 };
 window.setLogo = function () {
   const inp = document.getElementById("stLogoFile");
@@ -13495,15 +13750,26 @@ window.setLogoPick = function (input) {
     /* الشعارُ للمنشأة المعروضة نفسِها (setFacRec) — لا لأوّل مجمّعٍ في القائمة */
     const fac = setFacRec(), cx = fac.rec;
     if (!cx) { showToast("حسابك غير مرتبط بمنشأة — لا يُحفظ الشعار", "warn"); return; }
-    cx.photo = r.result; persistSet(fac.coll, cx); showToast("حُدِّث الشعار", "success"); mount();
+    /* (٥٣٠) «حُدِّث الشعار» بعد قبول الخادم — وإن رُفض يعود الشعارُ السابق */
+    const _had = Object.prototype.hasOwnProperty.call(cx, "photo"), _prev = cx.photo;
+    cx.photo = r.result;
+    Promise.resolve(persistSet(fac.coll, cx)).then(ok => {
+      if (ok === false) { if (_had) cx.photo = _prev; else delete cx.photo; mount(); return; }
+      showToast("حُدِّث الشعار", "success"); mount();
+    });
   };
   r.readAsDataURL(f);
 };
 window.setOpt = function (key, v) {
+  /* (٥٣١) «حُفظ» بعد قبول الخادم — وإن رُفض يعود الإعدادُ كما كان */
+  const _snap = JSON.stringify(DB.settings || {});
   if (!DB.settings) DB.settings = {};
   DB.settings[key] = v;
-  persistSet("settings", Object.assign({ id: "general" }, DB.settings));
-  showToast("حُفظ الإعداد", "success");
+  return Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, DB.settings))).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    showToast("حُفظ الإعداد", "success");
+    return true;
+  });
 };
 
 /* حقل بعنوان عائم على الحد */
@@ -13835,7 +14101,13 @@ window.prgSave = function () {
       showToast("اسم البرنامج مستخدم بالفعل", "warn"); return;
     }
     const pgOldName = prev ? String(prev.name || "") : "";
-    if (prev) { Object.assign(prev, data); persistSet("programs", prev); }
+    /* (٥٥٩) «حُفظ» ونقلُ الاسم الجديد إلى الطلاب والخطط والحلقات بعد قبول الخادم البرنامجَ —
+       كان الاسمُ يُنقل إليهم ولو رُفض حفظُ البرنامج. وإن رُفض يعود البرنامجُ كما كان */
+    if (!prev) { showToast("حُفظ البرنامج", "success"); closeModal(); mount(); return; }
+    const _snap = JSON.parse(JSON.stringify(prev));
+    Object.assign(prev, data);
+    return saveOrUndo("programs", prev, () => recRestore(prev, _snap)).then(ok => {
+    if (!ok) return false;
     /* =================================================================
        الطالبُ يحمل برنامجَه اسماً (٤٣٠)
        -----------------------------------------------------------------
@@ -13866,22 +14138,28 @@ window.prgSave = function () {
       });
     }
     showToast("حُفظ البرنامج", "success");
-  } else {
-    if (DB.programs.some(x => String(x.name).trim() === name)) { showToast("اسم البرنامج مستخدم بالفعل", "warn"); return; }
-    const r = Object.assign({ id: "pg" + Date.now() }, data);
-    DB.programs.push(r); persistSet("programs", r);
+    closeModal(); mount();
+    return true;
+    });
+  }
+  if (DB.programs.some(x => String(x.name).trim() === name)) { showToast("اسم البرنامج مستخدم بالفعل", "warn"); return; }
+  const r = Object.assign({ id: "pg" + Date.now() }, data);
+  DB.programs.push(r);
+  return saveOrUndo("programs", r, () => { const i = DB.programs.indexOf(r); if (i > -1) DB.programs.splice(i, 1); }).then(ok => {
+    if (!ok) return false;
     /* البرنامجُ الجديد يُفتح على مستوياته فوراً: إنشاؤه خطوةٌ أولى،
        وضبطُ مستوياته هو العمل. */
     NEW_PRG = String(r.id);
     showToast("أُضيف البرنامج", "success");
-  }
-  closeModal(); mount();
-  if (NEW_PRG) {
-    const pid = NEW_PRG; NEW_PRG = "";
-    setTimeout(function () {
-      try { LVB.loaded = ""; window.lvlView(pid); } catch (e) {}
-    }, 60);
-  }
+    closeModal(); mount();
+    if (NEW_PRG) {
+      const pid = NEW_PRG; NEW_PRG = "";
+      setTimeout(function () {
+        try { LVB.loaded = ""; window.lvlView(pid); } catch (e) {}
+      }, 60);
+    }
+    return true;
+  });
 };
 window.prgEdit = function () {
   const ids = prgSel();
@@ -13891,13 +14169,18 @@ window.prgEdit = function () {
 window.prgStatus = function (to) {
   const ids = prgSel();
   if (!ids.length) { showToast("حدّد برنامجاً واحداً على الأقل", "warn"); return; }
-  let n = 0;
+  /* (٥٦٩) «فُعِّل/أُوقف» بعد قبول الخادم — وما رُفض يعود كما كان */
+  const items = [];
   ids.forEach(id => {
     const r = (DB.programs || []).find(x => String(x.id) === String(id));
-    if (r) { r.status = to; persistSet("programs", r); n++; }
+    if (r) { const prev = r.status; r.status = to; items.push([r, () => { r.status = prev; }]); }
   });
-  PRG.sel = {};
-  showToast((to === "فعال" ? "فُعِّل " : "أُوقف ") + n + " برنامج", "success"); mount();
+  return saveManyOrUndo("programs", items).then(res => {
+    if (res.bad) { mount(); return false; }
+    PRG.sel = {};
+    showToast((to === "فعال" ? "فُعِّل " : "أُوقف ") + res.ok + " برنامج", "success"); mount();
+    return true;
+  });
 };
 window.prgDelete = function () {
   const ids = prgSel();
@@ -14614,16 +14897,20 @@ window.plSave = function (pid) {
     return;
   }
 
+  /* (٥٣٢) خطةُ النظام: «حُفظت» بعد قبول الخادم — وإن رُفض تعود كما كانت وتبقى اللوحة */
+  const _snap = JSON.stringify(DB.settings || {});
   if (!DB.settings) DB.settings = {};
   if (!DB.settings.sysPrgCfg) DB.settings.sysPrgCfg = {};
   DB.settings.sysPrgCfg[String(pid)] = out;
   DB.settings.id = DB.settings.id || "app";
-  persistSet("settings", DB.settings);
-
-  closePanel();
-  showToast("حُفظت خطة التسميع المثبتة", "success");
-  mount();
-  if (PL_RETURN) window.plBackStu();
+  return Promise.resolve(persistSet("settings", DB.settings)).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    closePanel();
+    showToast("حُفظت خطة التسميع المثبتة", "success");
+    mount();
+    if (PL_RETURN) window.plBackStu();
+    return true;
+  });
 };
 
 
@@ -14786,23 +15073,26 @@ window.sardFinishDo = function (studentId) {
     const target = String(cfg.nextProgram || "").trim();
     if (!target) { showToast("لم يُحدَّد البرنامج التالي في إعداد السرد", "warn"); return; }
 
+    /* (٥٧٣) الطالبُ أوّلاً؛ فإن رفضه الخادمُ عاد كما كان ولم تُمسّ خطتُه ولا يُعلن «انتقل» */
+    const _snapS = JSON.parse(JSON.stringify(st));
     /* الموضعُ في البرنامج الجديد من آخر سورةٍ سُردت — لا من الصفر */
     st.program = target;
     if (last && last.s) { st.sardEndSurah = last.s; st.sardEndAyah = last.a || 0; }
     st.sardFinishedAt = Date.now();
-    persistSet("students", st);
-
-    const pl = (DB.plans || []).find(x => x && x.superseded !== true && String(x.studentId) === String(studentId));
-    if (pl) {
-      pl.program = target;
-      pl.programId = ((cur("programs") || []).find(x => String(x.name) === target) || {}).id || "";
-      if (last && last.s) pl.current = last.s + " " + (last.a || 1);
-      persistSet("plans", pl);
-    }
-    closeModal();
-    showToast("انتقل " + (st.name || "الطالب") + " إلى " + target, "success");
-    mount();
-    return;
+    return saveOrUndo("students", st, () => recRestore(st, _snapS)).then(ok => {
+      if (!ok) return false;
+      const pl = (DB.plans || []).find(x => x && x.superseded !== true && String(x.studentId) === String(studentId));
+      if (pl) {
+        pl.program = target;
+        pl.programId = ((cur("programs") || []).find(x => String(x.name) === target) || {}).id || "";
+        if (last && last.s) pl.current = last.s + " " + (last.a || 1);
+        persistSet("plans", pl);
+      }
+      closeModal();
+      showToast("انتقل " + (st.name || "الطالب") + " إلى " + target, "success");
+      mount();
+      return true;
+    });
   }
 
   /* يدويّ: يُفتح طلبُ اختبار في مسار العمل القائم */
@@ -14817,15 +15107,21 @@ window.sardFinishDo = function (studentId) {
   };
   if (!Array.isArray(DB.workflow)) DB.workflow = [];
   DB.workflow.push(req);
-  persistSet("workflow", req);
 
-  st.sardFinishedAt = Date.now();
-  if (last && last.s) { st.sardEndSurah = last.s; st.sardEndAyah = last.a || 0; }
-  persistSet("students", st);
+  /* (٥٧٣) الطلبُ أوّلاً؛ فإن رُفض خرج ولم يُعلَّم الطالبُ منهياً ولا يُعلن «رُفع» */
+  return saveOrUndo("workflow", req, () => {
+    const k = DB.workflow.indexOf(req); if (k > -1) DB.workflow.splice(k, 1);
+  }).then(ok => {
+    if (!ok) return false;
+    st.sardFinishedAt = Date.now();
+    if (last && last.s) { st.sardEndSurah = last.s; st.sardEndAyah = last.a || 0; }
+    persistSet("students", st);
 
-  closeModal();
-  showToast("رُفع طلبُ اختبارٍ لـ " + (st.name || "الطالب"), "success");
-  mount();
+    closeModal();
+    showToast("رُفع طلبُ اختبارٍ لـ " + (st.name || "الطالب"), "success");
+    mount();
+    return true;
+  });
 };
 
 /* شاشةُ برنامج السرد بشكل خطة التسميع الافتراضية نفسِه: لوحةٌ ملء الشاشة
@@ -14970,15 +15266,19 @@ window.sardSave = function () {
     return;
   }
 
+  /* (٥٣٣) إعدادُ السرد للنظام: «حُفظ» بعد قبول الخادم — وإن رُفض يعود كما كان */
+  const _snap = JSON.stringify(DB.settings || {});
   if (!DB.settings) DB.settings = {};
   if (!DB.settings.sysPrgCfg) DB.settings.sysPrgCfg = {};
   DB.settings.sysPrgCfg[SARD_ID] = out;
   DB.settings.id = DB.settings.id || "app";
-  persistSet("settings", DB.settings);
-
-  closePanel();
-  showToast("حُفظ إعداد برنامج السرد المثبت", "success");
-  mount();
+  return Promise.resolve(persistSet("settings", DB.settings)).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    closePanel();
+    showToast("حُفظ إعداد برنامج السرد المثبت", "success");
+    mount();
+    return true;
+  });
 };
 
 /* صفحةُ البرنامج: طلابُه وموضعُ كلٍّ منهم وزرُّ الإنهاء */
@@ -15385,14 +15685,19 @@ window.sysOptSave = function (pid) {
     });
     return;
   }
+  /* (٥٣٤) خياراتُ النظام: «حُفظت» بعد قبول الخادم — وإن رُفض تعود كما كانت */
+  const _snap = JSON.stringify(DB.settings || {});
   if (!DB.settings) DB.settings = {};
   if (!DB.settings.sysPrgCfg) DB.settings.sysPrgCfg = {};
   DB.settings.sysPrgCfg[String(pid)] = out;
   DB.settings.id = DB.settings.id || "app";
-  persistSet("settings", DB.settings);
-  closePanel();
-  showToast("حُفظت الخيارات", "success");
-  mount();
+  return Promise.resolve(persistSet("settings", DB.settings)).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    closePanel();
+    showToast("حُفظت الخيارات", "success");
+    mount();
+    return true;
+  });
 };
 
 window.sysPrgSetup = function (pid) {
@@ -15527,6 +15832,8 @@ window.sysPrgToggle = function (id) {
   if (!isTopAdmin()) {
     showToast("تغيير البرامج المثبَّتة من صلاحية مدير النظام", "warn"); return;
   }
+  /* (٥٣٥) «فُعّل/أُوقف» بعد قبول الخادم — وإن رُفض يعود البرنامجُ كما كان */
+  const _snap = JSON.stringify(DB.settings || {});
   const off = sysPrgOff();
   const i = off.indexOf(String(id));
   if (i > -1) off.splice(i, 1); else off.push(String(id));
@@ -15534,11 +15841,13 @@ window.sysPrgToggle = function (id) {
   if (!DB.settings) DB.settings = {};
   DB.settings.sysProgramsOff = off;
   DB.settings.id = DB.settings.id || "app";
-  persistSet("settings", DB.settings);
-
-  const nm = (SYS_PROGRAMS.find(x => String(x.id) === String(id)) || {}).name || "";
-  showToast(i > -1 ? "فُعّل " + nm : "أُوقف " + nm, "success");
-  mount();
+  return Promise.resolve(persistSet("settings", DB.settings)).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    const nm = (SYS_PROGRAMS.find(x => String(x.id) === String(id)) || {}).name || "";
+    showToast(i > -1 ? "فُعّل " + nm : "أُوقف " + nm, "success");
+    mount();
+    return true;
+  });
 };
 
 function lvlRows() {
@@ -17749,8 +18058,11 @@ window.lvbSaveAll = function () {
       "»: البداية بعد النهاية في الاتجاه المختار — صحّحها قبل الحفظ", "warn");
     LVB.open = inv.id; lvbRedraw(); return;
   }
-  let n = 0;
+  /* (٥٧٠) «حُفظ» بعد قبول الخادم — المستوى المرفوض يعود كما كان (والجديدُ يخرج من القائمة)
+     وتبقى اللوحةُ مفتوحةً بتعديلاتها ليُعاد الحفظ */
+  const items = [];
   LVB.rows.forEach(function (r, i) {
+    const _was = r.rec ? JSON.parse(JSON.stringify(r.rec)) : null, _saved = r.saved;
     const rec = r.rec || { id: r.id, programId: LVB.pid, program: (recByName
       ? ((cur("programs") || []).find(p => String(p.id) === String(LVB.pid)) || {}).name : "") || "" };
     rec.name = r.name;
@@ -17763,13 +18075,23 @@ window.lvbSaveAll = function () {
       if (!Array.isArray(DB.levels)) DB.levels = [];
       DB.levels.push(rec); r.rec = rec;
     }
-    persistSet("levels", rec); r.saved = true; n++;
+    r.saved = true;
+    items.push([rec, () => {
+      r.saved = _saved;
+      if (_was) recRestore(rec, _was);
+      else { const k = DB.levels.indexOf(rec); if (k > -1) DB.levels.splice(k, 1); r.rec = null; }
+    }]);
   });
-  showToast("حُفظ البرنامج و" + toArabicDigits(n) + " من مستوياته", "success");
-  LVB.open = ""; LVB.cfg = ""; lvbRedraw();
-  /* الجدولُ خلف اللوحة يعرض عددَ المستويات والطلاب: يُعاد رسمُه ليظهر
-     الجديدُ في الخارج لا في اللوحة وحدها */
-  if (typeof mount === "function") mount();
+  return saveManyOrUndo("levels", items).then(res => {
+    const n = res.ok;
+    if (res.bad) { lvbRedraw(); if (typeof mount === "function") mount(); return false; }
+    showToast("حُفظ البرنامج و" + toArabicDigits(n) + " من مستوياته", "success");
+    LVB.open = ""; LVB.cfg = ""; lvbRedraw();
+    /* الجدولُ خلف اللوحة يعرض عددَ المستويات والطلاب: يُعاد رسمُه ليظهر
+       الجديدُ في الخارج لا في اللوحة وحدها */
+    if (typeof mount === "function") mount();
+    return true;
+  });
 };
 
 window.lvbBack = function () {
@@ -17994,31 +18316,41 @@ window.lvxSave = function () {
 
   if (!Array.isArray(DB.levels)) DB.levels = [];
   const i = DB.levels.findIndex(x => String(x.id) === String(rec.id));
+  const _prev = i > -1 ? DB.levels[i] : null;
   if (i > -1) DB.levels[i] = rec; else DB.levels.push(rec);
-  persistSet("levels", rec);
 
-  /* الخطط تحمل اسم المستوى نصاً: إعادة التسمية تُحدَّث فيها وإلا انقطع
-     ارتباطها وظهرت تحت اسم لا وجود له. */
-  let moved = 0;
-  if (oldName && oldName !== name) {
-    (DB.plans || []).forEach(p => {
-      if (String(p.programId) !== String(LVX.prog)) return;
-      if (String(p.level) !== oldName) return;
-      p.level = name; p.levelId = rec.id;
-      persistSet("plans", p); moved++;
-    });
-  }
+  /* (٥٩٥) المستوى يُحفظ أوّلاً؛ فإن رُفض عاد كما كان (أو خرج الجديد) ولم تُمسّ الخطط،
+     وبقيت النافذةُ — ولا يُعلن «حُدّث/أُضيف» */
+  return saveOrUndo("levels", rec, () => {
+    const k = DB.levels.indexOf(rec);
+    if (k > -1) { if (_prev) DB.levels[k] = _prev; else DB.levels.splice(k, 1); }
+  }).then(ok => {
+    if (!ok) return false;
 
-  closeModal();
-  showToast((id ? "حُدّث المستوى" : "أُضيف المستوى") +
-            (moved ? ` وحُدّثت ${toArabicDigits(moved)} خطة` : ""), "success");
-  mount();
-  /* أُضيف من صفحة البرنامج وهي ما زالت مفتوحة: تُعاد لتُظهر المستوى الجديد */
-  const back = LVX.reopen; LVX.reopen = "";
-  if (back && back === String(LVX.prog) &&
-      document.querySelector('#panelRoot [data-lvprog="' + back + '"]')) {
-    window.lvlView(back);
-  }
+    /* الخطط تحمل اسم المستوى نصاً: إعادة التسمية تُحدَّث فيها وإلا انقطع
+       ارتباطها وظهرت تحت اسم لا وجود له. */
+    let moved = 0;
+    if (oldName && oldName !== name) {
+      (DB.plans || []).forEach(p => {
+        if (String(p.programId) !== String(LVX.prog)) return;
+        if (String(p.level) !== oldName) return;
+        p.level = name; p.levelId = rec.id;
+        persistSet("plans", p); moved++;
+      });
+    }
+
+    closeModal();
+    showToast((id ? "حُدّث المستوى" : "أُضيف المستوى") +
+              (moved ? ` وحُدّثت ${toArabicDigits(moved)} خطة` : ""), "success");
+    mount();
+    /* أُضيف من صفحة البرنامج وهي ما زالت مفتوحة: تُعاد لتُظهر المستوى الجديد */
+    const back = LVX.reopen; LVX.reopen = "";
+    if (back && back === String(LVX.prog) &&
+        document.querySelector('#panelRoot [data-lvprog="' + back + '"]')) {
+      window.lvlView(back);
+    }
+    return true;
+  });
 };
 
 window.lvxDelete = function (id) {
@@ -18054,7 +18386,8 @@ window.lvxImport = function () {
   const start = lvxOf(LVX.prog).length;
   if (!Array.isArray(DB.levels)) DB.levels = [];
 
-  names.forEach((n, i) => {
+  /* (٥٧١) «استُوردت» بعد قبول الخادم — وما رُفض يخرج من القائمة */
+  const items = names.map((n, i) => {
     const rec = {
       id: "lv" + Date.now() + "-" + i,
       programId: String(LVX.prog), program: prog ? prog.name : "",
@@ -18063,11 +18396,15 @@ window.lvxImport = function () {
       note: "مستورد من الخطط"
     };
     DB.levels.push(rec);
-    persistSet("levels", rec);
+    return [rec, () => { const k = DB.levels.indexOf(rec); if (k > -1) DB.levels.splice(k, 1); }];
   });
 
-  showToast("استُوردت " + toArabicDigits(names.length) + " مستويات", "success");
-  mount();
+  return saveManyOrUndo("levels", items).then(res => {
+    if (res.bad) { mount(); return false; }
+    showToast("استُوردت " + toArabicDigits(res.ok) + " مستويات", "success");
+    mount();
+    return true;
+  });
 };
 
 /* خطط سابقة تحمل اسم المستوى نصاً بلا معرّف: تُربط بمطابقة الاسم.
@@ -18087,14 +18424,19 @@ window.lvxLinkPlans = function () {
   const names = new Map();
   lvxOf(LVX.prog).forEach(l => names.set(String(l.name), l.id));
 
-  let n = 0;
-  orphans.forEach(p => {
+  /* (٥٧١) «رُبطت» بعد قبول الخادم — وما رُفض يعود بلا ربط */
+  const items = orphans.map(p => {
+    const had = Object.prototype.hasOwnProperty.call(p, "levelId"), prev = p.levelId;
     p.levelId = names.get(String(p.level));
-    persistSet("plans", p); n++;
+    return [p, () => { if (had) p.levelId = prev; else delete p.levelId; }];
   });
 
-  showToast("رُبطت " + toArabicDigits(n) + " خطة بمستوياتها", "success");
-  mount();
+  return saveManyOrUndo("plans", items).then(res => {
+    if (res.bad) { mount(); return false; }
+    showToast("رُبطت " + toArabicDigits(res.ok) + " خطة بمستوياتها", "success");
+    mount();
+    return true;
+  });
 };
 
 /* الترتيب: تحريك بخطوة واحدة أعلى أو أسفل — أوضح من كتابة رقم بلا مرجع */
@@ -18404,10 +18746,15 @@ window.planDaysSet = function (planId, kind, day, on) {
 window.planDaysReset = function (planId, kind) {
   const p = (cur("plans") || []).find(x => String(x.id) === String(planId));
   if (!p || !p.hwDays) return;
+  /* (٥٣٦) «عاد» بعد قبول الخادم — وإن رُفض تعود جدولةُ الطالب كما كانت */
+  const _had = Object.prototype.hasOwnProperty.call(p.hwDays, kind), _prev = p.hwDays[kind];
   delete p.hwDays[kind];
-  persistSet("plans", p);
-  showToast("عاد إلى جدولة النظام", "success");
-  mount();
+  return Promise.resolve(persistSet("plans", p)).then(ok => {
+    if (ok === false) { if (_had) p.hwDays[kind] = _prev; mount(); return false; }
+    showToast("عاد إلى جدولة النظام", "success");
+    mount();
+    return true;
+  });
 };
 
 /* لوحة جدولة الخطة — تُعرض في صفحة الخطة */
@@ -18994,6 +19341,7 @@ window.manuAssignDo = function () {
   const t = hwType(MANU.kind);
   const d = MANU.date || attDate();
   let made = 0, skipped = 0;
+  const items = [];
 
   if (!Array.isArray(DB.assignments)) DB.assignments = [];
 
@@ -19077,21 +19425,26 @@ window.manuAssignDo = function () {
     }
 
     DB.assignments.push(rec);
-    persistSet("assignments", rec);
-    made++;
+    items.push([rec, () => { const k = DB.assignments.indexOf(rec); if (k > -1) DB.assignments.splice(k, 1); }]);
   });
 
-  /* النهايات تُترجم من جدول المصحف لمن لم تُحدَّد نهايته */
-  try {
-    if (window.fillAsgRanges) {
-      window.fillAsgRanges((cur("assignments") || []).filter(a => a.manual && a.date === d));
-    }
-  } catch (e) {}
+  /* (٦٠٠) «أُسند» بعد قبول الخادم — وما رُفض يخرج من الذاكرة وتبقى النافذة */
+  return saveManyOrUndo("assignments", items).then(res => {
+    made = res.ok;
+    /* النهايات تُترجم من جدول المصحف لمن لم تُحدَّد نهايته */
+    try {
+      if (window.fillAsgRanges && made) {
+        window.fillAsgRanges((cur("assignments") || []).filter(a => a.manual && a.date === d));
+      }
+    } catch (e) {}
+    if (res.bad) { mount(); return false; }
 
-  closeModal();
-  showToast("أُسند الواجب لـ" + toArabicDigits(made) + " طالباً" +
-            (skipped ? " · تُخطّي " + toArabicDigits(skipped) + " له مثله" : ""), "success");
-  mount();
+    closeModal();
+    showToast("أُسند الواجب لـ" + toArabicDigits(made) + " طالباً" +
+              (skipped ? " · تُخطّي " + toArabicDigits(skipped) + " له مثله" : ""), "success");
+    mount();
+    return true;
+  });
 };
 
 /* حذف واجبٍ يدويّ — المولَّد لا يُحذف، إذ يُعاد توليده */
@@ -19211,6 +19564,9 @@ window.asgPartDo = function (closeIt) {
   const scoreRaw = val("#pt_score");
   const score = scoreRaw === "" ? null : Math.max(0, Math.min(100, Number(scoreRaw)));
 
+  /* (٥٩٦) الجلسةُ تُحفظ أوّلاً؛ فإن رفضها الخادمُ عاد الواجبُ كما كان ولم يُغلق،
+     وبقيت النافذةُ بأرقامها — ولا يُعلن «سُجّلت/اكتمل» */
+  const _snap = JSON.parse(JSON.stringify(a));
   if (!Array.isArray(a.parts)) a.parts = [];
   a.parts.push({
     qty, score,
@@ -19226,6 +19582,7 @@ window.asgPartDo = function (closeIt) {
   a.doneQty = done;
   a.shortQty = left;
 
+  let _close = false, _closeAvg = null;
   if (left <= 0 || closeIt) {
     /* المتوسّط المرجَّح بالمقدار: جلسةٌ من ثلاثة أوجه أثقل من نصف وجه */
     const scored = a.parts.filter(p => p.score != null);
@@ -19236,18 +19593,19 @@ window.asgPartDo = function (closeIt) {
 
     /* الإغلاق بما تحقّق: يُسوّى فلا يولّد تعويضاً — قسّم ولم يتخلّف */
     if (left > 0) { a.settled = true; a.closedShort = true; }
-
-    persistSet("assignments", a);
-    window.asgClose(a.id, avg);
-  } else {
-    persistSet("assignments", a);
+    _closeAvg = avg; _close = true;
   }
 
-  closeModal();
-  showToast(left > 0 && !closeIt
-    ? "سُجّلت الجلسة — بقي " + toArabicDigits(left) + " " + (a.unit || "وجه")
-    : "اكتمل الواجب", "success");
-  mount();
+  return saveOrUndo("assignments", a, () => recRestore(a, _snap)).then(ok => {
+    if (!ok) return false;
+    if (_close) window.asgClose(a.id, _closeAvg);
+    closeModal();
+    showToast(left > 0 && !closeIt
+      ? "سُجّلت الجلسة — بقي " + toArabicDigits(left) + " " + (a.unit || "وجه")
+      : "اكتمل الواجب", "success");
+    mount();
+    return true;
+  });
 };
 
 window.asgPartDrop = function (asgIdStr, i) {
@@ -19416,11 +19774,16 @@ function elderClass(st) { return isElder(st) ? " elder-mode" : ""; }
 window.elderlySet = function (studentId, on) {
   const st = (cur("students") || []).find(x => String(x.id) === String(studentId));
   if (!st) return;
+  /* (٥٨٩) «فُعّل/أُلغي» بعد قبول الخادم — وإن رُفض بقي الوضعُ كما كان */
+  const had = Object.prototype.hasOwnProperty.call(st, "elderly"), prev = st.elderly;
   st.elderly = !!on;
-  persistSet("students", st);
-  showToast(on ? "فُعّل وضع كبار السن — خطٌّ أكبر وقيودٌ أخفّ"
-                : "أُلغي وضع كبار السن", "success");
-  mount();
+  return saveOrUndo("students", st, () => { if (had) st.elderly = prev; else delete st.elderly; }).then(ok => {
+    if (!ok) return false;
+    showToast(on ? "فُعّل وضع كبار السن — خطٌّ أكبر وقيودٌ أخفّ"
+                  : "أُلغي وضع كبار السن", "success");
+    mount();
+    return true;
+  });
 };
 
 window.elderlyCfgSet = function (field, v) {
@@ -23191,16 +23554,25 @@ function planRuleOn(planId, key) {
 window.planRuleToggle = function (planId, key, on) {
   if (!Array.isArray(DB.planRules)) DB.planRules = [];
   let rec = DB.planRules.find(r => String(r.planId) === String(planId));
+  const _isNew = !rec;
   if (!rec) {
     rec = { id: "pr_" + planId, planId: String(planId), rules: {} };
     DB.planRules.push(rec);
   }
+  /* (٥٨٩) «فُعّلت/عُطّلت» بعد قبول الخادم — وإن رُفض عادت القاعدةُ كما كانت */
+  const _snap = JSON.parse(JSON.stringify(rec));
   if (!rec.rules) rec.rules = {};
   rec.rules[key] = !!on;
   rec.ts = Date.now();
-  persistSet("planRules", rec);
-  showToast((on ? "فُعّلت: " : "عُطّلت: ") +
-    ((PLAN_RULE_DEFS.find(x => x.k === key) || {}).h || key), "success");
+  return saveOrUndo("planRules", rec, () => {
+    if (_isNew) { const k = DB.planRules.indexOf(rec); if (k > -1) DB.planRules.splice(k, 1); }
+    else recRestore(rec, _snap);
+  }).then(ok => {
+    if (!ok) return false;
+    showToast((on ? "فُعّلت: " : "عُطّلت: ") +
+      ((PLAN_RULE_DEFS.find(x => x.k === key) || {}).h || key), "success");
+    return true;
+  });
 };
 
 /* نسخُ قواعد البرنامج إلى خطةٍ جديدة. لا يُكتب شيءٌ إن لم يضبط البرنامجُ
@@ -23503,6 +23875,7 @@ function autoPromoteCheck(studentId) {
   }
 
   const from = plan.level || "";
+  const _snapP = JSON.parse(JSON.stringify(plan));
   plan.levelId = String(next.id);
   plan.level = next.name;
   plan.promotedAt = Date.now();
@@ -23510,16 +23883,19 @@ function autoPromoteCheck(studentId) {
   plan.promotedBy = "النظام — انتقال تلقائي";
   plan.awaitingPromotion = false;
   delete plan.levelDoneCarry;      /* رصيدُ المستوى السابق لا يُورَّث */
-  persistSet("plans", plan);
+  /* (٦٠٣) الخطةُ تُحفظ أوّلاً؛ فإن رفضها الخادمُ عادت كما كانت، ولم يُنقل سجلُّ الطالب
+     ولم تُرسل رسالةُ الانتقال ولا يُعلن «انتقل» */
+  Promise.resolve(persistSet("plans", plan)).then(ok => {
+    if (ok === false) { recRestore(plan, _snapP); mount(); return; }
+    const st = (cur("students") || []).find(x => String(x.id) === String(plan.studentId));
+    if (st) { st.levelId = plan.levelId; st.level = plan.level; persistSet("students", st); }
 
-  const st = (cur("students") || []).find(x => String(x.id) === String(plan.studentId));
-  if (st) { st.levelId = plan.levelId; st.level = plan.level; persistSet("students", st); }
+    try {
+      if (typeof msgFire === "function" && st) msgFire("promote", { student: st, level: next.name });
+    } catch (e) {}
 
-  try {
-    if (typeof msgFire === "function" && st) msgFire("promote", { student: st, level: next.name });
-  } catch (e) {}
-
-  showToast((plan.student || "الطالب") + " انتقل تلقائياً إلى " + next.name, "success");
+    showToast((plan.student || "الطالب") + " انتقل تلقائياً إلى " + next.name, "success");
+  });
   return true;
 }
 
@@ -23961,17 +24337,24 @@ window.alertAct = function () {
 
   if (!Array.isArray(DB.procLog)) DB.procLog = [];
   DB.procLog.push(rec);
-  persistSet("procLog", rec);
 
-  a.status = "closed";
-  a.closedAt = Date.now();
-  a.closedBy = rec.by;
-  a.procStep = n;
-  persistSet("sysAlerts", a);
+  /* (٥٧٤) يُغلق التنبيهُ ويُعلن «سُجّل» بعد قبول الخادم للإجراء — وإن رُفض خرج الإجراءُ
+     وبقي التنبيهُ مفتوحاً والنافذةُ بنصّها */
+  return saveOrUndo("procLog", rec, () => {
+    const k = DB.procLog.indexOf(rec); if (k > -1) DB.procLog.splice(k, 1);
+  }).then(ok => {
+    if (!ok) return false;
+    a.status = "closed";
+    a.closedAt = Date.now();
+    a.closedBy = rec.by;
+    a.procStep = n;
+    persistSet("sysAlerts", a);
 
-  closeModal();
-  showToast("سُجّل الإجراء " + toArabicDigits(n) + " باسمك", "success");
-  mount();
+    closeModal();
+    showToast("سُجّل الإجراء " + toArabicDigits(n) + " باسمك", "success");
+    mount();
+    return true;
+  });
 };
 
 window.alertDismiss = function (alertId) {
@@ -24359,45 +24742,58 @@ window.ptsGrantDo = function () {
 
   const u = (STATE && STATE.user) || {};
 
+  /* (٥٩٠) الرصيدُ يُحفظ أوّلاً؛ فإن رفضه الخادمُ عاد كما كان، ولم يُكتب سجلُّ النقاط
+     ولم يُبلَّغ الطالب، وبقيت النافذةُ — ولا يُعلن «مُنح» */
+  const _pts = { had: Object.prototype.hasOwnProperty.call(st, "points"), p: st.points,
+                 hadB: Object.prototype.hasOwnProperty.call(st, "balance"), b: st.balance };
   st.points = ptsOf(st) + n;
   /* المكتسب الكلّي لا ينقص: هو سجلّ التميّز لا رصيد الإنفاق */
   if (n > 0) st.balance = ptsTotal(st) + n;
   if (st.points < 0) st.points = 0;
   /* الرصيدُ والمكتسبُ وحدَهما (٤٣٥): القاعدةُ تُجيز للمعلّم هذين الحقلين في
      سجلّ الطالب لا السجلَّ كلَّه — فكان الرصيدُ يُردّ ويُكتب سجلُّ النقاط وحده */
-  if (((STATE && STATE.user) || {}).role === "teacher") persistPatch("students", st, ["points", "balance"]);
-  else persistSet("students", st);
-
-  const rec = {
-    id: "pt" + Date.now(), studentId: String(st.id), student: st.name || "",
-    n, why, by: u.name || u.email || "—", ts: Date.now(),
-    date: todayISO(), after: st.points,
-    /* نطاقُ السجلّ من نطاق الطالب: بدونه يسقط من cur() عند كلّ حسابٍ
-       محصورٍ بمسجد — فيُمنح المعلّمُ نقاطاً لا يراها هو ولا مديرُ مسجده. */
-    mosqueId: st.mosqueId || "", complexId: st.complexId != null ? st.complexId : "",
-    termId: typeof activeTermId === "function" ? activeTermId() : ""
-  };
-  if (!Array.isArray(DB.pointsLog)) DB.pointsLog = [];
-  DB.pointsLog.push(rec);
-  persistSet("pointsLog", rec);
-
-  /* الطالب يرى سبب نقاطه فور منحها */
-  try {
-    if (typeof pushNotif === "function") {
-      pushNotif({
-        key: "pts|" + rec.id,
-        toId: String(st.uid || st.id),
-        title: n > 0 ? "نقاط جديدة" : "خصم نقاط",
-        text: (n > 0 ? "+" : "") + n + " نقطة — " + why,
-        type: n > 0 ? "success" : "warn", label: "نقاط"
-      });
+  const _w = ((STATE && STATE.user) || {}).role === "teacher"
+    ? persistPatch("students", st, ["points", "balance"]) : persistSet("students", st);
+  return Promise.resolve(_w).then(ok => {
+    if (ok === false) {
+      if (_pts.had) st.points = _pts.p; else delete st.points;
+      if (_pts.hadB) st.balance = _pts.b; else delete st.balance;
+      mount();
+      return false;
     }
-  } catch (e) {}
 
-  closeModal();
-  showToast((n > 0 ? "مُنح " : "خُصم ") + toArabicDigits(Math.abs(n)) +
-            " نقطة — الرصيد " + toArabicDigits(st.points), "success");
-  mount();
+    const rec = {
+      id: "pt" + Date.now(), studentId: String(st.id), student: st.name || "",
+      n, why, by: u.name || u.email || "—", ts: Date.now(),
+      date: todayISO(), after: st.points,
+      /* نطاقُ السجلّ من نطاق الطالب: بدونه يسقط من cur() عند كلّ حسابٍ
+         محصورٍ بمسجد — فيُمنح المعلّمُ نقاطاً لا يراها هو ولا مديرُ مسجده. */
+      mosqueId: st.mosqueId || "", complexId: st.complexId != null ? st.complexId : "",
+      termId: typeof activeTermId === "function" ? activeTermId() : ""
+    };
+    if (!Array.isArray(DB.pointsLog)) DB.pointsLog = [];
+    DB.pointsLog.push(rec);
+    persistSet("pointsLog", rec);
+
+    /* الطالب يرى سبب نقاطه فور منحها */
+    try {
+      if (typeof pushNotif === "function") {
+        pushNotif({
+          key: "pts|" + rec.id,
+          toId: String(st.uid || st.id),
+          title: n > 0 ? "نقاط جديدة" : "خصم نقاط",
+          text: (n > 0 ? "+" : "") + n + " نقطة — " + why,
+          type: n > 0 ? "success" : "warn", label: "نقاط"
+        });
+      }
+    } catch (e) {}
+
+    closeModal();
+    showToast((n > 0 ? "مُنح " : "خُصم ") + toArabicDigits(Math.abs(n)) +
+              " نقطة — الرصيد " + toArabicDigits(st.points), "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -24884,13 +25280,22 @@ window.orderDeliver = function (orderId) {
   const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
   if (!o) return;
   const u = (STATE && STATE.user) || {};
-  if (!orderDebit(o)) return;
+  /* (٥٧٢) يُفحص الرصيد، ثمّ يُحفظ التسليم، ولا يُخصم إلا بعد قبوله */
+  const _need = o.debited === false;
+  const _st = _need ? orderDebitCheck(o) : null;
+  if (_need && !_st) return;
+  const _snap = JSON.parse(JSON.stringify(o));
   o.status = "delivered";
   o.deliveredAt = Date.now();
   o.deliveredBy = u.name || u.email || "";
-  persistSet("storeOrders", o);
-  showToast("سُجّل تسليم " + (o.reward || "") + " لـ" + (o.student || ""), "success");
-  mount();
+  if (_need) o.debited = true;
+  return saveOrUndo("storeOrders", o, () => recRestore(o, _snap)).then(ok => {
+    if (!ok) return false;
+    if (_need) orderDebitApply(o, _st);
+    showToast("سُجّل تسليم " + (o.reward || "") + " لـ" + (o.student || ""), "success");
+    mount();
+    return true;
+  });
 };
 
 window.orderCancel = function (orderId) {
@@ -24908,15 +25313,30 @@ window.orderCancel = function (orderId) {
    يُرجع false إن لم يكفِ الرصيد، فلا يُعتمد الطلب. */
 function orderDebit(o) {
   if (!o || o.debited !== false) return true;
+  const st = orderDebitCheck(o);
+  if (!st) return false;
+  orderDebitApply(o, st);
+  return true;
+}
+/* (٥٧٢) الخصمُ قسمان: فحصُ الرصيد بلا كتابة، ثمّ الكتابة. الاعتمادُ والتسليمُ يفحصان
+   أوّلاً، ثمّ يحفظان الطلبَ، ولا يُخصم إلا بعد قبول الخادم للطلب — كان الخصمُ يُكتب قبل
+   حفظ الطلب، فإن رُفض الطلبُ بقي «معلّقاً غيرَ مخصوم» على الخادم والنقاطُ مخصومة،
+   فيخصمها الاعتمادُ التالي ثانيةً */
+function orderDebitCheck(o) {
   const st = (cur("students") || []).find(x => String(x.id) === String(o.studentId));
   const cost = Number(o.cost) || 0;
-  if (!st) { showToast("لم يُعثر على سجلّ الطالب", "warn"); return false; }
+  if (!st) { showToast("لم يُعثر على سجلّ الطالب", "warn"); return null; }
   const saved = Number(st.points) || 0;
   if (saved < cost) {
     showToast("رصيدُ " + (st.name || "الطالب") + " (" + toArabicDigits(saved) + ") لا يكفي لهذا الطلب (" +
               toArabicDigits(cost) + ") — ارفضه أو انتظر", "warn");
-    return false;
+    return null;
   }
+  return st;
+}
+function orderDebitApply(o, st) {
+  const cost = Number(o.cost) || 0;
+  const saved = Number(st.points) || 0;
   st.points = saved - cost;
   persistSet("students", st);
   const r = (cur("rewards") || []).find(x => String(x.id) === String(o.rewardId));
@@ -24991,23 +25411,32 @@ window.orderApprove = function (orderId) {
   const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
   if (!o || o.status !== "pending") return;
   const u = (STATE && STATE.user) || {};
-  if (!orderDebit(o)) return;
+  /* (٥٧٢) يُفحص الرصيد، ثمّ يُحفظ الاعتماد، ولا يُخصم ولا يُبلَّغ الطالب إلا بعد قبوله */
+  const _need = o.debited === false;
+  const _st = _need ? orderDebitCheck(o) : null;
+  if (_need && !_st) return;
+  const _snap = JSON.parse(JSON.stringify(o));
   o.status = "approved";
   o.approvedAt = Date.now();
   o.approvedBy = u.name || u.email || "";
-  persistSet("storeOrders", o);
-  try {
-    if (typeof pushNotif === "function") {
-      pushNotif({
-        key: "ordok|" + o.id, studentId: String(o.studentId),
-        title: "تمت الموافقة على طلبك",
-        text: "طلبُك «" + (o.reward || "") + "» اعتُمد — راجع مشرفك لاستلامه.",
-        type: "success", label: "المتجر"
-      });
-    }
-  } catch (e) {}
-  showToast("اعتُمد طلب " + (o.student || ""), "success");
-  mount();
+  if (_need) o.debited = true;
+  return saveOrUndo("storeOrders", o, () => recRestore(o, _snap)).then(ok => {
+    if (!ok) return false;
+    if (_need) orderDebitApply(o, _st);
+    try {
+      if (typeof pushNotif === "function") {
+        pushNotif({
+          key: "ordok|" + o.id, studentId: String(o.studentId),
+          title: "تمت الموافقة على طلبك",
+          text: "طلبُك «" + (o.reward || "") + "» اعتُمد — راجع مشرفك لاستلامه.",
+          type: "success", label: "المتجر"
+        });
+      }
+    } catch (e) {}
+    showToast("اعتُمد طلب " + (o.student || ""), "success");
+    mount();
+    return true;
+  });
 };
 
 /* الرفض: تُردّ النقاط كما في الإلغاء، ويُسجَّل السببُ ليراه الطالب */
@@ -25771,11 +26200,16 @@ window.payUnapprove = function () {
   if (r !== "owner") { showToast("فكّ اعتماد المسيّر للمالك", "warn"); return; }
   const sh = paySheetOf(PAY.sheetId);
   if (!payApproved(sh)) return;
+  /* (٥٧٥) «فُكّ» بعد قبول الخادم — وإن رُفض بقي معتمداً */
+  const _snap = JSON.parse(JSON.stringify(sh));
   sh.status = "draft";
   sh.unapprovedAt = Date.now();
-  persistSet("paySheets", sh);
-  showToast("فُكّ اعتماد المسيّر — صار مسودّة", "info");
-  mount();
+  return saveOrUndo("paySheets", sh, () => recRestore(sh, _snap)).then(ok => {
+    if (!ok) return false;
+    showToast("فُكّ اعتماد المسيّر — صار مسودّة", "info");
+    mount();
+    return true;
+  });
 };
 
 window.payBuild = function () {
@@ -25887,13 +26321,26 @@ window.paySave = function (quiet) {
   /* المسودّةُ المفتوحةُ تُحدَّث في مكانها — لا نسخةَ ثانيةً بالفترة نفسها */
   if (!Array.isArray(DB.paySheets)) DB.paySheets = [];
   let sheet = paySheetOf(PAY.sheetId);
-  if (sheet && sheet.status === "draft") Object.assign(sheet, fields);
-  else { sheet = Object.assign({ id: "ps" + Date.now() }, fields); DB.paySheets.push(sheet); }
-  persistSet("paySheets", sheet);
+  /* (٥٧٥) «حُفظ» بعد قبول الخادم — وإن رُفض عادت المسودّةُ كما كانت (والجديدةُ تخرج) */
+  const _prevId = PAY.sheetId;
+  let _undo;
+  if (sheet && sheet.status === "draft") {
+    const _snap = JSON.parse(JSON.stringify(sheet)), _s = sheet;
+    Object.assign(sheet, fields);
+    _undo = () => recRestore(_s, _snap);
+  } else {
+    sheet = Object.assign({ id: "ps" + Date.now() }, fields); DB.paySheets.push(sheet);
+    const _s = sheet;
+    _undo = () => { const k = DB.paySheets.indexOf(_s); if (k > -1) DB.paySheets.splice(k, 1); PAY.sheetId = _prevId; };
+  }
 
   PAY.sheetId = sheet.id;
-  if (!quiet) showToast("حُفظ المسيّر مسودّةً — الإجمالي " + toArabicDigits(sheet.total), "success");
-  mount();
+  return saveOrUndo("paySheets", sheet, _undo).then(ok => {
+    if (!ok) return false;
+    if (!quiet) showToast("حُفظ المسيّر مسودّةً — الإجمالي " + toArabicDigits(sheet.total), "success");
+    mount();
+    return true;
+  });
 };
 
 window.payOpen = function (id) {
@@ -27407,15 +27854,19 @@ window.permDefSet = function (k, val2) {
     mount(); return;
   }
   if (!DB.settings) DB.settings = {};
+  /* (٥٧٦) «فُعّلت/عُطّلت» بعد قبول الخادم — وإن رُفض عادت الصلاحيةُ كما كانت */
+  const _snap = JSON.stringify(DB.settings);
   const g = Object.assign({}, permsDefaults());
   g[String(k)] = !!val2;
   DB.settings.teacherPerms = g;
   DB.settings.id = DB.settings.id || "app";
-  persistSet("settings", DB.settings);
-
-  const item = TEACHER_PERMS.find(x => String(x.k) === String(k)) || {};
-  showToast((val2 ? "فُعّلت " : "عُطّلت ") + (item.h || ""), "success");
-  mount();
+  return saveOrUndo("settings", DB.settings, () => cfgUndo(_snap)).then(ok => {
+    if (!ok) return false;
+    const item = TEACHER_PERMS.find(x => String(x.k) === String(k)) || {};
+    showToast((val2 ? "فُعّلت " : "عُطّلت ") + (item.h || ""), "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -27469,6 +27920,8 @@ window.permDefSet = function (k, val2) {
     mount(); return;
   }
   if (!DB.settings) DB.settings = {};
+  /* (٥٧٦) «فُعّلت/عُطّلت» بعد قبول الخادم — وإن رُفض عادت الصلاحيةُ كما كانت */
+  const _snap = JSON.stringify(DB.settings);
   const g = Object.assign({}, permsDefaults());
   g[String(k)] = !!val2;
   DB.settings.teacherPerms = g;
@@ -27478,11 +27931,13 @@ window.permDefSet = function (k, val2) {
      المستندَ وحدَه للمعلّم، فلو كُتبت الكتلةُ كاملةً لاستطاع المعلّمُ أن
      يدوس كلَّ إعدادات النظام معها. ولأن loadSettings يدمج مستنداتِ
      settings جميعاً، يبقى DB.settings.teacherPerms مقروءاً كما كان. */
-  persistSet("settings", { id: "teacherPerms", teacherPerms: g });
-
-  const item = TEACHER_PERMS.find(x => String(x.k) === String(k)) || {};
-  showToast((val2 ? "فُعّلت " : "عُطّلت ") + (item.h || ""), "success");
-  mount();
+  return saveOrUndo("settings", { id: "teacherPerms", teacherPerms: g }, () => cfgUndo(_snap)).then(ok => {
+    if (!ok) return false;
+    const item = TEACHER_PERMS.find(x => String(x.k) === String(k)) || {};
+    showToast((val2 ? "فُعّلت " : "عُطّلت ") + (item.h || ""), "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -27612,11 +28067,16 @@ window.stuAppSave = function () {
     if (parts.length === 1) cfg[parts[0]] = on;
     else { cfg[parts[0]] = cfg[parts[0]] || {}; cfg[parts[0]][parts[1]] = on; }
   });
+  /* (٥٢٣) لقطةٌ تُعاد إن رُفض الحفظ، و«حُفظت» بعد قبول الخادم */
+  const _snap = JSON.stringify(DB.settings || {});
   DB.settings = DB.settings || {};
   DB.settings.studentApp = cfg;
-  persistSet("settings", Object.assign({ id: "general" }, DB.settings));
-  showToast("حُفظت إعداداتُ تطبيق الطالب", "success");
-  mount();
+  return Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, DB.settings))).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    showToast("حُفظت إعداداتُ تطبيق الطالب", "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -27673,11 +28133,16 @@ window.qaImagesSave = function () {
     /* روابطُ الصور وحدَها: ما ليس http(s) لا يُحفظ */
     if (v && /^https?:\/\//i.test(v)) out[r.id] = v;
   });
+  /* (٥٢٣) لقطةٌ تُعاد إن رُفض الحفظ، و«حُفظت» بعد قبول الخادم */
+  const _snap = JSON.stringify(DB.settings || {});
   DB.settings = DB.settings || {};
   DB.settings.qaImages = out;
-  persistSet("settings", Object.assign({ id: "general" }, DB.settings));
-  showToast("حُفظت صورُ القرّاء", "success");
-  mount();
+  return Promise.resolve(persistSet("settings", Object.assign({ id: "general" }, DB.settings))).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    showToast("حُفظت صورُ القرّاء", "success");
+    mount();
+    return true;
+  });
 };
 
 function setPanelBadges() {
@@ -27876,13 +28341,22 @@ window.spBadgeGrant = function (id, bid, on) {
   const st = (cur("students") || []).find(x => String(x.id) === String(id));
   if (!st) return;
   const u = (STATE && STATE.user) || {};
+  const had = Object.prototype.hasOwnProperty.call(st, "badgeAwards"), prev = st.badgeAwards;
   const g = Object.assign({}, st.badgeAwards || {});
   if (Number(on)) g[String(bid)] = { ts: Date.now(), by: u.name || u.email || "—" };
   else delete g[String(bid)];
   st.badgeAwards = g;
-  try { persistSet("students", st); } catch (e) { console.warn("persistSet:", e); }
-  showToast(Number(on) ? "مُنحت الشارة" : "سُحب المنح", "success");
-  window.spBadges(id);
+  /* (٥٧٧) «مُنحت/سُحب» بعد قبول الخادم — وإن رُفض عادت الشاراتُ كما كانت في النافذة */
+  return Promise.resolve(persistSet("students", st)).then(ok => {
+    if (ok === false) {
+      if (had) st.badgeAwards = prev; else delete st.badgeAwards;
+      window.spBadges(id);
+      return false;
+    }
+    showToast(Number(on) ? "مُنحت الشارة" : "سُحب المنح", "success");
+    window.spBadges(id);
+    return true;
+  });
 };
 
 function setPanelTeacherApp() {
@@ -27927,11 +28401,16 @@ window.twSave = function () {
   }
   const el = document.getElementById("twMsg");
   const txt = String((el && el.value) || "").trim();
+  /* (٥٢٣) لقطةٌ تُعاد إن رُفض الحفظ، و«حُفظت» بعد قبول الخادم */
+  const _snap = JSON.stringify(DB.settings || {});
   if (!DB.settings) DB.settings = {};
   DB.settings.teacherWelcome = txt;
-  persistSet("settings", { id: "teacherApp", teacherWelcome: txt });
-  showToast(txt ? "حُفظت رسالة الترحيب" : "أُزيلت رسالة الترحيب", "success");
-  mount();
+  return Promise.resolve(persistSet("settings", { id: "teacherApp", teacherWelcome: txt })).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    showToast(txt ? "حُفظت رسالة الترحيب" : "أُزيلت رسالة الترحيب", "success");
+    mount();
+    return true;
+  });
 };
 
 function setPanelMushaf() {
@@ -28271,17 +28750,26 @@ window.sctSave = function () {
   if (!name) { showToast("اسم التصنيف مطلوب", "warn"); return; }
   if (!Array.isArray(DB.supCats)) DB.supCats = [];
   const id = val("#scId");
+  /* (٥١٩) «حُفظ/أُضيف» بعد قبول الخادم — وإن رُفض يعود التصنيفُ كما كان أو يُرفع */
   if (id) {
     const r = DB.supCats.find(x => String(x.id) === String(id));
-    if (r) { r.name = name; r.desc = val("#scDesc") || ""; persistSet("supCats", r); }
-    showToast("حُفظ التصنيف", "success");
-  } else {
-    if (DB.supCats.some(x => String(x.name).trim() === name)) { showToast("اسم التصنيف مستخدم بالفعل", "warn"); return; }
-    const r = { id: "sc" + Date.now(), name, desc: val("#scDesc") || "", supers: [], active: true };
-    DB.supCats.push(r); persistSet("supCats", r);
-    showToast("أُضيف التصنيف", "success");
+    if (!r) { closeModal(); mount(); return; }
+    const _pn = r.name, _pd = r.desc;
+    r.name = name; r.desc = val("#scDesc") || "";
+    return Promise.resolve(persistSet("supCats", r)).then(ok => {
+      if (ok === false) { r.name = _pn; r.desc = _pd; mount(); return false; }
+      showToast("حُفظ التصنيف", "success");
+      closeModal(); mount(); return true;
+    });
   }
-  closeModal(); mount();
+  if (DB.supCats.some(x => String(x.name).trim() === name)) { showToast("اسم التصنيف مستخدم بالفعل", "warn"); return; }
+  const r = { id: "sc" + Date.now(), name, desc: val("#scDesc") || "", supers: [], active: true };
+  DB.supCats.push(r);
+  return Promise.resolve(persistSet("supCats", r)).then(ok => {
+    if (ok === false) { const i = DB.supCats.indexOf(r); if (i > -1) DB.supCats.splice(i, 1); mount(); return false; }
+    showToast("أُضيف التصنيف", "success");
+    closeModal(); mount(); return true;
+  });
 };
 
 /* تعيين المشرفين على التصنيف */
@@ -28305,20 +28793,30 @@ window.sctSupersSave = function () {
   const id = val("#scSupId");
   const r = (DB.supCats || []).find(x => String(x.id) === String(id));
   if (!r) return;
+  /* (٥٢٠) «عُيِّن» بعد قبول الخادم — وإن رُفض يعود المشرفون كما كانوا */
+  const _prev = (r.supers || []).slice();
   r.supers = [...document.querySelectorAll(".sc-pick input:checked")].map(x => x.value);
-  persistSet("supCats", r);
-  closeModal();
-  showToast("عُيِّن " + r.supers.length + " مشرف", "success");
-  mount();
+  return Promise.resolve(persistSet("supCats", r)).then(ok => {
+    if (ok === false) { r.supers = _prev; mount(); return false; }
+    closeModal();
+    showToast("عُيِّن " + r.supers.length + " مشرف", "success");
+    mount();
+    return true;
+  });
 };
 
 window.sctActive = function (id) {
   const r = (DB.supCats || []).find(x => String(x.id) === String(id));
   if (!r) return;
+  /* (٥٢١) «فُعِّل/أُوقف» بعد قبول الخادم — وإن رُفض يعود كما كان */
+  const _had = Object.prototype.hasOwnProperty.call(r, "active"), _prev = r.active;
   r.active = r.active === false;
-  persistSet("supCats", r);
-  showToast(r.active ? "فُعِّل التصنيف" : "أُوقف التصنيف", "success");
-  mount();
+  return Promise.resolve(persistSet("supCats", r)).then(ok => {
+    if (ok === false) { if (_had) r.active = _prev; else delete r.active; mount(); return false; }
+    showToast(r.active ? "فُعِّل التصنيف" : "أُوقف التصنيف", "success");
+    mount();
+    return true;
+  });
 };
 window.sctDelete = function () {
   const ids = sctSel();
@@ -29373,26 +29871,31 @@ window.trmActivateDo = function (id, keepPrev) {
   /* الكتابة في فترة العمل لا في معروضةٍ للقراءة */
   window.trmViewSet("", true);
 
-  DB.terms.forEach(t => {
-    const isIt = String(t.id) === String(id);
-    if (isIt) {
-      t.active = true; t.archived = false; t.paused = false; t.activatedAt = Date.now();
-    } else if (t.active === true && !target.parallel && !t.parallel) {
-      /* الأساسيةُ الجديدة تؤرشف الأساسيةَ السابقة — والموازيةُ تبقى */
-      t.active = false;
-      if (!keepPrev) { t.archived = true; t.archivedAt = Date.now(); archived++; }
-    } else {
-      return;
-    }
-    persistSet("terms", t);
+  /* (٥٧٨) الفترةُ المفعَّلة تُحفظ أوّلاً؛ فإن رفضها الخادمُ عادت كما كانت، ولم تُوقف
+     السابقةُ ولم تُؤرشف، ولا يُعلن «فُعّلت». وكانت السابقةُ تُؤرشف والجديدةُ مرفوضة،
+     فيبقى النظامُ بلا فترةٍ فعّالة */
+  const _snapT = JSON.parse(JSON.stringify(target));
+  target.active = true; target.archived = false; target.paused = false; target.activatedAt = Date.now();
+  return saveOrUndo("terms", target, () => recRestore(target, _snapT)).then(ok => {
+    if (!ok) return false;
+    DB.terms.forEach(t => {
+      if (t === target || String(t.id) === String(id)) return;
+      if (t.active === true && !target.parallel && !t.parallel) {
+        /* الأساسيةُ الجديدة تؤرشف الأساسيةَ السابقة — والموازيةُ تبقى */
+        t.active = false;
+        if (!keepPrev) { t.archived = true; t.archivedAt = Date.now(); archived++; }
+        persistSet("terms", t);
+      }
+    });
+
+    /* الموازيةُ تُفتح للعمل فور تفعيلها */
+    if (target.parallel) window.trmViewSet(String(id), true);
+
+    closeModal();
+    showToast("فُعّلت الفترة" + (archived ? " وأُرشفت السابقة" : ""), "success");
+    mount();
+    return true;
   });
-
-  /* الموازيةُ تُفتح للعمل فور تفعيلها */
-  if (target.parallel) window.trmViewSet(String(id), true);
-
-  closeModal();
-  showToast("فُعّلت الفترة" + (archived ? " وأُرشفت السابقة" : ""), "success");
-  mount();
 };
 
 /* =========================================================================
@@ -29799,6 +30302,10 @@ window.trmMigrateDo = function () {
   return r;
 };
 function trmMigrateDoIn() {
+  /* (٦٠٥) كلُّ كتابةٍ في الترحيل تُجمع نتيجتُها: لا يُعلن «رُحّل» إلا إن قبل الخادمُ
+     كلَّ ما كُتب، وإلا قيل عددُ المرفوض صراحةً (لا يُعاد ما قُبل تلقائياً — يُراجَع) */
+  const _migRes = [];
+  const _migSet = (coll, obj) => { const p = Promise.resolve(persistSet(coll, obj)); _migRes.push(p); return p; };
   if (MIG.from === MIG.to) return;
   if (!trmCanManage()) { showToast("الترحيلُ لمدير النظام ومدير المنشأة", "warn"); return; }
   /* ضغطتان متتاليتان لا تُنفِّذان مرّتين */
@@ -29825,7 +30332,7 @@ function trmMigrateDoIn() {
       .concat([String(MIG.from)], moves ? [String(MIG.to)] : []));
     if (moves) { c.termId = MIG.to; movedC++; }
     else { c.termId = MIG.from; frozenC++; }
-    persistSet("circles", c);
+    _migSet("circles", c);
   });
 
   /* الطلاب: المُختارون يستمرّون، وغيرهم يُعلَّمون غير نشطين ولا يُحذفون.
@@ -29855,7 +30362,7 @@ function trmMigrateDoIn() {
       s.stoppedAt = Date.now();
       s.stoppedReason = "لم يُرحَّل إلى الفترة الجديدة";
       s.termIds = uniq(tids.concat([String(MIG.from)]));
-      persistSet("students", s);
+      _migSet("students", s);
       stopped++;
       return;
     }
@@ -29910,14 +30417,14 @@ function trmMigrateDoIn() {
         });
       if (Object.keys(carry).length) myPlan.carryPos = carry;
 
-      persistSet("plans", myPlan);
+      _migSet("plans", myPlan);
       plansN++;
     }
 
     const destId = MIG.dest[String(s.id)];
     const c = destId && String(destId) !== String(s.circleId)
       ? (cur("circles") || []).find(x => String(x.id) === String(destId)) : null;
-    if (!c) { persistSet("students", s); return; }
+    if (!c) { _migSet("students", s); return; }
 
     const from = s.circle || "";
     s.circleId = String(c.id);
@@ -29925,7 +30432,7 @@ function trmMigrateDoIn() {
     s.teacher = c.teacher || s.teacher;
     s.teacherId = c.teacherId || s.teacherId;
     if (c.mosqueId) { s.mosqueId = c.mosqueId; s.mosque = c.mosque || s.mosque; }
-    persistSet("students", s);
+    _migSet("students", s);
     moved++;
 
     /* النقل يُوثَّق في سجلّ الطالب: من أين إلى أين ولماذا */
@@ -29939,7 +30446,7 @@ function trmMigrateDoIn() {
       };
       if (!Array.isArray(DB.moveLog)) DB.moveLog = [];
       DB.moveLog.push(log);
-      persistSet("moveLog", log);
+      _migSet("moveLog", log);
     } catch (e) {}
   });
 
@@ -29953,7 +30460,7 @@ function trmMigrateDoIn() {
     t.termIds = uniq((Array.isArray(t.termIds) ? t.termIds : []).map(String)
       .concat([String(MIG.from), String(MIG.to)]));
     t.termId = MIG.to;
-    persistSet("teachers", t);
+    _migSet("teachers", t);
     staffN++;
     /* نطاقه يُزامَن ليبقى حصره صحيحاً في الدورة الجديدة */
     try { if (typeof syncTeacherScope === "function") syncTeacherScope(t.id); } catch (e) {}
@@ -29994,7 +30501,7 @@ function trmMigrateDoIn() {
     if (a.status === "pending") a.status = "missed";
     a.settled = true;                 /* لا يُولَّد له تعويض في الفترة الجديدة */
     a.closedByTerm = true;
-    persistSet("assignments", a);
+    _migSet("assignments", a);
     closedA++;
   });
 
@@ -30013,10 +30520,18 @@ function trmMigrateDoIn() {
         n: { t: staffN, s: supsN, u: kept }
       }]).slice(-20);
     }
-    persistSet("terms", t);
+    _migSet("terms", t);
   });
 
   MIG.run = false;
+  return Promise.all(_migRes).then(rs => {
+  const _bad = rs.filter(x => x === false).length;
+  if (_bad) {
+    showToast("رفض الخادمُ حفظَ " + toArabicDigits(_bad) + " من " + toArabicDigits(rs.length) +
+              " سجلّاً في الترحيل — لم يكتمل؛ راجع الفترتين قبل إعادته", "warn");
+    mount();
+    return false;
+  }
   closeModal();
   showToast(`رُحّل ${toArabicDigits(kept)} طالباً و${toArabicDigits(movedC)} حلقة` +
             (supsN ? ` · ${toArabicDigits(supsN)} مشرفاً` : "") +
@@ -30026,6 +30541,8 @@ function trmMigrateDoIn() {
             (stopped ? ` · أُوقف ${toArabicDigits(stopped)}` : "") +
             (frozenC ? ` · بقيت ${toArabicDigits(frozenC)} حلقة في الفترة القديمة` : "") +
             (closedA ? ` · طُويت ${toArabicDigits(closedA)} واجباً معلَّقاً` : ""), "success");
+  return true;
+  });
 }
 
 /* لوحة الفترة النشطة — تُلحق بشاشة الفترات */
@@ -30182,31 +30699,41 @@ window.arcRun = function () {
 window.arcRunDo = function () {
   const list = arcCandidates();
   const r = arcRange();
-  let n = 0;
-  list.forEach(x => {
+  /* (٥٧٩) «أُرشف» بعد قبول الخادم — وما رُفض يعود غيرَ مؤرشف */
+  const kind = ARC.kind;
+  const items = list.map(x => {
+    const snap = JSON.parse(JSON.stringify(x));
     x.archived = true;
     x.archivedTermId = ARC.termId || "";
     x.archivedFrom = r.from || "";
     x.archivedTo = r.to || "";
     x.archivedAt = Date.now();
-    persistSet(ARC.kind, x);
-    n++;
+    return [x, () => recRestore(x, snap)];
   });
-  closeModal();
-  showToast("أُرشف " + toArabicDigits(n) + " سجلاً", "success");
-  mount();
+  return saveManyOrUndo(kind, items).then(res => {
+    if (res.bad) { mount(); return false; }
+    closeModal();
+    showToast("أُرشف " + toArabicDigits(res.ok) + " سجلاً", "success");
+    mount();
+    return true;
+  });
 };
 
 window.arcUndo = function (id) {
   /* من قاعدة البيانات مباشرةً: السجلُّ مؤرشفٌ فلا تراه cur */
   const x = (DB[ARC.kind] || []).find(y => String(y.id) === String(id));
   if (!x) return;
+  /* (٥٧٩) «أُخرج» بعد قبول الخادم — وإن رُفض بقي مؤرشفاً */
+  const snap = JSON.parse(JSON.stringify(x));
   x.archived = false;
   x.archivedTermId = "";
   x.archivedAt = 0;
-  persistSet(ARC.kind, x);
-  showToast("أُخرج من الأرشيف: " + (x.name || ""), "success");
-  mount();
+  return saveOrUndo(ARC.kind, x, () => recRestore(x, snap)).then(ok => {
+    if (!ok) return false;
+    showToast("أُخرج من الأرشيف: " + (x.name || ""), "success");
+    mount();
+    return true;
+  });
 };
 
 function setPanelArchive() {
@@ -31374,10 +31901,15 @@ window.reglCreate = function (mqId) {
   if (name.length < 3) { showToast("اكتب اسمَ الرابط", "warn"); return; }
   const m = (DB.mosques || []).find(x => String(x.id) === String(mqId));
   if (!m) return;
+  /* (٥٢٢) «أُنشئ الرابط» بعد قبول الخادم — وإن رُفض لا يبقى رابطٌ لم يُحفظ */
+  const _had = Object.prototype.hasOwnProperty.call(m, "regLinks"), _prev = m.regLinks;
   m.regLinks = reglLinks(m).concat([{ id: "rl" + Date.now(), name, at: Date.now() }]);
-  persistSet("mosques", m);
-  showToast("أُنشئ الرابط «" + name + "»", "success");
-  mount();
+  return Promise.resolve(persistSet("mosques", m)).then(ok => {
+    if (ok === false) { if (_had) m.regLinks = _prev; else delete m.regLinks; mount(); return false; }
+    showToast("أُنشئ الرابط «" + name + "»", "success");
+    mount();
+    return true;
+  });
 };
 window.reglOpen = function (mqId, linkId, tab) {
   Object.assign(REGL, { open: String(linkId || ""), mq: String(mqId || ""), tab: tab || "new", sel: {}, rowC: {}, rowP: {}, cAll: "", pAll: "" });
@@ -31445,35 +31977,41 @@ window.reglRegisterNew = function () {
                    lid: pk.levelId || "", cat: pk.category || "" }; });
   /* يُعيَّن المسجدُ المطلوب للرابط قبل الاعتماد، فيُكتب انتماؤه بالطريق القائم */
   ready.forEach(u => { if (!u.requestedMosqueId) u.requestedMosqueId = REGL.mq; });
-  window.urqDecide("approved", ready.map(u => "self:" + u.id));
-  let done = 0;
-  ready.forEach(u => {
-    const st = (DB.students || []).find(s => s && ((u.uid && String(s.uid || "") === String(u.uid)) ||
-                                                   (u.studentId && String(s.id) === String(u.studentId))));
-    if (!st) return;
-    const c = regCircleOf(plan[u.id].cid, REGL.mq);
-    if (c) reglPutCircle(st, c);
-    const pr = (typeof programsForPick === "function" ? programsForPick() : []).find(p => String(p.id) === String(plan[u.id].pid));
-    if (pr) st.program = pr.name || st.program;
-    /* المستوى الذي اختاره الطالبُ — إن كان من البرنامج المسجَّل فيه */
-    const lv = pr && plan[u.id].lid && !/^sys_/.test(String(pr.id)) ? lvxOf(pr.id).find(x => String(x.id) === String(plan[u.id].lid)) : null;
-    if (lv) { st.levelId = String(lv.id); st.level = lv.name || ""; }
-    if (plan[u.id].cat && !st.category) st.category = plan[u.id].cat;
-    if (u.notes && !st.notes) st.notes = u.notes;
-    if (Array.isArray(u.regAnswers) && u.regAnswers.length && !st.regAnswers) st.regAnswers = u.regAnswers;
-    st.enrollType = st.enrollType || "plan";
-    if (u.idNo) st.idNo = String(u.idNo);
-    ["nameEn", "birth", "whatsapp", "parentWhatsapp"].forEach(k => { if (u[k] && !st[k]) st[k] = u[k]; });
-    if (u.parentWhatsapp && (!st.parent || st.parent === "—")) st.parent = u.parentWhatsapp;
-    st.status = "نشط";
-    persistSet("students", st);
-    /* المستوى الذي سُجّل فيه منهجُه من أوّل يوم */
-    if (lv && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
-    done++;
+  /* (٦٠١) يُسجَّل في الحلقة مَن قَبِل الخادمُ اعتمادَه وحدَه — ولا يُعلن «سُجِّل» لغيره */
+  return Promise.resolve(window.urqDecide("approved", ready.map(u => "self:" + u.id))).then(acc => {
+    const okIds = new Set(Array.isArray(acc) ? acc : []);
+    let done = 0;
+    ready.forEach(u => {
+      if (!okIds.has("self:" + u.id)) return;
+      const st = (DB.students || []).find(s => s && ((u.uid && String(s.uid || "") === String(u.uid)) ||
+                                                     (u.studentId && String(s.id) === String(u.studentId))));
+      if (!st) return;
+      const c = regCircleOf(plan[u.id].cid, REGL.mq);
+      if (c) reglPutCircle(st, c);
+      const pr = (typeof programsForPick === "function" ? programsForPick() : []).find(p => String(p.id) === String(plan[u.id].pid));
+      if (pr) st.program = pr.name || st.program;
+      /* المستوى الذي اختاره الطالبُ — إن كان من البرنامج المسجَّل فيه */
+      const lv = pr && plan[u.id].lid && !/^sys_/.test(String(pr.id)) ? lvxOf(pr.id).find(x => String(x.id) === String(plan[u.id].lid)) : null;
+      if (lv) { st.levelId = String(lv.id); st.level = lv.name || ""; }
+      if (plan[u.id].cat && !st.category) st.category = plan[u.id].cat;
+      if (u.notes && !st.notes) st.notes = u.notes;
+      if (Array.isArray(u.regAnswers) && u.regAnswers.length && !st.regAnswers) st.regAnswers = u.regAnswers;
+      st.enrollType = st.enrollType || "plan";
+      if (u.idNo) st.idNo = String(u.idNo);
+      ["nameEn", "birth", "whatsapp", "parentWhatsapp"].forEach(k => { if (u[k] && !st[k]) st[k] = u[k]; });
+      if (u.parentWhatsapp && (!st.parent || st.parent === "—")) st.parent = u.parentWhatsapp;
+      st.status = "نشط";
+      persistSet("students", st);
+      /* المستوى الذي سُجّل فيه منهجُه من أوّل يوم */
+      if (lv && typeof stuAdoptLevel === "function") stuAdoptLevel(st);
+      done++;
+    });
+    if (okIds.size < ready.length) { mount(); return false; }
+    showToast("سُجِّل " + toArabicDigits(done) + " طالباً" + (miss.length ? " · " + toArabicDigits(miss.length) + " بلا حلقة لم يُسجَّلوا" : ""),
+              miss.length ? "warn" : "success");
+    mount();
+    return true;
   });
-  showToast("سُجِّل " + toArabicDigits(done) + " طالباً" + (miss.length ? " · " + toArabicDigits(miss.length) + " بلا حلقة لم يُسجَّلوا" : ""),
-            miss.length ? "warn" : "success");
-  mount();
 };
 
 /* المسجّلون سابقاً: يُربط حسابُ الطلب بملفّه القائم (studentId) ثمّ يُعتمد —
@@ -31482,23 +32020,40 @@ function reglPrevApply(kind, uids, cid) {
   const sp = reglSplit(REGL.open, REGL.mq);
   const c = cid ? regCircleOf(cid, REGL.mq) : null;
   if (kind !== "activate" && !c) { showToast("اختر الحلقة", "warn"); return; }
-  let n = 0, skip = 0;
-  const ids = [];
+  let n = 0, skip = 0, refused = 0;
+  /* (٦٠١) ملفُّ الطالب يُحفظ أوّلاً؛ المرفوضُ يعود كما كان (حلقتُه وحالُه) ولا يُعتمد
+     حسابُه، ولا يُعلن «فُعّل/انضمّ/نُقل» إلا بعد قبول الخادم */
+  const jobs = [];
   sp.prev.forEach(({ u, st }) => {
     if (uids.indexOf(String(u.id)) < 0) return;
     if (kind === "activate" && st.status !== "متوقف" && st.circleId) skip++;   /* النشطُ يتخطّى */
+    const _snapS = JSON.parse(JSON.stringify(st));
+    const _hadSid = Object.prototype.hasOwnProperty.call(u, "studentId"), _sid = u.studentId;
     u.studentId = String(st.id);
-    ids.push("self:" + u.id);
     if (kind !== "activate") reglPutCircle(st, c);
     st.status = "نشط";
-    persistSet("students", st);
-    n++;
+    jobs.push(Promise.resolve(persistSet("students", st)).then(ok => {
+      if (ok === false) {
+        recRestore(st, _snapS);
+        if (_hadSid) u.studentId = _sid; else delete u.studentId;
+        refused++; return null;
+      }
+      n++;
+      return "self:" + u.id;
+    }));
   });
-  if (ids.length) window.urqDecide("approved", ids);
-  closeModal();
-  showToast((kind === "activate" ? "فُعّل " : kind === "join" ? "انضمّ " : "نُقل ") + toArabicDigits(n) + " طالباً" +
-            (skip ? " · " + toArabicDigits(skip) + " نشطٌ في حلقته أصلاً" : ""), n ? "success" : "warn");
-  mount();
+  return Promise.all(jobs).then(rs => {
+    const ids = rs.filter(Boolean);
+    return Promise.resolve(ids.length ? window.urqDecide("approved", ids) : []).then(acc => {
+      const okN = Array.isArray(acc) ? acc.length : 0;
+      if (refused || okN < ids.length) { mount(); return false; }
+      closeModal();
+      showToast((kind === "activate" ? "فُعّل " : kind === "join" ? "انضمّ " : "نُقل ") + toArabicDigits(n) + " طالباً" +
+                (skip ? " · " + toArabicDigits(skip) + " نشطٌ في حلقته أصلاً" : ""), n ? "success" : "warn");
+      mount();
+      return true;
+    });
+  });
 }
 window.reglPrev = function (kind, uid) {
   const uids = uid ? [String(uid)] : Object.keys(REGL.sel);
@@ -31520,22 +32075,32 @@ window.reglPrevGo = function (kind, uids) {
 window.reglAsk = function () {
   const sp = reglSplit(REGL.open, REGL.mq);
   const m = (DB.mosques || []).find(x => String(x.id) === String(REGL.mq)) || {};
-  let n = 0;
+  /* (٥٨٠) يُحفظ الطلبُ أوّلاً، ولا يُبلَّغ صاحبُ الحساب ولا يُعلن «أُرسل» إلا بعد قبول الخادم */
+  const jobs = [];
   sp.appr.forEach(({ u, st }) => {
     if (!REGL.sel[String(u.id)]) return;
     const acc = (DB.users || []).find(x => x && x !== u && x.active !== false &&
       ((x.studentId && String(x.studentId) === String(st.id)) || (st.uid && String(x.uid || "") === String(st.uid))));
-    try {
-      if (acc && typeof notifyUser === "function")
-        notifyUser(acc.id, "regTransfer", "طلبُ تسجيلٍ في «" + (m.name || "مسجد") + "» برقم هويتك — راجع إدارتك للموافقة.", "طلب موافقة");
-    } catch (e) {}
+    const had = Object.prototype.hasOwnProperty.call(u, "transferAsked"), prev = u.transferAsked;
     u.transferAsked = Date.now();
-    persistSet("users", u);
-    n++;
+    jobs.push(Promise.resolve(persistSet("users", u)).then(ok => {
+      if (ok === false) { if (had) u.transferAsked = prev; else delete u.transferAsked; return false; }
+      try {
+        if (acc && typeof notifyUser === "function")
+          notifyUser(acc.id, "regTransfer", "طلبُ تسجيلٍ في «" + (m.name || "مسجد") + "» برقم هويتك — راجع إدارتك للموافقة.", "طلب موافقة");
+      } catch (e) {}
+      return true;
+    }));
   });
-  REGL.sel = {};
-  showToast(n ? "أُرسل " + toArabicDigits(n) + " طلب" : "حدّد طالباً أوّلاً", n ? "success" : "warn");
-  mount();
+  if (!jobs.length) { showToast("حدّد طالباً أوّلاً", "warn"); mount(); return; }
+  return Promise.all(jobs).then(rs => {
+    const n = rs.filter(x => x === true).length;
+    if (rs.some(x => x === false)) { mount(); return false; }
+    REGL.sel = {};
+    showToast("أُرسل " + toArabicDigits(n) + " طلب", "success");
+    mount();
+    return true;
+  });
 };
 window.reglReject = function (uid) {
   window.urqDecide("rejected", ["self:" + uid]);
@@ -34766,23 +35331,33 @@ window.tmsgSend = function () {
 
   let sent = 0;
 
+  /* (٦٠٢) كلُّ رسالةٍ تُحفظ وتنتظر الخادم: المرفوضةُ تخرج من الذاكرة ولا يُرسل تنبيهُها،
+     ولا يُعلن «أُرسلت» ولا يُمسح النصّ إلا إن قُبلت كلُّها */
+  const _jobs = [];
+  let _bad = 0;
+  const _send = (rec, after) => Promise.resolve(persistSet("site_messages", rec)).then(ok => {
+    if (ok === false) {
+      const k = DB.site_messages.indexOf(rec); if (k > -1) DB.site_messages.splice(k, 1);
+      _bad++; return false;
+    }
+    sent++; after(); return true;
+  });
   if (TMSG.to === "admin") {
     const rec = Object.assign({ id: "tm" + Date.now(), toRole: "admin" }, base);
     if (!Array.isArray(DB.site_messages)) DB.site_messages = [];
     DB.site_messages.push(rec);
-    persistSet("site_messages", rec);
-    sent = 1;
-
-    try {
-      if (typeof pushNotif === "function") {
-        pushNotif({
-          key: "tmsg|" + rec.id, toRole: "admin",
-          title: "رسالة من معلّم",
-          text: (t.name || "معلّم") + ": " + txt.slice(0, 60) + (txt.length > 60 ? "…" : ""),
-          type: "info", label: "رسالة"
-        });
-      }
-    } catch (e) {}
+    _jobs.push(_send(rec, () => {
+      try {
+        if (typeof pushNotif === "function") {
+          pushNotif({
+            key: "tmsg|" + rec.id, toRole: "admin",
+            title: "رسالة من معلّم",
+            text: (t.name || "معلّم") + ": " + txt.slice(0, 60) + (txt.length > 60 ? "…" : ""),
+            type: "info", label: "رسالة"
+          });
+        }
+      } catch (e) {}
+    }));
 
   } else {
     /* الرسالةُ العامة للحلقة: مستقبلوها طلابُها جميعاً — بصلاحية msgCircle */
@@ -34826,29 +35401,33 @@ window.tmsgSend = function () {
 
       if (!Array.isArray(DB.site_messages)) DB.site_messages = [];
       DB.site_messages.push(rec);
-      persistSet("site_messages", rec);
-      sent++;
-
-      /* الوجهةُ في التنبيه: بالمعرّف إن وُجد، وإلا بالطالب فيصله ووليَّه */
-      try {
-        if (typeof pushNotif === "function") {
-          pushNotif(Object.assign({
-            key: "tmsg|" + rec.id,
-            title, text: txt.slice(0, 70) + (txt.length > 70 ? "…" : ""),
-            type: "info", label: "رسالة"
-          }, toId ? { toId } : { studentId: String(st.id) }));
-        }
-      } catch (e) {}
+      _jobs.push(_send(rec, () => {
+        /* الوجهةُ في التنبيه: بالمعرّف إن وُجد، وإلا بالطالب فيصله ووليَّه */
+        try {
+          if (typeof pushNotif === "function") {
+            pushNotif(Object.assign({
+              key: "tmsg|" + rec.id,
+              title, text: txt.slice(0, 70) + (txt.length > 70 ? "…" : ""),
+              type: "info", label: "رسالة"
+            }, toId ? { toId } : { studentId: String(st.id) }));
+          }
+        } catch (e) {}
+      }));
     });
   }
 
-  const tt = document.getElementById("tmText"); if (tt) tt.value = "";
-  const th = document.getElementById("tmTitle"); if (th) th.value = "";
-  TMSG.picked = [];
+  return Promise.all(_jobs).then(() => {
+    /* ما رُفض: يبقى النصُّ والاختيار ليُعاد الإرسال، ولا يُعلن «أُرسلت» */
+    if (_bad) { mount(); return false; }
+    const tt = document.getElementById("tmText"); if (tt) tt.value = "";
+    const th = document.getElementById("tmTitle"); if (th) th.value = "";
+    TMSG.picked = [];
 
-  showToast("أُرسلت إلى " + toArabicDigits(sent) +
-    (TMSG.to === "admin" ? " جهة" : sent === 1 ? " مستلم" : " مستلمين"), "success");
-  mount();
+    showToast("أُرسلت إلى " + toArabicDigits(sent) +
+      (TMSG.to === "admin" ? " جهة" : sent === 1 ? " مستلم" : " مستلمين"), "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -34911,10 +35490,15 @@ window.notifRead = function (id) {
 };
 
 window.notifReadAll = function () {
-  let k = 0;
-  tchNotifs().forEach(n => { if (!n.read) { n.read = true; k++; try { persistSet("notifications", n); } catch (e) { console.warn("persistSet:", e); } } });
-  if (k) showToast("عُلّمت " + toArabicDigits(k) + " تنبيهاً كمقروء", "success");
-  mount();
+  /* (٥٨١) «عُلّمت» بعد قبول الخادم — وما رُفض يبقى غيرَ مقروء */
+  const items = [];
+  tchNotifs().forEach(n => { if (!n.read) { const prev = n.read; n.read = true; items.push([n, () => { n.read = prev; }]); } });
+  if (!items.length) { mount(); return; }
+  return saveManyOrUndo("notifications", items).then(res => {
+    if (res.ok && !res.bad) showToast("عُلّمت " + toArabicDigits(res.ok) + " تنبيهاً كمقروء", "success");
+    mount();
+    return !res.bad;
+  });
 };
 
 const NTF = { open: false };
@@ -37528,20 +38112,25 @@ window.tsplSave = function () {
   }
   if (!got.length) { showToast("أدخل مقدارَ جلسةٍ واحدةٍ على الأقل", "warn"); return; }
 
+  /* (٥٨٢) الجلساتُ تُحفظ أوّلاً؛ فإن رفضها الخادمُ عاد الواجبُ كما كان ولم يُغلق،
+     وبقيت النافذةُ بأرقامها ولا يُعلن «حُفظت» */
+  const _snap = JSON.parse(JSON.stringify(a));
+  const sc = val("#sp_score", "");
   if (!Array.isArray(a.parts)) a.parts = [];
   got.forEach(p => a.parts.push(p));
   a.doneQty  = asgDoneQty(a);
   a.shortQty = asgRemain(a);
-  persistSet("assignments", a);
-
-  /* التقييمُ النهائيُّ في الأعلى: يُحفظ عند إتمام التقسيمات فيُغلق الواجب */
-  const sc = val("#sp_score", "");
-  if (a.shortQty <= 0 && sc !== "" && typeof window.asgClose === "function") {
-    window.asgClose(a.id, Number(sc));
-  }
-  closeModal();
-  showToast("حُفظت " + toArabicDigits(got.length) + " جلسة", "success");
-  mount();
+  return saveOrUndo("assignments", a, () => recRestore(a, _snap)).then(ok => {
+    if (!ok) return false;
+    /* التقييمُ النهائيُّ في الأعلى: يُحفظ عند إتمام التقسيمات فيُغلق الواجب */
+    if (a.shortQty <= 0 && sc !== "" && typeof window.asgClose === "function") {
+      window.asgClose(a.id, Number(sc));
+    }
+    closeModal();
+    showToast("حُفظت " + toArabicDigits(got.length) + " جلسة", "success");
+    mount();
+    return true;
+  });
 };
 
 window.tstuQtySave = function (id) {
@@ -38939,10 +39528,15 @@ window.rtCfgSave = function () {
     k: x.k, h: (val("#rt_h_" + i) || x.h),
     on: !!(document.getElementById("rt_on_" + i) || {}).checked
   }));
+  /* (٥٢٣) لقطةٌ تُعاد إن رُفض الحفظ، و«حُفظت» بعد قبول الخادم */
+  const _snap = JSON.stringify(DB.settings || {});
   DB.settings = DB.settings || {}; DB.settings.ratingItems = list;
-  persistSet("settings", { id: "teacherRate", ratingItems: list });
-  showToast("حُفظت عناصرُ تقييم المعلّم", "success");
-  mount();
+  return Promise.resolve(persistSet("settings", { id: "teacherRate", ratingItems: list })).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    showToast("حُفظت عناصرُ تقييم المعلّم", "success");
+    mount();
+    return true;
+  });
 };
 
 /* نافذةُ إدخال التقييم — للإدارة والمشرف */
@@ -38999,12 +39593,20 @@ window.tchRateSave = function (tid) {
 
   if (!Array.isArray(DB.reviews)) DB.reviews = [];
   const i = DB.reviews.findIndex(x => String(x.id) === String(rec.id));
+  const _old = i > -1 ? DB.reviews[i] : null;
   if (i > -1) DB.reviews[i] = rec; else DB.reviews.push(rec);
-  try { persistSet("reviews", rec); } catch (e) { console.warn("persistSet:", e); }
 
-  closeModal();
-  showToast("حُفظ تقييمُ " + (t.name || "المعلّم"), "success");
-  mount();
+  /* (٥٨٣) «حُفظ» بعد قبول الخادم — وإن رُفض عاد التقييمُ السابق (أو خرج الجديد) وبقيت النافذة */
+  return saveOrUndo("reviews", rec, () => {
+    const k = DB.reviews.indexOf(rec);
+    if (k > -1) { if (_old) DB.reviews[k] = _old; else DB.reviews.splice(k, 1); }
+  }).then(ok => {
+    if (!ok) return false;
+    closeModal();
+    showToast("حُفظ تقييمُ " + (t.name || "المعلّم"), "success");
+    mount();
+    return true;
+  });
 };
 
 /* بطاقةُ التقييم في تقرير المعلّم — آخرُ شهرٍ ثمّ ما قبله */
@@ -39100,10 +39702,15 @@ window.evCfgSave = function () {
     k: x.k, h: (val("#ev_h_" + i) || x.h),
     on: !!(document.getElementById("ev_on_" + i) || {}).checked
   }));
+  /* (٥٢٣) لقطةٌ تُعاد إن رُفض الحفظ، و«حُفظت» بعد قبول الخادم */
+  const _snap = JSON.stringify(DB.settings || {});
   DB.settings = DB.settings || {}; DB.settings.evalItems = list;
-  persistSet("settings", { id: "teacherEval", evalItems: list });
-  showToast("حُفظت عناصرُ التقييم", "success");
-  mount();
+  return Promise.resolve(persistSet("settings", { id: "teacherEval", evalItems: list })).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    showToast("حُفظت عناصرُ التقييم", "success");
+    mount();
+    return true;
+  });
 };
 
 function reptCfgPanel() {
@@ -39131,10 +39738,15 @@ window.reptCfgSave = function () {
   const list = reportItems().map((x, i) => ({
     k: x.k, h: x.h, on: !!(document.getElementById("rp_on_" + i) || {}).checked
   }));
+  /* (٥٢٣) لقطةٌ تُعاد إن رُفض الحفظ، و«حُفظت» بعد قبول الخادم */
+  const _snap = JSON.stringify(DB.settings || {});
   DB.settings = DB.settings || {}; DB.settings.reportItems = list;
-  persistSet("settings", { id: "teacherReport", reportItems: list });
-  showToast("حُفظت عناصرُ التقرير", "success");
-  mount();
+  return Promise.resolve(persistSet("settings", { id: "teacherReport", reportItems: list })).then(ok => {
+    if (ok === false) { cfgUndo(_snap); mount(); return false; }
+    showToast("حُفظت عناصرُ التقرير", "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -39411,36 +40023,45 @@ window.recvSave = function () {
 
   if (!Array.isArray(DB.recitations)) DB.recitations = [];
   DB.recitations.push(rec);
-  persistSet("recitations", rec);
 
-  /* اعتمادُ الواجب: تخضرُّ علامتُه وينقص المتبقّي في إحصاء الحلقة */
-  try { if (typeof window.asgClose === "function") window.asgClose(a.id, score, rec.id); }
-  catch (e) { console.warn("asgClose:", e); }
+  /* (٥٨٥) التسميعُ يُحفظ أوّلاً؛ فإن رفضه الخادمُ خرج من الذاكرة، ولم يُعتمد الواجب
+     ولم تُبلَّغ الإدارة، وبقيت النافذةُ بتقييمها ليُعاد الحفظ — ولا يُعلن «اعتُمد» */
+  return saveOrUndo("recitations", rec, () => {
+    const k = DB.recitations.indexOf(rec); if (k > -1) DB.recitations.splice(k, 1);
+    RECV.full = fullDone; RECV.saving = false;
+  }).then(ok => {
+    if (!ok) return false;
 
-  /* والإدارةُ تُبلَّغ: ما سُمِّع اليومَ وما سيُسمَّع غداً */
-  try { recvNotifyAdmin(a, score); } catch (e) { console.warn("recvNotifyAdmin:", e); }
+    /* اعتمادُ الواجب: تخضرُّ علامتُه وينقص المتبقّي في إحصاء الحلقة */
+    try { if (typeof window.asgClose === "function") window.asgClose(a.id, score, rec.id); }
+    catch (e) { console.warn("asgClose:", e); }
 
-  closeModal();
-  /* =======================================================================
-     «لا أريد الانتقال إلّا أن يريده المعلّمُ أو الإدارةُ بنفسه»
-     -----------------------------------------------------------------------
-     كان النظامُ ينتقل بعد كلّ اعتماد: إلى واجبٍ آخرَ يفتح صحيفتَه من
-     تلقائه، فإن فرغت واجباتُ الطالب انتقل إلى **طالبٍ آخرَ** في الحلقة.
-     فيجد المعلّمُ نفسَه في بطاقةٍ لم يفتحها وقد يعتمد لغير من أراد.
+    /* والإدارةُ تُبلَّغ: ما سُمِّع اليومَ وما سيُسمَّع غداً */
+    try { recvNotifyAdmin(a, score); } catch (e) { console.warn("recvNotifyAdmin:", e); }
 
-     فصار يبقى حيث هو بعد الاعتماد — لا تُبدَّل بطاقةُ الطالب ولا الصفحةُ
-     ولا يُفتح شيءٌ من تلقائه — ويُقال له ما بقي ليذهب إليه متى شاء.
-     والدالّتان recvNext و recvNextStudent باقيتان كما هما: تُقرأ منهما
-     الرسالةُ ولا يُنقَل بهما.
-     ======================================================================= */
-  const nx = recvNext(a);
-  const nxSt = nx ? null : recvNextStudent(a);
-  MUSD.asgId = ""; MUSD.kind = ""; MUSD.name = "";
-  showToast("اعتُمد التسميع" +
-    (nx ? " — بقي له: " + (nx.kindName || "واجبٌ آخر")
-        : nxSt ? " — وبقي في الحلقة: " + (nxSt.name || "طالبٌ آخر")
-               : " — لا واجباتٍ أخرى"), "success");
-  mount();
+    closeModal();
+    /* =======================================================================
+       «لا أريد الانتقال إلّا أن يريده المعلّمُ أو الإدارةُ بنفسه»
+       -----------------------------------------------------------------------
+       كان النظامُ ينتقل بعد كلّ اعتماد: إلى واجبٍ آخرَ يفتح صحيفتَه من
+       تلقائه، فإن فرغت واجباتُ الطالب انتقل إلى **طالبٍ آخرَ** في الحلقة.
+       فيجد المعلّمُ نفسَه في بطاقةٍ لم يفتحها وقد يعتمد لغير من أراد.
+
+       فصار يبقى حيث هو بعد الاعتماد — لا تُبدَّل بطاقةُ الطالب ولا الصفحةُ
+       ولا يُفتح شيءٌ من تلقائه — ويُقال له ما بقي ليذهب إليه متى شاء.
+       والدالّتان recvNext و recvNextStudent باقيتان كما هما: تُقرأ منهما
+       الرسالةُ ولا يُنقَل بهما.
+       ======================================================================= */
+    const nx = recvNext(a);
+    const nxSt = nx ? null : recvNextStudent(a);
+    MUSD.asgId = ""; MUSD.kind = ""; MUSD.name = "";
+    showToast("اعتُمد التسميع" +
+      (nx ? " — بقي له: " + (nx.kindName || "واجبٌ آخر")
+          : nxSt ? " — وبقي في الحلقة: " + (nxSt.name || "طالبٌ آخر")
+                 : " — لا واجباتٍ أخرى"), "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -44405,6 +45026,7 @@ async function saveBulkDuty() {
   };
 
   const btn = document.querySelector('[data-action="save-bulk-duty"]');
+  const _btnHtml = btn ? btn.innerHTML : "";
   if (btn) { btn.disabled = true; btn.textContent = "جارٍ الحفظ…"; }
 
   if (!Array.isArray(DB.plans)) DB.plans = [];
@@ -44412,6 +45034,9 @@ async function saveBulkDuty() {
 
   for (const st of list) {
     let p = planOfStudent(st);
+    /* (٥٩٨) الخطةُ المرفوضة تعود كما كانت (والجديدةُ تخرج)، ولا يُكتب لها واجبٌ —
+       كان الواجبُ يُكتب والخطةُ مرفوضة */
+    const _pSnap = p ? JSON.parse(JSON.stringify(p)) : null;
     if (!p) {
       /* =================================================================
          الخطةُ الجديدةُ تُختم بنطاق صاحبها وإلا لم يرَها من أنشأها
@@ -44437,7 +45062,12 @@ async function saveBulkDuty() {
     p.updatedBy = u.email || "";
     p.updatedAt = Date.now();
     const r = await Promise.resolve(persistSet("plans", p));
-    if (r) ok++; else fail++;
+    if (r) ok++; else {
+      fail++;
+      if (_pSnap) recRestore(p, _pSnap);
+      else { const k = DB.plans.indexOf(p); if (k > -1) DB.plans.splice(k, 1); }
+      continue;
+    }
 
     /* =====================================================================
        «عايز أيَّ واجبٍ يُضاف يظهر في هذه الخانة»
@@ -44495,6 +45125,10 @@ async function saveBulkDuty() {
     } catch (e) { console.warn("saveBulkDuty:asg", e); }
   }
 
+  if (fail && !ok) {
+    if (btn) { btn.disabled = false; btn.innerHTML = _btnHtml; }
+    mount(); return false;
+  }
   STATE.dutySel = {};
   closeModal(); mount();
   showToast(fail ? "وصل " + toArabicDigits(ok) + " ولم يصل " + toArabicDigits(fail)
@@ -44526,21 +45160,27 @@ function modalLinkPlan() {
 
 function saveLinkPlans() {
   const rows = document.querySelectorAll(".lp-row select");
-  let n = 0;
+  /* (٥٨٧) «رُبطت» بعد قبول الخادم — وما رُفض يعود بلا ربط وتبقى النافذةُ باختياراتها */
+  const items = [];
   Array.prototype.forEach.call(rows, sel => {
     const sid = sel.value;
     if (!sid) return;
     const p = (DB.plans || []).find(x => String(x.id) === String(sel.dataset.plan));
     const st = (DB.students || []).find(x => String(x.id) === String(sid));
     if (!p || !st) return;
+    const snap = JSON.parse(JSON.stringify(p));
     p.studentId = String(st.id);
     p.student = st.name || p.student;
     p.circle = st.circle || p.circle;
-    persistSet("plans", p);
-    n++;
+    items.push([p, () => recRestore(p, snap)]);
   });
-  closeModal(); mount();
-  showToast(n ? "رُبطت " + toArabicDigits(n) + " خطة" : "لم تختر أي طالب", n ? "success" : "warn");
+  if (!items.length) { closeModal(); mount(); showToast("لم تختر أي طالب", "warn"); return; }
+  return saveManyOrUndo("plans", items).then(res => {
+    if (res.bad) { mount(); return false; }
+    closeModal(); mount();
+    showToast("رُبطت " + toArabicDigits(res.ok) + " خطة", "success");
+    return true;
+  });
 }
 
 const DCHK = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
@@ -44996,12 +45636,20 @@ function approveSession(circleId, auto) {
 
   if (!Array.isArray(DB.workflow)) DB.workflow = [];
   const i = DB.workflow.findIndex(x => String(x.id) === rec.id);
+  const _old = i > -1 ? DB.workflow[i] : null;
   if (i > -1) DB.workflow[i] = rec; else DB.workflow.push(rec);
-  persistSet("workflow", rec);
-  mount();
-  showToast(auto ? "اكتمل التحضير — اعتُمدت حلقة " + (c.name || "") + " تلقائياً"
-                 : "اعتُمدت حلقة " + (c.name || ""),
-            auto ? "success" : undefined);
+  /* (٥٩١) «اعتُمدت» بعد قبول الخادم — وإن رُفض عادت الجلسةُ غيرَ معتمدة */
+  return saveOrUndo("workflow", rec, () => {
+    const k = DB.workflow.indexOf(rec);
+    if (k > -1) { if (_old) DB.workflow[k] = _old; else DB.workflow.splice(k, 1); }
+  }).then(ok => {
+    if (!ok) return false;
+    mount();
+    showToast(auto ? "اكتمل التحضير — اعتُمدت حلقة " + (c.name || "") + " تلقائياً"
+                   : "اعتُمدت حلقة " + (c.name || ""),
+              auto ? "success" : undefined);
+    return true;
+  });
 }
 
 /* =========================================================================
@@ -45049,33 +45697,39 @@ window.unapproveSessionDo = function () {
   const sess = sessionOf(attDate(), circleId);
   const c = (cur("circles") || []).find(x => String(x.id) === String(circleId));
 
-  DB.workflow = (Array.isArray(DB.workflow) ? DB.workflow : []).filter(x => String(x.id) !== id);
-  persistDelete("workflow", id);
+  /* (٥٩٢) يُحذف الاعتمادُ أوّلاً؛ فإن رفضه الخادمُ بقيت الجلسةُ معتمدةً ولم يُرصد الفتح
+     ولا يُعلن «فُتح» */
+  const _wfOld = Array.isArray(DB.workflow) ? DB.workflow : [];
+  DB.workflow = _wfOld.filter(x => String(x.id) !== id);
+  return Promise.resolve(persistDelete("workflow", id)).then(ok => {
+    if (ok === false) { DB.workflow = _wfOld; mount(); return false; }
 
-  /* الفتح يُرصد بنصٍّ صريح: من فتح ومتى ولماذا وماذا كانت أرقامه */
-  try {
-    const me = (STATE && STATE.user) || {};
-    const rec = {
-      id: "lg" + Date.now() + "-uas",
-      ts: Date.now(), byUid: String(((STATE && STATE.user) || {}).uid || ""), act: "delete", coll: "workflow", collAr: "اعتماد الجلسات",
-      docId: id, subject: (c && c.name) || "",
-      by: me.name || me.email || "—",
-      role: typeof logRoleAr === "function" ? logRoleAr(me.role) : "",
-      changes: [{ k: "status", h: "الاعتماد", from: "معتمدة", to: "مفتوحة" }],
-      text: "فتح " + ((typeof logRoleAr === "function" ? logRoleAr(me.role) : "") || "") +
-            " (" + (me.name || "—") + ") اعتمادَ حلقة «" + ((c && c.name) || "") +
-            "» — السبب: " + why +
-            (sess ? " · كانت: حاضر " + (sess.present || 0) + " · غائب " + (sess.absent || 0) : "")
-    };
-    if (!Array.isArray(DB.auditLog)) DB.auditLog = [];
-    DB.auditLog.push(rec);
-    const db = typeof FDB === "function" ? FDB() : null;
-    if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(e => sideFail("auditLog", e));
-  } catch (e) {}
+    /* الفتح يُرصد بنصٍّ صريح: من فتح ومتى ولماذا وماذا كانت أرقامه */
+    try {
+      const me = (STATE && STATE.user) || {};
+      const rec = {
+        id: "lg" + Date.now() + "-uas",
+        ts: Date.now(), byUid: String(((STATE && STATE.user) || {}).uid || ""), act: "delete", coll: "workflow", collAr: "اعتماد الجلسات",
+        docId: id, subject: (c && c.name) || "",
+        by: me.name || me.email || "—",
+        role: typeof logRoleAr === "function" ? logRoleAr(me.role) : "",
+        changes: [{ k: "status", h: "الاعتماد", from: "معتمدة", to: "مفتوحة" }],
+        text: "فتح " + ((typeof logRoleAr === "function" ? logRoleAr(me.role) : "") || "") +
+              " (" + (me.name || "—") + ") اعتمادَ حلقة «" + ((c && c.name) || "") +
+              "» — السبب: " + why +
+              (sess ? " · كانت: حاضر " + (sess.present || 0) + " · غائب " + (sess.absent || 0) : "")
+      };
+      if (!Array.isArray(DB.auditLog)) DB.auditLog = [];
+      DB.auditLog.push(rec);
+      const db = typeof FDB === "function" ? FDB() : null;
+      if (db) db.collection("auditLog").doc(rec.id).set(rec).catch(e => sideFail("auditLog", e));
+    } catch (e) {}
 
-  closeModal();
-  showToast("فُتح الاعتماد — التعديل متاح الآن", "info");
-  mount();
+    closeModal();
+    showToast("فُتح الاعتماد — التعديل متاح الآن", "info");
+    mount();
+    return true;
+  });
 };
 
 function teacherApprove() {
@@ -49410,21 +50064,25 @@ window.asstSave = function () {
 
   const before = (c.assistants || []).length;
   const wasList = (c.assistants || []).slice();
+  const _had = Object.prototype.hasOwnProperty.call(c, "assistants");
   c.assistants = picked;
-  persistSet("circles", c);
+  /* (٥٨٦) الإسنادُ يُحفظ أوّلاً؛ فإن رُفض عاد المساعدون كما كانوا ولم يُمسّ نطاقُ أحد */
+  return saveOrUndo("circles", c, () => { if (_had) c.assistants = wasList; else delete c.assistants; }).then(ok => {
+    if (!ok) return false;
+    /* نطاق كلّ من أُضيف أو أُزيل: المساعد يكتب في الحلقة كالأصيل */
+    try {
+      if (typeof syncTeacherScope === "function") {
+        [...new Set(wasList.concat(picked))].forEach(id => syncTeacherScope(id));
+      }
+    } catch (e) {}
 
-  /* نطاق كلّ من أُضيف أو أُزيل: المساعد يكتب في الحلقة كالأصيل */
-  try {
-    if (typeof syncTeacherScope === "function") {
-      [...new Set(wasList.concat(picked))].forEach(id => syncTeacherScope(id));
-    }
-  } catch (e) {}
-
-  closeModal();
-  showToast(picked.length
-    ? "أُسند " + toArabicDigits(picked.length) + " معلّماً مساعداً"
-    : (before ? "أُلغي المساعدون" : "لم يُسند أحد"), "success");
-  mount();
+    closeModal();
+    showToast(picked.length
+      ? "أُسند " + toArabicDigits(picked.length) + " معلّماً مساعداً"
+      : (before ? "أُلغي المساعدون" : "لم يُسند أحد"), "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -49628,10 +50286,15 @@ window.admInterviewDo = function (state) {
 window.admState = function (id, state) {
   const a = (cur("admissions") || []).find(x => String(x.id) === String(id));
   if (!a) return;
+  /* (٥٨٤) «نُقل» بعد قبول الخادم — وإن رُفض بقي في حالته */
+  const prev = a.state;
   a.state = state;
-  persistSet("admissions", a);
-  showToast("نُقل إلى: " + admStateAr(state), "success");
-  mount();
+  return saveOrUndo("admissions", a, () => { a.state = prev; }).then(ok => {
+    if (!ok) return false;
+    showToast("نُقل إلى: " + admStateAr(state), "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -55694,8 +56357,12 @@ function attSaveAll() {
   const u = (STATE && STATE.user) || {};
   if (!Array.isArray(DB.attendance)) DB.attendance = [];
 
-  let n = 0, blocked = 0;
+  let n = 0, blocked = 0, refused = 0;
   const touched = [];      /* حلقاتُ ما حُضّر — تُفحص للاعتماد التلقائيّ */
+  /* (٥٩٧) كلُّ سجلٍّ يُحفظ وينتظر الخادم: المرفوضُ يعود كما كان ويبقى في المسوّدة،
+     ولا تخرج رسالةُ وليّ الأمر ولا يُحضَّر المعلّمُ ولا يُعتمد تلقائياً إلا لما قُبل —
+     كانت رسالةُ «غائب» تخرج والتحضيرُ مرفوض */
+  const jobs = [], keepDraft = {};
   ids.forEach(sid => {
     const st = DB.students.find(x => String(x.id) === String(sid));
     if (!st) return;
@@ -55730,38 +56397,50 @@ function attSaveAll() {
       by: u.email || "", ts: Date.now()
     };
 
-    /* رسالة ولي الأمر عند الاعتماد — «تخرج الرسالة فوراً» */
-    try {
-      if (d.status === "غائب" && !d.reason) {
-        msgFire("absent", { student: st, date: dateISO });
-      } else if (d.status === "متأخر") {
-        msgFire("late", { student: st, date: dateISO, minutes: rec.lateMin || 0 });
-      }
-    } catch (e) {}
     const i = DB.attendance.findIndex(r => String(r.id) === id);
+    const _old = i > -1 ? DB.attendance[i] : null;
     if (i > -1) DB.attendance[i] = rec; else DB.attendance.push(rec);
-    persistSet("attendance", rec);
-    if (rec.circleId) touched.push(String(rec.circleId));
-    n++;
+    jobs.push(Promise.resolve(persistSet("attendance", rec)).then(ok => {
+      if (ok === false) {
+        const k = DB.attendance.indexOf(rec);
+        if (k > -1) { if (_old) DB.attendance[k] = _old; else DB.attendance.splice(k, 1); }
+        keepDraft[sid] = d; refused++;
+        return;
+      }
+      /* رسالة ولي الأمر عند الاعتماد — «تخرج الرسالة فوراً» */
+      try {
+        if (d.status === "غائب" && !d.reason) {
+          msgFire("absent", { student: st, date: dateISO });
+        } else if (d.status === "متأخر") {
+          msgFire("late", { student: st, date: dateISO, minutes: rec.lateMin || 0 });
+        }
+      } catch (e) {}
+      if (rec.circleId) touched.push(String(rec.circleId));
+      n++;
+    }));
   });
 
-  STATE.attDraft = {};
-  STATE.attSel = {};
+  return Promise.all(jobs).then(() => {
+    STATE.attDraft = keepDraft;
+    STATE.attSel = {};
 
-  /* حضورُ المعلّم في كلّ حلقةٍ حُضّر طلابُها */
-  try { [...new Set(touched)].forEach(cid => staffAutoIn(cid, dateISO)); } catch (e) {}
+    /* حضورُ المعلّم في كلّ حلقةٍ حُضّر طلابُها */
+    try { [...new Set(touched)].forEach(cid => staffAutoIn(cid, dateISO)); } catch (e) {}
 
-  /* حلقاتُ ما حُضّر: تُفحص كلُّها فقد يشمل الحفظُ أكثرَ من حلقة */
-  try {
-    if (typeof autoApproveCheck === "function") {
-      [...new Set(touched)].forEach(cid => autoApproveCheck(cid));
-    }
-  } catch (e) {}
+    /* حلقاتُ ما حُضّر: تُفحص كلُّها فقد يشمل الحفظُ أكثرَ من حلقة */
+    try {
+      if (typeof autoApproveCheck === "function") {
+        [...new Set(touched)].forEach(cid => autoApproveCheck(cid));
+      }
+    } catch (e) {}
 
-  mount();
-  showToast("حُفظ تحضير " + n + " طالباً" + (blocked
-    ? " · تُخطّي " + toArabicDigits(blocked) + " (خارج صلاحيتك أو بعد مهلة التعديل)" : ""),
-    blocked ? "warn" : "success");
+    mount();
+    if (refused) return false;
+    showToast("حُفظ تحضير " + n + " طالباً" + (blocked
+      ? " · تُخطّي " + toArabicDigits(blocked) + " (خارج صلاحيتك أو بعد مهلة التعديل)" : ""),
+      blocked ? "warn" : "success");
+    return true;
+  });
 }
 
 /* حذف سجل حضور — كان يُعدَّل ولا يُحذف، فسجلٌ سُجّل بالخطأ لطالب
@@ -55889,20 +56568,25 @@ window.attLeaveDo = function () {
     String(a.date) === String(attDate()));
   if (!rec) return;
 
+  /* (٥٨٨) «رُصدت» بعد قبول الخادم — وإن رُفض عاد السجلُّ كما كان وبقيت النافذة */
+  const _snap = JSON.parse(JSON.stringify(rec));
   rec.leftAt = t;
   rec.leaveReason = val("#lv_why") || "";
 
   const sh = attendedShare(st, rec, attDate());
   if (sh) { rec.attendedPct = sh.pct; rec.attendedMin = sh.minutes; }
 
-  persistSet("attendance", rec);
-  closeModal();
+  return saveOrUndo("attendance", rec, () => recRestore(rec, _snap)).then(ok => {
+    if (!ok) return false;
+    closeModal();
 
-  showToast(sh
-    ? "حضر " + toArabicDigits(sh.pct) + "٪ من الحلقة — " +
-      (sh.exempt ? "يُعفى ممّا لم يُسمَّع" : "تُرحَّل واجباته تعويضاً")
-    : "رُصدت المغادرة", "success");
-  mount();
+    showToast(sh
+      ? "حضر " + toArabicDigits(sh.pct) + "٪ من الحلقة — " +
+        (sh.exempt ? "يُعفى ممّا لم يُسمَّع" : "تُرحَّل واجباته تعويضاً")
+      : "رُصدت المغادرة", "success");
+    mount();
+    return true;
+  });
 };
 
 window.attLeaveClear = function (studentId) {
@@ -56318,14 +57002,23 @@ document.addEventListener("click", (e) => {
     case "fix-plan-links": {
       /* يربط كل خطة بلا معرّف بالطالب صاحب الاسم نفسه */
       const studs = cur("students");
-      let n2 = 0;
+      /* (٦٠٦) «رُبطت» بعد قبول الخادم — وما رُفض يعود بلا ربط */
+      const _fx = [];
       (DB.plans || []).forEach(pl => {
         if (pl.studentId) return;
         const stx = studs.find(x => nameKey(x.name) === nameKey(pl.student));
-        if (stx) { pl.studentId = String(stx.id); persistSet("plans", pl); n2++; }
+        if (stx) {
+          const had = Object.prototype.hasOwnProperty.call(pl, "studentId"), prev = pl.studentId;
+          pl.studentId = String(stx.id);
+          _fx.push([pl, () => { if (had) pl.studentId = prev; else delete pl.studentId; }]);
+        }
       });
-      mount();
-      showToast(n2 ? "رُبطت " + toArabicDigits(n2) + " خطة بأصحابها" : "لا توجد خطة يمكن ربطها — الأسماء غير متطابقة", n2 ? "success" : "warn");
+      if (!_fx.length) { mount(); showToast("لا توجد خطة يمكن ربطها — الأسماء غير متطابقة", "warn"); break; }
+      saveManyOrUndo("plans", _fx).then(res => {
+        mount();
+        if (res.bad) return;
+        showToast("رُبطت " + toArabicDigits(res.ok) + " خطة بأصحابها", "success");
+      });
       break;
     }
     case "duty-approve": decideDuty(t.dataset.id, true); break;
@@ -56748,6 +57441,9 @@ document.addEventListener("click", (e) => {
     case "save-edit-student": {
       const s = DB.students.find(x => x.id == t.dataset.id);
       if (!s) { showToast("الطالب غير موجود", "warn"); break; }
+      /* (٦٠٦) لقطةٌ قبل التعديل: إن رفض الخادمُ الحفظ — أو رُدّ الحفظُ قبل الكتابة لسعة
+         الحلقة أو رقم الهوية — عاد السجلُّ في الشاشة كما كان، ولا يُعلن «تم الحفظ» */
+      const _esSnap = JSON.parse(JSON.stringify(s));
       const name = val("#es_name", s.name);
       if (!name) { showToast("اسم الطالب مطلوب", "warn"); break; }
       s.name = name;
@@ -56771,7 +57467,7 @@ document.addEventListener("click", (e) => {
         const _esRec0 = stuCircleRec(s, _newCir);
         const _newId  = _esRec0 ? String(_esRec0.id) : "";
         if (_newId && String(_newId) !== String(s.circleId || "") &&
-            typeof circleCapBlock === "function" && circleCapBlock(_newId, s.id)) break;
+            typeof circleCapBlock === "function" && circleCapBlock(_newId, s.id)) { recRestore(s, _esSnap); break; }
       }
       const esCircleRec = stuCircleRec(s, val("#es_circle", s.circle));
       s.circle = val("#es_circle", s.circle);
@@ -56803,7 +57499,7 @@ document.addEventListener("click", (e) => {
 
       /* البيانات الشخصية */
       { const eIdErr = stuIdNoError(val("#es_idno", s.idNo || ""), s.id);
-        if (eIdErr && String(val("#es_idno", "") || "") !== String(s.idNo || "")) { showToast(eIdErr, "warn"); break; } }
+        if (eIdErr && String(val("#es_idno", "") || "") !== String(s.idNo || "")) { recRestore(s, _esSnap); showToast(eIdErr, "warn"); break; } }
       { const _oldId = s.idNo;
         s.idNo = toLatinDigitsSafe(val("#es_idno", s.idNo || "")).trim();
         /* الرقمُ القديمُ يُخلى في الفهرس بين المساجد (٤٥٦) */
@@ -56816,11 +57512,13 @@ document.addEventListener("click", (e) => {
       s.address = val("#es_addr", s.address || "");
       s.health = val("#es_health", s.health || "");
 
-      persistSet("students", s);
-      /* برنامجٌ أو مستوىً أُسند هنا: منهجُه الذي يمشي عليه */
-      if (esChg && typeof stuAdoptLevel === "function") stuAdoptLevel(s);
-      closeModal(); mount();
-      showToast("تم حفظ تعديلات الطالب");
+      saveOrUndo("students", s, () => recRestore(s, _esSnap)).then(ok => {
+        if (!ok) return;
+        /* برنامجٌ أو مستوىً أُسند هنا: منهجُه الذي يمشي عليه */
+        if (esChg && typeof stuAdoptLevel === "function") stuAdoptLevel(s);
+        closeModal(); mount();
+        showToast("تم حفظ تعديلات الطالب");
+      });
       break;
     }
     /* زرُّ الحالة يتبدّل بحالة الطالب: إيقافٌ للفعّال وتفعيلٌ للموقوف */
@@ -56828,11 +57526,18 @@ document.addEventListener("click", (e) => {
       const st = DB.students.find(x => String(x.id) === String(t.dataset.id));
       if (!st) break;
       const wasOn = st.active !== false && st.status !== "متوقف";
+      /* (٦٠٦) «أُوقف/فُعّل» بعد قبول الخادم — وإن رُفض بقي على حاله */
+      const _tgSnap = { a: st.active, s: st.status, ha: Object.prototype.hasOwnProperty.call(st, "active") };
       st.active = !wasOn;
       st.status = wasOn ? "متوقف" : "نشط";
-      persistSet("students", st);
-      showToast(wasOn ? "أُوقف " + (st.name || "الطالب") : "فُعّل " + (st.name || "الطالب"), "success");
-      mount();
+      saveOrUndo("students", st, () => {
+        if (_tgSnap.ha) st.active = _tgSnap.a; else delete st.active;
+        st.status = _tgSnap.s;
+      }).then(ok => {
+        if (!ok) return;
+        showToast(wasOn ? "أُوقف " + (st.name || "الطالب") : "فُعّل " + (st.name || "الطالب"), "success");
+        mount();
+      });
       break;
     }
 
@@ -57470,8 +58175,13 @@ document.addEventListener("click", (e) => {
       const ext = PLAN_EXTRA[id] || (PLAN_EXTRA[id] = pl.ext);
       const req = ext.requests[i];
       if (!req) break;
+      /* (٦٠٧) «تمت الموافقة/تم الرفض» بعد قبول الخادم — وإن رُفض بقي الطلبُ معلّقاً */
+      const _rqPrev = req.status;
       req.status = a === "req-approve" ? "approved" : "rejected";
-      persistPlan(id); mount(); showToast(a === "req-approve" ? "تمت الموافقة" : "تم الرفض", a === "req-approve" ? "success" : "warn");
+      persistPlan(id).then(ok => {
+        if (ok === false) { req.status = _rqPrev; mount(); return; }
+        mount(); showToast(a === "req-approve" ? "تمت الموافقة" : "تم الرفض", a === "req-approve" ? "success" : "warn");
+      });
       break;
     }
 
@@ -58010,7 +58720,8 @@ window.fixAllScopes = function () {
   if (role !== "admin" && role !== "owner") {
     showToast("هذا الإصلاح لمدير النظام وحده", "warn"); return 0;
   }
-  let n = 0;
+  /* (٦٠٤) «صُحّح» بعد قبول الخادم — وما رُفض يعود كما كان */
+  const items = [];
   (Array.isArray(DB.users) ? DB.users : []).forEach(u => {
     if (!u || !Array.isArray(u.scopeIds) || !u.scopeIds.length) return;
     const mq = u.scopeIds.filter(k => String(k).indexOf("mosque:")  === 0).map(k => String(k).split(":")[1]);
@@ -58018,12 +58729,17 @@ window.fixAllScopes = function () {
     const same = a => Array.isArray(a) ? a.map(String).slice().sort().join(",") : null;
     if (same(u.mosqueIds) === mq.slice().sort().join(",") &&
         same(u.complexIds) === cx.slice().sort().join(",")) return;
+    const snap = JSON.parse(JSON.stringify(u));
     u.mosqueIds = mq; u.complexIds = cx;
-    persistSet("users", u); n++;
+    items.push([u, () => recRestore(u, snap)]);
   });
-  showToast(n ? ("صُحّح نطاقُ " + toArabicDigits(n) + " حساباً — اطلب منهم إعادة تحميل الصفحة")
-              : "لا حساب يحتاج تصحيحاً", n ? "success" : "info");
-  return n;
+  return saveManyOrUndo("users", items).then(res => {
+    const n = res.ok;
+    if (res.bad) return n;
+    showToast(n ? ("صُحّح نطاقُ " + toArabicDigits(n) + " حساباً — اطلب منهم إعادة تحميل الصفحة")
+                : "لا حساب يحتاج تصحيحاً", n ? "success" : "info");
+    return n;
+  });
 };
 
 window.fixMyScope = function () {
@@ -58912,14 +59628,40 @@ function cfgUndo(snap) {
   Object.keys(s).forEach(k => { if (!Object.prototype.hasOwnProperty.call(o, k)) delete s[k]; });
   Object.assign(s, o);
 }
+/* (٥٣٨) يحفظ، فإن رفض الخادمُ نُفِّذ ما يُعيد الحالَ كما كانت وأُعيد الرسمُ وأُرجع false.
+   الإعلانُ عن النجاح وما يتبعه يبقى في الدالّة نفسِها — بعد هذا الوعد */
+function saveOrUndo(coll, rec, undo) {
+  return Promise.resolve(persistSet(coll, rec)).then(ok => {
+    if (ok === false) { try { if (undo) undo(); } catch (e) {} mount(); return false; }
+    return true;
+  });
+}
+/* (٥٥١) حفظُ مجموعة سجلّاتٍ عُدّلت معاً: ما رُفض منها يعود كما كان. يُرجع عددَ المقبول وعددَ المرفوض */
+function saveManyOrUndo(coll, items) {
+  return Promise.all(items.map(([rec, undo]) => Promise.resolve(persistSet(coll, rec)).then(ok => {
+    if (ok === false) { try { if (undo) undo(); } catch (e) {} return false; }
+    return true;
+  }))).then(r => ({ ok: r.filter(x => x === true).length, bad: r.filter(x => x === false).length }));
+}
+/* نسخةٌ تُعاد بها حقولُ سجلٍّ كما كانت (تُحذف ما أُضيف وتُعاد القيم) */
+function recRestore(o, snap) {
+  Object.keys(o).forEach(k => { if (!Object.prototype.hasOwnProperty.call(snap, k)) delete o[k]; });
+  Object.assign(o, snap);
+}
+/* (٦٠٧) يُرجع وعداً بقيمةٍ منطقيّة: false إن منعه الحارس أو رفضه الخادم — ومن لا ينتظره يعمل كما كان */
 function persistPlan(id) {
-  const db = FDB(); if (!db) return;
-  const p = DB.plans.find(x => x.id == id); if (!p) return;
-  if (typeof guardArchived === "function" && guardArchived("plans", p)) return;
+  const db = FDB(); if (!db) return Promise.resolve(false);
+  const p = DB.plans.find(x => x.id == id); if (!p) return Promise.resolve(false);
+  if (typeof guardArchived === "function" && guardArchived("plans", p)) return Promise.resolve(false);
   const data = Object.assign({}, p, { ext: PLAN_EXTRA[id] || null });
   if (data._o == null) data._o = Date.now();
-  db.collection("plans").doc(String(id)).set(data)
-    .catch(err => persistFail("persistPlan", "plans", err));
+  return db.collection("plans").doc(String(id)).set(data)
+    .then(() => true)
+    .catch(err => {
+      persistFail("persistPlan", "plans", err);
+      const denied = err && (err.code === "permission-denied" || err.code === "unauthenticated");
+      return !denied;
+    });
 }
 /* ما يرتبط بالسجلّ المحذوف ويبقى بعده — عدٌّ للعرض فقط، لا يُكتب شيء (٤٣٠) */
 const DEL_LINKED = [["plans", "خطة"], ["assignments", "واجب"], ["attendance", "سجل حضور"],
@@ -58990,9 +59732,11 @@ function persistPatch(coll, obj, keys) {
     });
 }
 
+/* (٥٩٢) يُرجع وعداً بقيمةٍ منطقيّة كـ persistSet: false إن منعه حارسٌ أو رفضه الخادم،
+   ليعلم النداءُ فلا يُعلن «حُذف» على ما بقي. من لا ينتظره يعمل كما كان */
 function persistDelete(coll, id) {
   if (CUR_MEMO) CUR_MEMO = {};   /* والحذفُ كذلك (٤٢٥) */
-  const db = FDB(); if (!db) return;
+  const db = FDB(); if (!db) return Promise.resolve(false);
 
   try {
     if (typeof auditWrite === "function") {
@@ -59008,20 +59752,22 @@ function persistDelete(coll, id) {
     const gone = (Array.isArray(DB[coll]) ? DB[coll] : [])
       .find(x => x && String(x.id) === String(id));
     if (gone) {
-      if (typeof guardArchived === "function" && guardArchived(coll, gone)) return;
-      if (typeof guardSession === "function" && guardSession(coll, gone)) return;
+      if (typeof guardArchived === "function" && guardArchived(coll, gone)) return Promise.resolve(false);
+      if (typeof guardSession === "function" && guardSession(coll, gone)) return Promise.resolve(false);
     }
   } catch (e) {}
 
-  if (!isOnline()) { offqPush("delete", coll, { id }); return; }
+  if (!isOnline()) { offqPush("delete", coll, { id }); return Promise.resolve(true); }
 
-  db.collection(coll).doc(String(id)).delete()
+  return db.collection(coll).doc(String(id)).delete()
+    .then(() => true)
     .catch(err => {
       /* رفضُ القواعد ليس انقطاعاً (٤٣٢): كان يُدفع إلى طابور الرفع فيُعاد
          أبداً بلا طائل. يُعاد إلى الطابور الانقطاعُ وحده، كما في persistSet. */
       const denied = err && (err.code === "permission-denied" || err.code === "unauthenticated");
       if (!denied) offqPush("delete", coll, { id });
       persistFail("persistDelete", coll, err);
+      return !denied;
     });
 }
 
