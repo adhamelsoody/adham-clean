@@ -3558,12 +3558,22 @@ window.tplMake = function (planId) {
 window.tplMakeDo = function (planId) {
   const p = (cur("plans") || []).find(x => String(x.id) === String(planId));
   if (!p) return;
+  /* (٥٠٦) «صارت قالباً» بعد قبول الخادم — وإن رُفض تعود الخطةُ كما كانت */
+  const _ht = Object.prototype.hasOwnProperty.call(p, "templateId"), _pt = p.templateId;
+  const _hn = Object.prototype.hasOwnProperty.call(p, "templateName"), _pn = p.templateName;
   p.templateId = String(p.id);
   p.templateName = p.program || p.level || p.student || "قالب";
-  persistSet("plans", p);
-  closeModal();
-  showToast("صارت قالباً — أسندها من المكتبة", "success");
-  mount();
+  return Promise.resolve(persistSet("plans", p)).then(ok => {
+    if (ok === false) {
+      if (_ht) p.templateId = _pt; else delete p.templateId;
+      if (_hn) p.templateName = _pn; else delete p.templateName;
+      mount(); return false;
+    }
+    closeModal();
+    showToast("صارت قالباً — أسندها من المكتبة", "success");
+    mount();
+    return true;
+  });
 };
 
 window.tplRename = function (tid) {
@@ -3586,15 +3596,25 @@ window.tplRenameDo = function () {
   if (!name) { showToast("الاسم مطلوب", "warn"); return; }
 
   /* الاسم يُكتب في كلّ نسخ القالب: البحث عنه يجري بها جميعاً */
+  /* (٥٠٧) «سُمّي» بعد قبول الخادم لكلّ خططه — وما رُفض منها يعود لاسمه السابق */
+  const jobs = [];
   (DB.plans || []).forEach(p => {
     if (String(p.templateId || "") !== String(tid)) return;
+    const prev = p.templateName;
     p.templateName = name;
-    persistSet("plans", p);
+    jobs.push(Promise.resolve(persistSet("plans", p)).then(ok => {
+      if (ok === false) { p.templateName = prev; return false; }
+      return true;
+    }));
   });
 
-  closeModal();
-  showToast("سُمّي القالب", "success");
-  mount();
+  return Promise.all(jobs).then(r => {
+    if (r.some(x => x === false)) { mount(); return false; }
+    closeModal();
+    showToast("سُمّي القالب", "success");
+    mount();
+    return true;
+  });
 };
 
 /* شاشة المكتبة */
@@ -6436,8 +6456,17 @@ window.userSave = function () {
   /* ---- تعديل: لا مساس بحساب الدخول ---- */
   if (id) {
     const u = DB.users.find(x => String(x.id) === String(id));
-    if (u) {
-      Object.assign(u, data); persistSet("users", u);
+    /* (٥٠٨) «حُفظت» ومزامنةُ سجلَّي المعلّم والطالب وتنبيهُ صاحب الحساب بعد قبول الخادم —
+       كانت كلُّها تقع ولو رُفض الحفظ. وإن رُفض يعود الحسابُ كما كان وتبقى النافذة */
+    if (!u) { photoReset("us_photo"); showToast("حُفظت البيانات", "success"); closeModal(); mount(); return; }
+    const _snap = JSON.parse(JSON.stringify(u));
+    Object.assign(u, data);
+    return Promise.resolve(persistSet("users", u)).then(ok => {
+      if (ok === false) {
+        Object.keys(u).forEach(k => { if (!Object.prototype.hasOwnProperty.call(_snap, k)) delete u[k]; });
+        Object.assign(u, _snap);
+        mount(); return false;
+      }
       syncTeacherRecord(u); syncStudentRecord(u);
       /* «تم تعديل بيانات حسابك» — لصاحب الحساب لا لمن عدّله */
       try {
@@ -6445,11 +6474,11 @@ window.userSave = function () {
         if (String(u.id) !== meId) notifyUser(u.id, "accountEdited",
           "عدّلت الإدارةُ بياناتِ حسابك.");
       } catch (e) {}
-    }
-    photoReset("us_photo");
-    showToast("حُفظت البيانات", "success");
-    closeModal(); mount();
-    return;
+      photoReset("us_photo");
+      showToast("حُفظت البيانات", "success");
+      closeModal(); mount();
+      return true;
+    });
   }
 
   /* ---- إضافة: يُنشأ حساب دخول حقيقي، ومعرّف المستند = uid ---- */
@@ -6473,14 +6502,22 @@ window.userSave = function () {
       /* رفضُ الملفّ بعد إنشاء حساب الدخول يُقال بعينه (٤٣٥): يبقى حسابُ دخولٍ
          بلا ملفّ. وشاشةُ «الحسابات اليتيمة» في js/accounts.js غيرُ محمَّلة،
          فيُدلّ على الموضع الذي يُحذف منه فعلاً، باسم الحساب (٤٤٠). */
-      Promise.resolve(persistSet("users", u)).then(ok => {
-        if (ok === false) showToast("أُنشئ حساب الدخول ورفض الخادمُ حفظَ ملفّه — يبقى حسابُ دخولٍ بلا ملفّ: يحذفه مديرُ النظام من Firebase Console ← Authentication (" + (res.loginEmail || "") + ")", "warn");
+      /* (٥٠٨) وفي الإضافة: «أُضيف» والمزامنةُ وبياناتُ الدخول بعد قبول الخادم ملفَّ الحساب —
+         وإن رُفض يُرفع الملفُّ من الذاكرة ويُقال عن حساب الدخول اليتيم بعينه */
+      return Promise.resolve(persistSet("users", u)).then(ok => {
+        if (ok === false) {
+          const i = DB.users.indexOf(u); if (i > -1) DB.users.splice(i, 1);
+          showToast("أُنشئ حساب الدخول ورفض الخادمُ حفظَ ملفّه — يبقى حسابُ دخولٍ بلا ملفّ: يحذفه مديرُ النظام من Firebase Console ← Authentication (" + (res.loginEmail || "") + ")", "warn");
+          if (btn) { btn.disabled = false; btn.textContent = "إضافة"; }
+          mount(); return false;
+        }
+        syncTeacherRecord(u);   /* يظهر فوراً في صفحة المعلمين وقوائم الحلقات */
+        syncStudentRecord(u);   /* وكذلك الطالب في صفحة الطلاب */
+        closeModal(); mount();
+        showToast("أُضيف " + (USER_ROLES.find(r => r.k === data.role) || {}).h, "success");
+        showCredentials(res, data.name);
+        return true;
       });
-      syncTeacherRecord(u);   /* يظهر فوراً في صفحة المعلمين وقوائم الحلقات */
-      syncStudentRecord(u);   /* وكذلك الطالب في صفحة الطلاب */
-      closeModal(); mount();
-      showToast("أُضيف " + (USER_ROLES.find(r => r.k === data.role) || {}).h, "success");
-      showCredentials(res, data.name);
     })
     .catch(err => {
       console.warn("createAuthUser:", err);
@@ -23230,29 +23267,40 @@ window.planFreezeDo = function (planId, on) {
   const p = (cur("plans") || []).find(x => String(x.id) === String(planId));
   if (!p) return;
 
+  /* (٥١٠) الخطةُ تُحفظ أوّلاً، وتسويةُ واجبات اليوم و«جُمّدت» بعد قبول الخادم —
+     كانت الواجباتُ تُعفى والرسالةُ تظهر ولو رُفض تجميدُ الخطة. وإن رُفض تعود كما كانت */
+  const _snap = JSON.parse(JSON.stringify(p));
   p.frozen = !!on;
   if (on) {
     p.frozenAt = Date.now();
     p.freezeReason = val("#pf_reason") || "";
     p.frozenBy = ((STATE && STATE.user) || {}).name || "";
-
-    /* الواجبات المعلَّقة اليوم تُسوَّى: التجميد إعفاء لا تأجيل */
-    const d = attDate();
-    (DB.assignments || []).forEach(a => {
-      if (String(a.studentId) !== String(p.studentId)) return;
-      if (String(a.date) !== String(d) || a.status !== "pending") return;
-      a.status = "excused"; a.settled = true; a.note = "الخطة مجمَّدة";
-      persistSet("assignments", a);
-    });
   } else {
     p.unfrozenAt = Date.now();
     p.frozen = false;
   }
 
-  persistSet("plans", p);
-  closeModal();
-  showToast(on ? "جُمّدت الخطة" : "فُكّ التجميد — تُولَّد الواجبات من الغد", "success");
-  mount();
+  return Promise.resolve(persistSet("plans", p)).then(ok => {
+    if (ok === false) {
+      Object.keys(p).forEach(k => { if (!Object.prototype.hasOwnProperty.call(_snap, k)) delete p[k]; });
+      Object.assign(p, _snap);
+      mount(); return false;
+    }
+    if (on) {
+      /* الواجبات المعلَّقة اليوم تُسوَّى: التجميد إعفاء لا تأجيل */
+      const d = attDate();
+      (DB.assignments || []).forEach(a => {
+        if (String(a.studentId) !== String(p.studentId)) return;
+        if (String(a.date) !== String(d) || a.status !== "pending") return;
+        a.status = "excused"; a.settled = true; a.note = "الخطة مجمَّدة";
+        persistSet("assignments", a);
+      });
+    }
+    closeModal();
+    showToast(on ? "جُمّدت الخطة" : "فُكّ التجميد — تُولَّد الواجبات من الغد", "success");
+    mount();
+    return true;
+  });
 };
 
 /* ---------------------------------------------------------------
@@ -23542,6 +23590,9 @@ window.planPromoteDo = function (planId, levelId) {
     p.promoteOverride = true;      /* تجاوزٌ يبقى في السجل */
   }
 
+  /* (٥١١) الخطةُ أوّلاً، وسجلُّ الطالب ورسالةُ الترقية و«رُقّي» بعد قبول الخادم —
+     وإن رُفض تعود الخطةُ كما كانت ولا يُمسّ سجلُّ الطالب */
+  const _snap = JSON.parse(JSON.stringify(p));
   const from = p.level || "";
   p.levelId = String(lv.id);
   p.level = lv.name;
@@ -23550,19 +23601,26 @@ window.planPromoteDo = function (planId, levelId) {
   p.promotedBy = ((STATE && STATE.user) || {}).name || "";
   p.awaitingPromotion = false;
   delete p.levelDoneCarry;         /* رصيدُ المستوى السابق لا يُورَّث */
-  persistSet("plans", p);
+  return Promise.resolve(persistSet("plans", p)).then(ok => {
+    if (ok === false) {
+      Object.keys(p).forEach(k => { if (!Object.prototype.hasOwnProperty.call(_snap, k)) delete p[k]; });
+      Object.assign(p, _snap);
+      mount(); return false;
+    }
 
-  /* سجلّ الطالب يتبع خطته وإلا اختلف المستوى بين الشاشتين */
-  const st = (cur("students") || []).find(x => String(x.id) === String(p.studentId));
-  if (st) { st.levelId = p.levelId; st.level = p.level; persistSet("students", st); }
+    /* سجلّ الطالب يتبع خطته وإلا اختلف المستوى بين الشاشتين */
+    const st = (cur("students") || []).find(x => String(x.id) === String(p.studentId));
+    if (st) { st.levelId = p.levelId; st.level = p.level; persistSet("students", st); }
 
-  try {
-    if (st) msgFire("promote", { student: st, level: lv.name });
-  } catch (e) {}
+    try {
+      if (st) msgFire("promote", { student: st, level: lv.name });
+    } catch (e) {}
 
-  closeModal();
-  showToast("رُقّي إلى " + lv.name, "success");
-  mount();
+    closeModal();
+    showToast("رُقّي إلى " + lv.name, "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -24650,12 +24708,20 @@ window.rwdSave = function () {
 
   if (!Array.isArray(DB.rewards)) DB.rewards = [];
   const i = DB.rewards.findIndex(x => String(x.id) === String(rec.id));
+  /* (٥٠٩) «حُدّثت/أُضيفت» بعد قبول الخادم — وإن رُفض تعود الجائزةُ كما كانت أو تُرفع */
+  const _old = i > -1 ? DB.rewards[i] : null;
   if (i > -1) DB.rewards[i] = rec; else DB.rewards.push(rec);
-  persistSet("rewards", rec);
-
-  closeModal();
-  showToast(id ? "حُدّثت الجائزة" : "أُضيفت الجائزة", "success");
-  mount();
+  return Promise.resolve(persistSet("rewards", rec)).then(ok => {
+    if (ok === false) {
+      const j = DB.rewards.indexOf(rec);
+      if (j > -1) { if (_old) DB.rewards[j] = _old; else DB.rewards.splice(j, 1); }
+      mount(); return false;
+    }
+    closeModal();
+    showToast(id ? "حُدّثت الجائزة" : "أُضيفت الجائزة", "success");
+    mount();
+    return true;
+  });
 };
 
 window.rwdDelete = function (id) {
@@ -24899,15 +24965,24 @@ window.orderCancelDo = function (orderId) {
   const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
   if (!o) return;
 
-  orderGiveBack(o, "إلغاء استبدال: ");
-
+  /* (٥١٢) حالةُ الطلب تُحفظ أوّلاً، وردُّ النقاط والكميّة و«أُلغي» بعد قبول الخادم —
+     كانت النقاطُ تُردّ والطلبُ باقٍ معلَّقاً إن رُفض. وإن رُفض يعود الطلبُ كما كان */
+  const _snap = JSON.parse(JSON.stringify(o));
   o.status = "canceled";
   o.canceledAt = Date.now();
-  persistSet("storeOrders", o);
-
-  closeModal();
-  showToast("أُلغي الطلب ورُدّت النقاط", "success");
-  mount();
+  return Promise.resolve(persistSet("storeOrders", o)).then(ok => {
+    if (ok === false) {
+      Object.keys(o).forEach(k => { if (!Object.prototype.hasOwnProperty.call(_snap, k)) delete o[k]; });
+      Object.assign(o, _snap);
+      PTS_HOLD_VER++;
+      mount(); return false;
+    }
+    orderGiveBack(o, "إلغاء استبدال: ");
+    closeModal();
+    showToast("أُلغي الطلب ورُدّت النقاط", "success");
+    mount();
+    return true;
+  });
 };
 
 /* الموافقةُ على الطلب: خطوةٌ بين الطلب والتسليم يراها الطالبُ في شاشته */
@@ -24955,14 +25030,21 @@ window.orderRejectDo = function (orderId) {
   const o = (cur("storeOrders") || []).find(x => String(x.id) === String(orderId));
   if (!o) return;
 
-  orderGiveBack(o, "رفض استبدال: ");
-
+  /* (٥١٣) حالةُ الطلب تُحفظ أوّلاً، وردُّ النقاط وتنبيهُ الطالب و«رُفض» بعد قبول الخادم */
+  const _snap = JSON.parse(JSON.stringify(o));
   const u = (STATE && STATE.user) || {};
   o.status = "rejected";
   o.rejectedAt = Date.now();
   o.rejectedBy = u.name || u.email || "";
   o.rejectWhy = (val("#ord_why") || "").trim();
-  persistSet("storeOrders", o);
+  return Promise.resolve(persistSet("storeOrders", o)).then(ok => {
+  if (ok === false) {
+    Object.keys(o).forEach(k => { if (!Object.prototype.hasOwnProperty.call(_snap, k)) delete o[k]; });
+    Object.assign(o, _snap);
+    PTS_HOLD_VER++;
+    mount(); return false;
+  }
+  orderGiveBack(o, "رفض استبدال: ");
 
   try {
     if (typeof pushNotif === "function") {
@@ -24979,6 +25061,8 @@ window.orderRejectDo = function (orderId) {
   closeModal();
   showToast("رُفض الطلب ورُدّت النقاط", "success");
   mount();
+  return true;
+  });
 };
 
 /* =========================================================================
@@ -28717,15 +28801,22 @@ window.trmSave = function () {
   if (!Array.isArray(DB.terms)) DB.terms = [];
   if (id) {
     const r = DB.terms.find(x => String(x.id) === String(id));
-    if (r) {
-      Object.assign(r, { name, from, to, parallel, kind, days });
-      if (parallel) { r.syncWith = syncWith; r.syncScope = syncScope; }
-      else { r.syncWith = ""; r.syncScope = ""; }
-      persistSet("terms", r);
-    }
-    showToast("حُفظت الفترة", "success");
-    closeModal(); mount();
-    return;
+    /* (٥١٧) «حُفظت» بعد قبول الخادم — وإن رُفض تعود الفترةُ كما كانت */
+    if (!r) { showToast("حُفظت الفترة", "success"); closeModal(); mount(); return; }
+    const _snap = JSON.parse(JSON.stringify(r));
+    Object.assign(r, { name, from, to, parallel, kind, days });
+    if (parallel) { r.syncWith = syncWith; r.syncScope = syncScope; }
+    else { r.syncWith = ""; r.syncScope = ""; }
+    return Promise.resolve(persistSet("terms", r)).then(ok => {
+      if (ok === false) {
+        Object.keys(r).forEach(k => { if (!Object.prototype.hasOwnProperty.call(_snap, k)) delete r[k]; });
+        Object.assign(r, _snap);
+        mount(); return false;
+      }
+      showToast("حُفظت الفترة", "success");
+      closeModal(); mount();
+      return true;
+    });
   }
 
   /* الفترةُ النشطةُ قبل الإنشاء — تُقرأ الآن لا بعدَه، فبعدَ التفعيل تصير
@@ -28739,7 +28830,14 @@ window.trmSave = function () {
   const r = { id: "tm" + Date.now(), name, from, to, owner: me, parallel, fresh: true,
               kind, days, syncWith: parallel ? syncWith : "",
               syncScope: parallel ? syncScope : "" };
-  DB.terms.push(r); persistSet("terms", r);
+  /* (٥١٨) «أُضيفت» وتفعيلُها وأرشفةُ السابقة والترحيلُ بعد قبول الخادم الفترةَ الجديدة —
+     كان رفضُها لا يمنع أرشفةَ الفترة النشطة لأجل فترةٍ لم تُحفظ. وإن رُفضت تُرفع */
+  DB.terms.push(r);
+  return Promise.resolve(persistSet("terms", r)).then(ok => {
+  if (ok === false) {
+    const i = DB.terms.indexOf(r); if (i > -1) DB.terms.splice(i, 1);
+    mount(); return false;
+  }
   showToast("أُضيفت الفترة", "success");
   closeModal();
 
@@ -28790,6 +28888,8 @@ window.trmSave = function () {
       `<button class="btn btn-primary" onclick="window.trmMigrate('${jsAttr(r.id)}')">نعم، افتح معالج الترحيل</button>
        <button class="btn btn-ghost" data-action="close-modal">لا، ابدأ فارغة</button>`);
   }
+  return true;
+  });
 };
 /* =========================================================================
    لا حذفَ إلّا بعد أرشفة — والمسارُ: فعّالة ← أرشفة ← طلب ← تأكيد
@@ -49446,12 +49546,20 @@ window.admSave = function () {
 
   if (!Array.isArray(DB.admissions)) DB.admissions = [];
   const i = DB.admissions.findIndex(x => String(x.id) === String(rec.id));
+  /* (٥١٤) «سُجّل/حُدّث» بعد قبول الخادم — وإن رُفض يعود الطلبُ كما كان أو يُرفع */
+  const _old = i > -1 ? DB.admissions[i] : null;
   if (i > -1) DB.admissions[i] = rec; else DB.admissions.push(rec);
-  persistSet("admissions", rec);
-
-  closeModal();
-  showToast(id ? "حُدّث الطلب" : "سُجّل الطلب — في طابور الانتظار", "success");
-  mount();
+  return Promise.resolve(persistSet("admissions", rec)).then(ok => {
+    if (ok === false) {
+      const j = DB.admissions.indexOf(rec);
+      if (j > -1) { if (_old) DB.admissions[j] = _old; else DB.admissions.splice(j, 1); }
+      mount(); return false;
+    }
+    closeModal();
+    showToast(id ? "حُدّث الطلب" : "سُجّل الطلب — في طابور الانتظار", "success");
+    mount();
+    return true;
+  });
 };
 
 /* =========================================================================
@@ -49486,6 +49594,8 @@ window.admInterviewDo = function (state) {
   const a = (cur("admissions") || []).find(x => String(x.id) === String(val("#iv_id")));
   if (!a) return;
 
+  /* (٥١٥) القبولُ وإبلاغُ وليّ الأمر و«قُبل» بعد قبول الخادم — وإن رُفض يعود الطلبُ كما كان */
+  const _snap = JSON.parse(JSON.stringify(a));
   a.ivLevel = val("#iv_level") || "";
   a.ivRead = val("#iv_read") || "";
   a.ivNote = val("#iv_note") || "";
@@ -49493,7 +49603,12 @@ window.admInterviewDo = function (state) {
   a.ivBy = ((STATE && STATE.user) || {}).name || "";
   a.state = state;
   if (state === "rejected") a.rejectedAt = Date.now();
-  persistSet("admissions", a);
+  return Promise.resolve(persistSet("admissions", a)).then(ok => {
+  if (ok === false) {
+    Object.keys(a).forEach(k => { if (!Object.prototype.hasOwnProperty.call(_snap, k)) delete a[k]; });
+      Object.assign(a, _snap);
+    mount(); return false;
+  }
 
   /* القبول يُبلَّغ به وليّ الأمر — الطلب الصامت يُنسي صاحبه */
   try {
@@ -49506,6 +49621,8 @@ window.admInterviewDo = function (state) {
   closeModal();
   showToast(state === "accepted" ? "قُبل — بانتظار توزيعه على حلقة" : "اعتُذر عنه", "success");
   mount();
+  return true;
+  });
 };
 
 window.admState = function (id, state) {
@@ -49591,18 +49708,31 @@ window.admEnrollDo = function () {
     points: 0, balance: 0
   };
 
+  /* (٥١٦) الطالبُ يُحفظ أوّلاً، ثمّ يُعلَّم الطلبُ «ملتحقاً»، و«التحق» بعد قبول الخادم لكليهما.
+     إن رُفض الطالبُ يُرفع ولا يُمسّ الطلب؛ وإن رُفض الطلبُ يعود في الذاكرة كما كان */
   if (!Array.isArray(DB.students)) DB.students = [];
   DB.students.push(st);
-  persistSet("students", st);
-
-  a.state = "enrolled";
-  a.studentId = st.id;
-  a.enrolledAt = Date.now();
-  persistSet("admissions", a);
-
-  closeModal();
-  showToast("التحق " + a.name + " بحلقة " + c.name, "success");
-  mount();
+  return Promise.resolve(persistSet("students", st)).then(ok => {
+    if (ok === false) {
+      const i = DB.students.indexOf(st); if (i > -1) DB.students.splice(i, 1);
+      mount(); return false;
+    }
+    const _snap = JSON.parse(JSON.stringify(a));
+    a.state = "enrolled";
+    a.studentId = st.id;
+    a.enrolledAt = Date.now();
+    return Promise.resolve(persistSet("admissions", a)).then(ok2 => {
+      if (ok2 === false) {
+        Object.keys(a).forEach(k => { if (!Object.prototype.hasOwnProperty.call(_snap, k)) delete a[k]; });
+        Object.assign(a, _snap);
+        mount(); return false;
+      }
+      closeModal();
+      showToast("التحق " + a.name + " بحلقة " + c.name, "success");
+      mount();
+      return true;
+    });
+  });
 };
 
 window.admDelete = function (id) {
