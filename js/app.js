@@ -37044,6 +37044,8 @@ window.tcrcAttSave = async function () {
     }
     const rec = old || { id: "at" + Date.now() + "-" + sid, studentId: String(sid),
                          date: d, circleId: String(c.id) };
+    /* لقطةُ القديم: إن ردّ الخادمُ الكتابةَ عاد كما كان */
+    const _attSnap = old ? JSON.parse(JSON.stringify(old)) : null;
     rec.student = st.name || "";
     rec.circle = c.name || "";
     rec.circleId = String(c.id);
@@ -37115,9 +37117,15 @@ window.tcrcAttSave = async function () {
        شيءٌ في المكتوب ولا في الحساب — الصدقُ نفسُه: ما وصل يُعدّ وما رُدّ
        يُقال.
        ===================================================================== */
+    /* المردودُ لا يبقى في الذاكرة: كان يبقى فتُعدّ الحلقةُ محضَّرةً وتظهر «تمّ اعتماد تحضير
+       اليوم» فوق تنبيه «لم يصل تحضيرُ ٤ من ٤» — وعند إعادة التحميل لا شيء */
+    const _attUndo = function () {
+      if (_attSnap) { recRestore(rec, _attSnap); return; }
+      const k = (DB.attendance || []).indexOf(rec); if (k > -1) DB.attendance.splice(k, 1);
+    };
     jobs.push(Promise.resolve(persistSet("attendance", rec))
-      .then(function (r) { if (r) ok++; else fail++; })
-      .catch(function () { fail++; }));
+      .then(function (r) { if (r) ok++; else { fail++; _attUndo(); } })
+      .catch(function () { fail++; _attUndo(); }));
   }
 
   /* والنافذةُ تُغلق فوراً: العملُ جارٍ والنتيجةُ تُقال عند تمامه */
