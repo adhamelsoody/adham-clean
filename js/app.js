@@ -34726,7 +34726,8 @@ function chatPeers() {
   const push = (kind, id, name) => { if (name) out.push({ kind, id: String(id || ""), name }); };
 
   if (r === "teacher") {
-    push("admin", "", "الإدارة");
+    /* (S14) مراسلةُ الإدارة بمفتاحها msgAdmin كشاشة الرسائل — والخادمُ يرفضها حين يُطفأ */
+    if (typeof teacherCan !== "function" || teacherCan("msgAdmin")) push("admin", "", "الإدارة");
     (typeof tchMyCircles === "function" ? tchMyCircles() : [])
       .forEach(c => push("circle", c.id, c.name || "حلقة"));
     (typeof tmsgKids === "function" ? tmsgKids() : [])
@@ -35393,6 +35394,10 @@ window.tchatSend = function (xtra) {
 
   let sent = 0;
   if (TCHAT.kind === "admin") {
+    /* (S14) كالرسالة العامة ومراسلة الطلاب: الخادمُ يرفضها بلا المفتاح، فلا تُعرض «أُرسلت» */
+    if (role0 === "teacher" && !teacherCan("msgAdmin")) {
+      showToast("صلاحيةُ مراسلة الإدارة غيرُ مفعَّلةٍ لحسابك", "warn"); return;
+    }
     const rec = Object.assign({ id: "tc" + Date.now(), toRole: "admin", toEmail: "" }, base);
     DB.site_messages.push(rec);
     try { persistSet("site_messages", rec); } catch (e) { console.warn("persistSet:", e); }
