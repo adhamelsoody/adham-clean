@@ -61072,12 +61072,30 @@ window.syncTeacherScope = function (teacherId) {
           (Array.isArray(c.assistants) && c.assistants.indexOf(String(t.id)) > -1))
   ).map(c => String(c.id));
 
+  /* (٦٣٥) المسجدُ والمجمّعُ يُزامَنان ولو لم تتغيّر الحلقات: كان الخروجُ هنا متى تطابقت
+     الحلقات، فحسابُ معلّمٍ أُسندت حلقتُه قبل أن يُكتب مسجدُه بقي بلا مسجدٍ ولا مجمّع أبداً —
+     فيردّ الخادمُ تحضيرَه كلَّه («دورُك teacher لا يملك حفظَ هذا السجلّ»). ومسجدُ سجلّ المعلّم
+     هو الأصل؛ فإن خلا وحسابُه بلا مسجد أُخذ من حلقاته إن كانت في مسجدٍ واحد. لا يُمحى شيءٌ بفراغ */
+  let mqWant = t.mosqueId ? String(t.mosqueId) : "";
+  if (!mqWant && !rec.mosqueId) {
+    const mqs = [...new Set((cur("circles") || []).filter(c => c && ids.indexOf(String(c.id)) > -1)
+      .map(c => String(c.mosqueId || "")).filter(Boolean))];
+    if (mqs.length === 1) mqWant = mqs[0];
+  }
+  let cxWant = t.complexId ? String(t.complexId) : "";
+  if (!cxWant && !rec.complexId && mqWant) {
+    const m = (Array.isArray(DB.mosques) ? DB.mosques : []).find(x => String(x.id) === mqWant);
+    if (m && m.complexId) cxWant = String(m.complexId);
+  }
+  const mqChg = !!mqWant && String(rec.mosqueId || "") !== mqWant;
+  const cxChg = !!cxWant && String(rec.complexId || "") !== cxWant;
+
   const before = Array.isArray(rec.circleIds) ? rec.circleIds.slice().sort().join(",") : "";
-  if (before === ids.slice().sort().join(",")) return;
+  if (before === ids.slice().sort().join(",") && !mqChg && !cxChg) return;
 
   rec.circleIds = ids;
-  if (t.mosqueId) rec.mosqueId = String(t.mosqueId);
-  if (t.complexId) rec.complexId = String(t.complexId);
+  if (mqWant) rec.mosqueId = mqWant;
+  if (cxWant) rec.complexId = cxWant;
   persistSet("users", rec);
 };
 
