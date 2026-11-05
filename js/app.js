@@ -37131,6 +37131,17 @@ window.tcrcAttSave = async function () {
   /* والنافذةُ تُغلق فوراً: العملُ جارٍ والنتيجةُ تُقال عند تمامه */
   closeModal();
   await Promise.all(jobs);
+  /* (٦٣٦) الإجازةُ التلقائيةُ تُرفع متى وصل التحضير: تُكتب حين ينتهي وقتُ الحلقة بلا حضورٍ مسجَّل،
+     وكان تحضيرٌ ردّه الخادمُ طوالَ اليوم يُنشئها — فبقيت «إجازةُ الحلقة» على الطلاب بعد أن حُضّروا.
+     التلقائيةُ وحدَها (auto)؛ الإجازةُ التي وضعها إنسانٌ لا تُمسّ */
+  if (ok) {
+    const _hid = "hol_" + d + "__" + c.id;
+    const _hol = (DB.workflow || []).find(x => x && String(x.id) === _hid);
+    if (_hol && _hol.auto === true && typeof persistDelete === "function") {
+      DB.workflow.splice(DB.workflow.indexOf(_hol), 1);
+      persistDelete("workflow", _hid);
+    }
+  }
   if (locked) {
     showToast("لم يُعدَّل تحضيرُ " + toArabicDigits(locked) +
               " طالباً محفوظٍ سابقاً — تعديلُ المحفوظ غيرُ متاحٍ في صلاحياتك", "warn");
@@ -61058,6 +61069,16 @@ window.syncTeacherScope = function (teacherId) {
   const users = cur("users") || [];
   let rec = users.find(x => x && ((t.uid && String(x.uid || x.id) === String(t.uid)) ||
     (x.teacherId != null && x.teacherId !== "" && String(x.teacherId) === String(t.id)))) || null;
+  /* (٦٣٦) وببريد الدخول: سجلُّ المعلّم يحمل بريدَ حسابه في username (syncTeacherRecord) وقد يخلو من
+     uid — فكان حفظُ المعلّم لا يجد حسابَه فلا يكتب فيه مسجداً، ويبقى تحضيرُه مردوداً */
+  if (!rec) {
+    const tMail = String(t.username || t.email || "").trim().toLowerCase();
+    if (tMail && tMail.indexOf("@") > -1) {
+      const byMail = users.filter(x => x && x.role === "teacher" &&
+        [x.email, x.username, x.loginEmail].some(v => String(v || "").trim().toLowerCase() === tMail));
+      if (byMail.length === 1) rec = byMail[0];
+    }
+  }
   if (!rec && t.name) {
     const byName = users.filter(x => x && x.role === "teacher" && nameKey(x.name) === nameKey(t.name) &&
       (x.teacherId == null || x.teacherId === ""));
