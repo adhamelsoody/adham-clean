@@ -16521,10 +16521,32 @@ window.lvlView = function (id) {
   });
   const _sCfg = _sard && typeof sysPrgCfg === "function" ? sysPrgCfg(SARD_ID) : {};
   const _sardBtn = _sCfg.onEnd === "auto" && _sCfg.nextProgram ? "نقل إلى " + _sCfg.nextProgram : "إنهاء البرنامج";
+  /* (السرد) ما يراه المعلّمُ لطالب السرد يُعرض هنا نفسُه: النطاقُ المضبوط في خطته (sardFromS…sardToS)
+     والاتجاه، وآخرُ موضعٍ سُرد، وجلساتُ السرد المسجَّلة — كان الجدولُ يعرض المستوى والموضعَ ونسبةَ
+     المستوى، وهي فارغةٌ في السرد («بلا مستوى» · «—» · ٠٪) والمعلّمُ يرى بياناتِه كاملة */
+  /* أسماءُ السور من الفهرس — يُطلب إن لم يصل بعد، وإلى أن يصل تُعرض السورةُ برقمها */
+  if (_sard && !(typeof QSURAHS !== "undefined" && QSURAHS)) {
+    try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) { console.warn("فهرس السور:", e); }
+  }
+  const _sur = i => (typeof QSURAHS !== "undefined" && QSURAHS ? (QSURAHS.find(x => x.i === Number(i)) || {}).n : "") || ("سورة " + toArabicDigits(i));
+  const _sardRange = pl => {
+    const fS = Number(pl && pl.sardFromS) || 0, tS = Number(pl && pl.sardToS) || 0;
+    const dir = typeof sardDirOfPlan === "function" && sardDirOfPlan(pl) === "forward" ? "من الفاتحة" : "من الناس";
+    if (!fS || !tS) return "يحدّده المعلّم · " + dir;
+    return _sur(fS) + " " + toArabicDigits(Math.max(1, Number(pl.sardFromA) || 1)) + " ← " +
+           _sur(tS) + " " + toArabicDigits(Math.max(1, Number(pl.sardToA) || 1)) + " · " + dir;
+  };
+  const _sardSess = st => {
+    const rows = (Array.isArray(DB.recitations) ? DB.recitations : []).filter(r => r &&
+      String(r.studentId) === String(st.id) && String(r.kind || "") === (typeof SARD_KIND !== "undefined" ? SARD_KIND : "السرد"));
+    if (!rows.length) return "لا جلسات بعد";
+    const last = rows.map(r => String(r.date || "")).sort().pop();
+    return toArabicDigits(rows.length) + " جلسة · آخرها " + toArabicDigits(last);
+  };
   const _sardPos = st => {
     const l = typeof sardLast === "function" ? sardLast(st.id) : null;
     if (!l || !l.s) return "لم يبدأ بعد";
-    const n = (typeof QSURAHS !== "undefined" && QSURAHS ? (QSURAHS.find(x => x.i === Number(l.s)) || {}).n : "") || ("سورة " + l.s);
+    const n = _sur(l.s);
     return n + (l.a ? " — آية " + toArabicDigits(l.a) : "");
   };
 
@@ -16690,14 +16712,18 @@ window.lvlView = function (id) {
             <div><h3>طلاب البرنامج</h3><p>مستوى كلٍّ وموضعه وإنجازه</p></div>
             <span class="sp-count">${toArabicDigits(studs.length)}</span></div>
           <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
-            <thead><tr><th>الطالب</th><th>الحلقة</th><th>المعلم</th><th>المستوى</th><th>الموضع</th><th>الإنجاز</th>${_sard ? "<th>إجراء</th>" : ""}</tr></thead>
+            <thead><tr><th>الطالب</th><th>الحلقة</th><th>المعلم</th>${_sard
+              ? "<th>نطاق السرد</th><th>آخر موضع</th><th>الجلسات</th><th>إجراء</th>"
+              : "<th>المستوى</th><th>الموضع</th><th>الإنجاز</th>"}</tr></thead>
             <tbody>${studs.length ? studs.map(r => `<tr>
               <td class="pt-name">${esc(r.st.name || "—")}</td>
               <td class="${r.st.circle ? "" : "pt-muted"}">${esc(r.st.circle || "بلا حلقة")}</td>
               <td class="${stuLinkName(r.st).teacher ? "" : "pt-muted"}">${esc(stuLinkName(r.st).teacher || "بلا معلم")}</td>
-              <td class="${r.plan.level ? "" : "pt-muted"}">${esc(r.plan.level || "بلا مستوى")}</td>
-              <td class="pt-num">${esc(_sard ? _sardPos(r.st) : (r.plan.current || "—"))}</td>
-              <td style="min-width:130px">${progressRow(planPctOf(r.plan, r.st))}</td>
+              ${_sard ? `<td>${esc(_sardRange(r.plan))}</td>
+              <td>${esc(_sardPos(r.st))}</td>
+              <td>${esc(_sardSess(r.st))}</td>` : `<td class="${r.plan.level ? "" : "pt-muted"}">${esc(r.plan.level || "بلا مستوى")}</td>
+              <td class="pt-num">${esc(r.plan.current || "—")}</td>
+              <td style="min-width:130px">${progressRow(planPctOf(r.plan, r.st))}</td>`}
               ${_sard ? `<td><button class="btn btn-soft btn-sm" style="white-space:nowrap"
                 onclick="window.sardFinish('${jsAttr(r.st.id)}')">${ic("arrowLeft", 14)} ${esc(_sardBtn)}</button></td>` : ""}
             </tr>`).join("")
