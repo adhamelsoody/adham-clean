@@ -14742,7 +14742,10 @@ const MOSQUE_CFG_KEYS = [
   /* المقرأة وكبار السن */
   "maqraahOn", "maqraahUrl", "elderlyAge", "elderlyEase",
   /* الرسائل والمواقيت */
-  "msgEvents", "msgCostCap", "prayerOn", "prayerCity", "prayerCountry", "prayerMethod"
+  "msgEvents", "msgCostCap", "prayerOn", "prayerCity", "prayerCountry", "prayerMethod",
+  /* تطبيقُ المعلّم والافتراضيُّ العامّ لصلاحيات المعلّمين — «جميع الصلاحيات الخاصة بالمسجد
+     تكون عند مدير المسجد»: كانت لمدير النظام وحده، وحفظُ مدير المسجد يُعاد إلى العامّ بصمت */
+  "teacherWelcome", "ratingItems", "evalItems", "reportItems", "teacherPerms"
 ];
 
 let CFG_BASE = null;        /* الإعدادات العامة كما في السحابة — بلا طبقة */
@@ -14813,6 +14816,9 @@ function cfgRouteSave(obj) {
   const nrm = x => (x === undefined || x === null || x === "" ||
     (typeof x === "object" && !Object.keys(x).length)) ? "" : JSON.stringify(x);
   MOSQUE_CFG_KEYS.forEach(k => {
+    /* مستندٌ جزئيّ (تطبيقُ المعلّم · الصلاحيات …) لا يمسّ ما ليس فيه من طبقة المسجد —
+       كان المفتاحُ الغائب يُكتب فارغاً فيمحو ما خصّصه المسجد لغيره */
+    if (!Object.prototype.hasOwnProperty.call(obj, k)) return;
     const v = obj[k];
     if (nrm(v) === nrm(base[k])) delete cfg[k];      /* كالعامّ: لا طبقة */
     else cfg[k] = cfgClone(v);
@@ -28079,7 +28085,7 @@ function setPanelPerms() {
     <div class="tm-info">${ic("info", 18)}
       <span>هذا هو الافتراضيُّ العامُّ لكلّ المعلّمين. وما ضُبط في بطاقة معلّمٍ
       بعينه يغلب هذا الضبط لذلك المعلّم وحدَه.
-      ${edit ? "" : "<b>العرضُ هنا للاطلاع — الضبطُ من صلاحية مدير النظام.</b>"}</span>
+      ${edit ? "" : "<b>العرضُ هنا للاطلاع — الضبطُ من صلاحية مدير النظام أو مدير المسجد.</b>"}</span>
     </div>
 
     <div class="pm-sum">
@@ -28285,7 +28291,7 @@ const STUAPP_ROWS = [
 ];
 
 function setPanelStudentApp() {
-  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const edit = typeof cfgCanEdit === "function" ? cfgCanEdit() : (typeof isTopAdmin === "function" && isTopAdmin());
   const rows = STUAPP_ROWS.map(([p, h, d], i) => `<tr>
     <td><strong>${esc(h)}</strong>${d ? `<div class="muted" style="font-size:11.5px">${esc(d)}</div>` : ""}</td>
     <td><label class="sy-sw"><input type="checkbox" id="sa_on_${i}"
@@ -28296,7 +28302,7 @@ function setPanelStudentApp() {
     <div class="tm-top"><strong class="tm-title">تطبيق الطالب</strong></div>
     <div class="tm-info">${ic("info", 18)}
       <span>ما تضبطه هنا ينعكس على موقع الطالب وتطبيقِه فوراً.
-      ${edit ? "" : "<b>العرضُ هنا للاطلاع — الضبطُ من صلاحية مدير النظام.</b>"}</span>
+      ${edit ? "" : "<b>العرضُ هنا للاطلاع — الضبطُ من صلاحية مدير النظام أو مدير المسجد.</b>"}</span>
     </div>
     <div class="sp-card">
       <div class="sp-cardhead"><div><h3>المراسلة والنوافذ والإحصاءات</h3>
@@ -28311,7 +28317,7 @@ function setPanelStudentApp() {
 }
 
 window.stuAppSave = function () {
-  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+  if (!(typeof cfgCanEdit === "function" ? cfgCanEdit() : isTopAdmin())) {
     showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
   }
   const cfg = JSON.parse(JSON.stringify(STUAPP_DEFAULTS));
@@ -28615,14 +28621,14 @@ window.spBadgeGrant = function (id, bid, on) {
 
 function setPanelTeacherApp() {
   const w = teacherWelcome();
-  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const edit = typeof cfgCanEdit === "function" ? cfgCanEdit() : (typeof isTopAdmin === "function" && isTopAdmin());
 
   return `<div class="pm-wrap">
     <div class="tm-top"><strong class="tm-title">تطبيق المعلم</strong></div>
 
     <div class="tm-info">${ic("info", 18)}
       <span>ما تضبطه الإدارةُ هنا يظهر للمعلّمين في تطبيقهم.
-      ${edit ? "" : "<b>العرضُ هنا للاطلاع — الضبطُ من صلاحية مدير النظام.</b>"}</span>
+      ${edit ? "" : "<b>العرضُ هنا للاطلاع — الضبطُ من صلاحية مدير النظام أو مدير المسجد.</b>"}</span>
     </div>
 
     <div class="sp-card">
@@ -28650,7 +28656,7 @@ function setPanelTeacherApp() {
 }
 
 window.twSave = function () {
-  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+  if (!(typeof cfgCanEdit === "function" ? cfgCanEdit() : isTopAdmin())) {
     showToast("ضبطُ تطبيق المعلم من صلاحية مدير النظام", "warn"); return;
   }
   const el = document.getElementById("twMsg");
@@ -39871,7 +39877,7 @@ function rateAvg(rec) {
 
 /* لوحةُ ضبط عناصر التقييم — في إعدادات «تطبيق المعلم» مع أخواتها */
 function rateCfgPanel() {
-  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const edit = typeof cfgCanEdit === "function" ? cfgCanEdit() : (typeof isTopAdmin === "function" && isTopAdmin());
   const rows = ratingItems().map((x, i) => `<tr>
     <td><input class="pm-in" id="rt_h_${i}" value="${esc(x.h)}" ${edit ? "" : "disabled"}></td>
     <td><label class="sy-sw"><input type="checkbox" id="rt_on_${i}" ${x.on ? "checked" : ""}
@@ -39897,7 +39903,7 @@ window.rtCfgAdd = function () {
 };
 
 window.rtCfgSave = function () {
-  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+  if (!(typeof cfgCanEdit === "function" ? cfgCanEdit() : isTopAdmin())) {
     showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
   }
   const list = ratingItems().map((x, i) => ({
@@ -40045,7 +40051,7 @@ function reportOn(k) { return reportItems().some(x => x.k === k && x.on); }
 
 /* لوحةُ ضبطهما في إعدادات «تطبيق المعلم» — للإدارة وحدَها */
 function evalCfgPanel() {
-  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const edit = typeof cfgCanEdit === "function" ? cfgCanEdit() : (typeof isTopAdmin === "function" && isTopAdmin());
   const rows = evalItems().map((x, i) => `<tr>
     <td><input class="pm-in" id="ev_h_${i}" value="${esc(x.h)}" ${edit ? "" : "disabled"}></td>
     <td><label class="sy-sw"><input type="checkbox" id="ev_on_${i}" ${x.on ? "checked" : ""}
@@ -40071,7 +40077,7 @@ window.evCfgAdd = function () {
 };
 
 window.evCfgSave = function () {
-  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+  if (!(typeof cfgCanEdit === "function" ? cfgCanEdit() : isTopAdmin())) {
     showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
   }
   const list = evalItems().map((x, i) => ({
@@ -40090,7 +40096,7 @@ window.evCfgSave = function () {
 };
 
 function reptCfgPanel() {
-  const edit = typeof isTopAdmin === "function" && isTopAdmin();
+  const edit = typeof cfgCanEdit === "function" ? cfgCanEdit() : (typeof isTopAdmin === "function" && isTopAdmin());
   const rows = reportItems().map((x, i) => `<tr>
     <td>${esc(x.h)}</td>
     <td><label class="sy-sw"><input type="checkbox" id="rp_on_${i}" ${x.on ? "checked" : ""}
@@ -40108,7 +40114,7 @@ function reptCfgPanel() {
 }
 
 window.reptCfgSave = function () {
-  if (!(typeof isTopAdmin === "function" && isTopAdmin())) {
+  if (!(typeof cfgCanEdit === "function" ? cfgCanEdit() : isTopAdmin())) {
     showToast("الضبطُ من صلاحية مدير النظام", "warn"); return;
   }
   const list = reportItems().map((x, i) => ({
