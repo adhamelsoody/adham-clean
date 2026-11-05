@@ -33751,8 +33751,49 @@ window.repExport = function (kind) {
   showToast("تم تنزيل الملف", "success");
 };
 
+/* =========================================================================
+   خياراتُ التقرير تبقى بعد التحديث
+   -------------------------------------------------------------------------
+   «المفروض يحدّث وتبقى الخيارات موجودة عشان ما أرجع كل شوي من البداية»:
+   كانت المنشآتُ والحلقاتُ المختارة والتصفيةُ والفرزُ وعددُ الصفوف تعود إلى
+   «الكلّ» مع كلّ تحديثٍ للصفحة (الأعمدةُ وحدها كانت تُحفظ). تُحفظ الآن في
+   متصفّح المستخدم — لكلّ تقريرٍ تصفيتُه وفرزُه وعددُ صفوفه، والمنشآتُ
+   والحلقاتُ المختارة للتقارير كلّها — ولكلّ حسابٍ على حدة.
+   ========================================================================= */
+function repLsKey(name) {
+  const u = (STATE && STATE.user) || {};
+  return "rep_" + name + "_" + String(u.uid || u.id || "");
+}
+function repLsGet(name) {
+  try { const v = localStorage.getItem(repLsKey(name)); return v ? JSON.parse(v) : null; }
+  catch (e) { return null; }
+}
+function repLsSet(name, v) {
+  try { localStorage.setItem(repLsKey(name), JSON.stringify(v)); }
+  catch (e) { /* التخزينُ محجوبٌ في هذا المتصفّح: تبقى الخياراتُ للجلسة وحدها */ }
+}
+function repStateSync() {
+  const k = repKey();
+  if (REP_STATE._loaded !== k) {
+    REP_STATE._loaded = k;
+    const v = repLsGet("view_" + k) || {};
+    REP_STATE.filters = v.filters && typeof v.filters === "object" ? v.filters : {};
+    REP_STATE.sort = v.sort || null; REP_STATE.dir = v.dir === -1 ? -1 : 1;
+    REP_STATE.size = Number(v.size) || REP_STATE.size || 10; REP_STATE.page = 1;
+  }
+  if (!REP_PICK._loaded) {
+    REP_PICK._loaded = true;
+    const pk = repLsGet("pick") || {};
+    if (pk.fac && typeof pk.fac === "object") REP_PICK.fac = pk.fac;
+    if (pk.cir && typeof pk.cir === "object") REP_PICK.cir = pk.cir;
+  }
+  repLsSet("view_" + k, { filters: REP_STATE.filters, sort: REP_STATE.sort, dir: REP_STATE.dir, size: REP_STATE.size });
+  repLsSet("pick", { fac: REP_PICK.fac, cir: REP_PICK.cir });
+}
+
 function repRender(cfg) {
   REP_STATE.cols = cfg.cols; REP_STATE.rows = cfg.rows; REP_STATE.title = cfg.title;
+  repStateSync();
 
   /* المعروضةُ وحدها تُرسم — والكاملةُ باقيةٌ في REP_STATE للوحة الاختيار */
   const COLS = repCols();
