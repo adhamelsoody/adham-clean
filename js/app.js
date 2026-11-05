@@ -498,6 +498,44 @@ function tCircleClaim(c, t) {
   c.teacherId = t.id; c.teacher = t.name || c.teacher || "";
   persistSet("circles", c);
 }
+/* «الحلقة المسؤولة» لمعلّمٍ والحلقةُ لغيره: خيارُ نقلِها إليه من معلّمها — كان الحفظُ يُرفض
+   بتنبيهٍ («غيّر معلّمَ الحلقة من صفحة الحلقات أولاً») فيظنّ المديرُ أنّه حفظ، ولا يراها المعلّم */
+window.etCircleChk = function (sel, tid) {
+  const w = document.getElementById("et_takeWrap"), tx = document.getElementById("et_takeTxt"),
+        cb = document.getElementById("et_take");
+  if (!w) return;
+  const c = sel && sel.value ? (DB.circles || []).find(x => String(x.id) === String(sel.value)) : null;
+  const other = c && c.teacherId != null && c.teacherId !== "" && String(c.teacherId) !== String(tid)
+    ? (DB.teachers || []).find(x => x && String(x.id) === String(c.teacherId)) : null;
+  w.style.display = other ? "" : "none";
+  if (cb) cb.checked = !!other;
+  if (tx && other) tx.textContent = "حلقة «" + (c.name || "—") + "» معلّمُها الآن «" + (other.name || "—") +
+    "» — انقلها إلى هذا المعلّم (يُرفع منها «" + (other.name || "—") + "» ويُنسب طلابُها إليه)";
+};
+/* نقلُ الحلقة من معلّمها إلى معلّمٍ آخر — بما يفعله «تعديل الحلقة» حين يُغيَّر معلّمُها:
+   سجلُّ القديم يُخلى منها، وطلابُها يُنسبون إلى الجديد، ونطاقا الحسابين يُحدَّثان */
+function tCircleTake(c, t) {
+  if (!c || !t) return 0;
+  const oldId = c.teacherId == null ? "" : String(c.teacherId);
+  const oldT = oldId ? (DB.teachers || []).find(x => String(x.id) === oldId) : null;
+  if (oldT && String(oldT.id) !== String(t.id) &&
+      (String(oldT.circleId || "") === String(c.id) || String(oldT.circle || "") === String(c.name || ""))) {
+    oldT.circleId = ""; oldT.circle = "—"; persistSet("teachers", oldT);
+  }
+  c.teacherId = String(t.id); c.teacher = t.name || "";
+  if (Array.isArray(c.assistants)) c.assistants = c.assistants.filter(x => String(x) !== String(t.id));
+  persistSet("circles", c);
+  let n = 0;
+  (DB.students || []).forEach(st => {
+    if (!st) return;
+    const inIt = st.circleId ? String(st.circleId) === String(c.id) : String(st.circle) === String(c.name);
+    if (!inIt) return;
+    st.teacher = c.teacher; st.teacherId = c.teacherId; persistSet("students", st); n++;
+  });
+  try { if (typeof syncTeacherScope === "function") { if (oldId) syncTeacherScope(oldId); syncTeacherScope(t.id); } } catch (e) { console.warn("نطاق المعلّمَين:", e); }
+  try { if (oldId && typeof notifyUser === "function") notifyUser(oldId, "circleMoved", "نُقلت حلقة «" + (c.name || "") + "» إلى معلّمٍ آخر."); } catch (e) { console.warn("تنبيه المعلّم:", e); }
+  return n;
+}
 function tCircleRelease(c, t) {
   if (!c || !t || String(c.teacherId == null ? "" : c.teacherId) !== String(t.id)) return;
   c.teacherId = ""; c.teacher = "";
@@ -51930,7 +51968,11 @@ function modalEditTeacher(id) {
       <div class="field full"><label>اسم المعلم</label><input id="et_name" value="${esc(t.name)}"></div>
       <div class="field"><label>رقم التواصل</label><input id="et_phone" type="tel" inputmode="numeric" value="${esc(t.phone || "")}" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
       ${facTwoFields("et_cx", "et_mosque", t.complexId || "", t.mosqueId || "")}
-      <div class="field"><label>الحلقة المسؤولة</label><select id="et_circle" data-orig="${esc(tCid)}">${tCircleOpts}</select></div>
+      <div class="field"><label>الحلقة المسؤولة</label><select id="et_circle" data-orig="${esc(tCid)}"
+        onchange="window.etCircleChk(this,'${jsAttr(t.id)}')">${tCircleOpts}</select></div>
+      <div class="field full" id="et_takeWrap" style="display:none">
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="et_take"> <span id="et_takeTxt"></span></label></div>
       ${tStaleNote}
       <div class="field"><label>البريد الإلكتروني</label>
         <div style="display:flex;align-items:center;gap:0">
@@ -58058,13 +58100,16 @@ document.addEventListener("click", (e) => {
       const keepMail = String(tc.username || "");
       if (!gmailUser && (!keepMail || keepMail === "—")) { showToast("البريد الإلكتروني مطلوب", "warn"); break; }
       /* الحلقةُ الجديدة: لا تُنتزع من معلّمها — يُفحص قبل أيّ تغيير (٤٦٠) */
-      let _etOld = null, _etNew = null, _etChg = false;
+      let _etOld = null, _etNew = null, _etChg = false, _etTake = false;
       { const elC0 = document.getElementById("et_circle");
         if (elC0 && String(elC0.value || "") !== String(elC0.dataset.orig || "")) {
           _etChg = true;
           _etOld = (DB.circles || []).find(x => String(x.id) === String(elC0.dataset.orig || "")) || null;
           _etNew = elC0.value ? (DB.circles || []).find(x => String(x.id) === String(elC0.value)) || null : null;
-          const _cl = tCircleClash(_etNew, tc); if (_cl) { showToast(_cl, "warn"); break; } } }
+          const _cl = tCircleClash(_etNew, tc);
+          const _tk = document.getElementById("et_take");
+          if (_cl && !(_tk && _tk.checked)) { showToast(_cl, "warn"); break; }
+          if (_cl) _etTake = true; } }
       tc.name = name;
       tc.photo = photoVal("et_photo", tc.photo || "");
       tc.phone = val("#et_phone", tc.phone || "");
@@ -58097,7 +58142,13 @@ document.addEventListener("click", (e) => {
 
       persistSet("teachers", tc);
       /* والحلقتان من جهتهما: القديمةُ تُخلى منه، والجديدةُ تُكتب له (٤٦٠) */
-      if (_etChg) { tCircleRelease(_etOld, tc); tCircleClaim(_etNew, tc); }
+      if (_etChg) {
+        tCircleRelease(_etOld, tc);
+        if (_etTake) { const _n = tCircleTake(_etNew, tc);
+          showToast("نُقلت حلقة «" + ((_etNew && _etNew.name) || "") + "» إلى " + (tc.name || "المعلّم") +
+            (_n ? " ومعها " + toArabicDigits(_n) + " طالباً" : ""), "info"); }
+        else tCircleClaim(_etNew, tc);
+      }
 
       /* نطاق المعلّم قد يتغيّر بتغيّر حلقته أو مسجده */
       try { if (typeof syncTeacherScope === "function") syncTeacherScope(tc.id); } catch (e) {}
