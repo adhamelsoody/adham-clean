@@ -6300,6 +6300,11 @@ function permsDefaults() {
    تكذب أسوأُ من شاشةٍ تمنع. توسيعُها إليهما يبدأ من القاعدة لا من هنا. */
 function canPermsSetup() {
   if (typeof isTopAdmin === "function" && isTopAdmin()) return true;
+  /* «مديرُ المسجد له صلاحياتُ مسجده فقط، ومديرُ المجمّع مساجدُ مجمّعه فقط»: الافتراضيُّ العامّ
+     لصلاحيات المعلّمين يضبطه مديرُ النظام للنظام، ومديرُ المسجد لمسجده (طبقةُ المسجد · ٦٢٩).
+     وكان مديرُ المجمّع يكتب الافتراضيَّ العامّ فيسري على معلّمي المجمّعات كلِّها — فلا يضبطه،
+     ويبقى له ضبطُ صلاحيات كلِّ معلّمٍ من معلّمي مجمّعه في بطاقته */
+  if (typeof cfgCanEdit === "function") return cfgCanEdit();
   const r = typeof myRoleNow === "function" ? myRoleNow() : "";
   if (typeof isMgrRole === "function" && isMgrRole(r)) return true;
   /* (S3) المعلّمُ لا يضبط الافتراضيَّ العامّ لصلاحيات المعلّمين — قاعدةُ الخادم صارت
