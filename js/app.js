@@ -32764,8 +32764,23 @@ const STAT_FAC_DEFS = [
 ];
 
 /* أدوات مساعدة لأقسام المنشآت */
+/* حسابُ مسجد: نطاقُه مسجدٌ أو مساجد، وليس مديرَ مجمّعٍ ولا مديرَ النظام — بالشرط نفسِه الذي
+   يمنع في facilityFilter توسيعَ رؤيته إلى المجمّع. تقاريرُه وإحصائيّاتُه لمسجده وحدَه: كان
+   المجمّعُ يظهر في «إختر المنشأة» وفي إحصائيّات المنشآت (طلبُ العميل: «اخفاء أيّ تقرير لا يخصّ المسجد») */
+function mqOnlyUser() {
+  try {
+    const sc = typeof userScopeOf === "function" ? userScopeOf() : null;
+    if (!sc || sc.deny) return false;
+    const mqs = (sc.mosqueIds && sc.mosqueIds.length) ? sc.mosqueIds : (sc.mosqueId ? [sc.mosqueId] : []);
+    const r = ((STATE && STATE.user) || {}).role || "";
+    return mqs.length > 0 && !isComplexMgr(r) && !isTopAdmin();
+  } catch (e) { console.warn("mqOnlyUser:", e); return false; }
+}
+/* مجمّعاتُ التقارير والإحصائيّات: لا شيء لحساب المسجد */
+function repComplexes() { return mqOnlyUser() ? [] : cur("complexes"); }
+
 function facScope() {
-  const cx = cur("complexes"), mq = cur("mosques"), ci = cur("circles"), st = cur("students");
+  const cx = repComplexes(), mq = cur("mosques"), ci = cur("circles"), st = cur("students");
   return [].concat(cx, mq).map(f => {
     const cs = ci.filter(c => String(c.mosqueId) === String(f.id) || String(c.complexId) === String(f.id));
     const ids = cs.map(c => String(c.id));
@@ -33052,7 +33067,7 @@ function sDailyBlock(title, total, days, top) {
 
 function statBody(k) {
   const st = cur("students"), ci = cur("circles"), te = cur("teachers"),
-        cx = cur("complexes"), mq = cur("mosques"), pl = cur("plans"),
+        cx = repComplexes(), mq = cur("mosques"), pl = cur("plans"),
         att = cur("attendance") || [], pr = cur("programs");
   const facs = [].concat(cx, mq);
   const sum = (a, f) => a.reduce((x, y) => x + (Number(f(y)) || 0), 0);
@@ -33120,7 +33135,7 @@ function statBody(k) {
         ${sGauge(ach, "مؤشر الإنجاز")}
         <div class="s-split-main">${sGrid([
           sCard("عدد المنشآت", facs.length, SC.teal, "building"),
-          sCard("المجمعات", cx.length, SC.indigo, "layers"),
+          ...(mqOnlyUser() ? [] : [sCard("المجمعات", cx.length, SC.indigo, "layers")]),
           sCard("المساجد", mq.length, SC.green, "mosque"),
           sCard("الحلقات", ci.length, SC.blue, "grid"),
           sCard("الطلاب", st.length, SC.indigo, "users"),
@@ -33400,7 +33415,7 @@ function adminStatsAll(cfg) {
     <div class="stat-picks">
       <div class="stat-pickrow">
         <label>المنشآت</label>
-        <div class="stat-chips">${cur("complexes").concat(cur("mosques"))
+        <div class="stat-chips">${repComplexes().concat(cur("mosques"))
           .filter(f => !STAT_STATE.hidFac[f.id])
           .map(f => `<span class="stat-chip">${esc(f.name || "—")}<button onclick="window.statHideFac('${jsAttr(f.id)}')" aria-label="إزالة">&times;</button></span>`).join("")
           || '<span class="stat-none">لا توجد منشآت</span>'}</div>
@@ -33555,7 +33570,7 @@ function repFacRows() {
       prizesWaiting: 0, prizesAvail: 0, prizeStudents: 0, prizeCircles: 0, prizesUsed: 0
     });
   };
-  cur("complexes").forEach(x => push(x, "complexes"));
+  repComplexes().forEach(x => push(x, "complexes"));
   cur("mosques").forEach(x => push(x, "mosques"));
   return out;
 }
@@ -33979,7 +33994,7 @@ function planTally(plan) {
    ========================================================================= */
 const REP_PICK = { fac: {}, cir: {} };
 function repFacList() {
-  return cur("complexes").map(x => ({ k: "c:" + x.id, n: x.name }))
+  return repComplexes().map(x => ({ k: "c:" + x.id, n: x.name }))
     .concat(cur("mosques").map(x => ({ k: "m:" + x.id, n: x.name })));
 }
 function repCirOk(c) {
@@ -34037,7 +34052,7 @@ function repStuRows() {
     const c  = cur("circles").find(x => String(x.id) === String(st.circleId)) || {};
     const t  = cur("teachers").find(x => String(x.id) === String(c.teacherId)) || {};
     const fac = cur("mosques").find(m => String(m.id) === String(c.mosqueId))
-             || cur("complexes").find(m => String(m.id) === String(c.complexId)) || {};
+             || repComplexes().find(m => String(m.id) === String(c.complexId)) || {};
     const pl = cur("plans").find(x => String(x.studentId) === String(st.id)) || {};
     const pr = cur("programs").find(x => String(x.id) === String(pl.programId)) || {};
     const pct = (d, tt) => tt > 0 ? Math.round((Number(d) || 0) * 100 / tt) : null;
@@ -34103,7 +34118,7 @@ function repStuRows() {
 }
 
 function adminRepStudents() {
-  const facs = cur("complexes").length + cur("mosques").length;
+  const facs = repComplexes().length + cur("mosques").length;
   return repRender({
     title: "تقرير الطلاب", unit: "طالب/ة", cols: REP_STU_COLS, rows: repStuRows,
     picks: repPicks(facs, cur("circles").length)
@@ -34166,7 +34181,7 @@ function repCirRows() {
   const zero = 0;
   return cur("circles").filter(repCirOk).map(c => {
     const mosque = cur("mosques").find(m => String(m.id) === String(c.mosqueId));
-    const cx = cur("complexes").find(x => String(x.id) === String(c.complexId || (mosque && mosque.complexId)));
+    const cx = repComplexes().find(x => String(x.id) === String(c.complexId || (mosque && mosque.complexId)));
     const fac = mosque || cx || {};
     const t = cur("teachers").find(x => String(x.id) === String(c.teacherId)) || {};
     const students = cur("students").filter(st => String(st.circleId) === String(c.id));
@@ -34227,7 +34242,7 @@ function repCirRows() {
 }
 
 function adminRepCircles() {
-  const facs = cur("complexes").length + cur("mosques").length;
+  const facs = repComplexes().length + cur("mosques").length;
   const cir = cur("circles").length;
   return repRender({
     title: "تقرير الحلقات", unit: "حلقة", cols: REP_CIR_COLS, rows: repCirRows,
@@ -34392,7 +34407,7 @@ function repRecRows() {
 }
 
 function adminRepRecitation() {
-  const facs = cur("complexes").length + cur("mosques").length;
+  const facs = repComplexes().length + cur("mosques").length;
   const cir = cur("circles");
   return repRender({
     title: "سجل التسميع", unit: "طالب/ة", cols: REP_REC_COLS, rows: repRecRows,
