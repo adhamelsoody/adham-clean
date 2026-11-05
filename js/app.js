@@ -15207,10 +15207,11 @@ function sardSetup() {
         <div class="sp-id">
           <div class="avatar sp-avatar">${ic("book", 24)}</div>
           <div class="sp-idtext">
-            <h2>خطة التسميع الافتراضية</h2>
+            <!-- برنامجُ السرد باسمه هو: كانت لوحتُه تُعنوَن «خطة التسميع الافتراضية» و«خريطة الأركان»
+                 فيظنّها المديرُ الخطةَ الافتراضيّة، والمعلّمُ يراه «برنامج سرد المحفوظ» -->
+            <h2>برنامج سرد المحفوظ</h2>
             <div class="sp-chips">
-              <span class="sp-chip">خريطة الأركان وعلاقاتها</span>
-              <span class="sp-chip">برنامج سرد المحفوظ</span>
+              <span class="sp-chip">خيارات البرنامج</span>
               <span class="sp-chip">${planScopeChip()}</span>
             </div>
             ${planMqPicker("sysPrgSetup", SARD_ID)}
@@ -16511,6 +16512,21 @@ window.lvlView = function (id) {
   const sIds = {}; plans.forEach(pl => { sIds[String(pl.studentId)] = pl; });
   const studs = (cur("students") || []).filter(st => sIds[String(st.id)])
     .map(st => ({ st: st, plan: sIds[String(st.id)] }));
+  /* برنامجُ السرد: جدولُ طلابه هو الجدولُ الوحيد — كان جدولٌ ثانٍ أسفلَه («طلاب برنامج السرد»)
+     يكرّر الطلابَ بزرّ «إنهاء البرنامج». فيُضمّ إليه من أُسند إلى السرد في سجلّه بلا خطة،
+     ويُعرض موضعُه من آخر جلسة سرد، ويُنقل من هنا إلى البرنامج المحدَّد في إعداده */
+  const _sard = String(id) === SARD_ID;
+  if (_sard && typeof sardStudents === "function") sardStudents().forEach(st => {
+    if (!sIds[String(st.id)]) studs.push({ st: st, plan: {} });
+  });
+  const _sCfg = _sard && typeof sysPrgCfg === "function" ? sysPrgCfg(SARD_ID) : {};
+  const _sardBtn = _sCfg.onEnd === "auto" && _sCfg.nextProgram ? "نقل إلى " + _sCfg.nextProgram : "إنهاء البرنامج";
+  const _sardPos = st => {
+    const l = typeof sardLast === "function" ? sardLast(st.id) : null;
+    if (!l || !l.s) return "لم يبدأ بعد";
+    const n = (typeof QSURAHS !== "undefined" && QSURAHS ? (QSURAHS.find(x => x.i === Number(l.s)) || {}).n : "") || ("سورة " + l.s);
+    return n + (l.a ? " — آية " + toArabicDigits(l.a) : "");
+  };
 
   const avg = studs.length
     ? Math.round(studs.reduce((a, r) => a + planPctOf(r.plan, r.st), 0) / studs.length) : 0;
@@ -16674,20 +16690,21 @@ window.lvlView = function (id) {
             <div><h3>طلاب البرنامج</h3><p>مستوى كلٍّ وموضعه وإنجازه</p></div>
             <span class="sp-count">${toArabicDigits(studs.length)}</span></div>
           <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
-            <thead><tr><th>الطالب</th><th>الحلقة</th><th>المعلم</th><th>المستوى</th><th>الموضع</th><th>الإنجاز</th></tr></thead>
+            <thead><tr><th>الطالب</th><th>الحلقة</th><th>المعلم</th><th>المستوى</th><th>الموضع</th><th>الإنجاز</th>${_sard ? "<th>إجراء</th>" : ""}</tr></thead>
             <tbody>${studs.length ? studs.map(r => `<tr>
               <td class="pt-name">${esc(r.st.name || "—")}</td>
               <td class="${r.st.circle ? "" : "pt-muted"}">${esc(r.st.circle || "بلا حلقة")}</td>
               <td class="${stuLinkName(r.st).teacher ? "" : "pt-muted"}">${esc(stuLinkName(r.st).teacher || "بلا معلم")}</td>
               <td class="${r.plan.level ? "" : "pt-muted"}">${esc(r.plan.level || "بلا مستوى")}</td>
-              <td class="pt-num">${esc(r.plan.current || "—")}</td>
+              <td class="pt-num">${esc(_sard ? _sardPos(r.st) : (r.plan.current || "—"))}</td>
               <td style="min-width:130px">${progressRow(planPctOf(r.plan, r.st))}</td>
+              ${_sard ? `<td><button class="btn btn-soft btn-sm" style="white-space:nowrap"
+                onclick="window.sardFinish('${jsAttr(r.st.id)}')">${ic("arrowLeft", 14)} ${esc(_sardBtn)}</button></td>` : ""}
             </tr>`).join("")
-            : `<tr><td colspan="6" class="rep-empty">لا طلاب في هذا البرنامج بعد.</td></tr>`}</tbody>
+            : `<tr><td colspan="${_sard ? 7 : 6}" class="rep-empty">لا طلاب في هذا البرنامج بعد.</td></tr>`}</tbody>
           </table></div></div>
         </section>
 
-        ${String(id) === SARD_ID ? sardPanel() : ""}
       </div>
     </aside>`);
   prgvFolds();   /* أسهمُ الطيّ تُضاف بعد الرسم لكلّ بطاقة */
