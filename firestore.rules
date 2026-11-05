@@ -1044,14 +1044,16 @@ service cloud.firestore {
            التاريخ محفوظ بصيغة النظام لا بطابع زمني، فلا تستطيع القاعدة
            مقارنته بوقت الخادم. لإغلاقه على الخادم أضف حقل ts رقمياً
            إلى سجل الحضور ثم قارنه بـ request.time هنا. */
-      allow create: if (canWrite() || (isTeacher() && teacherAttOk(d0()))) && scopeOk()
+      /* (٦٣٤) صلاحيةُ المعلّم في التحضير كما كانت قبل S13، بطلب صاحب المشروع: «خلِّ أدوارَ المعلّم
+         كما هي» — كان حصرُها في حلقاته (circleIds أو معلّمِ الحلقة في الملفّ) يردّ تحضيرَ معلّمٍ لم
+         يُربط حسابُه بحلقته على الخادم. ويبقى محصوراً في نطاقه (scopeOk). والدالّتان teacherAttOk
+         و myCircleOf باقيتان لم تُحذفا */
+      allow create: if (canWrite() || isTeacher()) && scopeOk()
                     && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
                     && request.resource.data.date is string
                     && request.resource.data.studentId is string;
-      /* (S13) وتعديلُ المعلّم كذلك: إن حمل السجلُّ حلقةً فهي حلقتُه، وفترتُه غيرُ مؤرشفة */
+      /* (٦٣٤) وتعديلُ المعلّم كما كان قبل S13 — بنطاقه وصلاحية attEdit */
       allow update: if teacherMayAs('attend_edit', 'attEdit', true) && scopeOk() && oldScopeOk()
-                    && (canWrite() || (termOpen(d0())
-                        && (sv(d0(), 'studentId') == '' || sv(d0(), 'circleId') == '' || myCircleOf(sv(d0(), 'circleId')))))
                     && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
                     && request.resource.data.date is string
                     && request.resource.data.studentId is string;
