@@ -51908,10 +51908,20 @@ function modalEditTeacher(id) {
      آخر — تغييرُ ارتباطٍ لم يقصده أحد (٤٣١). */
   const tOwnC = (DB.circles || []).find(c => c && c.teacherId != null && c.teacherId !== "" &&
                                          String(c.teacherId) === String(t.id));
-  const tCid = String(t.circleId ||
+  const tCid0 = String(t.circleId ||
     (t.circle && t.circle !== "—" ? (idByName("circles", t.circle) || "") : "") ||
     (Array.isArray(t.circleIds) && t.circleIds.length ? t.circleIds[0] : "") ||
     (tOwnC ? tOwnC.id : ""));
+  /* الحلقةُ المعروضة حلقتُه فعلاً: كان سجلُّ المعلّم يذكر حلقةً صار معلّمُها غيرَه (نُقلت من صفحة
+     الحلقات) فتظهر هنا «الحلقة المسؤولة» وهو لا يراها عند دخوله — «لا حلقات في نطاق حسابك».
+     فإن كان للحلقة المذكورة معلّمٌ آخر عُرضت حلقتُه هو (أو «—») ونُبِّه إلى ذلك */
+  const tC0 = tCid0 ? (DB.circles || []).find(c => c && String(c.id) === tCid0) : null;
+  const tStale = !!(tC0 && tC0.teacherId != null && tC0.teacherId !== "" && String(tC0.teacherId) !== String(t.id) &&
+    (DB.teachers || []).some(x => x && String(x.id) === String(tC0.teacherId)));
+  const tCid = tStale ? (tOwnC ? String(tOwnC.id) : "") : tCid0;
+  const tStaleNote = tStale ? `<div class="field full">${noteCard("سجلُّ المعلّم يذكر حلقة «" + esc(tC0.name || "—") +
+    "»، ومعلّمُها الآن «" + esc(((DB.teachers || []).find(x => String(x.id) === String(tC0.teacherId)) || {}).name || "—") +
+    "» — فلا يراها هذا المعلّمُ عند دخوله. لإسنادها إليه غيّر معلّمَ الحلقة من صفحة الحلقات.")}</div>` : "";
   const tCircleOpts = `<option value="" ${tCid ? "" : "selected"}>—</option>` +
     cur("circles").map(c => `<option value="${esc(String(c.id))}" ${String(c.id) === tCid ? "selected" : ""}>${esc(c.name)}</option>`).join("");
   openModal("تعديل بيانات المعلم", "عدّل بيانات المعلم ثم احفظ",
@@ -51921,6 +51931,7 @@ function modalEditTeacher(id) {
       <div class="field"><label>رقم التواصل</label><input id="et_phone" type="tel" inputmode="numeric" value="${esc(t.phone || "")}" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
       ${facTwoFields("et_cx", "et_mosque", t.complexId || "", t.mosqueId || "")}
       <div class="field"><label>الحلقة المسؤولة</label><select id="et_circle" data-orig="${esc(tCid)}">${tCircleOpts}</select></div>
+      ${tStaleNote}
       <div class="field"><label>البريد الإلكتروني</label>
         <div style="display:flex;align-items:center;gap:0">
           <input id="et_user" dir="ltr" value="${esc(gmailUser)}" placeholder="اسم الجيميل" style="border-top-left-radius:0;border-bottom-left-radius:0" oninput="this.value=this.value.replace(/[^a-zA-Z0-9._-]/g,'').toLowerCase()">
