@@ -12550,8 +12550,14 @@ window.urqDecide = function (to, ids, auto) {
       n++; accepted.push(String(id));
       if (to === "approved") later(() => {
         if (!Array.isArray(DB.users)) DB.users = [];
+        /* المنشأةُ المطلوبة في حقلها: المسجدُ في mosqueId ومجمّعُه في complexId — كان معرّفُ المسجد
+           يُكتب في complexId فيُردّ الملفُّ على الخادم لغير مدير النظام (ليس في نطاقه مجمّعٌ بهذا
+           المعرّف)، ويُحسب الحسابُ في مجمّعٍ لا وجودَ له */
+        const _fm = (DB.mosques || []).find(x => x && String(x.id) === String(r.facId || ""));
         const u = { id: "u" + Date.now() + n, name: r.name, username: r.username,
-                    role: r.roleKey || "teacher", active: true, complexId: r.facId || "" };
+                    role: r.roleKey || "teacher", active: true,
+                    mosqueId: _fm ? String(_fm.id) : "",
+                    complexId: _fm ? String(_fm.complexId || "") : (r.facId || "") };
         DB.users.push(u); persistSet("users", u);
       });
     }));
@@ -12645,6 +12651,23 @@ window.urqSave = function () {
       return false;
     }
     closeModal();
+    /* «عندما يضيف مديرُ المسجد طالباً أو معلّماً جديداً يُفعَّل دون انتظار اعتماد مدير النظام»:
+       طلبُ مدير المسجد (أو المشرف) لطالبٍ أو معلّمٍ في مسجده يُعتمد فورَ قبول الخادم حفظَه —
+       وهو ممّن يملك البتَّ في طلبات مسجده أصلاً (urqMayDecide). وما سواه (دورٌ آخر أو منشأةٌ
+       خارج مسجده) يبقى طلباً كما كان */
+    const _me = ((STATE && STATE.user) || {}).role || "";
+    const _myMq = (cur("mosques") || []).some(m => String(m.id) === String(r.facId));
+    if ((_me === "mosqueManager" || _me === "supervisor") && _myMq &&
+        (r.roleKey === "student" || r.roleKey === "teacher") && typeof window.urqDecide === "function") {
+      return Promise.resolve(window.urqDecide("approved", [String(r.id)], true)).then(acc => {
+        const okd = Array.isArray(acc) && acc.indexOf(String(r.id)) > -1;
+        showToast(okd ? "أُضيف " + (r.as || "") + " «" + r.name + "» وفُعِّل" : "أُرسل الطلب — تجده في «طلباتي»",
+                  okd ? "success" : "info");
+        URQ.tab = "mine"; URQ.status = okd ? "approved" : "pending";
+        mount();
+        return true;
+      });
+    }
     showToast("أُرسل الطلب — تجده في «طلباتي»", "success");
     URQ.tab = "mine"; URQ.status = "pending";
     if (urqAutoOn()) urqAutoRun();
