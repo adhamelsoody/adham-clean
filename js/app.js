@@ -36586,6 +36586,8 @@ function tcrcNoneWhy(sid, dayISO) {
   if (!st) return "لا واجبات";
   if (st.attOnly) return "تحضيرٌ فقط";
   if (typeof isDutyDay === "function" && !isDutyDay(st, d)) return "ليس يومَ دوامه";
+  if (typeof isHoliday === "function" && st.circleId != null && st.circleId !== "" &&
+      isHoliday(String(st.circleId), d)) return "إجازةُ الحلقة";
 
   const day = typeof dayNameOf === "function" ? dayNameOf(d) : "";
   if (day && typeof hwType === "function" && typeof HW_DEFAULTS !== "undefined") {
@@ -57346,6 +57348,11 @@ function tcrcView() {
      يومُه يُؤخَّر إلى آخرها جميعاً. */
   const _noDay = {};
   studs.forEach(s => { _noDay[String(s.id)] = tcrcNotHisDay(s.id, d); });
+  const _offWhy = sid => {
+    let w = "";
+    try { w = typeof tcrcNoneWhy === "function" ? tcrcNoneWhy(sid, d) : ""; } catch (e) { console.warn("tcrcNoneWhy:", e); }
+    return !w || w === "ليس يومَ دوامه" ? "ليس يومه" : w;
+  };
   const studsOrd = studs.slice().sort((a2, b2) => {
     const x = _noDay[String(a2.id)] ? 1 : 0, y = _noDay[String(b2.id)] ? 1 : 0;
     return x !== y ? x - y : 0;        /* الأبجديُّ محفوظٌ داخل المجموعة */
@@ -57358,7 +57365,11 @@ function tcrcView() {
       <div class="mini-avatar">${initials(s.name)}</div>
       <div class="tq-name"><strong>${esc(s.name || "—")}</strong>
         ${tcrcSubLine(s)}</div>
-      ${off ? `<span class="tq-noday">ليس يومه</span>` : ""}
+      ${/* «حدّدتُ جميعَ الأيّام لجميع الطلاب فلِمَ يظهر ليس يومه؟»: الشارةُ تظهر لمن لا واجبَ له
+            اليوم، وكانت تقول «ليس يومه» أيّاً كان السبب — وقد يكون اليومُ يومَه والسببُ غيرُه (لا خطةَ
+            له · خطتُه لا دروسَ فيها هذا اليوم · تحضيرٌ فقط · إجازةُ الحلقة). فتقول الآن سببَها الفعليّ،
+            و«ليس يومه» حين يكون اليومُ خارجَ أيّام دوامه وحدَه */""}
+      ${off ? `<span class="tq-noday">${esc(_offWhy(s.id))}</span>` : ""}
       <div class="tq-marks">${(typeof tcrcMarks === "function") ? tcrcMarks(s.id) : ""}</div>
       ${/* شارةُ حالة الحضور («لم يُسجَّل» / «حاضر» …) رُفعت بطلب صاحب
             المشروع. حالُ التحضير يبقى في بطاقات الإحصاء أعلى الشاشة
