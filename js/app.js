@@ -2013,9 +2013,14 @@ function cxMgrDashboard(mode) {
     ? String(((cById[String(s.circleId || "")] || {}).teacherId) || s.teacherId || "")
     : String(s.mosqueId || "");
   const tot = { hd: 0, ht: 0, rd: 0, rt: 0 };
+  /* (٦٤٤) اليومُ أو المدى المختار في الشريط العلويّ يحكم أوجهَ الحفظ والمراجعة كما يحكم الحضور —
+     كانت تُحسب للفترة النشطة كلِّها فلا تتغيّر بتغيير التاريخ. وبلا اختيارٍ (اليومُ نفسُه) تبقى
+     للفترة كلِّها كما كانت */
+  const _VR = typeof viewRange === "function" ? viewRange() : { kind: "day", from: d, toCap: d };
+  const _rng = (_VR.kind !== "day" || String(_VR.from) !== String(todayISO())) ? _VR : null;
   students.forEach(s => {
     let t = null;
-    try { t = typeof planTally === "function" ? planTally({ studentId: s.id }) : null; } catch (e) { t = null; }
+    try { t = typeof planTally === "function" ? planTally({ studentId: s.id }, _rng) : null; } catch (e) { t = null; }
     if (!t) return;
     const row = byMq[keyOf(s)];
     [["hd", "hifzDone"], ["ht", "hifzTotal"], ["rd", "revDone"], ["rt", "revTotal"]].forEach(([k, f]) => {
@@ -2029,8 +2034,10 @@ function cxMgrDashboard(mode) {
     const w = all ? Math.min(100, Math.round(done / all * 100)) : 0;
     return `<div class="cxd-bar"><i style="width:${w}%"></i></div>`;
   };
+  const _per = !_rng ? "" : _VR.kind !== "day" ? (_VR.label || "")
+    : (typeof hijriOf === "function" ? hijriOf(_VR.from) : _VR.from);
   const facesCol = (title, dk, tk) => `<div class="cxd-col">
-      <div class="cxd-head"><strong>${title}</strong>${bar(tot[dk], tot[tk])}
+      <div class="cxd-head"><strong>${title}${_per ? ` <small class="muted">— ${esc(_per)}</small>` : ""}</strong>${bar(tot[dk], tot[tk])}
         <span class="cxd-sum">${n2(r1(tot[dk]))} / ${n2(r1(tot[tk]))}</span></div>
       ${Object.keys(byMq).length ? Object.keys(byMq)
         .sort((a, b) => MQ ? (byMq[b][dk] - byMq[a][dk]) : 0).map(id => {
@@ -18426,6 +18433,74 @@ function lvPastEnd(lv, surah, ayah) {
   return s > e.s || (s === e.s && a > e.a);
 }
 
+/* =========================================================================
+   (٦٤٣) مدى المستوى من أركانه — لمستويات «بنّاء المستويات»
+   -------------------------------------------------------------------------
+   المحرّكُ كان يقرأ حدودَ المستوى من fromSurah/toSurah ومقدارَه من qty
+   (النموذجُ القديم وحدَه)، وبنّاءُ المستويات يكتب المدى في ركن الحفظ
+   (pillars.hifz: fromS/fromA ← toS/toA بالاتجاه). فمستوىً بُني فيه لا يُعرف
+   له آخر: لا يُكتشف إتمامُه فلا يُطلب اختبارٌ ويمضي الطالبُ إلى سور المستوى
+   التالي، ولا يُعاد المستوى ولا آخرُ سوره مهما ضُبط التكرار.
+   فيُقرأ المدى هنا بالاتجاه، ومنه يُحسب الإتمامُ والتكرار. والآيةُ ١ في
+   النهاية (افتراضُ البنّاء حين لا تُختار آية) تُقرأ «آخرَ السورة».
+   ========================================================================= */
+function lvRangeOf(lv) {
+  if (!lv) return null;
+  const H = lv.pillars && lv.pillars.hifz;
+  if (H && H.on === true && Number(H.fromS) > 0 && Number(H.toS) > 0) {
+    const dir = H.dir === "backward" || H.dir === "forward" ? H.dir
+      : (Number(H.fromS) > Number(H.toS) ? "backward" : "forward");
+    const toA = Number(H.toA) > 1 ? Number(H.toA) : 0;          /* ٠ = آخرُ السورة */
+    return { start: { s: Number(H.fromS), a: Math.max(1, Number(H.fromA) || 1) },
+             end: { s: Number(H.toS), a: toA }, dir };
+  }
+  return null;
+}
+/* موضعٌ بالاتجاه: كلّما زاد كان أبعدَ في السير */
+function lvKey(dir, s, a) {
+  return (String(dir) === "backward" ? (115 - (Number(s) || 1)) : (Number(s) || 1)) * 1000 + (Number(a) || 0);
+}
+/* بلغ الواجبُ آخرَ سورته؟ الوسمُ إن وُجد، وإلّا عددُ آياتها من فهرس المصحف */
+function asgSurahEnded(a) {
+  if (!a || !a.toS) return false;
+  if (a.surahEnd === true) return true;
+  if (a.surahEnd === false) return false;
+  const cnt = lvxSurahAyahs(a.toS);
+  return cnt > 0 && Number(a.toA) >= cnt;
+}
+/* بلغ الواجبُ نهايةَ المدى؟ */
+function lvReachedEnd(rg, a) {
+  if (!rg || !a || !Number(a.toS)) return false;
+  const e = rg.end;
+  if (Number(a.toS) === e.s) {
+    if (e.a) return Number(a.toA) >= e.a;
+    return asgSurahEnded(a);
+  }
+  return lvKey(rg.dir, a.toS, 1) > lvKey(rg.dir, e.s, 999);
+}
+/* واجباتُ الحفظ المنجزة في هذا المستوى (من السجلّ كلِّه — الترحيلُ لا يُصفّر العدّ) */
+function lvHifzDone(plan) {
+  if (!plan) return [];
+  return (typeof asgOf === "function" ? asgOf(plan.studentId) : []).filter(a => a &&
+    String(a.kind || "").indexOf("hifz") === 0 && a.status === "done" && Number(a.toS) > 0 &&
+    (!a.levelId || String(a.levelId) === String(plan.levelId)));
+}
+/* كم مرّةً بلغ نهايةَ المستوى */
+function lvEndRounds(plan, rg) {
+  return lvHifzDone(plan).filter(a => lvReachedEnd(rg, a)).length;
+}
+/* هل بقي على الطالب تكرارٌ عند نهاية المستوى؟ (المستوى كاملاً، أو آخرُ سورةٍ فيه) */
+function lvRepeatPending(plan, rg) {
+  const cfg = typeof repeatCfg === "function" ? repeatCfg(plan) : { mode: "" };
+  if (!cfg.mode || !rg) return false;
+  if (cfg.mode === "level") return lvEndRounds(plan, rg) <= cfg.times;
+  if (cfg.mode === "surah") {
+    const n = lvHifzDone(plan).filter(a => Number(a.toS) === rg.end.s && asgSurahEnded(a)).length;
+    return n <= cfg.times;
+  }
+  return false;
+}
+
 function lvxStudents(pid, levelName) {
   const s = new Set();
   (cur("plans") || []).forEach(p => {
@@ -22029,6 +22104,20 @@ function repeatCfg(plan) {
     return { mode: String(plan.repeatMode), times: Math.max(1, Number(plan.repeatTimes) || 1) };
   }
 
+  /* (٦٤٣) ثمّ المستوى: بنّاءُ المستويات يكتب التكرارَ المخصَّصَ للمستوى في ovr — وكان لا يُقرأ */
+  const _pg0 = (cur("programs") || []).find(p =>
+    String(p.id) === String(plan.programId) || String(p.name) === String(plan.program));
+  const _lv = plan.levelId ? (cur("levels") || []).find(x => String(x.id) === String(plan.levelId)) : null;
+  const _o = _lv && _lv.ovr ? _lv.ovr : null;
+  if (_o && Object.prototype.hasOwnProperty.call(_o, "repeatMode")) {
+    if (!_o.repeatMode) return { mode: "", times: 0 };
+    const _t = Object.prototype.hasOwnProperty.call(_o, "repeatTimes") ? _o.repeatTimes : (_pg0 && _pg0.repeatTimes);
+    return { mode: String(_o.repeatMode), times: Math.max(1, Number(_t) || 1) };
+  }
+  if (_o && Object.prototype.hasOwnProperty.call(_o, "repeatTimes") && _pg0 && _pg0.repeatMode) {
+    return { mode: String(_pg0.repeatMode), times: Math.max(1, Number(_o.repeatTimes) || 1) };
+  }
+
   const pg = (cur("programs") || []).find(p =>
     String(p.id) === String(plan.programId) || String(p.name) === String(plan.program));
   if (pg && pg.repeatMode) {
@@ -22046,7 +22135,7 @@ function surahRounds(studentId, surah) {
     String(a.kind).indexOf("hifz") === 0 &&
     a.status === "done" &&
     Number(a.toS) === Number(surah) &&
-    a.surahEnd === true).length;
+    asgSurahEnded(a)).length;
 }
 
 /* ختمات المستوى: كم مرةً بلغ آخر سورةٍ فيه */
@@ -22083,7 +22172,21 @@ function markSurahEnd(asg) {
 function repeatNext(plan, lastAsg) {
   const cfg = repeatCfg(plan);
   if (!cfg.mode || !lastAsg || !lastAsg.toS) return null;
-  if (!lastAsg.surahEnd) return null;          /* لم يبلغ آخر السورة بعد */
+
+  /* (٦٤٣) مستوىً من بنّاء المستويات: المدى من ركن الحفظ — تكرارُ المستوى من مبتدئه */
+  if (cfg.mode === "level") {
+    const _lvR = (cur("levels") || []).find(x => String(x.id) === String(plan.levelId));
+    const _rg = _lvR && !_lvR.toSurah ? lvRangeOf(_lvR) : null;
+    if (_rg) {
+      if (!lvReachedEnd(_rg, lastAsg)) return null;
+      const done = lvEndRounds(plan, _rg);
+      if (done > cfg.times) return null;       /* الختمةُ الأولى ليست إعادة */
+      return { s: _rg.start.s, a: _rg.start.a, repeat: true, round: done, of: cfg.times,
+               note: "إعادة المستوى " + toArabicDigits(done) + " من " + toArabicDigits(cfg.times) };
+    }
+  }
+
+  if (!asgSurahEnded(lastAsg)) return null;    /* لم يبلغ آخر السورة بعد */
 
   if (cfg.mode === "surah") {
     /* «عدد المرات» عددُ الإعادات بعد الختمة الأولى: الختمةُ الأولى تُحصى
@@ -22827,6 +22930,16 @@ function generateAssignments(studentId, dateISO) {
       rec.note = r.byAmount ? ("بمقدار " + r.lessons + " دروس قبل الحفظ") : ("من آخر " + r.lessons + " دروس");
     } else if (t.k === "hifz") {
       const from = nextHifzFrom(plan, dateISO);
+      /* (٦٤٣) أتمّ مدى مستواه ولا تكرارَ عليه: لا حفظَ من سور المستوى التالي قبل الانتقال
+         (اختبارٌ أو اعتمادٌ أو تلقائيّ) — والمحفوظُ قبلُ لا يُمسّ */
+      if (!from.repeat && plan.levelId) {
+        const _lvG = (cur("levels") || []).find(x => String(x.id) === String(plan.levelId));
+        const _rgG = _lvG && !_lvG.toSurah ? lvRangeOf(_lvG) : null;
+        if (_rgG && Number(from.s) > 0 && lvKey(_rgG.dir, from.s, from.a || 1) > lvKey(_rgG.dir, _rgG.end.s, _rgG.end.a || 999)) {
+          if (exists) out.push(exists);
+          return;
+        }
+      }
       rec.fromS = from.s; rec.fromA = from.a;
       /* اختيارُ المعلّم لهذا الطالب يعلو افتراضَ البرنامج — لا خلطَ بين
          خطة الطالب وخطة البرنامج العامة.
@@ -23998,6 +24111,18 @@ window.planFreezeDo = function (planId, on) {
 function levelProgress(plan) {
   if (!plan) return null;
   const lv = (cur("levels") || []).find(x => String(x.id) === String(plan.levelId));
+  /* (٦٤٣) مستوىً بلا مقدارٍ ومداه في ركن الحفظ: إتمامُه ببلوغ نهاية مداه، وبعد ما ضُبط من تكرار */
+  if (lv && !Number(lv.qty)) {
+    const rg = lvRangeOf(lv);
+    if (!rg) return null;
+    const list = lvHifzDone(plan);
+    const span = Math.max(1, lvKey(rg.dir, rg.end.s, rg.end.a || 999) - lvKey(rg.dir, rg.start.s, rg.start.a));
+    const far = list.reduce((m, a) => Math.max(m, lvKey(rg.dir, a.toS, a.toA)), lvKey(rg.dir, rg.start.s, rg.start.a));
+    const reached = list.some(a => lvReachedEnd(rg, a));
+    const pend = reached && lvRepeatPending(plan, rg);
+    const pct = reached ? 100 : Math.max(0, Math.min(99, Math.round((far - lvKey(rg.dir, rg.start.s, rg.start.a)) * 100 / span)));
+    return { level: lv, done: pct, need: 100, pct, complete: reached && !pend, byRange: true, repeatPending: pend };
+  }
   if (!lv || !Number(lv.qty)) return null;
 
   /* المنجز: أوجه الحفظ المغلقة بنجاح في هذا المستوى وحده.
@@ -24075,7 +24200,10 @@ window.lvxTransChanged = function () {
 };
 
 function lvTransition(lv) {
-  const k = lv && lv.transitionType;
+  /* (٦٤٣) بنّاءُ المستويات يكتب الانتقالَ المخصَّصَ في ovr.defTransition، والموروثَ من البرنامج
+     (defTransition) — وكان لا يُقرأ إلّا transitionType من النموذج القديم */
+  const _pg = lv && lv.programId ? (cur("programs") || []).find(p => String(p.id) === String(lv.programId)) : null;
+  const k = (lv && lv.ovr && lv.ovr.defTransition) || (lv && lv.transitionType) || (_pg && _pg.defTransition);
   return LV_TRANSITIONS.find(x => x.k === k) || LV_TRANSITIONS[1];
 }
 
@@ -34137,12 +34265,16 @@ const REP_STU_COLS = [
 
    تُشتقّ هنا من الواجبات المرصودة — مصدرٌ واحد لا نسختان تتناقضان.
    ========================================================================= */
-function planTally(plan) {
+function planTally(plan, rng) {
   const out = { hifzTotal: 0, hifzDone: 0, revTotal: 0, revDone: 0,
                 fixTotal: 0, fixDone: 0 };
   if (!plan || !plan.studentId) return out;
 
-  const mine = asgTermOf(plan.studentId);
+  /* (٦٤٤) مدىً اختياريّ {from, toCap}: واجباتُ تلك الأيّام وحدَها — للوحة التحكم حين يُختار يومٌ أو مدى */
+  const mine = rng && rng.from
+    ? (typeof asgOf === "function" ? asgOf(plan.studentId) : asgTermOf(plan.studentId)).filter(a => a && String(a.date) >= String(rng.from) &&
+        String(a.date) <= String(rng.toCap || rng.to || rng.from))
+    : asgTermOf(plan.studentId);
 
   mine.forEach(a => {
     const k = String(a.kind).replace("_makeup", "");
