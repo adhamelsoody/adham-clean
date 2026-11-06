@@ -796,9 +796,10 @@ window.SHELL_MODE = true;
     if (typeof showLoading === "function") { try { showLoading(false); } catch (e) {} }
   }
 
-  function loadData(isRefresh) {
+  function loadData(isRefresh, quiet) {
     // لا نعرض طبقة تحميل تحجب الشاشة؛ نحمّل في الخلفية والمحتوى ظاهر وقابل للضغط
     killVeil();
+    LAST_PULL = Date.now();
 
     /* إعادة الرسم بعد كل دفعة بيانات (الكاش أولاً ثم السيرفر) */
     function apply() {
@@ -820,12 +821,38 @@ window.SHELL_MODE = true;
           .then(apply);
 
     job.then(function () {
-      if (isRefresh && typeof showToast === "function") showToast("تم تحديث البيانات");
+      if (isRefresh && !quiet && typeof showToast === "function") showToast("تم تحديث البيانات");
     }).catch(function (e) { console.error(e); killVeil(); });
 
     // أمان إضافي: أزل الطبقة بعد 6 ثوانٍ مهما حدث
     setTimeout(killVeil, 6000);
   }
+
+  /* =====================================================================
+     (٦٤٢) تحديثٌ صامتٌ عند العودة إلى الصفحة
+     ---------------------------------------------------------------------
+     البياناتُ تُقرأ مرّةً عند فتح الصفحة ولا تُتابَع بعدها. فخطةٌ غيّرها
+     المديرُ والمعلّمُ فاتحٌ تطبيقَه (وتطبيقُ الجوال المثبَّت لا يُغلق) لا
+     تصله: يبقى يرى الخطةَ القديمة مكمِّلةً حتى يضغط «تحديث» بيده.
+     فإذا عاد المستخدمُ إلى الصفحة بعد غيابٍ دقيقتين فأكثر، قُرئت البياناتُ
+     من الخادم كما يفعل زرُّ «تحديث» — بلا رسالة. ولا يُحدَّث ونافذةٌ
+     مفتوحةٌ أو حقلٌ يُكتب فيه: لا يضيع على أحدٍ ما بين يديه.
+     ===================================================================== */
+  var LAST_PULL = Date.now();
+  function quietPull() {
+    try {
+      if (!BOOTED || document.hidden) return;
+      if (Date.now() - LAST_PULL < 120000) return;
+      var mr = document.getElementById("modalRoot");
+      if (mr && mr.children.length) return;
+      var ae = document.activeElement;
+      if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName || "") && ae.type !== "checkbox" && ae.type !== "radio") return;
+      if (navigator.onLine === false) return;
+      loadData(true, true);
+    } catch (e) { console.warn("تحديث البيانات عند العودة:", e); }
+  }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) quietPull(); });
+  window.addEventListener("focus", quietPull);
 
   /* الرسم الفوري ثم التحميل */
   var BOOTED = false;
