@@ -53309,6 +53309,7 @@ function panelStudent(id, keepDraft) {
         <span class="sp-pldot"></span><b>واجب السرد</b>
         <span class="sp-plsum">واجبٌ واحدٌ كلَّ يوم دوام</span>
       </div>
+      ${spSardProgress(s)}
       ${sardRow("spSardFrom", "من", sp0.sardFromSura, sp0.sardFromAyah)}
       ${sardRow("spSardTo", "إلى", sp0.sardToSura, sp0.sardToAyah)}
       <div class="sp-grid">
@@ -54332,6 +54333,51 @@ window.spProgLevel = function (id) {
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
   window.spProgLevelFill(s.levelId || "", s.level || "");
 };
+
+/* (٦٣٧) ما بلغه طالبُ السرد في بطاقته — كما يراه المعلّم: آخرُ موضعٍ سُرد (sardLast من جلسات
+   التسميع) والبدايةُ التالية (sardStart) وعددُ الجلسات. كانت البطاقةُ لا تعرض إلّا حقلَي «من/إلى»،
+   وهما المدى المضبوطُ مسبقاً لا التقدّم، فيبقيان «الناس ١» والمعلّمُ يرى الطالبَ قد بلغ الماعون.
+   للعرض وحدَه — لا يُكتب منه شيء */
+function spSardProgress(s) {
+  if (!s || s.id == null) return "";
+  const nameOf = i => { const L = (Array.isArray(SP_SURAHS) && SP_SURAHS.length) ? SP_SURAHS :
+    (typeof QSURAHS !== "undefined" && Array.isArray(QSURAHS) ? QSURAHS : []);
+    return (L.find(x => Number(x.i) === Number(i)) || {}).n || ""; };
+  const pos = (o) => o && o.s ? (nameOf(o.s) || "سورة " + toArabicDigits(o.s)) + (o.a ? " — آية " + toArabicDigits(o.a) : "") : "";
+  const last = typeof sardLast === "function" ? sardLast(s.id) : null;
+  const pl = typeof planOfStudent === "function" ? planOfStudent(s) : (s.plan || null);
+  const next = last && typeof sardStart === "function" ? sardStart(s.id, typeof sardDirOfPlan === "function" ? sardDirOfPlan(pl) : "") : null;
+  const rows = (Array.isArray(DB.recitations) ? DB.recitations : []).filter(r => r &&
+    String(r.studentId) === String(s.id) && String(r.kind || "") === SARD_KIND);
+  const lastDate = rows.map(r => String(r.date || "")).sort().pop() || "";
+  const box = (k, v, o, x) => `<div class="sp-field"><label>${esc(k)}</label><div class="sp-ro"${o && o.s ?
+    ` data-spsard-s="${Number(o.s)}" data-spsard-a="${Number(o.a) || 0}"` : ""}${x || ""}>${esc(v)}</div></div>`;
+  /* أسماءُ السور إن لم يصل الفهرسُ بعد: تُعرض بالرقم ثم تُبدَّل بأسمائها حين يصل */
+  /* والبدايةُ التالية تحتاج الفهرسَ حين تعبر إلى سورةٍ أخرى (آخرُ آيات السابقة) — تُحسب حين يصل */
+  if (((last && !nameOf(last.s)) || (next && !nameOf(next.s)) || (last && !next)) && window.Quran && typeof Quran.surahs === "function") {
+    Quran.surahs().then(list => {
+      const L = (list || []).filter(x => x && x.i && x.n); if (!L.length) return;
+      if (!(Array.isArray(SP_SURAHS) && SP_SURAHS.length)) SP_SURAHS = L;
+      if (!QSURAHS) QSURAHS = list;
+      if (last && !next && typeof sardStart === "function") {
+        const nx = sardStart(s.id, typeof sardDirOfPlan === "function" ? sardDirOfPlan(pl) : "");
+        const el = document.querySelector('[data-spsard-next="' + String(s.id).replace(/"/g, "") + '"]');
+        if (nx && nx.s && el) { el.setAttribute("data-spsard-s", nx.s); el.setAttribute("data-spsard-a", nx.a || 0); }
+      }
+      document.querySelectorAll("[data-spsard-s]").forEach(el => {
+        const n = (L.find(x => Number(x.i) === Number(el.getAttribute("data-spsard-s"))) || {}).n;
+        const a = Number(el.getAttribute("data-spsard-a")) || 0;
+        if (n) el.textContent = n + (a ? " — آية " + toArabicDigits(a) : "");
+      });
+    }).catch(e => console.warn("فهرس السور:", e));
+  }
+  return `<div class="sp-grid">
+      ${box("وصل إلى", last ? pos(last) : "لم يبدأ بعد", last)}
+      ${box("يبدأ الجلسةَ القادمة من", next ? pos(next) : last ? "…" : "يحدّده المعلّم", next,
+        last && !next ? ` data-spsard-next="${esc(String(s.id))}"` : "")}
+      ${box("جلسات السرد", rows.length ? toArabicDigits(rows.length) + " جلسة · آخرها " + toArabicDigits(lastDate) : "لا جلسات بعد")}
+    </div>`;
+}
 
 /* برنامجُ سرد المحفوظ — بمعرّفه المثبَّت أو باسمه */
 function spIsSardProg(name) {
