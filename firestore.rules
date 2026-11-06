@@ -1156,7 +1156,13 @@ service cloud.firestore {
       /* المديرُ والمالكُ وحدَهما (٤٥٢): صفحةُ السجلّ لا يفتحها غيرُهما (SYSTEM_ONLY
          في app.js)، وكان مديرُ المجمّع ومديرُ المسجد يقرآنه كاملاً — سجلَّ كلِّ
          حفظٍ في كلّ المنشآت. والكتابةُ (الإلحاقُ) باقيةٌ لكلّ حسابٍ فعّال. */
-      allow read: if isAdmin();
+      allow read: if isAdmin()
+        /* (٦٣٨) ومديرُ المسجد قيودَ مسجده، ومديرُ المجمّع قيودَ مجمّعه — بمنشأة القيد نفسه.
+           القيدُ بلا منشأة (ومنه كلُّ ما كُتب قبل ٦٣٨) يبقى لمدير النظام وحده */
+        || (role() in ['mosqueManager', 'supervisor'] && hasMosque()
+            && resource.data.get('mosqueId', '') != '' && resource.data.mosqueId in myMosques())
+        || (role() == 'complexManager' && hasComplex()
+            && resource.data.get('complexId', '') != '' && resource.data.complexId in myComplexes());
 
       /* وبصيغة app.js (٤٣٦): byUid و act — كانت القاعدةُ تشترط uid و action
          وحدَهما، وهما صيغةُ governance.js غير المحمَّل، فيُردّ كلُّ قيدٍ يكتبه

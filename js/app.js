@@ -27235,6 +27235,21 @@ function auditWrite(coll, obj, act, before) {
     changes,
     termId: typeof activeTermId === "function" ? activeTermId() : ""
   };
+  /* (٦٣٨) منشأةُ القيد: مديرُ المسجد يقرأ سجلَّ مسجده ومديرُ المجمّع سجلَّ مجمّعه — والقاعدةُ تقرأ
+     mosqueId / complexId من القيد نفسه. من السجلّ المحفوظ أوّلاً، ثمّ من منشأة الكاتب إن كانت
+     واحدة. والقيدُ بلا منشأة يقرؤه مديرُ النظام وحده كما كان */
+  try {
+    const mqOf = String((obj && obj.mosqueId) || (coll === "mosques" && obj ? obj.id : "") ||
+      (["mosqueManager", "supervisor"].indexOf(u.role) > -1 && !(u.mosqueIds || []).length ? (u.mosqueId || "") : "") || "");
+    let cxOf = String((obj && obj.complexId) || (coll === "complexes" && obj ? obj.id : "") || "");
+    if (!cxOf && mqOf) {
+      const m = (Array.isArray(DB.mosques) ? DB.mosques : []).find(x => x && String(x.id) === mqOf);
+      if (m && m.complexId) cxOf = String(m.complexId);
+    }
+    if (!cxOf && u.role === "complexManager" && !(u.complexIds || []).length && u.complexId) cxOf = String(u.complexId);
+    if (mqOf) rec.mosqueId = mqOf;
+    if (cxOf) rec.complexId = cxOf;
+  } catch (e) { console.warn("منشأة قيد السجلّ:", e); }
   rec.text = logSentence(rec);
 
   LOG_ON = false;                            /* يمنع الدوران */
@@ -27331,7 +27346,19 @@ function audLazyLoad() {
   const db = FDB();
   if (!db) { AUD_LZ.done = true; return; }
   AUD_LZ.busy = true;
-  db.collection("auditLog").get().then(snap => {
+  /* (٦٣٨) مديرُ المسجد ومديرُ المجمّع يقرآن قيودَ منشآتهم وحدها — والقاعدةُ تردّ سردَ السجلّ
+     كلِّه لغير مدير النظام، فيُستعلم بالمنشأة (حتى عشرٍ في الاستعلام الواحد) */
+  const _u = (typeof STATE !== "undefined" && STATE.user) || {};
+  const _ids = a => [...new Set(a.map(x => String(x || "")).filter(Boolean))].slice(0, 10);
+  let _q = db.collection("auditLog");
+  if (["mosqueManager", "supervisor"].indexOf(_u.role) > -1) {
+    const ids = _ids([_u.mosqueId].concat(_u.mosqueIds || []));
+    if (ids.length) _q = _q.where("mosqueId", "in", ids);
+  } else if (_u.role === "complexManager") {
+    const ids = _ids([_u.complexId].concat(_u.complexIds || []));
+    if (ids.length) _q = _q.where("complexId", "in", ids);
+  }
+  _q.get().then(snap => {
     const seen = new Set();
     const arr = [];
     snap.forEach(d => {
