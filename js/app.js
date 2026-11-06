@@ -14127,7 +14127,7 @@ window.prgForm = function (id) {
     `<input type="hidden" id="pgId" value="${r ? esc(r.id) : ""}">
      <div class="form-grid">
       <div class="field full"><label>اسم البرنامج <span class="req">*</span></label>
-        <input id="pgName" value="${r ? esc(r.name || "") : ""}" placeholder="مثال: إنجازي لحفظ القرآن"></div>
+        <input id="pgName" value="${r ? esc(r.name || "") : ""}" placeholder="مثال: برنامج حفظ القرآن الكريم"></div>
       <div class="field full"><label>الحالة</label>
         <select id="pgStatus">
           <option value="فعال"${!r || r.status !== "متوقف" ? " selected" : ""}>فعال</option>
@@ -14424,7 +14424,7 @@ function setPanelPrograms() {
         <td class="pt-check"><button class="pt-box" onclick="window.prgToggle(this,'${jsAttr(r.id)}')" aria-label="تحديد">${CHK}</button></td>
         <td class="pt-name">${esc(r.name || "—")}</td>
         <td>${esc(r.type || "برنامج قرآني")}</td>
-        <td>${esc(r.owner || (DB.settings || {}).orgName || "النظام")}</td>
+        <td>${esc(prgOwnerShown(r.owner) || (DB.settings || {}).orgName || "النظام")}</td>
         <td class="pt-actions">${r.owner === "نظام إنجازي" ? '<span class="pg-dash">- -</span>'
           : `<button class="row-btn" onclick="window.prgForm('${jsAttr(r.id)}')" title="تعديل">${ic("edit", 14)}</button>`}</td>
       </tr>`).join("")
@@ -28987,7 +28987,7 @@ function setPanelLevels() {
           <td class="pt-name lv-name">${esc(r.name || "—")}${
             fixed ? ` <span class="lv-badge" title="${esc(r.note || "")}">مثبَّت</span>` : ""}</td>
           <td><span class="lv-type">${BOOK}${esc(r.type || "برنامج قرآني")}</span></td>
-          <td class="${sys ? "lv-sys" : "lv-own"}">${esc(r.owner || "—")}</td>
+          <td class="${sys ? "lv-sys" : "lv-own"}">${esc(prgOwnerShown(r.owner) || "—")}</td>
           <td><span class="lv-pill ${on ? "on" : "off"}"><i></i>${on ? "فعال" : "متوقف"}</span></td>
           <td><button type="button" class="lv-num lv-numbtn" title="عرض مستويات البرنامج"
             onclick="event.stopPropagation(); window.lvlViewAt('${jsAttr(r.id)}','levels')"
@@ -54404,6 +54404,14 @@ function spSardProgress(s) {
         last && !next ? ` data-spsard-next="${esc(String(s.id))}"` : "")}
       ${box("جلسات السرد", rows.length ? toArabicDigits(rows.length) + " جلسة · آخرها " + toArabicDigits(lastDate) : "لا جلسات بعد")}
     </div>`;
+}
+
+/* (٦٣٩) «نظام إنجازي» اسمُ نظامٍ آخر بقي في بيانات البرامج القديمة (owner) — لا يُعرض: يُعرض مكانه اسمُ
+   الجهة من الإعدادات. القيمةُ المحفوظة لا تُمسّ، وتبقى المقارنةُ بها في الكود لتمييز برامج النظام */
+function prgOwnerShown(owner) {
+  const o = String(owner || "");
+  if (o === "نظام إنجازي") return ((DB.settings || {}).orgName || "النظام").trim() || "النظام";
+  return o;
 }
 
 /* برنامجُ سرد المحفوظ — بمعرّفه المثبَّت أو باسمه */
