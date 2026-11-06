@@ -15137,7 +15137,8 @@ function sardLast(studentId, beforeDate) {
     .sort((a, b) => String(a.date + "|" + (a.ts || 0)).localeCompare(String(b.date + "|" + (b.ts || 0))));
   if (!rows.length) return null;
   const last = rows[rows.length - 1];
-  return { s: Number(last.toS) || 0, a: Number(last.toA) || 0, date: last.date };
+  return { s: Number(last.toS) || 0, a: Number(last.toA) || 0, date: last.date,
+           ts: Number(last.ts) || Number(last.closedAt) || 0 };
 }
 
 /* =========================================================================
@@ -15158,13 +15159,19 @@ function sardDirOfPlan(plan) {
 }
 function sardStart(studentId, dir, beforeDate) {
   const l = sardLast(studentId, beforeDate);
+  const _st = (cur("students") || []).find(x => String(x.id) === String(studentId));
+  const _pl = _st && typeof planOfStudent === "function" ? planOfStudent(_st) : null;
+  /* (٦٤٥) «أرجعه إلى سورة»: بدايةٌ كتبها المديرُ في بطاقة الطالب بعد آخر جلسة سرد تعلو المتابعة
+     من حيث وقف — الأحدثُ هو القول، كموضع الحفظ (hifzPosTs). وما سُرد بعدها يمضي منه كالمعتاد */
+  if (_pl && Number(_pl.sardPosTs) > 0 && Number(_pl.sardFromS) > 0) {
+    const _lt = l ? (Number(l.ts) || Date.parse(String(l.date || "") + "T23:59:59") || 0) : 0;
+    if (!l || !l.s || Number(_pl.sardPosTs) > _lt) {
+      return { s: Number(_pl.sardFromS), a: Math.max(1, Number(_pl.sardFromA) || 1), byAdmin: true };
+    }
+  }
   if (!l || !l.s) return null;
   let d = dir;
-  if (!d) {
-    const st = (cur("students") || []).find(x => String(x.id) === String(studentId));
-    const pl = st && typeof planOfStudent === "function" ? planOfStudent(st) : null;
-    d = sardDirOfPlan(pl);
-  }
+  if (!d) d = sardDirOfPlan(_pl);
   const nx = typeof stepFrom === "function" ? stepFrom(l.s, l.a, d) : { s: l.s, a: l.a };
   /* فهرسُ السور لم يصل: لا تُخمَّن آيةٌ قد لا توجد — تُملأ حين يصل */
   if (nx && nx.needEnd && !(typeof QSURAHS !== "undefined" && QSURAHS)) {
@@ -52785,7 +52792,12 @@ function stuCollect() {
   }
   /* واجبُ السرد — يُقرأ إن كان قسمُه معروضاً */
   if (g("#spSardFromSura") != null) {
-    out.plan.sardFromSura = g("#spSardFromSura");
+    /* (٦٤٥) قائمةُ السور لم تُملأ بعد ورقمُ البداية القادمة معلّق: يُؤخذ اسمُه من رقمه، لا الاسمُ المؤقّت */
+    const _fe = document.querySelector("#spSardFromSura");
+    const _sx = _fe && _fe.dataset && _fe.dataset.sidx ? Number(_fe.dataset.sidx) : 0;
+    const _nm = _sx && typeof surahName === "function" ? surahName(_sx) : "";
+    out.plan.sardFromSura = _sx ? (_nm || g("#spSardFromSura")) : g("#spSardFromSura");
+    SP_SARD_PENDING = !!(_sx && !_nm);
     out.plan.sardFromAyah = Number(g("#spSardFromAyah")) || 1;
     out.plan.sardToSura   = g("#spSardToSura");
     out.plan.sardToAyah   = Number(g("#spSardToAyah")) || 1;
@@ -52793,6 +52805,9 @@ function stuCollect() {
   }
   return out;
 }
+
+/* (٦٤٥) «من» في السرد لم تُعرف سورتُها بعد (الفهرسُ لم يصل): لا يُعدّ حفظُها إرجاعاً */
+let SP_SARD_PENDING = false;
 
 /* يُنادى قبل كلّ إعادة رسمٍ للبطاقة نفسِها */
 function stuDraftKeep(id) {
@@ -53520,11 +53535,11 @@ function panelStudent(id, keepDraft) {
   const spSard = spIsSardProg(s.program);
   /* برنامجُ المراجعة: قسمُ المراجعة وحدَه — والحفظُ يُخفى ولا يُحذف */
   const spRevOnly = !spSard && progIsRev(s.program);
-  const sardRow = (pfx, label, sura, ayah) => `
+  const sardRow = (pfx, label, sura, ayah, sidx) => `
     <div class="sp-start">
       <label>${ic("target", 13)} ${esc(label)} — السورة والآية</label>
       <div class="sp-startrow">
-        <select id="${pfx}Sura" class="sp-sel sp-sura" data-cur="${esc(sura || "الناس")}"
+        <select id="${pfx}Sura" class="sp-sel sp-sura" data-cur="${esc(sura || "الناس")}"${sidx ? ` data-sidx="${Number(sidx)}"` : ""}
           onchange="window.ayahCap('${pfx}Ayah','${pfx}Sura')">
           <option>${esc(sura || "الناس")}</option>
         </select>
@@ -53547,7 +53562,14 @@ function panelStudent(id, keepDraft) {
         <span class="sp-plsum">واجبٌ واحدٌ كلَّ يوم دوام</span>
       </div>
       ${spSardProgress(s)}
-      ${sardRow("spSardFrom", "من", sp0.sardFromSura, sp0.sardFromAyah)}
+      ${(function () {
+        /* (٦٤٥) بعد أوّل جلسة: «من» هي البدايةُ القادمة نفسُها — من حيث وقف، أو ما أُرجع إليه.
+           فتغييرُها إرجاعٌ للطالب إلى ما تختار، وتركُها كما هي لا يغيّر شيئاً */
+        const _nx = typeof sardLast === "function" && sardLast(s.id) && typeof sardStart === "function"
+          ? sardStart(s.id, sardDirOfPlan(typeof planOfStudent === "function" ? planOfStudent(s) : null)) : null;
+        return _nx ? sardRow("spSardFrom", "من", sp0.sardFromSura, _nx.a, _nx.s)
+                   : sardRow("spSardFrom", "من", sp0.sardFromSura, sp0.sardFromAyah);
+      })()}
       ${sardRow("spSardTo", "إلى", sp0.sardToSura, sp0.sardToAyah)}
       <div class="sp-grid">
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spSardDir",
@@ -54383,6 +54405,12 @@ function spSyncEnginePlan(st, opts) {
     if (sfS && stS) {
       const sfA = Math.max(1, Number(p.sardFromAyah) || 1), stA = Math.max(1, Number(p.sardToAyah) || 1);
       const changed = rec.sardFromS !== sfS || rec.sardFromA !== sfA || rec.sardToS !== stS || rec.sardToA !== stA;
+      /* (٦٤٥) بعد أوّل جلسة: بدايةٌ غيرُ البداية القادمة إرجاعٌ صريحٌ للطالب — يُوسَم وقتُه فتعلو
+         المتابعةَ من حيث وقف (sardStart). وتركُ «من» كما عُرضت لا يُوسَم */
+      if (!SP_SARD_PENDING && typeof sardLast === "function" && sardLast(st.id)) {
+        const _nx = typeof sardStart === "function" ? sardStart(st.id, sardDirOfPlan(rec)) : null;
+        if (_nx && (Number(_nx.s) !== sfS || Math.max(1, Number(_nx.a) || 1) !== sfA)) rec.sardPosTs = Date.now();
+      }
       rec.sardFromS = sfS; rec.sardFromA = sfA;
       rec.sardToS = stS;   rec.sardToA = stA;
       rec.sardDir = spDirKey(p.sardDir) === "forward" ? "forward" : "backward";
