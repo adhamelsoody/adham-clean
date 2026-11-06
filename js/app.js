@@ -15197,6 +15197,23 @@ window.sardFinish = function (studentId) {
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
 };
 
+/* (٦٤٠) مستوى البرنامج التالي الذي فيه السورةُ التي بلغها طالبُ السرد: «يشوف الطالب وصل أيّ سورة،
+   ويشوف في البرنامج السورةَ هذي في أيّ مستوى، وينقله للمستوى نفسه». مدى المستوى من أركانه (الحفظ
+   أوّلاً، ثمّ أيُّ ركنٍ له مدى). لا مستوى يحويها: null — ويبقى الانتقالُ كما كان */
+function sardLevelFor(programName, surah) {
+  const S = Number(surah) || 0;
+  if (!S || typeof spLevelsOfProgram !== "function") return null;
+  const lvs = spLevelsOfProgram(programName);
+  const has = (v) => {
+    if (!v || v.on !== true) return false;
+    const a = Number(v.fromS) || 0, b = Number(v.toS) || 0;
+    if (!a || !b) return false;
+    return S >= Math.min(a, b) && S <= Math.max(a, b);
+  };
+  return lvs.find(lv => lv && lv.pillars && has(lv.pillars.hifz)) ||
+         lvs.find(lv => lv && lv.pillars && Object.keys(lv.pillars).some(k => has(lv.pillars[k]))) || null;
+}
+
 window.sardFinishDo = function (studentId) {
   const st = (DB.students || []).find(x => String(x.id) === String(studentId));
   if (!st) return;
@@ -15207,25 +15224,62 @@ window.sardFinishDo = function (studentId) {
     const target = String(cfg.nextProgram || "").trim();
     if (!target) { showToast("لم يُحدَّد البرنامج التالي في إعداد السرد", "warn"); return; }
 
+    /* (٦٤٠) فهرسُ السور يلزم لكتابة موضع الحفظ في المستوى الجديد — يُطلب قبل البدء */
+    const _ready = (typeof QSURAHS === "undefined" || !QSURAHS) && window.Quran && typeof Quran.surahs === "function"
+      ? Quran.surahs().then(l => { QSURAHS = l; }).catch(e => console.warn("فهرس السور:", e)) : Promise.resolve();
+    return _ready.then(() => {
     /* (٥٧٣) الطالبُ أوّلاً؛ فإن رفضه الخادمُ عاد كما كان ولم تُمسّ خطتُه ولا يُعلن «انتقل» */
     const _snapS = JSON.parse(JSON.stringify(st));
     /* الموضعُ في البرنامج الجديد من آخر سورةٍ سُردت — لا من الصفر */
     st.program = target;
     if (last && last.s) { st.sardEndSurah = last.s; st.sardEndAyah = last.a || 0; }
     st.sardFinishedAt = Date.now();
-    return saveOrUndo("students", st, () => recRestore(st, _snapS)).then(ok => {
+    /* (٦٤٠) والمستوى: الذي فيه السورةُ التي بلغها — كان يبقى بلا مستوى فيُعرض على أوّل مستوى */
+    const _lv = last && last.s ? sardLevelFor(target, last.s) : null;
+    if (_lv) { st.levelId = String(_lv.id); st.level = _lv.name || ""; }
+    /* إجراءٌ صريحٌ بزرّ «تأكيد الإنهاء»: يُحاط بـ linkChange فلا يردّه حارسُ الارتباط بعد انتظار الفهرس */
+    const _lc = fn => (typeof window.linkChange === "function" ? window.linkChange(fn) : fn());
+    return _lc(() => saveOrUndo("students", st, () => recRestore(st, _snapS))).then(ok => _lc(() => {
       if (!ok) return false;
       const pl = (DB.plans || []).find(x => x && x.superseded !== true && String(x.studentId) === String(studentId));
       if (pl) {
         pl.program = target;
         pl.programId = ((cur("programs") || []).find(x => String(x.name) === target) || {}).id || "";
         if (last && last.s) pl.current = last.s + " " + (last.a || 1);
+        if (_lv) { pl.levelId = String(_lv.id); pl.level = _lv.name || ""; }
         persistSet("plans", pl);
       }
+      /* (٦٤٠) يُطبَّق المستوى (أركانُه ومقاديرُه) كما في كلّ مسارات تغيير المستوى، ثمّ يُعاد موضعُ الحفظ
+         إلى ما بعد آخر ما سُرد إن كان داخل مدى المستوى — لا إلى أوّل المستوى */
+      if (_lv) {
+        try {
+          if (typeof stuAdoptLevel === "function") stuAdoptLevel(st, true);
+          const H = _lv.pillars && _lv.pillars.hifz;
+          if (H && H.on === true && Number(H.fromS) && Number(H.toS)) {
+            const dir = H.dir === "forward" ? "forward" : H.dir === "backward" ? "backward"
+              : (Number(H.fromS) > Number(H.toS) ? "backward" : "forward");
+            const nx0 = typeof stepFrom === "function" ? stepFrom(last.s, last.a, dir) : null;
+            const nx = nx0 && typeof reciteNorm === "function" ? reciteNorm(nx0, dir) : nx0;
+            const lo = Math.min(Number(H.fromS), Number(H.toS)), hi = Math.max(Number(H.fromS), Number(H.toS));
+            const nmS = nx && nx.s && typeof surahName === "function" ? surahName(nx.s) : "";
+            if (nx && nx.s >= lo && nx.s <= hi && nmS) {
+              st.plan = Object.assign({}, st.plan || {}, { hifzOn: true, hifzSura: nmS, hifzAyah: Math.max(1, Number(nx.a) || 1) });
+              persistSet("students", st);
+              const rec = typeof spSyncEnginePlan === "function" ? spSyncEnginePlan(st) : null;
+              if (rec) {
+                rec.levelId = String(_lv.id); rec.level = _lv.name || rec.level;
+                if (typeof stuCurriculumWins === "function") stuCurriculumWins(rec, _lv);
+                persistSet("plans", rec);
+              }
+            }
+          }
+        } catch (e) { console.warn("مستوى ما بعد السرد:", e); }
+      }
       closeModal();
-      showToast("انتقل " + (st.name || "الطالب") + " إلى " + target, "success");
+      showToast("انتقل " + (st.name || "الطالب") + " إلى " + target + (_lv ? " — " + (_lv.name || "") : ""), "success");
       mount();
       return true;
+    }));
     });
   }
 
