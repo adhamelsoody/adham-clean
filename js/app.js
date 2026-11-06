@@ -33727,19 +33727,40 @@ function repSaveHidden() {
   } catch (e) {}
 }
 
+/* (٦٤١) اللوحةُ تبقى مفتوحةً بعد كلّ اختيار: كانت إعادةُ الرسم تُغلقها مع كلّ عمود، فيُفتح لكلّ عمودٍ
+   من جديد، والعمودُ المخفيّ في آخر الجدول العريض لا يُرى أثرُه — فتبدو الأعمدةُ كأنها لا تعمل.
+   ويُحفظ موضعُ التمرير في القائمة كي لا تقفز إلى أوّلها */
+let REP_COLS_KEEP = null;                 /* { scroll } ما دامت اللوحةُ مفتوحة */
+function repColsKeep() {
+  const l = document.querySelector(".rep-cols-panel .rcp-list");
+  REP_COLS_KEEP = { scroll: l ? l.scrollTop : 0 };
+}
+function repColsRestore() {
+  if (!REP_COLS_KEEP) return;
+  const p = document.querySelector(".rep-cols-panel");
+  if (!p) return;
+  p.style.display = "block";
+  const l = p.querySelector(".rcp-list");
+  if (l) l.scrollTop = REP_COLS_KEEP.scroll || 0;
+}
+
 window.repColToggle = function (k) {
   const h = repHidden();
   const i = h.indexOf(k);
   if (i > -1) h.splice(i, 1); else h.push(k);
   repSaveHidden();
+  repColsKeep();
   mount();
+  repColsRestore();
 };
 
 window.repColsAll = function (on) {
   const all = REP_STATE.cols || [];
   REP_HIDDEN[repKey()] = on ? [] : all.slice(1).map(c => c.k);
   repSaveHidden();
+  repColsKeep();
   mount();
+  repColsRestore();
 };
 
 /* الأعمدة المعروضة — يمرّ بها العرضُ والتصديرُ والطباعة */
@@ -33767,7 +33788,7 @@ function repColsPanel() {
       <b>${toArabicDigits(shown)}/${toArabicDigits(all.length)}</b>
     </button>
 
-    <div class="rep-cols-panel" style="display:none">
+    <div class="rep-cols-panel" style="display:${REP_COLS_KEEP ? "block" : "none"}">
       <div class="rcp-head">
         <button type="button" onclick="window.repColsAll(true)">إظهار الكل</button>
         <button type="button" onclick="window.repColsAll(false)">إخفاء الكل</button>
@@ -33796,6 +33817,7 @@ window.repColsOpen = function (btn) {
     x.style.display = "none";
   });
   p.style.display = open ? "none" : "block";
+  REP_COLS_KEEP = open ? null : { scroll: 0 };
 };
 
 function repApply(rows) {
@@ -33907,6 +33929,8 @@ function repStateSync() {
 }
 
 function repRender(cfg) {
+  /* (٦٤١) تقريرٌ آخر: لا تُفتح له لوحةُ أعمدةِ التقرير السابق */
+  if (REP_COLS_KEEP && String(REP_STATE.title || "") !== String(cfg.title || "")) REP_COLS_KEEP = null;
   REP_STATE.cols = cfg.cols; REP_STATE.rows = cfg.rows; REP_STATE.title = cfg.title;
   repStateSync();
 
