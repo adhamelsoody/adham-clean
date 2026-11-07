@@ -29277,7 +29277,8 @@ function setPanelLevels() {
           ? bits.map(b => `<span class="sys-bit">${esc(b)}</span>`).join("")
           : `<span class="muted" style="font-size:12.5px">لم تُضبط أركانه بعد</span>`}</div>
         <div class="sys-acts">
-          <button class="btn btn-ghost btn-sm" onclick="window.lvlView('${jsAttr(sp.id)}')">${ic("eye", 15)} التفاصيل</button>
+          ${/* (٦٥٨) «ألغِ زرّ التفاصيل» للخطة الافتراضية: كلُّ ما يلزمها في «الخيارات» */
+            String(sp.id) === "sys_default" ? "" : `<button class="btn btn-ghost btn-sm" onclick="window.lvlView('${jsAttr(sp.id)}')">${ic("eye", 15)} التفاصيل</button>`}
           ${canPlanSetup() ? `<button class="btn btn-soft btn-sm"
             onclick="window.${String(sp.id) === "sys_default" ? "sysPrgEmpty" : "sysPrgSetup"}('${jsAttr(sp.id)}')">${ic("settings", 15)} الخيارات</button>` : ""}
           ${isTopAdmin() ? `<button class="btn btn-ghost btn-sm"
