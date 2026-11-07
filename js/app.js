@@ -15846,6 +15846,10 @@ window.sysPrgEmpty = function (pid) {
             <button class="btn btn-ghost btn-sm" onclick="window.sysOptColorsReset()">القيم الافتراضية</button>
           </div>
         </section>
+        ${/* (٦٥٧) «الخيارات» في بطاقة الخطة الافتراضية تفتح هذه اللوحة (لا sysPrgSetup):
+             فيها درجةُ الالتزام وتقييمُ الأداء وجدولُ طلاب البرنامج */ ""}
+        <div id="poDedBox" class="sp-wide2">${dedCardHtml(pr)}</div>
+        ${prgStudentsSection(pr)}
       </div>
       <div class="sp-foot">
         <button class="btn btn-primary sp-save" id="poSave" onclick="window.sysOptSave('${jsAttr(pid)}')">
@@ -17022,6 +17026,9 @@ function dedRefreshView(pid) {
      صفحة البرنامج كانت ستستبدل اللوحةَ وتُضيع ما لم يُحفظ فيها */
   const box = document.getElementById("plDedBox");
   if (box && document.querySelector("#panelRoot .pl-page")) { box.innerHTML = plDedSeg(pid); return; }
+  /* (٦٥٧) وفي لوحة «الخيارات» للخطة الافتراضية: البطاقةُ وحدها — لئلا يضيع ما لم يُحفظ من الخيارات */
+  const pbox = document.getElementById("poDedBox");
+  if (pbox) { pbox.innerHTML = dedCardHtml(dedFindProgram(pid)); return; }
   const body = document.querySelector("#panelRoot .sp-body");
   const top = body ? body.scrollTop : 0;
   if (typeof window.lvlView === "function") window.lvlView(pid);
