@@ -14388,3 +14388,6 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
 /* (٦٤٩) زرُّ إعادة التحميل في شريط المعلّم: يدور أثناء التحميل */
 .tch-top-reload.spin svg { animation: tchSpin .8s linear infinite; }
 @keyframes tchSpin { to { transform: rotate(360deg); } }
+
+/* (٦٥١) زرُّ «إرجاع الطالب إلى سورة» تحت ما بلغه طالبُ السرد */
+.sp-sard-back { margin: 4px 0 12px; display: flex; justify-content: flex-start; }

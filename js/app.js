@@ -2022,7 +2022,9 @@ function cxMgrDashboard(mode) {
      كانت تُحسب للفترة النشطة كلِّها فلا تتغيّر بتغيير التاريخ. وبلا اختيارٍ (اليومُ نفسُه) تبقى
      للفترة كلِّها كما كانت */
   const _VR = typeof viewRange === "function" ? viewRange() : { kind: "day", from: d, toCap: d };
-  const _rng = (_VR.kind !== "day" || String(_VR.from) !== String(todayISO())) ? _VR : null;
+  /* (٦٥٢) واليومُ نفسُه يومٌ كغيره: كانت أرقامُ «اليوم» تُحسب للفترة كلِّها بواجباتها المسجَّلة في
+     الفترة النشطة (termId) — فتبقى «٠ / ٠» حيث لا تحمل الواجباتُ فترتَها، وتبدو كأنها لا تتغيّر */
+  const _rng = _VR;
   students.forEach(s => {
     let t = null;
     try { t = typeof planTally === "function" ? planTally({ studentId: s.id }, _rng) : null; } catch (e) { t = null; }
@@ -2039,8 +2041,8 @@ function cxMgrDashboard(mode) {
     const w = all ? Math.min(100, Math.round(done / all * 100)) : 0;
     return `<div class="cxd-bar"><i style="width:${w}%"></i></div>`;
   };
-  const _per = !_rng ? "" : _VR.kind !== "day" ? (_VR.label || "")
-    : (typeof hijriOf === "function" ? hijriOf(_VR.from) : _VR.from);
+  const _per = _VR.kind !== "day" ? (_VR.label || "")
+    : String(_VR.from) === String(todayISO()) ? "اليوم" : (typeof hijriOf === "function" ? hijriOf(_VR.from) : _VR.from);
   const facesCol = (title, dk, tk) => `<div class="cxd-col">
       <div class="cxd-head"><strong>${title}${_per ? ` <small class="muted">— ${esc(_per)}</small>` : ""}</strong>${bar(tot[dk], tot[tk])}
         <span class="cxd-sum">${n2(r1(tot[dk]))} / ${n2(r1(tot[tk]))}</span></div>
@@ -18517,9 +18519,27 @@ function lvHifzDone(plan) {
     String(a.kind || "").indexOf("hifz") === 0 && a.status === "done" && Number(a.toS) > 0 &&
     (!a.levelId || String(a.levelId) === String(plan.levelId)));
 }
-/* كم مرّةً بلغ نهايةَ المستوى */
+/* (٦٥٢) ختمُ المستوى: واجبٌ يحوي آيةَ نهايته نفسَها (يبدأ قبلها أو عندها وينتهي عندها أو بعدها) —
+   لا كلُّ واجبٍ بعد النهاية. كان كلُّ واجبٍ تجاوزها (طالبٌ مضى إلى ما بعد مستواه قبل الإصلاح، أو
+   واجبٌ قديمٌ من خطةٍ سابقة) يُعدّ ختمةً، فيُحسب التكرارُ منتهياً والمستوى مكتملاً */
+function lvCrossesEnd(rg, a) {
+  if (!rg || !a || !Number(a.toS) || !Number(a.fromS)) return false;
+  const endA = rg.end.a || (lvxSurahAyahs(rg.end.s) || 999);
+  const ek = lvKey(rg.dir, rg.end.s, endA);
+  const k1 = lvKey(rg.dir, a.fromS, a.fromA || 1), k2 = lvKey(rg.dir, a.toS, a.toA || 0);
+  const lo = Math.min(k1, k2), hi = Math.max(k1, k2);
+  if (lo <= ek && ek <= hi) return true;
+  /* والمنتهي عند آخر سورة النهاية وعددُ آياتها غيرُ معروفٍ بعد */
+  return Number(a.toS) === rg.end.s && !rg.end.a && asgSurahEnded(a);
+}
+/* كم مرّةً ختم المستوى */
 function lvEndRounds(plan, rg) {
-  return lvHifzDone(plan).filter(a => lvReachedEnd(rg, a)).length;
+  return lvHifzDone(plan).filter(a => lvCrossesEnd(rg, a)).length;
+}
+/* آخرُ واجب حفظٍ منجزٍ في المستوى */
+function lvLastDone(plan) {
+  return lvHifzDone(plan).slice().sort((a, b) =>
+    String(a.date || "").localeCompare(String(b.date || "")) || ((Number(a.ts) || 0) - (Number(b.ts) || 0))).pop() || null;
 }
 /* هل بقي على الطالب تكرارٌ عند نهاية المستوى؟ (المستوى كاملاً، أو آخرُ سورةٍ فيه) */
 function lvRepeatPending(plan, rg) {
@@ -24166,7 +24186,10 @@ function levelProgress(plan) {
     const list = lvHifzDone(plan);
     const span = Math.max(1, lvKey(rg.dir, rg.end.s, rg.end.a || 999) - lvKey(rg.dir, rg.start.s, rg.start.a));
     const far = list.reduce((m, a) => Math.max(m, lvKey(rg.dir, a.toS, a.toA)), lvKey(rg.dir, rg.start.s, rg.start.a));
-    const reached = list.some(a => lvReachedEnd(rg, a));
+    /* (٦٥٢) بلغ النهايةَ إن كان آخرُ ما أنجزه عندها أو بعدها — لا أيُّ واجبٍ قديم: من أُعيد إلى
+       أوّل المستوى للتكرار ليس مكتملاً حتى يختمه من جديد */
+    const _ld = lvLastDone(plan);
+    const reached = !!(_ld && lvReachedEnd(rg, _ld));
     const pend = reached && lvRepeatPending(plan, rg);
     const pct = reached ? 100 : Math.max(0, Math.min(99, Math.round((far - lvKey(rg.dir, rg.start.s, rg.start.a)) * 100 / span)));
     return { level: lv, done: pct, need: 100, pct, complete: reached && !pend, byRange: true, repeatPending: pend };
@@ -54757,8 +54780,66 @@ function spSardProgress(s) {
       ${box("يبدأ الجلسةَ القادمة من", next ? pos(next) : last ? "…" : "يحدّده المعلّم", next,
         last && !next ? ` data-spsard-next="${esc(String(s.id))}"` : "")}
       ${box("جلسات السرد", rows.length ? toArabicDigits(rows.length) + " جلسة · آخرها " + toArabicDigits(lastDate) : "لا جلسات بعد")}
-    </div>`;
+    </div>
+    ${last ? `<div class="sp-sard-back">
+      <button type="button" class="btn btn-light btn-sm" onclick="window.sardBackOpen('${jsAttr(String(s.id))}')">
+        ${ic("refresh", 14)} إرجاع الطالب إلى سورة…</button>
+    </div>` : ""}`;
 }
+
+/* =========================================================================
+   (٦٥١) إرجاعُ طالب السرد بضغطة — «لو بأرجع الطالب من سورة الناس لأيّ سبب، كيف أرجعه؟
+   عايز طريقة سهلة وسلسة». نافذةٌ صغيرة: زرُّ «من البداية» (الناس ١ أو الفاتحة ١ بحسب
+   اتجاهه) أو أيُّ سورةٍ وآية — وتُحفظ فوراً. الحفظُ هو نفسُه ما يفعله تغييرُ «من» في البطاقة
+   (٦٤٥): بدايةٌ موسومةٌ بوقتها تعلو المتابعةَ من حيث وقف، وما يُسرد بعدها يمضي منه
+   ========================================================================= */
+window.sardBackOpen = function (sid) {
+  const st = (DB.students || []).find(x => String(x.id) === String(sid));
+  if (!st) return;
+  const pl = typeof planOfStudent === "function" ? planOfStudent(st) : null;
+  const dir = sardDirOfPlan(pl);
+  const startS = dir === "forward" ? 1 : 114;
+  const L = (typeof QSURAHS !== "undefined" && Array.isArray(QSURAHS) && QSURAHS.length) ? QSURAHS
+    : (Array.isArray(SP_SURAHS) ? SP_SURAHS : []);
+  const ordered = dir === "forward" ? L.slice() : L.slice().reverse();
+  const opts = ordered.map(x => `<option value="${Number(x.i)}"${Number(x.i) === startS ? " selected" : ""}>${esc(x.n)}</option>`).join("");
+  const startName = (L.find(x => Number(x.i) === startS) || {}).n || (startS === 114 ? "الناس" : "الفاتحة");
+  openModal("إرجاع الطالب في السرد", st.name || "",
+    `<p class="muted" style="margin:0 0 12px">تبدأ جلستُه القادمةُ من حيث تختار، ثمّ يتابع البرنامجُ من حيث ينتهي كالمعتاد. ولا يُمحى شيءٌ من جلساته السابقة.</p>
+     <button type="button" class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="window.sardBackSave('${jsAttr(String(sid))}', ${startS}, 1)">
+       ${ic("refresh", 16)} من البداية — ${esc(startName)} ١</button>
+     <div class="sp-grid">
+       <div class="field"><label for="sbSura">أو من سورة</label>
+         <select id="sbSura" onchange="window.ayahCap && window.ayahCap('sbAyah','sbSura')">${opts || `<option value="${startS}">${esc(startName)}</option>`}</select></div>
+       <div class="field"><label for="sbAyah">الآية</label><input id="sbAyah" type="number" min="1" value="1"></div>
+     </div>`,
+    `<button class="btn btn-light" data-action="close-modal">إلغاء</button>
+     <button class="btn btn-primary" onclick="window.sardBackSave('${jsAttr(String(sid))}')">${ic("check", 16)} حفظ</button>`);
+  if (!L.length && window.Quran && typeof Quran.surahs === "function") {
+    Quran.surahs().then(list => { if (!QSURAHS) QSURAHS = list; window.sardBackOpen(sid); }).catch(e => console.warn("فهرس السور:", e));
+  }
+};
+window.sardBackSave = function (sid, sS, aA) {
+  const st = (DB.students || []).find(x => String(x.id) === String(sid));
+  if (!st) return;
+  const S = Number(sS) || Number((document.getElementById("sbSura") || {}).value) || 0;
+  let A = Number(aA) || Number((document.getElementById("sbAyah") || {}).value) || 1;
+  const cnt = typeof ayahCountOf === "function" ? Number(ayahCountOf(S)) || 0 : 0;
+  if (!(S >= 1 && S <= 114)) { showToast("اختر السورة", "warn"); return; }
+  if (cnt && A > cnt) A = cnt;
+  A = Math.max(1, A);
+  const pl = typeof planOfStudent === "function" ? planOfStudent(st) : null;
+  if (!pl) { showToast("لا خطةَ لهذا الطالب", "warn"); return; }
+  const name = typeof surahName === "function" ? surahName(S) : "";
+  pl.sardFromS = S; pl.sardFromA = A; pl.sardPosTs = Date.now();
+  st.plan = Object.assign({}, st.plan || {}, name ? { sardFromSura: name, sardFromAyah: A } : {});
+  Promise.all([persistSet("plans", pl), persistSet("students", st)]).then(r => {
+    if (r[0] === false) { showToast("لم يُحفظ الإرجاع — راجع الصلاحيات", "warn"); return; }
+    closeModal();
+    showToast("سيبدأ " + (st.name || "الطالب") + " جلستَه القادمة من " + (name || ("سورة " + toArabicDigits(S))) + " " + toArabicDigits(A), "success");
+    try { if (document.querySelector(".sp-page") && typeof panelStudent === "function") panelStudent(st.id); else mount(); } catch (e) {}
+  });
+};
 
 /* (٦٣٩) «نظام إنجازي» اسمُ نظامٍ آخر بقي في بيانات البرامج القديمة (owner) — لا يُعرض: يُعرض مكانه اسمُ
    الجهة من الإعدادات. القيمةُ المحفوظة لا تُمسّ، وتبقى المقارنةُ بها في الكود لتمييز برامج النظام */
