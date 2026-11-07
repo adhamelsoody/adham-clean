@@ -53647,7 +53647,7 @@ function panelStudent(id, keepDraft) {
         <div class="field"><label for="sp_circle">الحلقة</label>
           <select id="sp_circle">${stuCircleOpts(s)}</select></div>
         <div class="field"><label for="sp_attType2">نوع الدوام</label>
-          <select id="sp_attType2">${["دوام كامل", "دوام جزئي"].map(o =>
+          <select id="sp_attType2" onchange="window.spDaysPlace()">${["دوام كامل", "دوام جزئي"].map(o =>
             `<option${o === (s.attType || "دوام كامل") ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>
         <div class="field"><label for="sp_mode">وضع الطالب</label>
           <select id="sp_mode">
@@ -53655,6 +53655,7 @@ function panelStudent(id, keepDraft) {
             <option value="att"${s.attOnly ? " selected" : ""}>تحضير فقط — بلا خطة</option>
           </select></div>
       </div>
+      <div id="spDaysPart" class="sp-wide"></div>
       <div class="sp-field sp-wide">
         <label for="sp_circles">حلقات إضافية</label>
         <select id="sp_circles" multiple size="3">
@@ -53717,9 +53718,10 @@ function panelStudent(id, keepDraft) {
       </div>
     </section>
 
-    <section class="sp-card sp-wide2">
+    <span id="spDaysHome" hidden></span>
+    <section class="sp-card sp-wide2" id="spDaysCard">
       <div class="sp-cardhead">${ic("calendar", 17)}
-        <div><h3>أيام الخطة الأسبوعية</h3><p>الأيام التي يُسمّع فيها الطالب خطته</p></div>
+        <div><h3 id="spDaysTitle">أيام الخطة الأسبوعية</h3><p id="spDaysSub">الأيام التي يُسمّع فيها الطالب خطته</p></div>
         <span class="sp-count" id="spDaysCount">${days.length} أيام</span></div>
       <div class="sp-days">${dayBtns}</div>
     </section>
@@ -53809,8 +53811,33 @@ function panelStudent(id, keepDraft) {
   requestAnimationFrame(() => {
     runAnimations($("#panelRoot"));
     spFillSurahs($("#panelRoot"));
+    try { window.spDaysPlace(); } catch (e) { console.warn("أيام الدوام الجزئي:", e); }
   });
 }
+
+/* (٦٤٧) «دوام جزئي»: اختيارُ الأيام تحت نوع الدوام مباشرةً، لا في آخر تبويب الخطة. البطاقةُ
+   نفسُها تُنقل (لا تُنسخ) — فيبقى في البطاقة مكانٌ واحدٌ للأيام يقرؤه الحفظ (.sp-days). وبالدوام
+   الكامل تعود إلى مكانها في تبويب الخطة */
+window.spDaysPlace = function () {
+  const sel = document.getElementById("sp_attType2");
+  const card = document.getElementById("spDaysCard");
+  const part = document.getElementById("spDaysPart");
+  const home = document.getElementById("spDaysHome");
+  if (!sel || !card || !part || !home) return;
+  const isPart = String(sel.value) === "دوام جزئي";
+  const t = document.getElementById("spDaysTitle"), sub = document.getElementById("spDaysSub");
+  if (isPart) {
+    if (card.parentNode !== part) part.appendChild(card);
+    card.classList.add("sp-days-part");
+    if (t) t.textContent = "أيام الدوام الجزئي";
+    if (sub) sub.textContent = "الأيام التي يحضر فيها الطالب ويُسمّع خطته";
+  } else {
+    if (card.previousElementSibling !== home) home.parentNode.insertBefore(card, home.nextSibling);
+    card.classList.remove("sp-days-part");
+    if (t) t.textContent = "أيام الخطة الأسبوعية";
+    if (sub) sub.textContent = "الأيام التي يُسمّع فيها الطالب خطته";
+  }
+};
 
 /* الحفظُ يكتب ما عُرض فقط: الحقولُ غيرُ المعروضة في التبويب الحالي لا
    تُقرأ، فلا تُمحى قيمتُها بفراغ. */

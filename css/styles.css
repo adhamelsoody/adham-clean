@@ -14378,3 +14378,9 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
    والعرضُ كما هو) فيقع التشكيلُ داخلَ اللون. */
 .qv-lines .mus-w { padding-block: .5em .32em; }
 .mus-lines .mus-w.marked { padding-block: .3em .2em; }
+
+/* (٦٤٧) أيامُ الدوام الجزئي تحت «نوع الدوام» في بطاقة الحلقة: البطاقةُ المنقولةُ داخلَ بطاقةٍ
+   فلا تُضاعَف حدودُها وظلُّها، ويفصلها عمّا فوقها هامش */
+#spDaysPart:empty { display: none; }
+#spDaysPart { margin: 12px 0; }
+#spDaysPart .sp-days-part { box-shadow: none; margin: 0; background: transparent; padding-inline: 0; }
