@@ -15449,7 +15449,6 @@ function sardSetup() {
           ${noteCard("اليدويُّ يفتح طلبَ اختبارٍ للمشرف فيحدّد هو البرنامجَ والمستوى. والتلقائيُّ ينقل الطالبَ إلى البرنامج المحدَّد، وموضعُه فيه من آخر سورةٍ سردها.")}
         </section>
 
-        ${/* (٦٥٥) طلابُ البرنامج في خياراته */ prgStudentsSection(sysPrograms().find(x => String(x.id) === String(SARD_ID)))}
       </div>
 
       <div class="pl-bar" id="plBar">
@@ -16798,7 +16797,7 @@ window.lvlView = function (id) {
              محفوظٌ في السجلّ (dailyPass) ولم يُمسّ. */ ""}
         ${prgDutiesCardHtml(p2)}
 
-        ${fixed ? "" : dedCardHtml(p2)}
+        ${fixed && String(p2.id) !== SARD_ID ? "" : dedCardHtml(p2)}
 
         ${fixed ? (function () {
           /* الإعدادُ المحفوظ يُعرض في صفحة البرنامج: ضبطَه المشرفُ مرّةً
@@ -16887,7 +16886,7 @@ window.lvlView = function (id) {
 
         ${/* (٦٥٥) «طلابُ البرنامج» ودرجةُ الالتزام في «الخيارات» لا في التفاصيل — للبرنامج المثبَّت
              (خياراتُه sysPrgSetup / sardSetup). وبرنامجُ المدير بلا لوحة خيارات: يبقيان هنا */ ""}
-        ${fixed ? "" : prgStudentsSection(p2)}
+        ${/* (٦٥٦) السردُ المحفوظ يبقى جدولُه وبطاقتُه في تفاصيله كما كانا — النقلُ إلى الخيارات للخطة الافتراضية */ fixed && String(p2.id) !== SARD_ID ? "" : prgStudentsSection(p2)}
 
       </div>
     </aside>`);
