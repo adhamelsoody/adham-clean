@@ -33943,14 +33943,51 @@ function repColsRestore() {
   if (l) l.scrollTop = REP_COLS_KEEP.scroll || 0;
 }
 
+/* (٦٥٣) «عند الضغط … يرجع إلى الوراء — عايزه لمّا يحدّث يجيلي مكانَ ما أنا كنت واقف»: إعادةُ رسم
+   التقرير (اختيارُ عمود، ترتيب، تصفية، حجمُ الصفحة) تُبقي مواضعَ التمرير كلَّها — الصفحة والجدول
+   أفقياً وعمودياً — كما كانت. تُحفظ مواضعُ كلِّ ما كان مُمرَّراً بمفتاحه (الوسم والصنف وترتيبه)
+   وتُردّ بعد الرسم */
+function repScrollKeep() {
+  const out = [];
+  const keyOf = el => el.tagName + "." + String(el.className || "").trim().split(/\s+/).slice(0, 3).join(".");
+  const seen = {};
+  const all = [document.scrollingElement || document.documentElement].concat([].slice.call(document.querySelectorAll("body *")));
+  all.forEach(el => {
+    if (!el) return;
+    const k = keyOf(el); seen[k] = (seen[k] || 0) + 1;
+    if (el.scrollTop || el.scrollLeft) out.push({ k, i: seen[k], t: el.scrollTop, l: el.scrollLeft });
+  });
+  return out;
+}
+function repScrollRestore(list) {
+  if (!list || !list.length) return;
+  const keyOf = el => el.tagName + "." + String(el.className || "").trim().split(/\s+/).slice(0, 3).join(".");
+  const seen = {}, map = {};
+  list.forEach(x => { map[x.k + "#" + x.i] = x; });
+  const all = [document.scrollingElement || document.documentElement].concat([].slice.call(document.querySelectorAll("body *")));
+  all.forEach(el => {
+    const k = keyOf(el); seen[k] = (seen[k] || 0) + 1;
+    const x = map[k + "#" + seen[k]];
+    if (x) { el.scrollTop = x.t; el.scrollLeft = x.l; }
+  });
+}
+function repRemount() {
+  const keep = repScrollKeep();
+  if (REP_COLS_KEEP || document.querySelector('.rep-cols-panel[style*="block"]')) repColsKeep();
+  mount();
+  repColsRestore();
+  repScrollRestore(keep);
+  /* وما يُرسَم بعد إطارٍ (الرسومُ والعدّاداتُ المتحرّكة) لا يُزيح الموضع */
+  requestAnimationFrame(() => repScrollRestore(keep));
+}
+
 window.repColToggle = function (k) {
   const h = repHidden();
   const i = h.indexOf(k);
   if (i > -1) h.splice(i, 1); else h.push(k);
   repSaveHidden();
   repColsKeep();
-  mount();
-  repColsRestore();
+  repRemount();
 };
 
 window.repColsAll = function (on) {
@@ -33958,8 +33995,7 @@ window.repColsAll = function (on) {
   REP_HIDDEN[repKey()] = on ? [] : all.slice(1).map(c => c.k);
   repSaveHidden();
   repColsKeep();
-  mount();
-  repColsRestore();
+  repRemount();
 };
 
 /* الأعمدة المعروضة — يمرّ بها العرضُ والتصديرُ والطباعة */
@@ -34039,7 +34075,7 @@ function repApply(rows) {
 window.repSort = function (k) {
   if (REP_STATE.sort === k) REP_STATE.dir = -REP_STATE.dir;
   else { REP_STATE.sort = k; REP_STATE.dir = 1; }
-  mount();
+  repRemount();
 };
 window.repFilterOpen = function (k, btn) {
   document.querySelectorAll(".rep-fpanel").forEach(p2 => { if (p2.dataset.k !== k) p2.style.display = "none"; });
@@ -34048,10 +34084,10 @@ window.repFilterOpen = function (k, btn) {
 };
 window.repFilterSet = function (k, v) {
   if (v === "__all__") delete REP_STATE.filters[k]; else REP_STATE.filters[k] = v;
-  REP_STATE.page = 1; mount();
+  REP_STATE.page = 1; repRemount();
 };
-window.repSize = function (n) { REP_STATE.size = Number(n) || 10; REP_STATE.page = 1; mount(); };
-window.repPage = function (n) { REP_STATE.page = n; mount(); };
+window.repSize = function (n) { REP_STATE.size = Number(n) || 10; REP_STATE.page = 1; repRemount(); };
+window.repPage = function (n) { REP_STATE.page = n; repRemount(); };
 
 /* التصدير */
 window.repExport = function (kind) {
@@ -49933,6 +49969,8 @@ function mountChrome() {
 }
 window.mountChrome = mountChrome;
 
+/* (٦٥٣) آخرُ شاشةٍ رُسمت — لإبقاء موضع التمرير عند إعادة رسمها هي */
+let MOUNT_LAST_KEY = "";
 function mount() {
   /* مغادرةُ المصحف تُغلق مستمعَه اللحظيّ */
   try { if (STATE.page !== "mushaf" && typeof musLiveStop === "function" && MUS_LIVE.off) musLiveStop(); } catch (e) {}
@@ -50014,9 +50052,45 @@ function mount() {
     if (h) setDocTitle(h.textContent.trim());
   }, 0);
   if (!root) return;
+  /* (٦٥٣) إعادةُ رسم الشاشة نفسِها (ترشيحٌ أو ترتيبٌ أو اختيارُ عمودٍ أو مزامنة) تُبقي المستخدمَ
+     حيث كان: موضعُ تمرير الصفحة، وتمريرُ كلِّ جدولٍ أفقياً وعمودياً. كان الرسمُ يُعيد كلَّ شيءٍ
+     إلى أوّله — «عند الضغط على أعلى كلّ خانة يرجع إلى الوراء». والانتقالُ إلى شاشةٍ أخرى يبدأ
+     من أعلاها كما كان */
+  const _same = MOUNT_LAST_KEY === fnKey;
+  MOUNT_LAST_KEY = fnKey;
+  let _keep = null;
+  if (_same) {
+    try {
+      const se = document.scrollingElement || document.documentElement;
+      _keep = { top: root.scrollTop, win: se ? se.scrollTop : window.scrollY, winX: se ? se.scrollLeft : window.scrollX, els: [] };
+      const seen = {};
+      root.querySelectorAll("div, section, main, ul").forEach(el => {
+        if (!(el.scrollLeft || el.scrollTop)) return;
+        const k = (el.id ? "#" + el.id : "") + "." + String(el.className || "").trim().split(/\s+/).sort().join(".");
+        const n = seen[k] = (seen[k] || 0) + 1;
+        _keep.els.push({ k, n, l: el.scrollLeft, t: el.scrollTop });
+      });
+    } catch (e) { _keep = null; }
+  }
   root.innerHTML = (typeof trmViewBanner === "function" ? trmViewBanner() : "") +
     (typeof alertLateBanner === "function" ? alertLateBanner() : "") + html;
   root.scrollTop = 0;
+  if (_keep) {
+    try {
+      root.scrollTop = _keep.top;
+      const se = document.scrollingElement || document.documentElement;
+      if (se) { se.scrollTop = _keep.win; se.scrollLeft = _keep.winX; }
+      if (_keep.els.length) {
+        const seen = {};
+        root.querySelectorAll("div, section, main, ul").forEach(el => {
+          const k = (el.id ? "#" + el.id : "") + "." + String(el.className || "").trim().split(/\s+/).sort().join(".");
+          const n = seen[k] = (seen[k] || 0) + 1;
+          const m = _keep.els.find(x => x.k === k && x.n === n);
+          if (m) { el.scrollLeft = m.l; el.scrollTop = m.t; }
+        });
+      }
+    } catch (e) { console.warn("حفظ موضع التمرير:", e); }
+  }
   try { if (typeof window.tbPeriodSync === "function") window.tbPeriodSync(); } catch (e) {}
   runAnimations(root);
   try { fabRender(); } catch (e) { console.warn("fab:", e); }
