@@ -5479,8 +5479,15 @@ function scopeSupervisors() {
 
 
 
+/* (٦٦٢) «عايز مشرفين ومعلمين ولا أريد مدراء — ألغِها»: تبويبُ «المدراء» أُلغي من
+   الصفحة لكلّ الأدوار، وتُفتح على المعلّمين. حساباتُ المدراء نفسُها لا تُمسّ —
+   تُدار من صفحة المستخدمين والحسابات. والجدولُ (_mgrAcct) باقٍ في الكود: إعادةُ
+   التبويب بتغيير هذه الدالّة وحدها. */
+function staffMgrTabOn() { return false; }
+
 function staffTabCur() {
   var v = String(STATE.staffTab || "");
+  if (v === "managers" && !staffMgrTabOn()) v = "";
   if (v === "managers" || v === "sups" || v === "teachers") return v;
   /* =========================================================================
      الصفحةُ تُفتح على ما يقوله اسمُها
@@ -5496,13 +5503,13 @@ function staffTabCur() {
      ========================================================================= */
   try {
     var r = ((STATE && STATE.user) || {}).role || "";
-    if (r === "admin" || r === "owner") return "managers";
+    if ((r === "admin" || r === "owner") && staffMgrTabOn()) return "managers";
   } catch (e) {}
   return "teachers";
 }
 
 window.staffTabSet = function (k) {
-  const v = (k === "managers" || k === "sups") ? k : "teachers";
+  const v = ((k === "managers" && staffMgrTabOn()) || k === "sups") ? k : "teachers";
   if (staffTabCur() === v) return;
   STATE.staffTab = v;
   mount();
@@ -5512,7 +5519,7 @@ function staffTabsBar(nTeach, nMgr, nSup) {
   const t = staffTabCur();
   const items = [["teachers", "المعلمين", nTeach, "teacher"]];
   if (nSup != null) items.push(["sups", "المشرفين", nSup, "person"]);
-  if (nMgr != null) items.push(["managers", "المدراء", nMgr, "person"]);
+  if (nMgr != null && staffMgrTabOn()) items.push(["managers", "المدراء", nMgr, "person"]);
   return `<div class="fac-tabs">
     ${items.map(([k, h, n, i]) =>
       `<button type="button" class="fac-tab${t === k ? " on" : ""}"
