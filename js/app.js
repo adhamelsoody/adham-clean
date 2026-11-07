@@ -15448,6 +15448,8 @@ function sardSetup() {
           </div>
           ${noteCard("اليدويُّ يفتح طلبَ اختبارٍ للمشرف فيحدّد هو البرنامجَ والمستوى. والتلقائيُّ ينقل الطالبَ إلى البرنامج المحدَّد، وموضعُه فيه من آخر سورةٍ سردها.")}
         </section>
+
+        ${/* (٦٥٥) طلابُ البرنامج في خياراته */ prgStudentsSection(sysPrograms().find(x => String(x.id) === String(SARD_ID)))}
       </div>
 
       <div class="pl-bar" id="plBar">
@@ -16014,6 +16016,8 @@ window.sysPrgSetup = function (pid) {
           </div>
           <div class="pl-colors">${musCfgPanel()}</div>
         </section>
+
+        ${prgStudentsSection(pr)}
       </div>
       <div class="pl-bar" id="plBar">
         <span class="pl-note">لديك تغييرات غير محفوظة</span>
@@ -16794,7 +16798,7 @@ window.lvlView = function (id) {
              محفوظٌ في السجلّ (dailyPass) ولم يُمسّ. */ ""}
         ${prgDutiesCardHtml(p2)}
 
-        ${dedCardHtml(p2)}
+        ${fixed ? "" : dedCardHtml(p2)}
 
         ${fixed ? (function () {
           /* الإعدادُ المحفوظ يُعرض في صفحة البرنامج: ضبطَه المشرفُ مرّةً
@@ -16881,29 +16885,9 @@ window.lvlView = function (id) {
             : `<div class="qg-empty">لا مستويات مسجَّلة لهذا البرنامج</div>`}
         </section>` : lvbSection(p2.id, lvls)}
 
-        <section class="sp-card sp-wide2">
-          <div class="sp-cardhead">${ic("users", 17)}
-            <div><h3>طلاب البرنامج</h3><p>مستوى كلٍّ وموضعه وإنجازه</p></div>
-            <span class="sp-count">${toArabicDigits(studs.length)}</span></div>
-          <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
-            <thead><tr><th>الطالب</th><th>الحلقة</th><th>المعلم</th>${_sard
-              ? "<th>نطاق السرد</th><th>آخر موضع</th><th>الجلسات</th><th>إجراء</th>"
-              : "<th>المستوى</th><th>الموضع</th><th>الإنجاز</th>"}</tr></thead>
-            <tbody>${studs.length ? studs.map(r => `<tr>
-              <td class="pt-name">${esc(r.st.name || "—")}</td>
-              <td class="${r.st.circle ? "" : "pt-muted"}">${esc(r.st.circle || "بلا حلقة")}</td>
-              <td class="${stuLinkName(r.st).teacher ? "" : "pt-muted"}">${esc(stuLinkName(r.st).teacher || "بلا معلم")}</td>
-              ${_sard ? `<td>${esc(_sardRange(r.plan))}</td>
-              <td>${esc(_sardPos(r.st))}</td>
-              <td>${esc(_sardSess(r.st))}</td>` : `<td class="${r.plan.level ? "" : "pt-muted"}">${esc(r.plan.level || "بلا مستوى")}</td>
-              <td class="pt-num">${esc(r.plan.current || "—")}</td>
-              <td style="min-width:130px">${progressRow(planPctOf(r.plan, r.st))}</td>`}
-              ${_sard ? `<td><button class="btn btn-soft btn-sm" style="white-space:nowrap"
-                onclick="window.sardFinish('${jsAttr(r.st.id)}')">${ic("arrowLeft", 14)} ${esc(_sardBtn)}</button></td>` : ""}
-            </tr>`).join("")
-            : `<tr><td colspan="${_sard ? 7 : 6}" class="rep-empty">لا طلاب في هذا البرنامج بعد.</td></tr>`}</tbody>
-          </table></div></div>
-        </section>
+        ${/* (٦٥٥) «طلابُ البرنامج» ودرجةُ الالتزام في «الخيارات» لا في التفاصيل — للبرنامج المثبَّت
+             (خياراتُه sysPrgSetup / sardSetup). وبرنامجُ المدير بلا لوحة خيارات: يبقيان هنا */ ""}
+        ${fixed ? "" : prgStudentsSection(p2)}
 
       </div>
     </aside>`);
@@ -17002,6 +16986,15 @@ function dedCommitOf(p2) {
   return p2.commit || "presentAbsent";
 }
 
+/* (٦٥٥) درجةُ الالتزام لطالبٍ بعينه: ما اختير له في بطاقته، وإلّا ما في خيارات برنامجه */
+function stuCommitOf(st) {
+  if (st && st.commit) return String(st.commit);
+  const pg = st ? (cur("programs") || []).concat(typeof sysPrograms === "function" ? sysPrograms() : [])
+    .find(x => String(x.name) === String(st.program)) : null;
+  return dedCommitOf(pg);
+}
+window.stuCommitOf = stuCommitOf;
+
 function dedFindProgram(pid) {
   return (cur("programs") || []).find(x => String(x.id) === String(pid)) ||
          sysPrograms().find(x => String(x.id) === String(pid)) || null;
@@ -17035,6 +17028,77 @@ function dedRefreshView(pid) {
   if (typeof window.lvlView === "function") window.lvlView(pid);
   const nb = document.querySelector("#panelRoot .sp-body");
   if (nb) nb.scrollTop = top;
+}
+
+/* (٦٥٥) جدولُ «طلاب البرنامج» — يُعرض في لوحة خيارات البرنامج المثبَّت، وفي تفاصيل برنامج المدير */
+function prgStudentsSection(p2) {
+  if (!p2) return "";
+  const id = p2.id;
+  const plans = (cur("plans") || []).filter(x => String(x.programId) === String(id) ||
+                                                 String(x.program) === String(p2.name));
+  const sIds = {}; plans.forEach(pl => { sIds[String(pl.studentId)] = pl; });
+  const studs = (cur("students") || []).filter(st => sIds[String(st.id)])
+    .map(st => ({ st: st, plan: sIds[String(st.id)] }));
+  const _sard = String(id) === SARD_ID;
+  if (_sard && typeof sardStudents === "function") sardStudents().forEach(st => {
+    if (!sIds[String(st.id)]) studs.push({ st: st, plan: {} });
+  });
+  const _sCfg = _sard && typeof sysPrgCfg === "function" ? sysPrgCfg(SARD_ID) : {};
+  const _sardBtn = _sCfg.onEnd === "auto" && _sCfg.nextProgram ? "نقل إلى " + _sCfg.nextProgram : "إنهاء البرنامج";
+  /* (السرد) ما يراه المعلّمُ لطالب السرد يُعرض هنا نفسُه: النطاقُ المضبوط في خطته (sardFromS…sardToS)
+     والاتجاه، وآخرُ موضعٍ سُرد، وجلساتُ السرد المسجَّلة — كان الجدولُ يعرض المستوى والموضعَ ونسبةَ
+     المستوى، وهي فارغةٌ في السرد («بلا مستوى» · «—» · ٠٪) والمعلّمُ يرى بياناتِه كاملة */
+  /* أسماءُ السور من الفهرس — يُطلب إن لم يصل بعد، وإلى أن يصل تُعرض السورةُ برقمها */
+  if (_sard && !(typeof QSURAHS !== "undefined" && QSURAHS)) {
+    try { if (typeof reciteLoadSurahs === "function") reciteLoadSurahs(); } catch (e) { console.warn("فهرس السور:", e); }
+  }
+  const _sur = i => (typeof QSURAHS !== "undefined" && QSURAHS ? (QSURAHS.find(x => x.i === Number(i)) || {}).n : "") || ("سورة " + toArabicDigits(i));
+  const _sardRange = pl => {
+    const fS = Number(pl && pl.sardFromS) || 0, tS = Number(pl && pl.sardToS) || 0;
+    const dir = typeof sardDirOfPlan === "function" && sardDirOfPlan(pl) === "forward" ? "من الفاتحة" : "من الناس";
+    if (!fS || !tS) return "يحدّده المعلّم · " + dir;
+    return _sur(fS) + " " + toArabicDigits(Math.max(1, Number(pl.sardFromA) || 1)) + " ← " +
+           _sur(tS) + " " + toArabicDigits(Math.max(1, Number(pl.sardToA) || 1)) + " · " + dir;
+  };
+  const _sardSess = st => {
+    const rows = (Array.isArray(DB.recitations) ? DB.recitations : []).filter(r => r &&
+      String(r.studentId) === String(st.id) && String(r.kind || "") === (typeof SARD_KIND !== "undefined" ? SARD_KIND : "السرد"));
+    if (!rows.length) return "لا جلسات بعد";
+    const last = rows.map(r => String(r.date || "")).sort().pop();
+    return toArabicDigits(rows.length) + " جلسة · آخرها " + toArabicDigits(last);
+  };
+  const _sardPos = st => {
+    const l = typeof sardLast === "function" ? sardLast(st.id) : null;
+    if (!l || !l.s) return "لم يبدأ بعد";
+    const n = _sur(l.s);
+    return n + (l.a ? " — آية " + toArabicDigits(l.a) : "");
+  };
+
+  return `
+        <section class="sp-card sp-wide2 prg-studs">
+          <div class="sp-cardhead">${ic("users", 17)}
+            <div><h3>طلاب البرنامج</h3><p>مستوى كلٍّ وموضعه وإنجازه</p></div>
+            <span class="sp-count">${toArabicDigits(studs.length)}</span></div>
+          <div class="pt-wrap"><div class="pt-scroll"><table class="ptable">
+            <thead><tr><th>الطالب</th><th>الحلقة</th><th>المعلم</th>${_sard
+              ? "<th>نطاق السرد</th><th>آخر موضع</th><th>الجلسات</th><th>إجراء</th>"
+              : "<th>المستوى</th><th>الموضع</th><th>الإنجاز</th>"}</tr></thead>
+            <tbody>${studs.length ? studs.map(r => `<tr>
+              <td class="pt-name">${esc(r.st.name || "—")}</td>
+              <td class="${r.st.circle ? "" : "pt-muted"}">${esc(r.st.circle || "بلا حلقة")}</td>
+              <td class="${stuLinkName(r.st).teacher ? "" : "pt-muted"}">${esc(stuLinkName(r.st).teacher || "بلا معلم")}</td>
+              ${_sard ? `<td>${esc(_sardRange(r.plan))}</td>
+              <td>${esc(_sardPos(r.st))}</td>
+              <td>${esc(_sardSess(r.st))}</td>` : `<td class="${r.plan.level ? "" : "pt-muted"}">${esc(r.plan.level || "بلا مستوى")}</td>
+              <td class="pt-num">${esc(r.plan.current || "—")}</td>
+              <td style="min-width:130px">${progressRow(planPctOf(r.plan, r.st))}</td>`}
+              ${_sard ? `<td><button class="btn btn-soft btn-sm" style="white-space:nowrap"
+                onclick="window.sardFinish('${jsAttr(r.st.id)}')">${ic("arrowLeft", 14)} ${esc(_sardBtn)}</button></td>` : ""}
+            </tr>`).join("")
+            : `<tr><td colspan="${_sard ? 7 : 6}" class="rep-empty">لا طلاب في هذا البرنامج بعد.</td></tr>`}</tbody>
+          </table></div></div>
+        </section>
+`;
 }
 
 /* بطاقة «درجة الالتزام وتقييم الأداء» في صفحة البرنامج */
@@ -52945,6 +53009,13 @@ function stuCollect() {
   put("#sp_circle", "circle");
   put("#sp_attType2", "attType");        /* بطاقةُ الحلقة تكتب نوعَ الدوام كذلك */
   if (g("#sp_mode") != null) out.stu.attOnly = g("#sp_mode") === "att";
+  /* (٦٥٥) درجةُ الالتزام للطالب نفسِه — فارغةٌ = ما في خيارات برنامجه */
+  /* ولا يُكتب الحقلُ ما لم يُختر شيءٌ ولم يكن له قيمة — فحفظُ البطاقة لا يمسّ سجلّاً لم يتغيّر فيه */
+  if (g("#sp_commit") != null) {
+    const _cm = g("#sp_commit") || "";
+    const _was = (DB.students || []).find(x => String(x.id) === String((typeof STU_DRAFT !== "undefined" && STU_DRAFT.id) || ""));
+    if (_cm || (_was && _was.commit)) out.stu.commit = _cm;
+  }
   const _cir = document.querySelector("#sp_circles");
   if (_cir) out.stu.circleIds = [].slice.call(_cir.selectedOptions).map(o => String(o.value));
   /* الصورةُ تُكتب إن اختِيرت أو أُزيلت وحدَها: photoVal بقيمةٍ حاليةٍ
@@ -53820,6 +53891,19 @@ function panelStudent(id, keepDraft) {
             <option value=""${s.attOnly ? "" : " selected"}>بخطة تسميع</option>
             <option value="att"${s.attOnly ? " selected" : ""}>تحضير فقط — بلا خطة</option>
           </select></div>
+        ${/* (٦٥٥) «الالتزام: حالةُ الحضور والغياب تكون عند كلّ طالب» — درجةُ الالتزام لهذا الطالب،
+             وبلا اختيارٍ يتبع ما في خيارات برنامجه */ (function () {
+          const _pg = (cur("programs") || []).concat(typeof sysPrograms === "function" ? sysPrograms() : [])
+            .find(x => String(x.name) === String(s.program));
+          const _def = _pg && typeof dedCommitOf === "function" ? dedCommitOf(_pg) : "presentAbsent";
+          const _defH = ((typeof SYS_COMMIT !== "undefined" ? SYS_COMMIT : []).find(x => x.k === _def) || {}).h || "—";
+          return `<div class="field"><label for="sp_commit">درجة الالتزام</label>
+            <select id="sp_commit">
+              <option value=""${s.commit ? "" : " selected"}>حسب البرنامج — ${esc(_defH)}</option>
+              ${(typeof SYS_COMMIT !== "undefined" ? SYS_COMMIT : []).map(x =>
+                `<option value="${esc(x.k)}"${x.k === s.commit ? " selected" : ""}>${esc(x.h)}</option>`).join("")}
+            </select></div>`;
+        })()}
       </div>
       <div id="spDaysPart" class="sp-wide"></div>
       <div class="sp-field sp-wide">
