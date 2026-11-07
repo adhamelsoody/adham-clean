@@ -12690,8 +12690,15 @@ window.urqSave = function () {
        خارج مسجده) يبقى طلباً كما كان */
     const _me = ((STATE && STATE.user) || {}).role || "";
     const _myMq = (cur("mosques") || []).some(m => String(m.id) === String(r.facId));
-    if ((_me === "mosqueManager" || _me === "supervisor") && _myMq &&
-        (r.roleKey === "student" || r.roleKey === "teacher") && typeof window.urqDecide === "function") {
+    /* (٦٥٤) «إذا أضفتُ حلقةً جديدةً أو طالباً أو معلّماً وما إلى ذلك يُفعَّل على طول دون انتظار
+       اعتماد الإدارة»: ومديرُ المجمّع كذلك في منشآت مجمّعه، ولوليّ الأمر والداعم كما للطالب
+       والمعلّم، وللمشرف إن أضافه مديرٌ (لا مشرفٌ مثلُه). وأدوارُ الإدارة نفسُها (مدير نظام · مدير
+       مجمّع · مدير مسجد) تبقى طلباً يعتمده مديرُ النظام — هي صلاحياتٌ لا حساباتُ عمل */
+    const _myCx = _me === "complexManager" &&
+      ((cur("complexes") || []).some(c => String(c.id) === String(r.facId)) || _myMq);
+    const _roles = ["student", "teacher", "parent", "donor"].concat(_me === "supervisor" ? [] : ["supervisor"]);
+    if ((((_me === "mosqueManager" || _me === "supervisor") && _myMq) || _myCx) &&
+        _roles.indexOf(String(r.roleKey)) > -1 && typeof window.urqDecide === "function") {
       return Promise.resolve(window.urqDecide("approved", [String(r.id)], true)).then(acc => {
         const okd = Array.isArray(acc) && acc.indexOf(String(r.id)) > -1;
         showToast(okd ? "أُضيف " + (r.as || "") + " «" + r.name + "» وفُعِّل" : "أُرسل الطلب — تجده في «طلباتي»",
