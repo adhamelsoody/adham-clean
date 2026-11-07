@@ -14391,3 +14391,46 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
 
 /* (٦٥١) زرُّ «إرجاع الطالب إلى سورة» تحت ما بلغه طالبُ السرد */
 .sp-sard-back { margin: 4px 0 12px; display: flex; justify-content: flex-start; }
+
+/* (٦٦١) «أيُّ نافذةٍ بهذا الشكل خلّيها بروفشنال»: قائمةُ الاختيار المنسدلة في اللوحات
+   (إعدادات البرامج والمستويات وبطاقة الطالب) كانت قائمةَ النظام الرماديةَ العادية.
+   صارت بطاقةً بزوايا ناعمةٍ وظلٍّ وتمييزٍ بلون الهوية، كبقية النوافذ.
+   تحسينٌ تدريجيّ: المتصفّحُ الذي لا يدعم appearance: base-select (Safari وFirefox الآن)
+   يُبقي قائمتَه كما كانت بلا أيّ تغيير. */
+@supports (appearance: base-select) {
+  .side-panel select:not([multiple]):not([size]),
+  .side-panel select:not([multiple]):not([size])::picker(select) { appearance: base-select; }
+  .side-panel select:not([multiple]):not([size]) {
+    background-image: none; display: flex; align-items: center; gap: 8px; cursor: pointer;
+  }
+  .side-panel select:not([multiple]):not([size])::picker-icon {
+    content: ""; width: 6px; height: 6px; margin-inline-start: auto; flex: none;
+    border: solid var(--text-muted, #6b7f80); border-width: 0 1.7px 1.7px 0;
+    transform: translateY(-2px) rotate(45deg); transition: transform .18s ease;
+  }
+  .side-panel select:open::picker-icon { transform: translateY(2px) rotate(-135deg); }
+  .side-panel select:open::picker-icon { border-color: var(--brand-main); }
+  /* خانةُ الآية بين زرَّي + و−: ضيّقةٌ لا تتّسع لسهم */
+  .side-panel .lvb-step select::picker-icon, .side-panel .sp-step select::picker-icon { display: none; }
+  .side-panel select::picker(select) {
+    margin-block: 6px; padding: 6px; max-height: min(340px, 60vh); overflow-y: auto;
+    border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
+    box-shadow: 0 18px 44px rgba(0, 75, 80, .16), 0 2px 8px rgba(0, 75, 80, .08);
+    font-family: inherit; direction: rtl;
+    opacity: 0; transform: translateY(-4px);
+    transition: opacity .15s ease, transform .15s ease, overlay .15s allow-discrete, display .15s allow-discrete;
+  }
+  .side-panel select:open::picker(select) { opacity: 1; transform: none; }
+  @starting-style { .side-panel select:open::picker(select) { opacity: 0; transform: translateY(-4px); } }
+  .side-panel select option {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; color: var(--text-main); cursor: pointer; text-align: right;
+  }
+  .side-panel select option:hover, .side-panel select option:focus-visible {
+    background: var(--brand-soft); color: var(--brand-dark); outline: none;
+  }
+  .side-panel select option:checked { background: var(--brand-main); color: #fff; }
+  .side-panel select option::checkmark { order: 1; margin-inline-start: auto; font-size: 12px; }
+  .side-panel select option:disabled { opacity: .45; cursor: default; }
+  html[data-theme="dark"] .side-panel select option:checked { color: #0d1f20; }
+}
