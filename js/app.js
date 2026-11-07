@@ -19260,10 +19260,67 @@ function hwTypes(includeOff) {
    والمفتاح مفقود.
    ========================================================================= */
 
+/* =========================================================================
+   (٦٥٩) «لا يُفتح إلا بعد» و«يمنع ما بعده» في «واجبات البرنامج»
+   -------------------------------------------------------------------------
+   «إذا حدّدتُ ما يُفتح إلّا بعد التثبيت يكون النظام يطبّق»: تُحفظ في سجلّ
+   البرنامج (duties) ولا يقرؤها الحارس — كان يقرأ after من أنواع الواجبات
+   العامّة وحدها. فصار يقرأ واجباتِ برنامج الطالب: يُحبس الواجبُ ما دام
+   شرطُه (needsId) أو مانعٌ قبله في الترتيب (blocks) مولَّداً لليوم ولم
+   يُنجَز. مفاتيحُ البرنامج (review · tathbit) غيرُ مفاتيح الواجب (rev · fix).
+   ========================================================================= */
+const PRG_DUTY_ASG = { hifz: "hifz", review: "rev", tathbit: "fix" };
+function prgDutyAsgKind(k) { return PRG_DUTY_ASG[String(k)] || String(k); }
+function prgDutyKeyOf(asgKind) {
+  const k = String(asgKind || "").replace("_makeup", "");
+  const hit = Object.keys(PRG_DUTY_ASG).find(x => PRG_DUTY_ASG[x] === k);
+  return hit || k;
+}
+function prgOfStudentPlan(studentId, planId) {
+  const pl = (cur("plans") || []).find(x => (planId && String(x.id) === String(planId)) ||
+    (String(x.studentId) === String(studentId) && x.superseded !== true));
+  const st = (cur("students") || []).find(x => String(x.id) === String(studentId)) || {};
+  const ps = cur("programs") || [];
+  return (pl && pl.programId && ps.find(x => String(x.id) === String(pl.programId))) ||
+         ps.find(x => String(x.name) === String((pl && pl.program) || st.program || "")) || null;
+}
+let PRG_GATE_GEN = false;
+function prgDutyGate(a) {
+  if (!a || !a.studentId || !a.date) return "";
+  const pg = prgOfStudentPlan(a.studentId, a.planId);
+  if (!pg || !Array.isArray(pg.duties) || !pg.duties.length) return "";
+  const list = prgDutiesOf(pg);
+  const dk = prgDutyKeyOf(a.kind);
+  const me = list.find(d => String(d.k) === dk);
+  if (!me) return "";
+  const need = [];
+  if (me.needsId) { const n = list.find(d => String(d.k) === String(me.needsId)); if (n) need.push(n); }
+  list.forEach(d => { if (d.blocks && Number(d.order) < Number(me.order) && need.indexOf(d) < 0 &&
+                          String(d.k) !== dk) need.push(d); });
+  for (let i = 0; i < need.length; i++) {
+    const nk = prgDutyAsgKind(need[i].k);
+    let prev = asgFind(a.date, a.studentId, nk);
+    if (!prev && typeof generateAssignments === "function" && !PRG_GATE_GEN) {
+      PRG_GATE_GEN = true;
+      try { prev = (generateAssignments(a.studentId, a.date) || []).find(x => x &&
+              String(x.kind || "").replace("_makeup", "") === nk) || null; }
+      catch (e) { prev = null; } finally { PRG_GATE_GEN = false; }
+    }
+    if (!prev) continue;                         /* لم يُولَّد له اليوم: لا يُحبس عليه */
+    if (prev.status === "done" || prev.status === "excused") continue;
+    return (need[i].name || nk) + (prev.status === "failed" ? " (دون الحدّ)" : "");
+  }
+  return "";
+}
+window.prgDutyGate = prgDutyGate;
+
 /* هل يُمنع رصد هذا الواجب الآن؟ يُرجَع اسم ما يسبقه، أو "" */
 let ASG_GATE_GEN = false;
 function asgGate(a) {
   if (!a) return "";
+  /* (٦٥٩) واجباتُ برنامج الطالب أوّلاً */
+  const _pgG = prgDutyGate(a);
+  if (_pgG) return _pgG;
 
   /* «التلاوة تسبق الحفظ» قاعدةُ الترتيب في خطة الطالب: كانت تُعرض وتُحفظ
      ولا يقرؤها الحارس، فتُطفأ ويبقى المنعُ قائماً. */
@@ -23616,6 +23673,9 @@ function todayAssignments(studentId, dateISO, persist) {
 /* واجبٌ سابقٌ يقفل ما بعده حتى يُسمَّع */
 function asgBlocked(a) {
   if (!a) return "";
+  /* (٦٥٩) ويُلوَّن بما تشترطه واجباتُ البرنامج */
+  const _pgB = typeof prgDutyGate === "function" ? prgDutyGate(a) : "";
+  if (_pgB) return _pgB;
   const before = hwBlockedBy(a.kind);
   if (!before) return "";
   const prev = asgFind(a.date, a.studentId, before);
