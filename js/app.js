@@ -17506,6 +17506,17 @@ function lvbSurOpt(x, cur2) {
          ">" + esc(toArabicDigits(x.i) + " · " + x.n) + "</option>";
 }
 
+/* (٦٦٠) «إذا كان الترتيبُ تصاعدياً يرتّب السورَ تصاعدياً والعكس»: كانت القائمةُ
+   تُملأ عند التركيز (onfocus) وحده — وفي Safari على الماك لا يُركَّز الحقلُ
+   بالنقر فلا يُعاد ترتيبُها. فصارت تُرسم كاملةً مرتّبةً بالاتجاه من البداية
+   متى وصل الفهرس، وتُرسم من جديد كلّما تغيّر الاتجاه (lvbRedraw). */
+function lvbSurSelOpts(dir, cur2) {
+  const list = (typeof QSURAHS !== "undefined" && QSURAHS) ? QSURAHS : [];
+  if (!list.length) return "";
+  const ord = String(dir) === "backward" ? list.slice().reverse() : list;
+  return ord.map(x => lvbSurOpt(x, cur2)).join("");
+}
+
 function lvbSurahName(i) {
   if (typeof surahName === "function") { const n = surahName(i); if (n) return n; }
   if (typeof QSURAHS !== "undefined" && QSURAHS) {
@@ -17607,12 +17618,11 @@ function lvbAyahBox(rid, k, side) {
       <span>${side === "from" ? "يبدأ من" : "ينتهي بـ"}</span></div>
     <div class="lvb-posrow">
       <div class="lvb-f"><label>السورة</label>
-        <select id="${id}_s" data-lvbsur="1" data-dir="${esc(v.dir || "")}"
-          onfocus="window.lvbFillSur(this)"
+        <select id="${id}_s" data-lvbsur="1" data-dir="${esc(v.dir || "")}"${list.length ? ' data-full="1"' : ""}
+          onfocus="window.lvbFillSur(this)" onmousedown="window.lvbFillSur(this)" ontouchstart="window.lvbFillSur(this)"
           onchange="window.lvbSet('${jsAttr(rid)}','${k}','${side}S',this.value)">
           ${list.length
-            ? `<option value="${esc(sur)}" selected>${esc(toArabicDigits(sur || 1) + " · " +
-                 lvbSurahName(sur))}</option>`
+            ? lvbSurSelOpts(v.dir, sur || 1)
             : `<option value="${esc(sur)}" selected>${esc(lvbSurahName(sur))}</option>`}
         </select></div>
       <div class="lvb-f"><label>الآية${mx ? " (من " + toArabicDigits(mx) + ")" : ""}</label>
@@ -17860,10 +17870,11 @@ function lvbKidAyahBox(rid, k, kid, side) {
       <span>${side === "from" ? "يبدأ من" : "ينتهي بـ"}</span></div>
     <div class="lvb-posrow">
       <div class="lvb-f"><label>السورة</label>
-        <select id="${id}_s" data-lvbsur="1" data-dir="${esc(c.dir || "")}" onfocus="window.lvbFillSur(this)"
+        <select id="${id}_s" data-lvbsur="1" data-dir="${esc(c.dir || "")}"${lvbSurSelOpts(c.dir, sur) ? ' data-full="1"' : ""}
+          onfocus="window.lvbFillSur(this)" onmousedown="window.lvbFillSur(this)" ontouchstart="window.lvbFillSur(this)"
           onchange="window.lvbCfgSet('${a}','${k}','${kk}','${side}S',this.value)">
-          <option value="${esc(sur)}" selected>${esc(toArabicDigits(sur || 1) + " · " +
-            lvbSurahName(sur))}</option>
+          ${lvbSurSelOpts(c.dir, sur || 1) || `<option value="${esc(sur)}" selected>${esc(toArabicDigits(sur || 1) + " · " +
+            lvbSurahName(sur))}</option>`}
         </select></div>
       <div class="lvb-f"><label>الآية${mx ? " (من " + toArabicDigits(mx) + ")" : ""}</label>
         <select id="${id}_a" data-lvbay="1" data-max="${mx || 0}"
