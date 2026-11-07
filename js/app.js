@@ -49184,6 +49184,50 @@ function tchTopCheckBtn() {
 }
 window.tchTopCheckBtn = tchTopCheckBtn;
 
+/* (٦٤٩) زرُّ «إعادة التحميل» في شريط المعلّم — بطلبٍ صريح: الموقعُ المثبَّتُ على الشاشة الرئيسية
+   لا شريطَ عناوين فيه ولا سحبَ للتحديث، فلا يُعاد تحميلُه إلّا بإغلاقه. يطلب نسخةَ الموقع الأحدث
+   (تحديثُ عامل الخدمة) ثمّ يُعيد فتح الصفحة: فتُقرأ البياناتُ كلُّها من الخادم بالنسخة الأحدث.
+   للمعلّم وحدَه، ويُنزع لغيره — كزرّ التحضير بجواره */
+window.tchHardReload = function () {
+  const btn = document.getElementById("tchReloadTop");
+  if (btn) { btn.disabled = true; btn.classList.add("spin"); }
+  const go = () => { try { location.reload(); } catch (e) { location.href = location.href; } };
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+      const t = setTimeout(go, 2500);            /* لا ينتظر الشبكةَ البطيئة أكثر من ثانيتين ونصف */
+      navigator.serviceWorker.getRegistration().then(r => (r && r.update ? r.update() : null))
+        .catch(e => console.warn("تحديث عامل الخدمة:", e))
+        .then(() => { clearTimeout(t); go(); });
+      return;
+    }
+  } catch (e) { console.warn("إعادة التحميل:", e); }
+  go();
+};
+function tchTopReloadBtn() {
+  try {
+    const bar = document.querySelector(".topbar .topbar-left");
+    let b = document.getElementById("tchReloadTop");
+    if (!bar || !STATE || STATE.iface !== "teacher") {
+      if (b && b.parentNode) b.parentNode.removeChild(b);
+      return;
+    }
+    if (!b) {
+      b = document.createElement("button");
+      b.id = "tchReloadTop";
+      b.type = "button";
+      b.className = "icon-btn tch-top-reload";
+      b.title = "إعادة التحميل";
+      b.setAttribute("aria-label", "إعادة التحميل");
+      b.onclick = function () { window.tchHardReload(); };
+      b.innerHTML = ic("refresh", 20);
+      const chk = document.getElementById("tchCheckTop");
+      if (chk && chk.parentNode === bar) bar.insertBefore(b, chk);
+      else bar.insertBefore(b, bar.firstChild);
+    }
+  } catch (e) {}
+}
+window.tchTopReloadBtn = tchTopReloadBtn;
+
 function navWhoStats() {
   try {
     const t = (typeof myTeacherRecord === "function") ? myTeacherRecord() : null;
@@ -49852,6 +49896,7 @@ function mountChrome() {
   try { if (window.refreshTopbarPhoto) window.refreshTopbarPhoto(); } catch (e) {}
   try { renderTabBar(); } catch (e) {}
   try { tchTopCheckBtn(); } catch (e) {}
+  try { tchTopReloadBtn(); } catch (e) {}
   try { tchTopbarTrim(); } catch (e) {}
   try { hideSideNavFor(STATE.iface); } catch (e) {}
   /* وأسطرُ المصحف تُضبط على عرض الورقة بعد الرسم — القياسُ لا يصحّ قبله */

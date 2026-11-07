@@ -14384,3 +14384,7 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
 #spDaysPart:empty { display: none; }
 #spDaysPart { margin: 12px 0; }
 #spDaysPart .sp-days-part { box-shadow: none; margin: 0; background: transparent; padding-inline: 0; }
+
+/* (٦٤٩) زرُّ إعادة التحميل في شريط المعلّم: يدور أثناء التحميل */
+.tch-top-reload.spin svg { animation: tchSpin .8s linear infinite; }
+@keyframes tchSpin { to { transform: rotate(360deg); } }
