@@ -21981,8 +21981,12 @@ function fixRangeFor(studentId, upTo) {
   {
     const _pl = (cur("plans") || []).find(p => p && p.superseded !== true && String(p.studentId) === String(studentId));
     const _since = _pl && _pl.programSince ? String(_pl.programSince) : "";
-    const _n = new Set(lastLessons(studentId, want, a => !_since || String(a.date || "") >= _since)
-      .map(a => String(a.date))).size;
+    /* الدرسُ يومُ حفظٍ منجز؛ ولا يُستبعد منه إلّا ما رُصدت درجتُه دون حدّ الإعادة — فما أُنجز بلا درجةٍ
+       مرصودةٍ درسٌ كذلك (وإلّا لم يأتِ التثبيتُ أبداً لمن لا تُرصد درجاتُه) */
+    const _redo = (planEngineCfg() || {}).redo || 60;
+    const _n = new Set(asgOf(studentId).filter(a => a && String(a.kind || "").indexOf("hifz") === 0 &&
+        a.status === "done" && !(a.score != null && a.score !== "" && Number(a.score) < _redo) &&
+        (!_since || String(a.date || "") >= _since)).map(a => String(a.date))).size;
     if (_n < want) return null;
   }
   const rank = (sv, av) => (Number(sv) || 0) * 1000 + (Number(av) || 0);
@@ -59318,7 +59322,128 @@ async function loadSettings(db, source) {
   DB.settings = merged;
   /* طبقةُ المسجد: المساجدُ حُمّلت قبلها في المجموعات الأساسية */
   try { if (typeof cfgApplyOverlay === "function") cfgApplyOverlay(true); } catch (e) {}
+  /* (٦٥٠) والإعداداتُ حيّةٌ كذلك: صلاحياتُ المعلّم وأيامُ الدوام وما يضبطه المديرُ تصل بلا تحديث.
+     مستمعٌ واحدٌ للجلسة؛ يُعيد بناءَ DB.settings من مستنداتها حين يكتب غيرُ صاحب الجلسة */
+  try {
+    const q = db.collection("settings");
+    if (!LIVE_SETTINGS && typeof q.onSnapshot === "function") {
+      let first = true;
+      LIVE_SETTINGS = q.onSnapshot(sn => {
+        if (first) { first = false; return; }
+        const ch = typeof sn.docChanges === "function" ? sn.docChanges() : [];
+        if (ch.length && ch.every(x => x && x.doc && x.doc.metadata && x.doc.metadata.hasPendingWrites)) return;
+        const m = {};
+        sn.forEach(d => Object.assign(m, d.data() || {}));
+        delete m.id; delete m._o;
+        DB.settings = m;
+        try { if (typeof cfgApplyOverlay === "function") cfgApplyOverlay(true); } catch (e) {}
+        if (typeof CUR_MEMO !== "undefined" && CUR_MEMO) CUR_MEMO = {};
+        liveRender();
+      }, err => { console.warn("مزامنة الإعدادات توقّفت:", err && err.code); LIVE_SETTINGS = null; });
+    }
+  } catch (e) { console.warn("مزامنة الإعدادات:", e); }
 }
+let LIVE_SETTINGS = null;
+
+/* =========================================================================
+   (٦٥٠) المزامنةُ الحيّة — «إذا غيّر أيُّ أحدٍ شيئاً يصل التغييرُ إلى الجميع دون تحديث»
+   -------------------------------------------------------------------------
+   كانت البياناتُ تُقرأ مرّةً عند فتح الصفحة (get) ولا تُتابَع. صارت المجموعاتُ
+   التي يتغيّر بها عملُ اليوم تُقرأ بمستمعٍ (onSnapshot) على الاستعلام نفسِه
+   الذي كان يُقرأ به (بالمسجد أو بالمجمّع أو بالابن أو كلّها) — فأوّلُ لقطةٍ
+   هي التحميلُ نفسُه (لا قراءةَ مضاعفة)، وما يكتبه غيرُه بعدها يصل إلى الذاكرة
+   ويُعاد الرسمُ وحده.
+
+   • ما يكتبه صاحبُ الجلسة نفسُه (hasPendingWrites) لا يُعاد تطبيقُه: هو في
+     الذاكرة أصلاً.
+   • التغييرُ يُدمج في الكائن نفسِه لا في نسخةٍ جديدة — فما تمسكه الشاشاتُ منه
+     يبقى صحيحاً — ويُحدَّث ظلُّه (auditKeep)، فلا يحسبه حارسُ الارتباط تغييراً
+     محلّياً فيردّه.
+   • ولا يُعاد الرسمُ ونافذةٌ مفتوحةٌ أو بطاقةُ طالبٍ مفتوحةٌ أو حقلٌ يُكتب فيه:
+     يُؤجَّل حتى تُغلق، فلا يضيع على أحدٍ ما بين يديه.
+   • ما لا يدعم المستمعَ يُقرأ كما كان (get).
+   ========================================================================= */
+const LIVE_COLLS = ["students", "circles", "teachers", "plans", "assignments", "attendance",
+                    "recitations", "levels", "programs", "terms", "mosques", "complexes",
+                    "workflow", "exams"];
+const LIVE = {};
+let LIVE_T = null;
+function liveSnapLike(L) {
+  const docs = [];
+  L.docs.forEach(d => docs.push(d));
+  return { docs, size: docs.length, empty: !docs.length, forEach: fn => docs.forEach(fn) };
+}
+function liveQ(c, q, key, opts) {
+  if (!q || LIVE_COLLS.indexOf(c) === -1 || typeof q.onSnapshot !== "function") return q.get(opts);
+  const old = LIVE[key];
+  if (old && old.ok) return old.ready.then(() => liveSnapLike(old));
+  const L = LIVE[key] = { c, key, docs: new Map(), first: true, ok: false };
+  L.ready = new Promise((res, rej) => {
+    try {
+      L.unsub = q.onSnapshot(snap => {
+        if (L.first) {
+          snap.forEach(d => L.docs.set(d.id, d));
+          L.first = false; L.ok = true; res(); return;
+        }
+        const ch = typeof snap.docChanges === "function" ? snap.docChanges() : [];
+        const remote = [];
+        ch.forEach(x => {
+          if (!x || !x.doc) return;
+          if (x.type === "removed") L.docs.delete(x.doc.id); else L.docs.set(x.doc.id, x.doc);
+          if (x.doc.metadata && x.doc.metadata.hasPendingWrites) return;   /* كتابتُه هو */
+          remote.push(x);
+        });
+        if (remote.length) liveApply(c, remote, key);
+      }, err => {
+        if (L.first) { delete LIVE[key]; rej(err); return; }
+        console.warn("المزامنة الحيّة توقّفت:", c, err && err.code);
+        L.ok = false; delete LIVE[key];
+      });
+    } catch (e) { delete LIVE[key]; rej(e); }
+  });
+  return L.ready.then(() => liveSnapLike(L));
+}
+function liveApply(c, changes, key) {
+  try {
+    if (!Array.isArray(DB[c])) DB[c] = [];
+    const arr = DB[c];
+    changes.forEach(x => {
+      const id = docIdOf(x.doc.id);
+      const i = arr.findIndex(o => o && String(o.id) === String(id));
+      if (x.type === "removed") {
+        /* لا يُحذف ما يأتي من مستمعٍ آخر للمجموعة نفسِها (مسجدٌ ثانٍ) */
+        const elsewhere = Object.keys(LIVE).some(k => k !== key && LIVE[k].c === c && LIVE[k].docs.has(x.doc.id));
+        if (i > -1 && !elsewhere) arr.splice(i, 1);
+        return;
+      }
+      const data = Object.assign({ id }, x.doc.data() || {});
+      if (c === "plans" && data.ext) { try { PLAN_EXTRA[data.id] = data.ext; } catch (e) {} delete data.ext; }
+      let obj;
+      if (i > -1) { obj = arr[i]; Object.assign(obj, data); } else { obj = data; arr.push(obj); }
+      try { if (typeof auditKeep === "function" && LOG_COLLS[c]) auditKeep(c, obj); } catch (e) {}
+    });
+    if (typeof CUR_MEMO !== "undefined" && CUR_MEMO) CUR_MEMO = {};
+    liveRender();
+  } catch (e) { console.warn("المزامنة الحيّة:", c, e); }
+}
+function liveBusy() {
+  const mr = document.getElementById("modalRoot");
+  if (mr && mr.children.length) return true;
+  const pr = document.getElementById("panelRoot");
+  if (pr && pr.children.length) return true;
+  const ae = document.activeElement;
+  if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName || "") && ae.type !== "checkbox" && ae.type !== "radio") return true;
+  return false;
+}
+function liveRender() {
+  if (LIVE_T) clearTimeout(LIVE_T);
+  LIVE_T = setTimeout(function tick() {
+    if (liveBusy()) { LIVE_T = setTimeout(tick, 1500); return; }
+    LIVE_T = null;
+    try { if (typeof mount === "function") mount(); } catch (e) { console.warn("إعادة الرسم بعد المزامنة:", e); }
+  }, 400);
+}
+window.__LIVE = LIVE;
 
 async function loadAllData(source) {
   const db = FDB();
@@ -59432,7 +59557,7 @@ async function loadAllData(source) {
   const readKid = c => {
     const qs = c === "students"
       ? _kidIds.map(id => db.collection(c).doc(id).get(opts).then(d => (d && d.exists ? [d] : []), () => []))
-      : _kidIds.map(id => db.collection(c).where("studentId", "==", id).get(opts).then(sn => sn.docs));
+      : _kidIds.map(id => liveQ(c, db.collection(c).where("studentId", "==", id), c + "|kid|" + id, opts).then(sn => sn.docs));
     return Promise.all(qs).then(arrs => {
       const seen = {}, docs = [];
       arrs.forEach(a => a.forEach(d => { if (!seen[d.id]) { seen[d.id] = 1; docs.push(d); } }));
@@ -59456,7 +59581,7 @@ async function loadAllData(source) {
   const MQ_COLLS = ["students", "teachers", "plans", "assignments", "attendance", "recitations",
                     "mushafMarks", "exams", "delays", "pointsLog", "storeOrders"];
   const readMq = c => Promise.all(_mqIds.map(m =>
-      db.collection(c).where("mosqueId", "==", m).get(opts).then(sn => sn.docs, e => {
+      liveQ(c, db.collection(c).where("mosqueId", "==", m), c + "|mq|" + m, opts).then(sn => sn.docs, e => {
         console.warn("تعذّرت قراءة المجموعة:", c, "مسجد", m, e && e.code); return []; })))
     .then(arrs => {
       const seen = {}, docs = [];
@@ -59476,7 +59601,7 @@ async function loadAllData(source) {
         .concat(_su.complexIds || []).filter(x => x != null && x !== "").map(String))]
     : [];
   const readCx = c => Promise.all(_cxIds.map(k =>
-      db.collection(c).where("complexId", "==", k).get(opts).then(sn => sn.docs, e => {
+      liveQ(c, db.collection(c).where("complexId", "==", k), c + "|cx|" + k, opts).then(sn => sn.docs, e => {
         console.warn("تعذّرت قراءة المجموعة:", c, "مجمّع", k, e && e.code); return []; })))
     .then(arrs => {
       const seen = {}, docs = [];
@@ -59534,7 +59659,7 @@ async function loadAllData(source) {
     : (_kid && (c === "students" || KID_COLLS.indexOf(c) > -1)) ? readKid(c)
     : (_mqIds.length && MQ_COLLS.indexOf(c) > -1) ? withExaminer(c, readMq(c))
     : (_cxIds.length && MQ_COLLS.indexOf(c) > -1) ? withExaminer(c, readCx(c))
-    : db.collection(c).get(opts)
+    : liveQ(c, db.collection(c), c + "|all", opts)
     .then(snap => ({ c, snap }))).then(
     r => r,
     err => { console.warn("تعذّرت قراءة المجموعة:", c, err); return { c, snap: null }; }
