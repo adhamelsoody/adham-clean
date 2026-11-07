@@ -15281,6 +15281,7 @@ window.sardFinishDo = function (studentId) {
       if (!ok) return false;
       const pl = (DB.plans || []).find(x => x && x.superseded !== true && String(x.studentId) === String(studentId));
       if (pl) {
+        if (String(pl.program || "") !== target) pl.programSince = todayISO();   /* (٦٤٨) */
         pl.program = target;
         pl.programId = ((cur("programs") || []).find(x => String(x.name) === target) || {}).id || "";
         if (last && last.s) pl.current = last.s + " " + (last.a || 1);
@@ -21972,6 +21973,18 @@ function fixSurahBefore(s, back) {
 function fixRangeFor(studentId, upTo) {
   const up = upTo === undefined ? fixUpTo(studentId) : upTo;
   const want = Math.max(1, Number(fixLessonsFor(studentId)) || 1);
+  /* (٦٤٨) «عندما ننقل طالباً إلى برنامجٍ جديد، أو أوّلَ يومٍ له، لا يكون له تثبيتٌ حتى يأتي اليومُ
+     الذي يصل فيه إلى المحدَّد في البرنامج». التثبيتُ لدروس الحفظ الجديد التي سُمّعت؛ فما لم يتمّ
+     للطالب من الدروس الناجحة — في برنامجه الحاليّ منذ دخله — العددُ المحدَّد (fixLessonsFor) فلا
+     تثبيت. وكان يُعطى تثبيتاً من أوّل يوم «بالمقدار» قبل موضع الحفظ: من محفوظٍ سابقٍ لم يُدرَس
+     في هذا البرنامج */
+  {
+    const _pl = (cur("plans") || []).find(p => p && p.superseded !== true && String(p.studentId) === String(studentId));
+    const _since = _pl && _pl.programSince ? String(_pl.programSince) : "";
+    const _n = new Set(lastLessons(studentId, want, a => !_since || String(a.date || "") >= _since)
+      .map(a => String(a.date))).size;
+    if (_n < want) return null;
+  }
   const rank = (sv, av) => (Number(sv) || 0) * 1000 + (Number(av) || 0);
   const span = list => {
     let lo = null, hi = null;
@@ -54345,6 +54358,9 @@ function spSyncEnginePlan(st, opts) {
   }
 
   rec.student = st.name || rec.student;
+  /* (٦٤٨) يومُ دخول البرنامج: منه تُعدّ دروسُ التثبيت (fixRangeFor) — فلا تثبيتَ لمنقولٍ حتى يُتمّ
+     فيه عددَ الدروس المحدَّد */
+  if (st.program && rec.program && String(rec.program) !== String(st.program)) rec.programSince = todayISO();
   if (st.program) rec.program = st.program;
   if (st.levelId) rec.levelId = st.levelId;
   if (st.level)   rec.level = st.level;
