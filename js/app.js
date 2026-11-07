@@ -1969,17 +1969,22 @@ function cxMgrDashboard(mode) {
       <div class="fc-body"><span class="fc-ico">${ic(f.icon, 22)}</span><span class="fc-label">${f.label}</span></div>
     </button>`).join("");
 
-  /* ---------- مؤشّرُ الإنجاز: متوسّطُ تقدّم خطط الطلاب ---------- */
-  const prog = total ? Math.round(students.reduce((a, x) => a + stuPctOf(x), 0) / total) : 0;
+  /* ---------- مؤشّرُ الإنجاز ----------
+     (٦٤٦) كان متوسّطَ تقدّم الخطط كلِّها من أوّلها، فلا يتغيّر بتغيير اليوم أو الأسبوع. صار نسبةَ
+     ما أُنجز ممّا كان مطلوباً في المدى المختار في الشريط العلويّ (يومٌ أو أسبوعٌ أو شهر): أوجهُ
+     الحفظ والمراجعة والتثبيت المنجزة ÷ المطلوبة، من المصدر نفسه الذي تُحسب منه أعمدةُ الأوجه أدناه
+     (planTally على المدى). مدىً بلا واجبات: «—» لا صفرٌ مضلِّل */
+  const _ach = achOfRange(students);
+  const _achNone = _ach.none, prog = _ach.pct, _achPer = _ach.per;
   const circ = 2 * Math.PI * 52;
   const donut = `<button type="button" class="donut-wrap cxd-donut" data-go="students"
       onclick="window.go('students')" title="تقدّم الطلاب">
     <svg class="donut" viewBox="0 0 130 130">
       <circle cx="65" cy="65" r="52" fill="none" stroke="var(--border-soft)" stroke-width="12"/>
       <circle cx="65" cy="65" r="52" fill="none" stroke="var(--brand-main)" stroke-width="12" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${(circ * (1 - prog / 100)).toFixed(1)}" transform="rotate(-90 65 65)"/>
-      <text class="donut-num" x="65" y="72" text-anchor="middle">${n2(prog)}%</text>
+      <text class="donut-num" x="65" y="72" text-anchor="middle">${_achNone ? "—" : n2(prog) + "%"}</text>
     </svg>
-    <div class="donut-label">مؤشر الإنجاز</div>
+    <div class="donut-label">مؤشر الإنجاز${_achPer ? ` <small class="muted">— ${esc(_achPer)}</small>` : ""}</div>
   </button>`;
 
   /* ---------- مدير المسجد: حلقاتٌ بدأت اليوم وحلقاتٌ لم تبدأ ----------
@@ -2544,6 +2549,24 @@ function supervisorDashboard() {
   </div>`;
 }
 
+/* (٦٤٦) مؤشّرُ الإنجاز للمدى المختار (يومٌ أو أسبوعٌ أو شهر من الشريط العلويّ): ما أُنجز من أوجه
+   الحفظ والمراجعة والتثبيت ÷ ما كان مطلوباً فيه — من planTally على المدى، مصدرِ أعمدة الأوجه نفسِه.
+   { pct, none: لا واجباتَ في المدى, per: اسمُ المدى للعرض } */
+function achOfRange(students) {
+  const VR = typeof viewRange === "function" ? viewRange() : { kind: "day", from: todayISO(), toCap: todayISO() };
+  let dn = 0, tt = 0;
+  (students || []).forEach(x => {
+    let t = null;
+    try { t = typeof planTally === "function" ? planTally({ studentId: x.id }, VR) : null; } catch (e) { t = null; }
+    if (!t) return;
+    dn += (t.hifzDone || 0) + (t.revDone || 0) + (t.fixDone || 0);
+    tt += (t.hifzTotal || 0) + (t.revTotal || 0) + (t.fixTotal || 0);
+  });
+  const per = VR.kind !== "day" ? (VR.label || "")
+    : (String(VR.from) === String(todayISO()) ? "اليوم" : (typeof hijriOf === "function" ? hijriOf(VR.from) : VR.from));
+  return { pct: tt ? Math.min(100, Math.round(dn * 100 / tt)) : 0, none: !tt, per, done: dn, total: tt };
+}
+
 function adminDashboard() {
   /* لوحةُ مدير النظام: إحصاءاتٌ عامّة لا غير.
      كانت تعرض بطاقاتِ المجمّعات والمساجد، وهي عينُ ما تعرضه صفحةُ
@@ -2963,16 +2986,17 @@ function studentsOverview(list) {
       <div class="fc-body"><span class="fc-ico">${ic(f.icon, 22)}</span><span class="fc-label">${f.label}</span></div>
     </button>`).join("");
 
-  /* مؤشر الإنجاز = متوسط تقدّم خطط الطلاب */
-  const prog = total ? Math.round(list.reduce((a, x) => a + stuPctOf(x), 0) / total) : 0;
+  /* مؤشر الإنجاز — (٦٤٦) للمدى المختار، لا متوسّطُ تقدّم الخطط من أوّلها (achOfRange) */
+  const _ach = achOfRange(list);
+  const prog = _ach.pct;
   const circ = 2 * Math.PI * 52;
   const donut = `<div class="donut-wrap">
     <svg class="donut" viewBox="0 0 130 130">
       <circle cx="65" cy="65" r="52" fill="none" stroke="var(--border-soft)" stroke-width="12"/>
       <circle cx="65" cy="65" r="52" fill="none" stroke="var(--brand-main)" stroke-width="12" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${(circ * (1 - prog / 100)).toFixed(1)}" transform="rotate(-90 65 65)"/>
-      <text class="donut-num" x="65" y="72" text-anchor="middle">${prog}%</text>
+      <text class="donut-num" x="65" y="72" text-anchor="middle">${_ach.none ? "—" : prog + "%"}</text>
     </svg>
-    <div class="donut-label">مؤشر الإنجاز</div>
+    <div class="donut-label">مؤشر الإنجاز${_ach.per ? ` <small class="muted">— ${esc(_ach.per)}</small>` : ""}</div>
   </div>`;
 
   return `<div class="dash-top" style="margin-bottom:18px">
