@@ -38063,6 +38063,7 @@ function tstuPlanBox(st) {
       </div>
       ${startRow("spHifz", (posH && posH.sura) || sp.hifzSura,
                  (posH && posH.ayah) || sp.hifzAyah, "spHifzDir", pl.hifzDir, posH && posH.sidx)}
+      ${/* (٦٦٨) */ st && st.id ? planBackBtn(st.id) : ""}
     </section>
 
     <section class="sp-card sp-fix${pl.tatOn ? "" : " sp-off"}">
@@ -54157,6 +54158,7 @@ function panelStudent(id, keepDraft) {
         <div class="sp-field"><label>الاتجاه</label>${dirBtns("spHifzDir", pl.hifzDir, PLAN_DIR)}</div>
       </div>
       ${startRow("spHifz", (spHifzPos && spHifzPos.sura) || (s.plan || {}).hifzSura, (spHifzPos && spHifzPos.ayah) || (s.plan || {}).hifzAyah, "spHifzDir", pl.hifzDir, spHifzPos && spHifzPos.sidx)}
+      ${/* (٦٦٨) */ s && s.id && !String(s.id).startsWith("new") ? planBackBtn(s.id) : ""}
       <div class="sp-klabel">${ic("layers", 14)} أركان متفرّعة من الحفظ</div>
       <div class="sp-kidrow">
         <button type="button" class="bpl-tog${pl.tatOn ? " on" : ""}"
@@ -55166,6 +55168,89 @@ window.sardBackSave = function (sid, sS, aA) {
     try { if (document.querySelector(".sp-page") && typeof panelStudent === "function") panelStudent(st.id); else mount(); } catch (e) {}
   });
 };
+
+/* =========================================================================
+   (٦٦٨) «إرجاعُ الطالب إلى سورة — كما فعلناها في برنامج السرد — على كلّ البرامج»
+   -------------------------------------------------------------------------
+   النافذةُ نفسُها للحفظ في أيّ برنامج: «من البداية» (بدايةُ مستواه إن كان له مدى،
+   وإلّا الناس ١ أو الفاتحة ١ بحسب اتجاهه) أو أيُّ سورةٍ وآية. والحفظُ هو ما يفعله
+   تغييرُ «الابتداء» في البطاقة: موضعُ الخطة hifzFromS/A موسومٌ بوقته (hifzPosTs)
+   فيعلو ما قبله، وواجبُ اليوم غيرُ المسمَّع يتبعه (asgFollowsPlan)، ثمّ يمضي منه.
+   لا يُمحى شيءٌ من سجلّه.
+   ========================================================================= */
+function planBackStart(pl) {
+  try {
+    const lv = pl && pl.levelId ? (cur("levels") || []).find(x => String(x.id) === String(pl.levelId)) : null;
+    const rg = lv && typeof lvRangeOf === "function" ? lvRangeOf(lv) : null;
+    if (rg && rg.start && Number(rg.start.s) > 0) return { s: Number(rg.start.s), a: Number(rg.start.a) || 1, lv: lv.name };
+  } catch (e) {}
+  return dirOf(pl && pl.direction) === "backward" ? { s: 114, a: 1 } : { s: 1, a: 1 };
+}
+window.planBackOpen = function (sid) {
+  const st = (DB.students || []).find(x => String(x.id) === String(sid));
+  if (!st) return;
+  const pl = typeof planOfStudent === "function" ? planOfStudent(st) : null;
+  if (!pl) { showToast("لا خطةَ لهذا الطالب", "warn"); return; }
+  if (planIsSard(pl)) { window.sardBackOpen(sid); return; }
+  const r0 = ((STATE && STATE.user) || {}).role || "";
+  if (r0 === "teacher" && typeof teacherCan === "function" && !teacherCan("editPlan")) {
+    showToast("تعديلُ موضع الخطة غيرُ متاحٍ في صلاحياتك", "warn"); return;
+  }
+  const dir = dirOf(pl.direction);
+  const b = planBackStart(pl);
+  const L = (typeof QSURAHS !== "undefined" && Array.isArray(QSURAHS) && QSURAHS.length) ? QSURAHS
+    : (Array.isArray(SP_SURAHS) ? SP_SURAHS : []);
+  const ordered = dir === "forward" ? L.slice() : L.slice().reverse();
+  const opts = ordered.map(x => `<option value="${Number(x.i)}"${Number(x.i) === b.s ? " selected" : ""}>${esc(x.n)}</option>`).join("");
+  const bName = (L.find(x => Number(x.i) === b.s) || {}).n || (b.s === 114 ? "الناس" : b.s === 1 ? "الفاتحة" : "سورة " + toArabicDigits(b.s));
+  openModal("إرجاع الطالب في الحفظ", st.name || "",
+    `<p class="muted" style="margin:0 0 12px">يبدأ حفظُه القادمُ من حيث تختار، ثمّ يتابع البرنامجُ منه كالمعتاد. ولا يُمحى شيءٌ من سجلّه.</p>
+     <button type="button" class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="window.planBackSave('${jsAttr(String(sid))}', ${b.s}, ${b.a})">
+       ${ic("refresh", 16)} من البداية — ${esc(bName)} ${toArabicDigits(b.a)}${b.lv ? " (بداية «" + esc(b.lv) + "»)" : ""}</button>
+     <div class="sp-grid">
+       <div class="field"><label for="sbSura">أو من سورة</label>
+         <select id="sbSura" onchange="window.ayahCap && window.ayahCap('sbAyah','sbSura')">${opts || `<option value="${b.s}">${esc(bName)}</option>`}</select></div>
+       <div class="field"><label for="sbAyah">الآية</label><input id="sbAyah" type="number" min="1" value="1"></div>
+     </div>`,
+    `<button class="btn btn-light" data-action="close-modal">إلغاء</button>
+     <button class="btn btn-primary" onclick="window.planBackSave('${jsAttr(String(sid))}')">${ic("check", 16)} حفظ</button>`);
+  if (!L.length && window.Quran && typeof Quran.surahs === "function") {
+    Quran.surahs().then(list => { if (!QSURAHS) QSURAHS = list; window.planBackOpen(sid); }).catch(e => console.warn("فهرس السور:", e));
+  }
+};
+window.planBackSave = function (sid, sS, aA) {
+  const st = (DB.students || []).find(x => String(x.id) === String(sid));
+  if (!st) return;
+  const S = Number(sS) || Number((document.getElementById("sbSura") || {}).value) || 0;
+  let A = Number(aA) || Number((document.getElementById("sbAyah") || {}).value) || 1;
+  const cnt = typeof ayahCountOf === "function" ? Number(ayahCountOf(S)) || 0 : 0;
+  if (!(S >= 1 && S <= 114)) { showToast("اختر السورة", "warn"); return; }
+  if (cnt && A > cnt) A = cnt;
+  A = Math.max(1, A);
+  const pl = typeof planOfStudent === "function" ? planOfStudent(st) : null;
+  if (!pl) { showToast("لا خطةَ لهذا الطالب", "warn"); return; }
+  const name = typeof surahName === "function" ? surahName(S) : "";
+  const snap = { s: pl.hifzFromS, a: pl.hifzFromA, t: pl.hifzPosTs };
+  pl.hifzFromS = S; pl.hifzFromA = A; pl.hifzPosTs = Date.now();
+  if (name) st.plan = Object.assign({}, st.plan || {}, { hifzSura: name, hifzAyah: A });
+  Promise.resolve(persistSet("plans", pl)).then(ok => {
+    if (ok === false) {
+      pl.hifzFromS = snap.s; pl.hifzFromA = snap.a; pl.hifzPosTs = snap.t;
+      showToast("لم يُحفظ الإرجاع — راجع الصلاحيات", "warn"); return;
+    }
+    if (name) persistSet("students", st);
+    try { if (typeof CUR_MEMO !== "undefined" && CUR_MEMO) Object.keys(CUR_MEMO).forEach(k => delete CUR_MEMO[k]); } catch (e) {}
+    closeModal();
+    showToast("سيبدأ " + (st.name || "الطالب") + " حفظَه القادم من " + (name || ("سورة " + toArabicDigits(S))) + " " + toArabicDigits(A), "success");
+    try { if (document.querySelector(".sp-page") && typeof panelStudent === "function") panelStudent(st.id); else mount(); } catch (e) {}
+  });
+};
+function planBackBtn(sid) {
+  return `<div class="sp-sard-back">
+      <button type="button" class="btn btn-light btn-sm" onclick="window.planBackOpen('${jsAttr(String(sid))}')">
+        ${ic("refresh", 14)} إرجاع الطالب إلى سورة…</button>
+    </div>`;
+}
 
 /* (٦٣٩) «نظام إنجازي» اسمُ نظامٍ آخر بقي في بيانات البرامج القديمة (owner) — لا يُعرض: يُعرض مكانه اسمُ
    الجهة من الإعدادات. القيمةُ المحفوظة لا تُمسّ، وتبقى المقارنةُ بها في الكود لتمييز برامج النظام */
