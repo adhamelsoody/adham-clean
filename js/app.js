@@ -42200,7 +42200,8 @@ function teacherAttendance() {
   </div>`;
 
   /* حلقات معتمدة اليوم — تنبيه صريح بدل رفض صامت عند الضغط */
-  const lockedCircles = cur("circles").filter(c => sessionOf(dateISO, c.id));
+  /* (٦٦٤) تحضيرُ اليوم يبقى مفتوحاً بعد الاعتماد — فلا يُقال «مقفول» إلا لما مضى */
+  const lockedCircles = dateISO === todayISO() ? [] : cur("circles").filter(c => sessionOf(dateISO, c.id));
   const lockNote = lockedCircles.length
     ? noteCard(`<strong>${lockedCircles.length === 1 ? "حلقة معتمدة" : lockedCircles.length + " حلقات معتمدة"}:</strong>
         ${esc(lockedCircles.map(c => c.name).join(" · "))} — التحضير مقفول.
@@ -60825,6 +60826,12 @@ function guardSession(coll, obj, silent) {
 
   const d = String(obj.date || "");
   if (!d) return false;
+  /* (٦٦٤) «إذا حضّرتُ الطلاب حاضراً أو غائباً لا يمكن أن أعدّل الحضور مرّةً أخرى في
+     هذا اليوم»: اعتمادُ الجلسة (يدوياً من المشرف أو تلقائياً عند اكتمال التحضير)
+     كان يقفل التحضيرَ في يومه نفسِه، فلا يصحّح المعلّمُ غائباً حضر متأخّراً.
+     فتحضيرُ اليوم يبقى مفتوحاً طوال يومه؛ والقفلُ بعد الاعتماد للأيام السابقة،
+     وللتسميع والواجبات كما كان. (صلاحيةُ attEdit ومهلةُ التعديل تبقيان كما هما.) */
+  if (coll === "attendance" && typeof todayISO === "function" && d === todayISO()) return false;
 
   let cid = String(obj.circleId || "");
   if (!cid) {
