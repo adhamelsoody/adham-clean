@@ -61285,6 +61285,38 @@ function linkGuard(coll, obj) {
   return n;
 }
 
+const TEACHER_LINK_KEEP = {
+  assignments: ["mosqueId", "complexId", "circleId", "programId", "planId", "levelId", "studentId", "teacherId"],
+  plans: ["mosqueId", "complexId", "circleId", "planId", "studentId", "teacherId"]
+};
+function liveServerDoc(coll, id) {
+  const L = typeof LIVE !== "undefined" ? LIVE : {};
+  for (const k of Object.keys(L)) {
+    const x = L[k];
+    if (!x || x.c !== coll || !x.docs) continue;
+    const d = x.docs.get(String(id));
+    if (d && typeof d.data === "function") return d.data() || {};
+  }
+  return null;
+}
+function teacherLinkKeep(coll, data) {
+  const keys = TEACHER_LINK_KEEP[coll];
+  if (!keys || !data || data.id == null) return 0;
+  if ((((STATE && STATE.user) || {}).role || "") !== "teacher") return 0;
+  const srv = liveServerDoc(coll, data.id);
+  if (!srv) return 0;                       /* جديدٌ أو غيرُ معروفٍ: يُكتب كما هو */
+  let n = 0;
+  keys.forEach(k => {
+    const a = srv[k], b = data[k];
+    if (String(a == null ? "" : a) === String(b == null ? "" : b)) return;
+    if (a === undefined) delete data[k]; else data[k] = a;
+    n++;
+  });
+  if (n) console.info("[ارتباط المعلّم] أُبقي " + n + " حقلَ ارتباطٍ كما على الخادم في " + coll + "/" + data.id);
+  return n;
+}
+window.teacherLinkKeep = teacherLinkKeep;
+
 function persistSet(coll, obj) {
   if (CUR_MEMO) CUR_MEMO = {};   /* الحفظُ يُبطل ما حُفظ من قراءات الرسم (٤٢٥) */
   const db = FDB(); if (!db || obj == null) return Promise.resolve(false);
@@ -61347,6 +61379,13 @@ function persistSet(coll, obj) {
     }
   }
   const data = scopeStamp(coll, Object.assign({}, obj));
+  /* (٦٧٠) «عند اعتماد تسميع بعض الطلاب يظهر التقييمُ ثوانيَ ثمّ يختفي»: القاعدةُ تمنع المعلّمَ أن
+     يغيّر حقولَ الارتباط في الواجب والخطة (linkFields)، والكتابةُ set بالسجلّ كلِّه — فإن حمل
+     السجلُّ في الذاكرة حقلَ ارتباطٍ يخالف الخادم (مسجدٌ أو مجمّعٌ يختمه scopeStamp وليس في سجلّ
+     الخادم، أو حلقةٌ/مستوى تغيّر بعده) رُدّت الكتابةُ كلُّها، فأعادت المزامنةُ الحيّةُ السجلَّ كما
+     على الخادم فاختفى التقييم. فتُردّ حقولُ الارتباط وحدَها إلى ما على الخادم قبل الكتابة —
+     وما سواها (الحالةُ والتقييم) يُكتب. والإدارةُ لا تمرّ بهذا. */
+  try { teacherLinkKeep(coll, data); } catch (e) {}
   /* ما ختمه scopeStamp على المكتوب يُختم على السجلّ في الذاكرة كذلك (٤٣٢):
      كان الخادمُ يحمل المسجدَ والمجمّعَ والذاكرةُ فارغةً منهما، فيحجب حصرُ
      النطاق السجلَّ عن منشئه حتى يُعاد التحميل (طلبُ القبول والجائزة «للجميع») */
