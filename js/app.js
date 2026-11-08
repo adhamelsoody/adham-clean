@@ -34194,6 +34194,14 @@ function repRemount() {
   const keep = repScrollKeep();
   if (REP_COLS_KEEP || document.querySelector('.rep-cols-panel[style*="block"]')) repColsKeep();
   mount();
+  /* (٦٦٧) «عند الضغط على أيٍّ من الأزرار يختفي نصفُ النافذة ثمّ يظهر»: إعادةُ الرسم تُعيد
+     حركةَ دخول الصفحة (.page pageIn و.stagger) فتومض اللوحةُ وما تحتها مع كلّ نقرة.
+     فتُنهى تلك الحركاتُ فوراً على حالها الأخير — إعادةُ رسمٍ لا دخولُ صفحة. */
+  try {
+    document.querySelectorAll(".page, .page *").forEach(el => {
+      if (el.getAnimations) el.getAnimations().forEach(an => { try { an.finish(); } catch (e) {} });
+    });
+  } catch (e) {}
   repColsRestore();
   repScrollRestore(keep);
   /* وما يُرسَم بعد إطارٍ (الرسومُ والعدّاداتُ المتحرّكة) لا يُزيح الموضع */
