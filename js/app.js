@@ -3946,7 +3946,7 @@ function transitionCard(pl) {
 
     ${canEdit ? `<div class="divider"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${next ? `<button class="btn btn-primary btn-sm"
+        ${next && canPromoteLevel() ? `<button class="btn btn-primary btn-sm"
           onclick="window.planPromote('${jsAttr(pl.id)}')">ترقية المستوى</button>` : ""}
         <button class="btn btn-ghost btn-sm"
           onclick="window.planFreeze('${jsAttr(pl.id)}')">${
@@ -4460,7 +4460,7 @@ function planReviewTab() {
       <div class="rev-acts">
         ${p ? `<button class="btn btn-ghost btn-sm" data-action="plan-open"
           data-id="${esc(p.id)}">${ic("eye", 14)} فتح الخطة</button>` : ""}
-        ${p && r.next ? `<button class="btn btn-primary btn-sm"
+        ${p && r.next && canPromoteLevel() ? `<button class="btn btn-primary btn-sm"
           onclick="window.planPromote('${jsAttr(p.id)}')">
           ترقية إلى ${esc(r.next.name)}</button>`
           : r.prog ? `<span class="muted" style="font-size:12px">
@@ -24409,7 +24409,7 @@ const LV_TRANSITIONS = [
   { k: "auto",    h: "تلقائي مباشر",
     d: "يُفتح المستوى التالي فور بلوغ المقدار" },
   { k: "approve", h: "باعتماد المشرف",
-    d: "تُجمَّد الخطة ويظهر طلبٌ في لوحة الإدارة" },
+    d: "بلا اختبار — تُجمَّد الخطة ويظهر طلبٌ للمشرف، وينقله المشرفُ أو الإدارة وحدهم لا المعلّم" },
   { k: "exam",    h: "باختبار",
     d: "تُجمَّد حتى تُرصد درجةٌ ناجحة في اختبارٍ معتمد" }
 ];
@@ -24591,9 +24591,19 @@ function gateCard(plan) {
   </div>`;
 }
 
+/* (٦٦٥) «انتقالٌ إلى المستوى التالي بدون اختبار، لكن من قِبل المشرف فقط وليس المعلّم»:
+   الترقيةُ اليدويةُ للمشرف ومدير المسجد/المجمّع والإدارة. المعلّمُ يرى الطلبَ ولا
+   يملك تنفيذَه — كانت planPromoteDo بلا حارسِ دور. (الانتقالُ التلقائيُّ باقٍ كما هو.) */
+function canPromoteLevel() {
+  const r = ((STATE && STATE.user) || {}).role || "";
+  return r === "admin" || r === "owner" || isMgrRole(r);
+}
+window.canPromoteLevel = canPromoteLevel;
+
 window.planPromote = function (planId) {
   const p = (cur("plans") || []).find(x => String(x.id) === String(planId));
   if (!p) return;
+  if (!canPromoteLevel()) { showToast("الانتقال إلى المستوى التالي باعتماد المشرف — اطلبه من مشرفك", "warn"); return; }
 
   const prog = levelProgress(p);
   const next = nextLevelOf(p);
@@ -24622,6 +24632,7 @@ window.planPromoteDo = function (planId, levelId) {
   const p = (cur("plans") || []).find(x => String(x.id) === String(planId));
   const lv = (cur("levels") || []).find(x => String(x.id) === String(levelId));
   if (!p || !lv) return;
+  if (!canPromoteLevel()) { showToast("الانتقال إلى المستوى التالي باعتماد المشرف — اطلبه من مشرفك", "warn"); return; }
 
   /* شرط المستوى يُفحص هنا لا في الزرّ: المستوى الذي بُني ليُصان باختبارٍ
      كان يُتجاوز بنقرةٍ كغيره. والمالك يتجاوزه استثناءً موثَّقاً. */
