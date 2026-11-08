@@ -15911,6 +15911,12 @@ window.sysPrgEmpty = function (pid) {
         ${prgStudentsSection(pr)}
       </div>
       <div class="sp-foot">
+        ${String(pid) === "sys_default" ? (function () {
+          const n = (cur("students") || []).filter(stuOnDefaultPlan).length;
+          return n ? `<label class="po-spread" style="display:flex;gap:8px;align-items:center;font-weight:600;font-size:13px;margin-inline-end:auto">
+            <input type="checkbox" id="poSpread" checked>
+            تطبيق مقدار الحفظ والمراجعة على طلاب الخطة الافتراضية (${toArabicDigits(n)})</label>` : "";
+        })() : ""}
         <button class="btn btn-primary sp-save" id="poSave" onclick="window.sysOptSave('${jsAttr(pid)}')">
           ${ic("check", 16)} حفظ الخيارات</button>
       </div>
@@ -15926,9 +15932,48 @@ window.sysOptColorsReset = function () {
   });
 };
 
+/* =========================================================================
+   (٦٧٢) «أضبط الخطةَ الافتراضية نصفَ وجه وأرجع لصفحة الطالب فأجد خمسةَ أوجه»
+   -------------------------------------------------------------------------
+   مقدارُ بطاقة الطالب يعلو الخطةَ الافتراضية (planQtyOf قبل pillarQtyOf)، وكثيرٌ
+   من البطاقات حُفظ فيها مقدارٌ قديم — فلا يصل ما يُضبط في الخيارات إلى أحد.
+   فعند حفظ خيارات «الخطة الافتراضية» وخانةُ «تطبيق المقدار على طلابها» مؤشَّرة (افتراضاً)، يسري
+   مقدارُ الحفظ والمراجعة على طلاب الخطة الافتراضية في نطاق الحافظ (بلا برنامج، وغيرِ «تحضيرٍ فقط"):
+   بطاقتُه وخطتُه معاً، فيرى كلُّ شاشةٍ ما ضُبط. وطلابُ البرامج لا يُمسّون.
+   ========================================================================= */
+function stuOnDefaultPlan(st) {
+  if (!st || st.attOnly || st.enrollType === "attend") return false;
+  const p = String(st.program || "").trim();
+  if (!p || p === "—") return true;
+  const d = (typeof SYS_PROGRAMS !== "undefined" ? SYS_PROGRAMS : []).find(x => String(x.id) === "sys_default");
+  return !!(d && String(d.name) === p);
+}
+function sysDefaultQtySpread(prev, out, on) {
+  if (!on) return Promise.resolve(0);
+  const ch = {};
+  const nh = (out.pillars || {}).hifz || {}, nr = (out.pillars || {}).review || {};
+  if (nh.qty) { ch.hifzQty = String(nh.qty); if (nh.qtyType) ch.hifzType = String(nh.qtyType); }
+  if (nr.qty) { ch.revQty = String(nr.qty); if (nr.qtyType) ch.revType = String(nr.qtyType); }
+  const keys = Object.keys(ch);
+  if (!keys.length) return Promise.resolve(0);
+  /* من بطاقتُه على المقدار نفسِه لا يُكتب له شيء */
+  const studs = (cur("students") || []).filter(stuOnDefaultPlan)
+    .filter(st => keys.some(k => String((st.plan || {})[k] || "") !== ch[k]));
+  return Promise.all(studs.map(st => {
+    const prevP = st.plan;
+    st.plan = Object.assign({}, st.plan || {}, ch);
+    return Promise.resolve(persistSet("students", st)).then(ok => {
+      if (ok === false) { st.plan = prevP; return 0; }
+      try { if (typeof spSyncEnginePlan === "function") spSyncEnginePlan(st, { keys }); } catch (e) { console.warn("sysDefaultQtySpread:", e); }
+      return 1;
+    });
+  })).then(r => r.reduce((a, b) => a + b, 0));
+}
+
 window.sysOptSave = function (pid) {
   if (!canPlanSetup()) { showToast("الضبط من صلاحية مدير النظام أو مدير المسجد", "warn"); return; }
   const g = id => { const el = document.getElementById(id); return el ? el.value : null; };
+  const _spreadOn = !!(document.getElementById("poSpread") || {}).checked;
   const prev = sysPrgCfg(pid);
   const out = { commit: prev.commit, pillars: {} };
   Object.keys(prev.pillars || {}).forEach(k => { out.pillars[k] = Object.assign({}, prev.pillars[k]); });
@@ -15980,9 +16025,12 @@ window.sysOptSave = function (pid) {
     m.planCfg[String(pid)] = out;
     Promise.resolve(persistSet("mosques", m)).then(function (ok) {
       closePanel();
-      showToast(ok === false ? "تعذّر حفظ الخيارات" : "حُفظت الخيارات — خطة المسجد",
-                ok === false ? "warn" : "success");
-      mount();
+      if (ok === false) { showToast("تعذّر حفظ الخيارات", "warn"); mount(); return; }
+      const _sp = String(pid) === "sys_default" ? sysDefaultQtySpread(prev, out, _spreadOn) : Promise.resolve(0);
+      _sp.then(n => {
+        showToast("حُفظت الخيارات — خطة المسجد" + (n ? " · وطُبّق المقدارُ على " + toArabicDigits(n) + " طالباً" : ""), "success");
+        mount();
+      });
     });
     return;
   }
@@ -15995,9 +16043,12 @@ window.sysOptSave = function (pid) {
   return Promise.resolve(persistSet("settings", DB.settings)).then(ok => {
     if (ok === false) { cfgUndo(_snap); mount(); return false; }
     closePanel();
-    showToast("حُفظت الخيارات", "success");
-    mount();
-    return true;
+    const _sp = String(pid) === "sys_default" ? sysDefaultQtySpread(prev, out, _spreadOn) : Promise.resolve(0);
+    return _sp.then(n => {
+      showToast("حُفظت الخيارات" + (n ? " · وطُبّق المقدارُ على " + toArabicDigits(n) + " طالباً" : ""), "success");
+      mount();
+      return true;
+    });
   });
 };
 
