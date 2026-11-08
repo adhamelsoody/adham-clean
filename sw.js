@@ -117,23 +117,43 @@ self.addEventListener("fetch", e => {
   }
 
   /* ملفات النظام: الشبكة أوّلاً لتصل التحديثات، والكاش عند تعذّرها */
+  const net = () => fetch(req).then(res => {
+    if (res && res.ok && res.type === "basic") {
+      const copy = res.clone();
+      caches.open(SHELL_CACHE).then(c => c.put(req, copy));
+    }
+    return res;
+  });
   e.respondWith(
-    fetch(req).then(res => {
-      if (res && res.ok && res.type === "basic") {
-        const copy = res.clone();
-        caches.open(SHELL_CACHE).then(c => c.put(req, copy));
-      }
-      return res;
-    }).catch(() =>
-      caches.match(req).then(hit => {
-        if (hit) return hit;
-        /* صفحةٌ لم تُخزَّن: تُعرض الرئيسية بدل خطأ المتصفح */
-        if (req.mode === "navigate") return caches.match("/index.html");
-        return new Response("", { status: 503, statusText: "غير متاح دون اتصال" });
-      })
-    )
+    net()
+      /* (٦٦٣) «This site can't be reached · ERR_FAILED» مرّتين: انقطاعٌ لحظيٌّ في
+         الشبكة (أو أثناء تبديل النشر) يُسقط الجلبَ، ثم يُبحث في الكاش فلا يوجد
+         — وكان الجوابُ حينها undefined، والمتصفّحُ يعرض لـ respondWith بلا
+         جوابٍ صفحةَ ERR_FAILED ولو عادت الشبكةُ بعد لحظة. فصار:
+           ١) محاولةٌ ثانيةٌ بعد ثانيةٍ واحدة،
+           ٢) ثمّ الكاش (والصفحةُ بلا ?v=…)، ثمّ الرئيسيةُ المخزّنة،
+           ٣) ثمّ صفحةٌ عربيةٌ صغيرة تعيد المحاولة وحدَها — لا شاشةُ خطأ المتصفح. */
+      .catch(() => new Promise(r => setTimeout(r, 1000)).then(net))
+      .catch(() =>
+        caches.match(req).then(hit => hit || caches.match(req, { ignoreSearch: true })).then(hit => {
+          if (hit) return hit;
+          if (req.mode !== "navigate") return new Response("", { status: 503, statusText: "غير متاح دون اتصال" });
+          return caches.match("/index.html").then(home => home || new Response(OFFLINE_HTML,
+            { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }));
+        })
+      )
   );
 });
+
+/* (٦٦٣) آخرُ ملجأٍ للصفحة حين لا شبكةَ ولا نسخةَ مخزّنة: تعيد المحاولةَ كلَّ ٥ ثوانٍ */
+const OFFLINE_HTML = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ذات القرآنية</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,Tahoma,sans-serif;background:#f4f8f8;color:#0f3b3d}
+.b{text-align:center;padding:28px;max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#5b7576;margin:0 0 18px;line-height:1.7}
+button{background:#0f6f72;color:#fff;border:0;border-radius:12px;padding:12px 26px;font:inherit;font-weight:700;cursor:pointer}</style></head>
+<body><div class="b"><h1>تعذّر الاتصال مؤقّتاً</h1><p>تُعاد المحاولة تلقائياً خلال ثوانٍ…</p>
+<button onclick="location.reload()">إعادة المحاولة الآن</button></div>
+<script>setTimeout(function(){location.reload()},5000);addEventListener("online",function(){location.reload()});</script></body></html>`;
 
 /* رسالة من التطبيق: تحديثٌ فوريّ بلا انتظار إغلاق التبويبات */
 self.addEventListener("message", e => {
