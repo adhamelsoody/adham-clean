@@ -14434,3 +14434,6 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
   .side-panel select option:disabled { opacity: .45; cursor: default; }
   html[data-theme="dark"] .side-panel select option:checked { color: #0d1f20; }
 }
+
+/* (٦٦٩) أيامُ الدوام الكامل تتبع الحلقة: تُعرض ولا تُنقر — والخاصّةُ للدوام الجزئي */
+#spDaysCard.sp-days-locked .sp-days { pointer-events: none; opacity: .75; }

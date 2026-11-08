@@ -42069,13 +42069,18 @@ function stuDutyDays(st) {
   if (!st) return [];
   const pd = (st.plan || {}).days;
   const own = Array.isArray(pd) ? daysToArray(pd) : [];
-  if (own.length) return own;
-
+  /* (٦٦٩) «أضفتُ دواماً يومياً فوصل لكلّ الطلاب إلّا بعضَهم، فأحدّده لهم يدوياً»: من حُفظت
+     بطاقتُه قبلُ حمل أيامَ حلقته القديمة مثبّتةً في plan.days، فلا يتبع حلقتَه إذا تغيّرت.
+     فالدوامُ الكاملُ يتبع أيامَ حلقته دائماً — والأيامُ الخاصّةُ للدوام الجزئي وحده.
+     (فإن لم يكن للحلقة أيامٌ بقيت أيامُه المحفوظة كما كانت.) */
   if (String(st.attType) === "دوام جزئي") {
+    if (own.length) return own;
     const d = daysToArray(st.days);
     if (d.length) return d;
+    return studentCircleDays(st);
   }
-  return studentCircleDays(st);
+  const cd = studentCircleDays(st);
+  return cd.length ? cd : own;
 }
 
 function isDutyDay(st, dateISO) {
@@ -54250,6 +54255,20 @@ window.spDaysPlace = function () {
     if (t) t.textContent = "أيام الخطة الأسبوعية";
     if (sub) sub.textContent = "الأيام التي يُسمّع فيها الطالب خطته";
   }
+  /* (٦٦٩) الدوامُ الكامل يتبع أيامَ حلقته: تُعرض أيامُها مقفلةً، ولأيامٍ خاصّةٍ يُختار «دوام جزئي» */
+  try {
+    const sid = (typeof STU_DRAFT !== "undefined" && STU_DRAFT && STU_DRAFT.id) || "";
+    const st = (DB.students || []).find(x => String(x.id) === String(sid));
+    const cDays = st && typeof studentCircleDays === "function" ? studentCircleDays(st) : [];
+    const lock = !isPart && cDays.length > 0;
+    card.classList.toggle("sp-days-locked", lock);
+    if (lock) {
+      card.querySelectorAll(".sp-day").forEach(b => b.classList.toggle("on", cDays.indexOf(b.textContent.trim()) > -1));
+      const cnt = document.getElementById("spDaysCount");
+      if (cnt) cnt.textContent = cDays.length + " أيام";
+      if (sub) sub.textContent = "تتبع أيامَ حلقته تلقائياً — لأيامٍ خاصّةٍ اختر «دوام جزئي»";
+    }
+  } catch (e) { console.warn("أيام الدوام:", e); }
 };
 
 /* الحفظُ يكتب ما عُرض فقط: الحقولُ غيرُ المعروضة في التبويب الحالي لا
