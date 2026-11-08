@@ -6094,6 +6094,58 @@ function showCredentials(res, name) {
 }
 
 /* =========================================================================
+   (٦٦٦) حسابُ دخول الطالب من صفحته — «إذا أضفتُ طالباً كيف يدخل ولا كلمة مرور؟»
+   -------------------------------------------------------------------------
+   إضافةُ الطالب تكتب سجلَّه وحده، ولا حسابَ دخولٍ له؛ وصفحةُ المستخدمين لا
+   تربط حسابَ الطالب بسجلّه (studentId). فيُنشأ الحسابُ هنا برقم هويته:
+   الدخولُ برقم الهوية، وكلمةُ مرورٍ مبدئيةٌ تُولَّد وتُعرض مرّةً واحدة
+   (showCredentials) ليسلّمها المشرف — ولا تُخزَّن. والحسابُ مربوطٌ بسجلّه
+   (studentId) وبمنشأته. لمن يملك منحَ دور الطالب (canGrantRole) وحده.
+   ========================================================================= */
+function stuLoginOf(st) {
+  if (!st) return null;
+  const us = Array.isArray(DB.users) ? DB.users : [];
+  return us.find(u => u && u.role === "student" && String(u.studentId || "") === String(st.id)) ||
+         us.find(u => u && st.uid && String(u.uid || u.id) === String(st.uid)) || null;
+}
+window.stuCreateLogin = async function (sid, quiet) {
+  const st = (DB.students || []).find(x => String(x.id) === String(sid));
+  if (!st) { showToast("الطالب غير موجود", "warn"); return false; }
+  if (!canGrantRole("student")) {
+    showToast("إنشاءُ حساب دخول الطالب للمشرف والإدارة", "warn"); return false;
+  }
+  if (stuLoginOf(st)) { if (!quiet) showToast("لهذا الطالب حسابُ دخولٍ بالفعل", "info"); return false; }
+  const idNo = toLatinDigitsSafe(String(st.idNo || "")).replace(/[^0-9]/g, "");
+  if (!idNo) { showToast("أدخل رقم هوية الطالب في بياناته أوّلاً — به يدخل", "warn"); return false; }
+  if ((DB.users || []).some(x => String(x.username || "") === idNo)) {
+    showToast("رقم الهوية " + idNo + " مسجَّلٌ لحسابٍ آخر — راجع «المستخدمون والحسابات»", "warn"); return false;
+  }
+  let res;
+  try { res = await createAuthUser({ username: idNo }); }
+  catch (err) { console.warn("stuCreateLogin:", err); showToast(authErrMsg(err), "warn"); return false; }
+  const mq = st.mosqueId ? String(st.mosqueId) : "", cx = st.complexId ? String(st.complexId) : "";
+  const u = { id: res.uid, uid: res.uid, loginEmail: res.loginEmail, username: idNo, email: "",
+    name: st.name || "", role: "student", studentId: String(st.id), active: true,
+    phone: String(st.phone || "").replace(/[^0-9]/g, ""), gender: st.gender || "ذكر",
+    mosqueId: mq, complexId: cx, mosqueIds: mq ? [mq] : [], complexIds: cx ? [cx] : [],
+    scopeIds: [].concat(mq ? ["mosque:" + mq] : [], cx ? ["complex:" + cx] : []),
+    createdAt: Date.now() };
+  if (!Array.isArray(DB.users)) DB.users = [];
+  DB.users.push(u);
+  const ok = await Promise.resolve(persistSet("users", u));
+  if (ok === false) {
+    const i = DB.users.indexOf(u); if (i > -1) DB.users.splice(i, 1);
+    showToast("أُنشئ حساب الدخول ورفض الخادمُ حفظَ ملفّه — يحذفه مديرُ النظام من Firebase Console ← Authentication (" + (res.loginEmail || "") + ")", "warn");
+    return false;
+  }
+  st.uid = res.uid;
+  persistSet("students", st);
+  mount();
+  showCredentials(Object.assign({}, res, { loginEmail: idNo + " (رقم الهوية)" }), st.name);
+  return true;
+};
+
+/* =========================================================================
    أماكن الإشراف — منشأة واحدة لم تعد تكفي
    -------------------------------------------------------------------------
    كان الحقل قائمة مفردة تكتب complexId أو mosqueId، فالمشرف على مسجدين
@@ -52413,6 +52465,10 @@ function modalStudent() {
       <div class="field"><label>رقم الهوية</label>
         <input id="s_idno" dir="ltr" inputmode="numeric" maxlength="10"
           oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      ${/* (٦٦٦) حسابُ الدخول يُنشأ مع الإضافة برقم الهوية */
+        canGrantRole("student") ? `<div class="field full"><label class="chk-line" style="display:flex;gap:8px;align-items:center;font-weight:600">
+          <input type="checkbox" id="s_login" checked>
+          إنشاء حساب دخول للطالب برقم هويته — تظهر كلمة المرور المبدئية بعد الحفظ لتسلّمها له</label></div>` : ""}
 
       <div class="field"><label>الجنسية</label>
         <input id="s_nat" placeholder="سعودي"></div>
@@ -59327,7 +59383,13 @@ document.addEventListener("click", (e) => {
         phone: val("#s_phone", ""), parentRel: val("#s_rel", "الأب"),
         address: val("#s_addr", ""), health: val("#s_health", ""),
         joinedAt: Date.now() };
-      DB.students.push(o); persistSet("students", o); photoReset("s_photo");
+      const _wantLogin = !!(document.getElementById("s_login") || {}).checked && !!o.idNo;
+      DB.students.push(o);
+      /* (٦٦٦) الحسابُ بعد قبول الخادم سجلَّ الطالب */
+      Promise.resolve(persistSet("students", o)).then(ok => {
+        if (ok !== false && _wantLogin) window.stuCreateLogin(o.id, true);
+      });
+      photoReset("s_photo");
       /* «تم إضافة طالب جديد إلى الحلقة» — تنبيهٌ لمعلّمها */
       try {
         const _c = (DB.circles || []).find(x => String(x.id) === String(o.circleId || ""));
@@ -63807,8 +63869,10 @@ window.spPlacePanel = function (id) {
              حساب الطالب هنا. افتح «المستخدمون والحسابات» لمعرفة حالته.`)}
          </div>`
     : `<div class="sp-place-acc none">
-         ${noteCard(`لا حسابَ مرتبطاً بهذا الطالب بعد — يُنشأ من «المستخدمون
-           والحسابات» ويُربط بمعرّفه ليدخل بنفسه ويرى واجباته.`)}
+         ${noteCard(`لا حسابَ دخولٍ لهذا الطالب بعد — أنشئه هنا برقم هويته، فتظهر كلمةُ
+           المرور المبدئية مرّةً واحدة لتسلّمها له، ويدخل بنفسه ويرى واجباته.`)}
+         ${canGrantRole("student") ? `<button type="button" class="btn btn-primary btn-sm" style="margin-top:8px"
+           onclick="window.closeModal&&closeModal();window.stuCreateLogin('${jsAttr(st.id)}')">${ic("plus", 15)} إنشاء حساب دخول</button>` : ""}
        </div>`;
 
   openModal("موقع الطالب وحسابه", st.name || "",
