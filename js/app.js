@@ -22194,7 +22194,7 @@ function fixSurahBefore(s, back) {
   return { s: ps, a: c };
 }
 
-function fixRangeFor(studentId, upTo) {
+function fixRangeFor(studentId, upTo, beforeDate) {
   const up = upTo === undefined ? fixUpTo(studentId) : upTo;
   const want = Math.max(1, Number(fixLessonsFor(studentId)) || 1);
   /* (٦٤٨) «عندما ننقل طالباً إلى برنامجٍ جديد، أو أوّلَ يومٍ له، لا يكون له تثبيتٌ حتى يأتي اليومُ
@@ -22210,7 +22210,10 @@ function fixRangeFor(studentId, upTo) {
     const _redo = (planEngineCfg() || {}).redo || 60;
     const _n = new Set(asgOf(studentId).filter(a => a && String(a.kind || "").indexOf("hifz") === 0 &&
         a.status === "done" && !(a.score != null && a.score !== "" && Number(a.score) < _redo) &&
-        (!_since || String(a.date || "") >= _since)).map(a => String(a.date))).size;
+        (!_since || String(a.date || "") >= _since) &&
+        /* (٦٧١) «أوّلُ يومٍ لا يكون له تثبيت» — المنقولُ إلى برنامجٍ والمضافُ حديثاً: درسُ اليوم نفسِه
+           لا يُعدّ لتثبيتِ يومِه، وإلّا جاءه التثبيتُ في يومه الأوّل حالما سُمّع حفظُه */
+        (!beforeDate || String(a.date || "") < String(beforeDate))).map(a => String(a.date))).size;
     if (_n < want) return null;
   }
   const rank = (sv, av) => (Number(sv) || 0) * 1000 + (Number(av) || 0);
@@ -23194,7 +23197,7 @@ function generateAssignments(studentId, dateISO) {
       const _h = out.find(x => x && String(x.kind || "") === "hifz" && Number(x.fromS) > 0);
       const r = fixRangeFor(studentId, _h
         ? { s: Number(_h.fromS), a: Number(_h.fromA) || 1, dir: _h.direction, qty: Number(_h.qty) || 1 }
-        : fixUpTo(studentId, dateISO));
+        : fixUpTo(studentId, dateISO), dateISO);
       if (!r) return;                          /* لا دروس بعد: لا تثبيت */
       rec.fromS = r.fromS; rec.fromA = r.fromA;
       rec.toS = r.toS; rec.toA = r.toA;
@@ -23653,7 +23656,7 @@ function asgSkipWhy(studentId, dateISO) {
         if (!planRuleOn(plan.id, "fixation")) {
           out.push({ h: t.h, why: "قاعدةُ «التثبيت يلحق الحفظ» مُطفأةٌ في خطته" }); return;
         }
-        if (!fixRangeFor(studentId, fixUpTo(studentId, dateISO))) {
+        if (!fixRangeFor(studentId, fixUpTo(studentId, dateISO), dateISO)) {
           out.push({ h: t.h, why: "لا دروسَ حفظٍ منجَزةٍ بعدُ يُشتقُّ منها مداه" }); return;
         }
       }
