@@ -50296,6 +50296,8 @@ window.mountChrome = mountChrome;
 /* (٦٥٣) آخرُ شاشةٍ رُسمت — لإبقاء موضع التمرير عند إعادة رسمها هي */
 let MOUNT_LAST_KEY = "";
 function mount() {
+  /* (٦٧٧) مستوى الطالب في كلّ الشاشات من خطته — في الذاكرة وحدها */
+  try { if (typeof stuLevelAlign === "function") stuLevelAlign(); } catch (e) {}
   /* مغادرةُ المصحف تُغلق مستمعَه اللحظيّ */
   try { if (STATE.page !== "mushaf" && typeof musLiveStop === "function" && MUS_LIVE.off) musLiveStop(); } catch (e) {}
   /* الواجهة تُصحَّح عند كل رسم، فلا يكفي تعديل STATE.iface يدوياً للتحايل */
@@ -52496,16 +52498,51 @@ function prgNameById(id) {
 
 /* مستوى الطالب كما يقوله النظامُ كلُّه: نصُّه المحفوظ، فإن لم يكن
    فاسمُ مستواه بمعرّفه، فإن لم يكن فما في سجلّ خطته. */
+/* =========================================================================
+   (٦٧٧) مستوى الطالب — مصدرٌ واحد: خطتُه المعتمدة
+   -------------------------------------------------------------------------
+   «الطالبُ في جزء قد سمع في المستويات، ويظهر لي جزء عم — أريد حلّاً نهائياً».
+   كان للمستوى مصدران: خطةُ الطالب (plan.levelId — يقرؤها المحرّكُ وصفحةُ المستويات)
+   ونصٌّ في سجلّه (st.level — تقرؤه البطاقاتُ والجداول). وكانت stuLevelName تقدّم
+   نصَّ السجلّ، وتأخذ أوّلَ خطةٍ للطالب ولو كانت مستبدَلة. فإذا نُقل المستوى في
+   الخطة (ترقيةٌ أو اعتمادٌ أو باني الخطط) وبقي نصُّ السجلّ القديم، ظهر المستوى القديم.
+   فصار: الخطةُ المعتمدة (غيرُ المستبدَلة) أوّلاً — معرّفُها ثمّ اسمُها — ثمّ السجلّ.
+   ويُسوّى سجلُّ الطالب في الذاكرة على خطته عند كلّ رسم (stuLevelAlign) فتتّفق كلُّ
+   الشاشات التي تقرأ st.level مباشرة — بلا كتابةٍ إلى قاعدة البيانات.
+   ========================================================================= */
+function stuActivePlanOf(st) {
+  if (!st) return null;
+  try { if (typeof planOfStudent === "function") { const p = planOfStudent(st); if (p) return p; } } catch (e) {}
+  return (Array.isArray(DB.plans) ? DB.plans : [])
+    .find(p => p && p.superseded !== true && String(p.studentId) === String(st.id)) || null;
+}
 function stuLevelName(st) {
   if (!st) return "";
-  const pl = (Array.isArray(DB.plans) ? DB.plans : [])
-    .find(p => p && String(p.studentId) === String(st.id)) || {};
-  return String(st.level || "").trim()
-      || lvNameById(st.levelId)
+  const pl = stuActivePlanOf(st) || {};
+  return lvNameById(pl.levelId)
       || String(pl.level || "").trim()
-      || lvNameById(pl.levelId)
+      || lvNameById(st.levelId)
+      || String(st.level || "").trim()
       || "";
 }
+function stuLevelAlign() {
+  const studs = Array.isArray(DB.students) ? DB.students : [];
+  if (!studs.length || !Array.isArray(DB.plans) || !DB.plans.length) return 0;
+  let n = 0;
+  studs.forEach(st => {
+    if (!st || st.attOnly) return;
+    const pl = stuActivePlanOf(st);
+    if (!pl) return;
+    const id = pl.levelId != null && pl.levelId !== "" ? String(pl.levelId) : "";
+    const nm = (id && lvNameById(id)) || String(pl.level || "").trim();
+    if (!nm) return;
+    if (String(st.level || "").trim() !== nm || (id && String(st.levelId || "") !== id)) {
+      st.level = nm; if (id) st.levelId = id; n++;
+    }
+  });
+  return n;
+}
+window.stuLevelAlign = stuLevelAlign;
 
 function stuProgramName(st) {
   if (!st) return "";
