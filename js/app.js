@@ -50801,15 +50801,22 @@ const WEEK_DAYS = ["السبت", "الأحد", "الاثنين", "الثلاثا
 
 /* الأيام مصفوفة دائماً — والنصوص القديمة تُقرأ بلا فقدان */
 function daysToArray(v) {
-  if (Array.isArray(v)) return v.filter(d => WEEK_DAYS.indexOf(d) > -1);
-  const t = String(v == null ? "" : v).trim();
-  if (!t) return [];
-  if (/^يومي/.test(t)) return WEEK_DAYS.slice();
   /* المطابقة بعد تجريد الهمزات وأل التعريف: «الاحد» بلا همزة كُتبت
      كثيراً، وكانت لا تطابق «الأحد» فيضيع اليوم بصمت. */
   const bare = x => String(x).trim()
     .replace(/[أإآ]/g, "ا").replace(/ة$/, "ه")
     .replace(/^ال/, "").replace(/\s+/g, "");
+  /* (٦٧٣) «جعلتُ طلاباً دواماً كاملاً فظهر اليومُ أنّه ليس دوامَهم»: أيامُ الحلقة المحفوظةُ مصفوفةً
+     كانت تُطابَق حرفاً بحرف — فـ«الإثنين» بالهمزة (كما في قوائم أخرى في النظام) لا تساوي
+     «الاثنين» في WEEK_DAYS، فيسقط الإثنين بصمت ويصير يومَ غيابٍ عن الدوام. فالمصفوفةُ
+     تُطابَق كالنصّ: بعد تجريد الهمزات. */
+  if (Array.isArray(v)) {
+    return v.map(x => WEEK_DAYS.indexOf(x) > -1 ? x : WEEK_DAYS.find(d => bare(d) === bare(x)))
+      .filter(Boolean).filter((d, i, a) => a.indexOf(d) === i);
+  }
+  const t = String(v == null ? "" : v).trim();
+  if (!t) return [];
+  if (/^يومي/.test(t)) return WEEK_DAYS.slice();
 
   /* يفصل على الفاصلة والشرطة والمسافة، والواو حين تبدأ كلمة */
   return t.split(/[،,\-\/]+|\s+و?|(?<=\S)و(?=ال)/)
