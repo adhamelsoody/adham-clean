@@ -18688,6 +18688,41 @@ function lvRangeOf(lv) {
   }
   return null;
 }
+/* =========================================================================
+   (٦٧٦) «الطالبُ في مستوى (جزء عم) ويظهر له حفظٌ من مستوىً آخر (القيامة ← المدثر)»
+   -------------------------------------------------------------------------
+   حارسُ «لا حفظَ بعد نهاية المستوى» كان لا يعمل إلّا بشرطين: معرّفُ المستوى في الخطة
+   (plan.levelId)، ومستوىً من بنّاء المستويات (ركنُ الحفظ). فالطالبُ الذي مستواه مكتوبٌ
+   في سجلّه وحدَه، أو مستواه من النموذج القديم (من سورة/إلى سورة)، يمضي بعد نهاية
+   مستواه بلا حدّ. فيُعرف المستوى من الخطة ثمّ من سجلّ الطالب ثمّ باسمه في برنامجه،
+   ويُقرأ مداه من ركن الحفظ أو من النموذج القديم.
+   ========================================================================= */
+function lvGuardRange(plan, st) {
+  if (!plan) return null;
+  const L = cur("levels") || [];
+  const byId = id => id ? L.find(x => String(x.id) === String(id)) : null;
+  let lv = byId(plan.levelId) || byId(st && st.levelId);
+  if (!lv) {
+    const nm = String((st && st.level) || plan.level || "").trim();
+    if (nm) {
+      const pid = String(plan.programId || (st && st.programId) || "");
+      lv = L.find(x => String(x.name || "").trim() === nm && (!pid || String(x.programId) === pid)) ||
+           L.find(x => String(x.name || "").trim() === nm);
+    }
+  }
+  if (!lv) return null;
+  const rg = lvRangeOf(lv);
+  if (rg) return rg;
+  const fs = Number(lv.fromSurah), ts = Number(lv.toSurah);
+  if (fs > 0 && ts > 0) {
+    const dir = fs > ts ? "backward" : (fs < ts ? "forward" : (dirOf(plan.direction) === "backward" ? "backward" : "forward"));
+    return { start: { s: fs, a: Math.max(1, Number(lv.fromAyah) || 1) },
+             end: { s: ts, a: Number(lv.toAyah) > 0 ? Number(lv.toAyah) : 0 }, dir };
+  }
+  return null;
+}
+window.lvGuardRange = lvGuardRange;
+
 /* موضعٌ بالاتجاه: كلّما زاد كان أبعدَ في السير */
 function lvKey(dir, s, a) {
   return (String(dir) === "backward" ? (115 - (Number(s) || 1)) : (Number(s) || 1)) * 1000 + (Number(a) || 0);
@@ -23258,11 +23293,11 @@ function generateAssignments(studentId, dateISO) {
       const from = nextHifzFrom(plan, dateISO);
       /* (٦٤٣) أتمّ مدى مستواه ولا تكرارَ عليه: لا حفظَ من سور المستوى التالي قبل الانتقال
          (اختبارٌ أو اعتمادٌ أو تلقائيّ) — والمحفوظُ قبلُ لا يُمسّ */
-      if (!from.repeat && plan.levelId) {
-        const _lvG = (cur("levels") || []).find(x => String(x.id) === String(plan.levelId));
-        const _rgG = _lvG && !_lvG.toSurah ? lvRangeOf(_lvG) : null;
+      if (!from.repeat) {
+        const _rgG = lvGuardRange(plan, st);
         if (_rgG && Number(from.s) > 0 && lvKey(_rgG.dir, from.s, from.a || 1) > lvKey(_rgG.dir, _rgG.end.s, _rgG.end.a || 999)) {
-          if (exists) out.push(exists);
+          /* (٦٧٦) وواجبُ اليوم المحفوظُ قبلُ من خارج المستوى لا يُعرض ما لم يُسمَّع */
+          if (exists && exists.status === "done") out.push(exists);
           return;
         }
       }
