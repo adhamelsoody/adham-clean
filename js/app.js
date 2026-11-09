@@ -37614,8 +37614,17 @@ window.tcrcAttOpen = function () {
     TATT.sel[String(s.id)] = (r && r.status) || "حاضر";
   });
 
+  /* (٦٧٨) «إذا كتبتُ غائباً ثمّ اعتمدتُ التحضير لا يمكن أن أغيّر شيئاً لليوم الذي اعتمدتُه»:
+     المحفوظُ الذي لا يملك المعلّمُ تعديلَه (attEdit مطفأة أو انتهت المهلة) يُعرض مقفلاً هنا —
+     كان يُعرض قابلاً للنقر ثمّ يُتجاوز عند الحفظ بلا أثر */
+  const _lockedN = onD.filter(s => { const r = map[String(s.id)]; return r && typeof attEditOpen === "function" && !attEditOpen(r, true); }).length;
   const body = `${tcrcAttLegend()}
-       <div class="tat-list">${onD.map(s => tcrcAttRow(s, false, false)).join("")}</div>`;
+       ${_lockedN ? `<div class="tat-locknote" style="margin:6px 0 10px;font-size:13px;color:var(--text-faint)">${ic("lock", 14)}
+         التحضير المعتمد لهذا اليوم مقفل (${toArabicDigits(_lockedN)}) — التعديل من الإدارة</div>` : ""}
+       <div class="tat-list">${onD.map(s => {
+         const r = map[String(s.id)];
+         return tcrcAttRow(s, false, !!(r && typeof attEditOpen === "function" && !attEditOpen(r, true)));
+       }).join("")}</div>`;
 
   openModal("تسجيل الحضور والغياب", esc(c.name || ""), body,
     `<button class="btn btn-primary tat-go" onclick="window.tcrcAttSave()">${
