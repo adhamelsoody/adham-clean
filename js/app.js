@@ -61360,10 +61360,34 @@ function liveServerDoc(coll, id) {
   }
   return null;
 }
+/* (٦٧٤) «المعلّم لا يستطيع أن يعدّل حفظَ الطالب ولا مراجعته»: القاعدةُ تُجيز للمعلّم في سجلّ
+   الطالب حقولاً بأعيانها لا غير (الخطة والبرنامج والمستوى · والنقاط) — والكتابةُ set بالسجلّ
+   كلِّه، فأيُّ حقلٍ آخر يخالف الخادم (مسجدٌ أو مجمّعٌ يختمه scopeStamp، أو حقلٌ عرضيٌّ حسبه
+   العميل) يردّ الحفظَ كلَّه فلا تتغيّر الخطة. فيُردّ ما سوى المسموح إلى ما على الخادم. */
+const TEACHER_FIELDS_ONLY = {
+  students: ["program", "levelId", "level", "plan", "_o", "id", "points", "balance"]
+};
 function teacherLinkKeep(coll, data) {
-  const keys = TEACHER_LINK_KEEP[coll];
-  if (!keys || !data || data.id == null) return 0;
+  if (!data || data.id == null) return 0;
   if ((((STATE && STATE.user) || {}).role || "") !== "teacher") return 0;
+  const only = TEACHER_FIELDS_ONLY[coll];
+  if (only) {
+    const srv0 = liveServerDoc(coll, data.id);
+    if (!srv0) return 0;
+    let m = 0;
+    const all = Object.keys(data).concat(Object.keys(srv0)).filter((k, i, a) => a.indexOf(k) === i);
+    all.forEach(k => {
+      if (only.indexOf(k) > -1) return;
+      const a = srv0[k], b = data[k];
+      if (JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b)) return;
+      if (a === undefined) delete data[k]; else data[k] = a;
+      m++;
+    });
+    if (m) console.info("[حقول المعلّم] أُبقي " + m + " حقلاً كما على الخادم في " + coll + "/" + data.id);
+    return m;
+  }
+  const keys = TEACHER_LINK_KEEP[coll];
+  if (!keys) return 0;
   const srv = liveServerDoc(coll, data.id);
   if (!srv) return 0;                       /* جديدٌ أو غيرُ معروفٍ: يُكتب كما هو */
   let n = 0;
