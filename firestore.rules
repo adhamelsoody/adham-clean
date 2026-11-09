@@ -450,6 +450,13 @@ service cloud.firestore {
     function teacherMayAs(key, alias, byDefault) {
       return canWrite() || (isTeacher() && permOf(key, alias, byDefault));
     }
+    /* (٦٧٩) تعديلُ التحضير المحفوظ: البطاقةُ ثمّ الافتراضيُّ العامّ — وما لم يُفعَّل صراحةً فمطفأ */
+    function attEditOk() {
+      return canWrite() || (isTeacher() && (
+        perms().get('attEdit', null) != null ? perms().get('attEdit', null) == true
+        : (perms().get('attend_edit', null) != null ? perms().get('attend_edit', null) == true
+          : (exists(tpPath()) && get(tpPath()).data.get('teacherPerms', {}).get('attEdit', false) == true))));
+    }
 
 
     /* ---------------- حصر النطاق عند الكتابة ---------------- */
@@ -1053,12 +1060,14 @@ service cloud.firestore {
                     && request.resource.data.date is string
                     && request.resource.data.studentId is string;
       /* (٦٣٤) وتعديلُ المعلّم كما كان قبل S13 — بنطاقه وصلاحية attEdit */
-      allow update: if teacherMayAs('attend_edit', 'attEdit', true) && scopeOk() && oldScopeOk()
+      /* (٦٧٩) «إذا اعتمدتُ التحضير لا يمكن أن أغيّر شيئاً لذلك اليوم»: تعديلُ المحفوظ للمعلّم
+         مطفأٌ افتراضاً — يُفتح بتفعيلٍ صريحٍ في بطاقته أو في «إدارة الصلاحيات» (attEditOk) */
+      allow update: if attEditOk() && scopeOk() && oldScopeOk()
                     && request.resource.data.status in ['حاضر', 'متأخر', 'مستأذن', 'غائب']
                     && request.resource.data.date is string
                     && request.resource.data.studentId is string;
       /* سجل خاطئ يجب أن يُحذف لا أن يُترك — بنفس صلاحية التعديل */
-      allow delete: if teacherMayAs('attend_edit', 'attEdit', true) && oldScopeOk();
+      allow delete: if attEditOk() && oldScopeOk();
     }
 
 

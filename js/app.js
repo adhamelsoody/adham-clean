@@ -6406,7 +6406,9 @@ function canPermsSetup() {
 
 function permsField(u, hidden) {
   const p = (u && u.perms) || {};
-  const on = k => p[k] !== false;
+  /* (٦٧٩) غيرُ المضبوط في البطاقة يُعرض بما يسري فعلاً: الافتراضيُّ العامّ ثمّ افتراضُ الصلاحية */
+  const _g = typeof permsDefaults === "function" ? permsDefaults() : {};
+  const on = k => p[k] !== undefined ? p[k] !== false : (_g[k] !== undefined ? _g[k] !== false : permDefOn(k));
 
   return `<div class="field full perm-wrap"${hidden ? ' style="display:none"' : ""}>
     <label>صلاحيات المعلم</label>
@@ -28687,7 +28689,7 @@ function setPanelPrayer() {
    ========================================================================= */
 function setPanelPerms() {
   const g = permsDefaults();
-  const on = k => g[k] !== false;
+  const on = k => g[k] !== undefined ? g[k] !== false : permDefOn(k);
   const edit = canPermsSetup();
   const total = TEACHER_PERMS.filter(x => x.k).length;
   const offN = TEACHER_PERMS.filter(x => x.k && !on(x.k)).length;
@@ -28752,7 +28754,7 @@ window.permDefSet = function (k, val2) {
    ========================================================================= */
 function setPanelPerms() {
   const g = permsDefaults();
-  const on = k => g[k] !== false;
+  const on = k => g[k] !== undefined ? g[k] !== false : permDefOn(k);
   const edit = canPermsSetup();
   const total = TEACHER_PERMS.filter(x => x.k).length;
   const offN = TEACHER_PERMS.filter(x => x.k && !on(x.k)).length;
@@ -45367,8 +45369,14 @@ function teacherCan(k) {
      العامَّ من «إدارة الصلاحيات»، وما لم يُذكر في الاثنين فمسموح. */
   if (p[k] !== undefined) return p[k] !== false;
   const g = typeof permsDefaults === "function" ? permsDefaults() : {};
-  return g[k] !== false;
+  if (g[k] !== undefined) return g[k] !== false;
+  return permDefOn(k);
 }
+/* (٦٧٩) «إذا كتبتُ غائباً ثمّ اعتمدتُ التحضير لا يمكن أن أغيّر شيئاً في ذلك اليوم»: صلاحياتٌ
+   افتراضُها الإطفاء ما لم تفعّلها الإدارةُ صراحةً (في بطاقة المعلّم أو «إدارة الصلاحيات»).
+   والقاعدةُ على الخادم تقرأ الافتراضَ نفسَه (attEditOk في firestore.rules). */
+const PERM_DEFAULT_OFF = ["attEdit"];
+function permDefOn(k) { return PERM_DEFAULT_OFF.indexOf(String(k)) < 0; }
 
 /* حقول الواجب التي كانت تُحفظ في خانة الانتظار */
 const DUTY_FIELDS = ["current","hFromS","hFromA","hToS","hToA","hFaces","start",
