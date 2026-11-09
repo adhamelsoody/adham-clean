@@ -42133,8 +42133,9 @@ function stuDutyDays(st) {
     if (d.length) return d;
     return studentCircleDays(st);
   }
-  const cd = studentCircleDays(st);
-  return cd.length ? cd : own;
+  /* (٦٧٥) «الدوامُ الكامل تكون له أيامُ الأسبوع كاملة»: لا أيامُ حلقته ولا أيامٌ محفوظة —
+     الأسبوعُ كلُّه. (إجازاتُ الحلقة تبقى تُحترم في موضعها: isHoliday.) */
+  return WEEK_DAYS.slice();
 }
 
 function isDutyDay(st, dateISO) {
@@ -54320,14 +54321,14 @@ window.spDaysPlace = function () {
   try {
     const sid = (typeof STU_DRAFT !== "undefined" && STU_DRAFT && STU_DRAFT.id) || "";
     const st = (DB.students || []).find(x => String(x.id) === String(sid));
-    const cDays = st && typeof studentCircleDays === "function" ? studentCircleDays(st) : [];
-    const lock = !isPart && cDays.length > 0;
+    const cDays = WEEK_DAYS.slice();          /* (٦٧٥) الدوامُ الكامل: الأسبوعُ كلُّه */
+    const lock = !isPart && !!st;
     card.classList.toggle("sp-days-locked", lock);
     if (lock) {
       card.querySelectorAll(".sp-day").forEach(b => b.classList.toggle("on", cDays.indexOf(b.textContent.trim()) > -1));
       const cnt = document.getElementById("spDaysCount");
       if (cnt) cnt.textContent = cDays.length + " أيام";
-      if (sub) sub.textContent = "تتبع أيامَ حلقته تلقائياً — لأيامٍ خاصّةٍ اختر «دوام جزئي»";
+      if (sub) sub.textContent = "دوامٌ كامل: أيامُ الأسبوع كلُّها — لأيامٍ خاصّةٍ اختر «دوام جزئي»";
     }
   } catch (e) { console.warn("أيام الدوام:", e); }
 };
