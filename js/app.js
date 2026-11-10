@@ -61481,7 +61481,10 @@ function teacherLinkKeep(coll, data) {
     const srv0 = liveServerDoc(coll, data.id);
     if (!srv0) return 0;
     let m = 0;
-    const all = Object.keys(data).concat(Object.keys(srv0)).filter((k, i, a) => a.indexOf(k) === i);
+    /* (٦٨٢) تُردّ حقولُ النطاق التي يختمها العميلُ وحدها (المسجدُ والمجمّعُ ومشتقّاتُهما) — لا ما
+       قصد المعلّمُ تغييرَه (الاسمُ والحلقةُ…): ذاك يحكم فيه الخادم، فيُقبل أو يُردّ برسالته كما كان،
+       لا يُمحى بصمتٍ ثمّ يُقال «حُفظت» */
+    const all = ["mosqueId", "complexId", "mosqueIds", "complexIds", "scopeIds"];
     all.forEach(k => {
       if (only.indexOf(k) > -1) return;
       const a = srv0[k], b = data[k];
