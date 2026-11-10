@@ -16335,7 +16335,7 @@ function prgLiveFields(p2, sess) {
       </select>${hint ? `<small class="muted" style="font-size:11px">${esc(hint)}</small>` : ""}</div>`;
 
   const scopes = typeof PRG_SCOPES !== "undefined" ? PRG_SCOPES : [];
-  const trans  = typeof LV_TRANSITIONS !== "undefined" ? LV_TRANSITIONS : [];
+  const trans  = typeof LV_TRANS_SHOWN !== "undefined" ? LV_TRANS_SHOWN : [];
   const reps   = typeof REPEAT_MODES !== "undefined" ? REPEAT_MODES : [];
   const days   = typeof PRG_SESSIONS !== "undefined" ? PRG_SESSIONS : [];
   const on     = Array.isArray(sess) ? sess : [];
@@ -18170,7 +18170,7 @@ function lvbOvr(row, key) {
 
 function lvbPrgHead(row) {
   const scopes = typeof PRG_SCOPES !== "undefined" ? PRG_SCOPES : [];
-  const trans  = typeof LV_TRANSITIONS !== "undefined" ? LV_TRANSITIONS : [];
+  const trans  = typeof LV_TRANS_SHOWN !== "undefined" ? LV_TRANS_SHOWN : [];
   const reps   = typeof REPEAT_MODES !== "undefined" ? REPEAT_MODES : [];
   const rid = row.id;
 
@@ -18216,8 +18216,8 @@ function lvbPrgHead(row) {
 function lvbTransBox(row) {
   const rid = row.id;
   const st = lvbOvr(row, "defTransition");
-  const trans = typeof LV_TRANSITIONS !== "undefined" ? LV_TRANSITIONS : [];
-  const cur2 = String(st.v || "approve");
+  const trans = typeof LV_TRANS_SHOWN !== "undefined" ? LV_TRANS_SHOWN : [];
+  const cur2 = String(st.v || "approve") === "auto" ? "approve" : String(st.v || "approve");
   const d = (trans.find(x => String(x.k) === cur2) || {}).d || "";
   return `<div class="lvb-trans">
     <div class="lvb-transhead">${ic("swap", 14)}
@@ -18854,8 +18854,8 @@ window.lvxForm = function (id) {
       <!-- الافتراضُ من البرنامج: المستوى الجديد يرث طريقةَ انتقاله منه -->
       <div class="field"><label>الانتقال منه</label>
         <select id="lvxTrans" onchange="window.lvxTransChanged()">
-          ${LV_TRANSITIONS.map(x => `<option value="${esc(x.k)}"${
-            (l ? (l.transitionType || "approve") : lvxProgTrans()) === x.k ? " selected" : ""}>${
+          ${LV_TRANS_SHOWN.map(x => `<option value="${esc(x.k)}"${
+            String((l ? (l.transitionType || "approve") : lvxProgTrans())).replace(/^auto$/, "approve") === x.k ? " selected" : ""}>${
             esc(x.h)}</option>`).join("")}</select>
         <small style="font-size:11px;color:var(--text-faint)" id="lvxTransHint">${
           esc(lvTransition(l || {}).d)}</small></div>
@@ -24568,11 +24568,17 @@ window.lvxTransChanged = function () {
   if (wrap) wrap.style.display = sel.value === "exam" ? "" : "none";
 };
 
+/* (٦٨٠) «إذا وصل الطالبُ نهايةَ مستواه (الناس ← النبأ) لا ينتقل إلى المستوى الآخر إلّا باختبارٍ أو
+   بنقل المشرف له — لا المعلّم»: «تلقائي مباشر» كان ينقله وحدَه حالما يُسمِّع المعلّمُ آخرَ درس.
+   فلا انتقالَ تلقائيّاً بعد اليوم: ما ضُبط «تلقائياً» يُعامَل «باعتماد المشرف» (يقف وينتظر،
+   ويُبلَّغ المشرف)، ولا يُعرض الخيارُ في القوائم. القيمةُ المحفوظة لا تُمحى. */
+const LV_TRANS_SHOWN = LV_TRANSITIONS.filter(x => x.k !== "auto");
 function lvTransition(lv) {
   /* (٦٤٣) بنّاءُ المستويات يكتب الانتقالَ المخصَّصَ في ovr.defTransition، والموروثَ من البرنامج
      (defTransition) — وكان لا يُقرأ إلّا transitionType من النموذج القديم */
   const _pg = lv && lv.programId ? (cur("programs") || []).find(p => String(p.id) === String(lv.programId)) : null;
-  const k = (lv && lv.ovr && lv.ovr.defTransition) || (lv && lv.transitionType) || (_pg && _pg.defTransition);
+  let k = (lv && lv.ovr && lv.ovr.defTransition) || (lv && lv.transitionType) || (_pg && _pg.defTransition);
+  if (k === "auto") k = "approve";
   return LV_TRANSITIONS.find(x => x.k === k) || LV_TRANSITIONS[1];
 }
 
@@ -24623,7 +24629,8 @@ function promoteGate(plan) {
 
 /* الترقية التلقائية — تُنادى بعد إغلاق واجبٍ ناجح */
 function autoPromoteCheck(studentId) {
-  const plan = (cur("plans") || []).find(p => String(p.studentId) === String(studentId));
+  /* (٦٨٠) الخطةُ المعتمدة لا أوّلُ خطةٍ للطالب (قد تكون مستبدَلة) */
+  const plan = (cur("plans") || []).find(p => p && p.superseded !== true && String(p.studentId) === String(studentId));
   if (!plan || planIsFrozen(plan)) return false;
 
   let prog = null;
@@ -55618,6 +55625,15 @@ window.spProgLevelSave = function () {
   const lvEl = document.getElementById("pgl_level");
   const lvName = lvEl && lvEl.selectedIndex >= 0
     ? String(lvEl.options[lvEl.selectedIndex].text).split(" — ")[0] : "";
+  /* (٦٨٠) نقلُ الطالب إلى مستوىً آخر في برنامجه للمشرف والإدارة لا للمعلّم */
+  if (typeof canPromoteLevel === "function" && !canPromoteLevel()) {
+    const _pl0 = typeof stuActivePlanOf === "function" ? stuActivePlanOf(s) : null;
+    const _curLv = String((_pl0 && _pl0.levelId) || s.levelId || "");
+    if (String(prog) === String(s.program || "") && _curLv && lvId && String(lvId) !== _curLv) {
+      showToast("نقلُ الطالب إلى مستوىً آخر للمشرف — اطلبه من مشرفك", "warn");
+      return;
+    }
+  }
 
   /* (٤٨٦) «حُفظ البرنامج» بعد ردّ الخادم: كان يظهر وتُكتب الخطةُ على برنامجٍ لم يُحفظ
      ويبقى في الشاشة. يُحفظ سجلُّ الطالب كما كان ليُعاد إن رُفض، ولا تُمسّ الخطة
