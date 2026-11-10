@@ -22200,8 +22200,11 @@ function lastLessons(studentId, n, keep) {
      لتاريخ الطالب لا لدورةٍ بعينها. وكان يعود من الترحيل بلا دروسٍ فلا
      يُولَّد له تثبيتٌ أسبوعاً حتى تتراكم خمسةٌ جديدة. */
   const done = asgOf(studentId)
+    /* (٦٨٦) الدرسُ حفظٌ منجَز لم تُرصد له درجةٌ دون حدّ الإعادة — كعدِّ الدروس في fixRangeFor.
+       كان يُشترط رصدُ درجة، فمن يُعتمد حفظُه بلا درجةٍ (علامةُ ✓) لا دروسَ له أبداً ولا تثبيت:
+       فيأتي التثبيتُ لطالبٍ ويغيب عن آخر. */
     .filter(a => String(a.kind).indexOf("hifz") === 0 && a.status === "done" &&
-                 Number(a.score) >= cfg.redo && (!keep || keep(a)))
+                 !(a.score != null && a.score !== "" && Number(a.score) < cfg.redo) && (!keep || keep(a)))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
   /* الدرس يومٌ لا واجب — نصّ المواصفات: «كلّ مقدارٍ رُصد وسُمّع بنجاح في
@@ -23102,7 +23105,13 @@ function planHasPillar(plan, kind) {
   }
   if (k === "fix") {
     const r = (cur("planRules") || []).find(x => String(x.planId) === String(plan.id));
-    return !!(r && r.rules && r.rules.fixation === true);
+    if (r && r.rules && r.rules.fixation === true) return true;
+    /* (٦٨٦) «الحفظُ يتقدّم ويحفظ الجديد، والتثبيتُ موجود، والمراجعةُ كما في الخطة»: كان
+       التثبيتُ لا يُولَّد إلّا بتفعيلٍ صريح (مفتاحُ البطاقة · جدولُ أيامه · قاعدةُ الخطة)، فيأتي
+       لطالبٍ ويغيب عن آخر. صار يتبع الحفظَ: من له حفظٌ له تثبيت — إلّا ما أُطفئ صراحةً
+       (مفتاحُ البطاقة أعلاه، أو قاعدةُ «التثبيت يلحق الحفظ» مطفأة). */
+    if (r && r.rules && r.rules.fixation === false) return false;
+    return planHasPillar(plan, "hifz");
   }
   /* التلاوةُ وما تضيفه الإدارةُ من أنواع: لا تُولَّد إلّا بجدولٍ مضبوطٍ لها */
   return false;
@@ -23229,7 +23238,8 @@ function generateAssignments(studentId, dateISO) {
        بقي القفل قائماً بلا سبيلٍ إلى فكّه: مراجعةٌ يومَ الخميس تُترك،
        فيُقفل الحفظ بقيّة الأسبوع ولا تُتاح مراجعةٌ تُغلق الدَّين. */
     /* جدولة الخطة تُرجَّح: طالبٌ متقدّم يحفظ ستّة أيام وآخر ثلاثة */
-    const myDays = planPillarDays(t.k, plan, studentId);
+    /* (٦٨٦) الحفظُ والتثبيتُ كلَّ يوم دوام (isDutyDay أعلاه) — والمراجعةُ وسائرُ الأنواع بأيامها في الخطة */
+    const myDays = (t.k === "hifz" || t.k === "fix") ? null : planPillarDays(t.k, plan, studentId);
     const offDay = myDays && myDays.length && day && myDays.indexOf(day) === -1;
     const owed = lock && t.critical;
     if (offDay && !owed) return;
@@ -23739,7 +23749,7 @@ function asgSkipWhy(studentId, dateISO) {
           : "لم يُضبط هذا الركنُ في خطة الطالب" });
         return;
       }
-      const myDays = planPillarDays(t.k, plan, studentId);
+      const myDays = (t.k === "hifz" || t.k === "fix") ? null : planPillarDays(t.k, plan, studentId);   /* (٦٨٦) */
       const offDay = myDays && myDays.length && day && myDays.indexOf(day) === -1;
       if (offDay && !(lock && t.critical)) {
         out.push({ h: t.h, why: "ليس يومَه في جدولة هذا الطالب" }); return;
