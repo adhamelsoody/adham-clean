@@ -14446,3 +14446,7 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
 .lva-name small { font-size: 11.5px; }
 .lva-lv { font-size: 12.5px; white-space: nowrap; }
 @media (max-width: 560px) { .lva-row { grid-template-columns: auto 1fr; } .lva-lv { grid-column: 2; white-space: normal; } }
+
+/* (٦٨٧) سطرُ الجزء والسورة تحت اسم المستوى في بطاقة الطالب (جزء عمّ · النبأ) */
+.tsc-val .tsc-sub { display: block; margin-top: 3px; font-size: 11.5px; font-weight: 600;
+  color: var(--text-muted, #6b7680); }

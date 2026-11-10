@@ -38629,8 +38629,21 @@ function tstuStatCards(st) {
     ? Math.round(_sc.reduce((n, v) => n + v, 0) / _sc.length)
     : null;
 
+  /* (٦٨٧) «في المستوى الأول أريد أن يكون فيه أيُّ جزء — عمّ أم قد سمع أم تبارك — على حسب
+     الطالب في أيّ سورةٍ من أيّ جزء»: الجزءُ والسورةُ من موضع حفظه (stuHifzPos: آخرُ ما
+     سمّعه، أو موضعُ البدء إن كان أحدث). عرضٌ فقط — لا يُكتب شيء. */
+  let _jzLine = "";
+  try {
+    const _pos = typeof stuHifzPos === "function" ? stuHifzPos(stuActivePlanOf(st) || plan) : null;
+    const _j = _pos ? jzmJuzAt(_pos.s, _pos.a) : 0;
+    if (_j) {
+      const _sn = typeof surahName === "function" ? surahName(_pos.s) : "";
+      _jzLine = `<small class="tsc-sub">${esc(jzmName(_j))}${_sn ? " · " + esc(String(_sn)) : ""}</small>`;
+    }
+  } catch (e) { console.warn("tsc juz:", e); }
+
   const three = [
-    ["المستوى",        esc(String(lvl)),                      "tsc-lvl"],
+    ["المستوى",        esc(String(lvl)) + _jzLine,            "tsc-lvl"],
     ["مؤشر الإنجاز",   toArabicDigits(prog) + "٪",            "tsc-ok"],
     ["مؤشر الالتزام",  toArabicDigits(att.pct) + "٪",
       att.pct >= 80 ? "tsc-ok" : "tsc-warn"]
