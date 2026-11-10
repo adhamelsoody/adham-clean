@@ -37493,8 +37493,9 @@ function teacherCircle() {
     ${dayBar}
     <div class="grid g-4 stagger" style="margin-bottom:14px">${stats}</div>
     <div class="tq-bar">
-      <button type="button" class="btn btn-primary" onclick="window.tcrcAttOpen()">
-        ${ic("attend", 16)} اعتماد التحضير</button>
+      ${teacherPastRO(d) ? `<span class="chip tat-locknote">${ic("eye", 14)} عرضٌ فقط — يومٌ مضى</span>`
+        : `<button type="button" class="btn btn-primary" onclick="window.tcrcAttOpen()">
+        ${ic("attend", 16)} اعتماد التحضير</button>`}
       ${/* المقرأةُ تظهر للمعلّم كما تظهر لطلابه — كانت للطالب وحدَه */
         (typeof maqraahBtn === "function" ? maqraahBtn(c) : "")}
       ${/* علامةُ «+» أعلى القائمة: ظهورُها بصلاحيةٍ تمنحها الإدارة وحدَها،
@@ -37561,6 +37562,7 @@ window.tcrcAttOpen = function () {
   if (!studs.length) { showToast("لا طلابَ في الحلقة", "warn"); return; }
 
   const d = typeof attDate === "function" ? attDate() : todayISO();
+  if (teacherPastRO(d)) { teacherPastROToast(); return; }
   const map = attMap(d, String(c.id));
   TATT.sel = {};
 
@@ -38828,6 +38830,7 @@ function tstuRange(a) {
    نفسِها، محدَّداً فيها هذا الطالبُ وحدَه. فلا نافذةَ ثانيةٌ ولا حقولٌ
    مكرَّرة: النوعُ والمدى والمقدارُ والتاريخُ كلُّها قائمةٌ فيها. */
 window.tstuAddDuty = function (sid) {
+  if (teacherPastRO(tstuDay())) { teacherPastROToast(); return; }
   if (!teacherCan("editPlan")) {
     showToast("لا تملك صلاحية تعديل الخطة", "warn"); return;
   }
@@ -38933,9 +38936,11 @@ function tstuDutyCards(st) {
     <button type="button" class="sls-row${done ? " on" : ""}"
       style="--sls-k:${esc(t.color || "#4bdee4")}"
       onclick="window.tstuDuty('${jsAttr(a.id)}')">
-      <span class="sls-tick${done ? " on" : ""}"
+      ${teacherPastRO(a.date) && !done
+        ? `<span class="sls-tick" aria-label="عرضٌ فقط">${ic("check", 14)}</span>`
+        : `<span class="sls-tick${done ? " on" : ""}"
         role="button" aria-label="${done ? "منجَز" : "اعتماد الواجب"}"
-        onclick="window.tstuQuickDone('${jsAttr(a.id)}', event)">${ic("check", 14)}</span>
+        onclick="window.tstuQuickDone('${jsAttr(a.id)}', event)">${ic("check", 14)}</span>`}
       <span class="sls-mid">
         <span class="sls-line"><strong>${esc(a.kindName || t.h || "واجب")}:</strong>${
           rng ? ` <span class="sls-rng">${esc(rng)}</span>` : ""}</span>
@@ -38967,6 +38972,7 @@ window.tstuQuickDone = async function (id, ev) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
   let a = tstuAsgById(id);
   if (!a) { showToast("لا واجبَ بهذا المعرّف", "warn"); return; }
+  if (teacherPastRO(a.date)) { teacherPastROToast(); return; }
   if (asgDone(a)) { showToast("هذا الواجبُ معتمَدٌ أصلاً", "info"); return; }
   const k = String(a.kind || "").replace("_makeup", "");
   const parts = typeof asgParts === "function" ? asgParts(a) : [];
@@ -40164,7 +40170,8 @@ window.tstuDuty = function (id) {
      ======================================================================= */
   const canEnd  = teacherCan("planEnd");
   const canFrom = teacherCan("planStart");
-  const locked  = a.status === "done";
+  /* (٦٨٤) واجبُ يومٍ مضى يُعرض للمعلّم بلا «تم التسميع» ولا «حفظ التعديلات» */
+  const locked  = a.status === "done" || teacherPastRO(a.date);
   /* «عايز شيل خانة المقدار من تفاصيل الواجب»: صفُّ المقدار رُفع من
      الصحيفة، فلم يبقَ فيها ما تحفظه صلاحيةُ planQty — فلا تُظهِر زرَّ
      «حفظ التعديلات» وحدَها. والمقدارُ نفسُه لم يُحذف من الواجب: قيمتُه
@@ -61528,16 +61535,24 @@ function teacherPastBlock(coll, obj, quiet) {
   const d = String(obj.date || "");
   const T = typeof todayISO === "function" ? todayISO() : "";
   if (!d || !T || d >= T) return false;
-  if (coll === "assignments") {
-    /* الواجبُ المتأخّر غيرُ المسمَّع: يُسمَّع اليوم */
-    const srv = typeof liveServerDoc === "function" ? liveServerDoc(coll, obj.id) : null;
-    const was = srv ? String(srv.status || "pending") : "pending";
-    if (was === "pending" || was === "") return false;
-  }
+  /* (٦٨٤) «إذا رجع ليوم أمس يرى فقط بياناتٍ دون أن يعدّل أيَّ شيء»: لا استثناءَ
+     بعد اليوم — حتى الواجبُ المتأخّرُ غيرُ المسمَّع لا يُكتب بتاريخه الماضي. */
   if (!quiet) showToast("لا يُعدَّل ما مضى من الأيام (" + d + ") — التعديل من المشرف أو الإدارة", "warn");
   return true;
 }
 window.teacherPastBlock = teacherPastBlock;
+
+/* (٦٨٤) يومٌ مضى في عين المعلّم = عرضٌ فقط: تُخفى أزرارُ التعديل وتُردّ مداخلُه
+   قبل أن تُفتح، والمنعُ الأخيرُ باقٍ في persistSet (teacherPastBlock). */
+function teacherPastRO(d) {
+  if ((((STATE && STATE.user) || {}).role || "") !== "teacher") return false;
+  const x = String(d || ""), T = typeof todayISO === "function" ? todayISO() : "";
+  return !!x && !!T && x < T;
+}
+window.teacherPastRO = teacherPastRO;
+function teacherPastROToast() {
+  showToast("عرضٌ فقط — لا يُعدَّل ما مضى من الأيام", "warn");
+}
 
 function persistSet(coll, obj) {
   if (CUR_MEMO) CUR_MEMO = {};   /* الحفظُ يُبطل ما حُفظ من قراءات الرسم (٤٢٥) */
