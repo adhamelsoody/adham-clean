@@ -3029,7 +3029,14 @@ function adminStudents() {
        شاشتُها. والتنبيهُ يبقى — فهو عن هذه القائمة لا عن غيرها. */
     /* شريطُ التنبيهات أُزيل من رأس الصفحة: مكانُ التنبيهات زرُّ الجرس،
        وكان يزاحم الجدولَ في أعلى الشاشة كلَّ مرة. */
-    overview: "",
+    /* (٦٨٥) إلّا سطرَ «تحديد المستوى من موضع الحفظ» للمشرف والإدارة، حين يوجد مختلفون */
+    overview: (() => { try {
+      if (typeof canPromoteLevel !== "function" || !canPromoteLevel()) return "";
+      const n = stuLevelMismatches().length;
+      return n ? noteCard(`<strong>${toArabicDigits(n)} طالباً</strong> مستواه المسجَّل لا يحوي موضعَ حفظه.
+        <button type="button" class="btn btn-soft btn-sm" style="margin-inline-start:8px"
+          onclick="window.lvAlignOpen()">${ic("target", 14)} تحديد المستوى من موضع الحفظ</button>`) : "";
+    } catch (e) { console.warn("lvAlign:", e); return ""; } })(),
     toolbar: "add", addLabel: "إضافة طالب", addAction: "modal-student",
     /* زرُّ «الإعدادات» (الخطة الافتراضية) انتقل إلى ترويسة بطاقة الطالب
        بطلبٍ صريح: «اعمل زرّ إعدادات هنا» — panelStudent ← spPlanSettings */
@@ -52578,6 +52585,118 @@ function stuLevelAlign() {
 }
 window.stuLevelAlign = stuLevelAlign;
 
+/* =========================================================================
+   (٦٨٥) «أوّلُ شيءٍ أن نحدّد المستوى: جزءُ عمّ أو أيُّ جزءٍ هو يحفظ فيه»
+   -------------------------------------------------------------------------
+   المستوى يُعرف من موضع حفظ الطالب نفسِه: آخرُ ما سمّعه من الحفظ (أو موضعُ
+   البدء الذي ضُبط له إن كان أحدثَ أو لم يُسمِّع بعد)، ثمّ المستوى الذي يحوي
+   هذا الموضعَ بين مستويات برنامجه (مدى ركن الحفظ أو من سورة/إلى سورة).
+
+   والتصحيحُ لا يقع تلقائياً: تُعرض قائمةُ المختلفين على المشرف/الإدارة
+   ويعتمد ما يراه (canPromoteLevel) — والمعلّمُ لا يرى الأداةَ ولا يملكها.
+   ونهايةُ المستوى لا تنقله: الموضعُ آخرُ ما سمّعه، فيبقى في مستواه حتى
+   يرقّيه المشرف (planPromote) — الحارسُ والترقيةُ كما هما.
+   ========================================================================= */
+function lvRangeAny(lv, dirHint) {
+  if (!lv) return null;
+  const rg = typeof lvRangeOf === "function" ? lvRangeOf(lv) : null;
+  if (rg) return rg;
+  const fs = Number(lv.fromSurah), ts = Number(lv.toSurah);
+  if (!(fs > 0 && ts > 0)) return null;
+  const dir = fs > ts ? "backward" : (fs < ts ? "forward" : (dirHint === "backward" ? "backward" : "forward"));
+  return { start: { s: fs, a: Math.max(1, Number(lv.fromAyah) || 1) },
+           end: { s: ts, a: Number(lv.toAyah) > 0 ? Number(lv.toAyah) : 0 }, dir };
+}
+function lvRangeHas(rg, pos) {
+  if (!rg || !pos || !(Number(pos.s) > 0)) return false;
+  const k = lvKey(rg.dir, pos.s, Number(pos.a) || 1);
+  return k >= lvKey(rg.dir, rg.start.s, rg.start.a) && k <= lvKey(rg.dir, rg.end.s, rg.end.a || 999);
+}
+/* موضعُ حفظ الطالب: آخرُ حفظٍ منجَز، أو موضعُ البدء المضبوط إن كان أحدث */
+function stuHifzPos(plan) {
+  if (!plan) return null;
+  const done = (typeof asgOf === "function" ? asgOf(plan.studentId) : []).filter(a => a &&
+    String(a.kind || "").indexOf("hifz") === 0 && a.status === "done" && Number(a.toS) > 0)
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")) ||
+      ((Number(a.closedAt) || Number(a.ts) || 0) - (Number(b.closedAt) || Number(b.ts) || 0))).pop() || null;
+  const fs = Number(plan.hifzFromS) || 0;
+  const posTs = Number(plan.hifzPosTs) || 0;
+  const dTs = done ? (Number(done.closedAt) || Number(done.ts) || 0) : 0;
+  if (fs > 0 && (!done || (posTs && posTs > dTs))) return { s: fs, a: Number(plan.hifzFromA) || 1, by: "start" };
+  if (done) return { s: Number(done.toS), a: Number(done.toA) || 1, by: "done" };
+  return null;
+}
+function stuLevelDetect(st) {
+  if (!st || st.attOnly) return null;
+  const plan = stuActivePlanOf(st);
+  if (!plan) return null;
+  const pos = stuHifzPos(plan);
+  if (!pos) return null;
+  const L = cur("levels") || [];
+  let saved = plan.levelId ? L.find(x => String(x.id) === String(plan.levelId)) : null;
+  const pid = String(plan.programId || (saved && saved.programId) || st.programId || "");
+  if (!pid) return null;
+  const dh = typeof dirOf === "function" ? dirOf(plan.direction) : "";
+  const sibs = L.filter(x => x && String(x.programId) === pid && x.status !== "موقوف")
+    .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+  const hits = sibs.filter(x => lvRangeHas(lvRangeAny(x, dh), pos));
+  if (!hits.length) return { st, plan, pos, saved, lv: null, same: true };
+  const lv = (saved && hits.find(x => String(x.id) === String(saved.id))) || hits[0];
+  return { st, plan, pos, saved, lv, same: !!(saved && String(saved.id) === String(lv.id)) };
+}
+window.stuLevelDetect = stuLevelDetect;
+function stuLevelMismatches() {
+  return (cur("students") || []).map(st => { try { return stuLevelDetect(st); } catch (e) { return null; } })
+    .filter(x => x && x.lv && !x.same);
+}
+window.stuLevelMismatches = stuLevelMismatches;
+
+window.lvAlignOpen = function () {
+  if (!canPromoteLevel()) { showToast("تحديدُ المستوى للمشرف والإدارة", "warn"); return; }
+  const list = stuLevelMismatches();
+  const posTxt = p => (typeof surahName === "function" ? surahName(p.s) : ("سورة " + p.s)) +
+    " " + toArabicDigits(p.a) + (p.by === "start" ? " (موضعُ البدء)" : " (آخرُ ما سمّعه)");
+  openModal("تحديد المستوى من موضع الحفظ", toArabicDigits(list.length) + " طالباً مستواه المسجَّل لا يحوي موضعَ حفظه",
+    list.length
+      ? `<div class="lva-list">${list.map(x => `<label class="lva-row">
+          <input type="checkbox" class="lva-ck" value="${esc(String(x.st.id))}" checked>
+          <span class="lva-name"><strong>${esc(x.st.name || "—")}</strong>
+            <small class="pt-muted">يحفظ في: ${esc(posTxt(x.pos))}</small></span>
+          <span class="lva-lv"><span class="pt-muted">${esc((x.saved && x.saved.name) || x.plan.level || "بلا مستوى")}</span>
+            ← <strong>${esc(x.lv.name || "—")}</strong></span>
+        </label>`).join("")}</div>` + noteCard("لا يُعدَّل شيءٌ إلّا ما تعتمده هنا. ونهايةُ المستوى لا تنقل الطالب — الانتقالُ للمشرف أو بالاختبار.")
+      : noteCard("مستوى كلِّ طالبٍ يوافق موضعَ حفظه."),
+    (list.length ? `<button class="btn btn-primary" onclick="window.lvAlignDo()">${ic("check", 15)} اعتماد المحدَّد</button>` : "") +
+    `<button class="btn btn-ghost" data-action="close-modal">إغلاق</button>`);
+};
+window.lvAlignDo = function (ids) {
+  if (!canPromoteLevel()) { showToast("تحديدُ المستوى للمشرف والإدارة", "warn"); return Promise.resolve(0); }
+  const pick = Array.isArray(ids) ? ids.map(String)
+    : Array.from(document.querySelectorAll(".lva-ck:checked")).map(x => String(x.value));
+  if (!pick.length) { showToast("حدّد طالباً واحداً على الأقل", "warn"); return Promise.resolve(0); }
+  const who = ((STATE && STATE.user) || {}).name || "";
+  const rows = stuLevelMismatches().filter(x => pick.indexOf(String(x.st.id)) > -1);
+  return rows.reduce((pr, x) => pr.then(n => {
+    const snapP = JSON.parse(JSON.stringify(x.plan));
+    x.plan.levelId = String(x.lv.id); x.plan.level = x.lv.name || "";
+    x.plan.levelAlignedAt = Date.now(); x.plan.levelAlignedBy = who;
+    /* تغييرُ المستوى ارتباطٌ: إجراءٌ صريحٌ اعتمده المشرف (linkChange) لا مزامنةٌ تلقائية */
+    const _lk = fn => typeof window.linkChange === "function" ? window.linkChange(fn) : fn();
+    return _lk(() => saveOrUndo("plans", x.plan, () => recRestore(x.plan, snapP))).then(ok => {
+      if (!ok) return n;
+      const snapS = JSON.parse(JSON.stringify(x.st));
+      x.st.levelId = String(x.lv.id); x.st.level = x.lv.name || "";
+      return _lk(() => saveOrUndo("students", x.st, () => recRestore(x.st, snapS))).then(() => n + 1);
+    });
+  }), Promise.resolve(0)).then(n => {
+    try { closeModal(); } catch (e) {}
+    showToast("حُدِّد مستوى " + toArabicDigits(n) + " طالباً من موضع حفظه" +
+      (n < rows.length ? " — ورفض الخادمُ " + toArabicDigits(rows.length - n) : ""), n ? "success" : "warn");
+    mount();
+    return n;
+  });
+};
+
 function stuProgramName(st) {
   if (!st) return "";
   const pl = (Array.isArray(DB.plans) ? DB.plans : [])
@@ -61525,8 +61644,8 @@ window.teacherLinkKeep = teacherLinkKeep;
    (٦٨١) المعلّمُ لا يغيّر ما مضى من الأيام
    -------------------------------------------------------------------------
    حضورُ الأمس وتسميعُه ونتائجُ واجباته تُقفل على المعلّم — يعدّلها المشرفُ والإدارة.
-   والواجبُ المتأخّر الذي لم يُسمَّع بعد (التأخّرات) يبقى للمعلّم أن يُسمّعه اليوم:
-   ذاك عملُ اليوم لا تعديلٌ لما مضى. البوابةُ هنا في persistSet فتشمل كلَّ الشاشات.
+   (ومنذ ٦٨٤ لا يُستثنى الواجبُ المتأخّرُ غيرُ المسمَّع.) البوابةُ هنا في persistSet
+   فتشمل كلَّ الشاشات.
    ========================================================================= */
 const TEACHER_PAST_COLLS = ["attendance", "recitations", "assignments"];
 function teacherPastBlock(coll, obj, quiet) {
