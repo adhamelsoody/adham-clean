@@ -61508,6 +61508,31 @@ function teacherLinkKeep(coll, data) {
 }
 window.teacherLinkKeep = teacherLinkKeep;
 
+/* =========================================================================
+   (٦٨١) المعلّمُ لا يغيّر ما مضى من الأيام
+   -------------------------------------------------------------------------
+   حضورُ الأمس وتسميعُه ونتائجُ واجباته تُقفل على المعلّم — يعدّلها المشرفُ والإدارة.
+   والواجبُ المتأخّر الذي لم يُسمَّع بعد (التأخّرات) يبقى للمعلّم أن يُسمّعه اليوم:
+   ذاك عملُ اليوم لا تعديلٌ لما مضى. البوابةُ هنا في persistSet فتشمل كلَّ الشاشات.
+   ========================================================================= */
+const TEACHER_PAST_COLLS = ["attendance", "recitations", "assignments"];
+function teacherPastBlock(coll, obj, quiet) {
+  if (TEACHER_PAST_COLLS.indexOf(coll) < 0 || !obj) return false;
+  if ((((STATE && STATE.user) || {}).role || "") !== "teacher") return false;
+  const d = String(obj.date || "");
+  const T = typeof todayISO === "function" ? todayISO() : "";
+  if (!d || !T || d >= T) return false;
+  if (coll === "assignments") {
+    /* الواجبُ المتأخّر غيرُ المسمَّع: يُسمَّع اليوم */
+    const srv = typeof liveServerDoc === "function" ? liveServerDoc(coll, obj.id) : null;
+    const was = srv ? String(srv.status || "pending") : "pending";
+    if (was === "pending" || was === "") return false;
+  }
+  if (!quiet) showToast("لا يُعدَّل ما مضى من الأيام (" + d + ") — التعديل من المشرف أو الإدارة", "warn");
+  return true;
+}
+window.teacherPastBlock = teacherPastBlock;
+
 function persistSet(coll, obj) {
   if (CUR_MEMO) CUR_MEMO = {};   /* الحفظُ يُبطل ما حُفظ من قراءات الرسم (٤٢٥) */
   const db = FDB(); if (!db || obj == null) return Promise.resolve(false);
@@ -61526,6 +61551,11 @@ function persistSet(coll, obj) {
 
   /* والجلسة المعتمدة كذلك: يُغلق يومها فلا يُبدَّل بعد توثيقه */
   if (typeof guardSession === "function" && guardSession(coll, obj)) {
+    return Promise.resolve(false);
+  }
+
+  /* (٦٨١) «المعلّم لا يمكنه أن يعدّل على أيّ بياناتٍ خاصّةٍ بيوم أمس في أيّ شيء» */
+  if (typeof teacherPastBlock === "function" && teacherPastBlock(coll, obj)) {
     return Promise.resolve(false);
   }
 
