@@ -24157,7 +24157,8 @@ function rollForward(studentId, fromDate, toDate) {
       const rec = Object.assign({}, a, {
         id: cid, date: toDate, status: "pending", score: null,
         makeupOf: a.id, settled: false,
-        kindName: a.kindName + " (تعويض)",
+        /* (٦٨٨) لا يتكرّر الوسم: تعويضُ التعويض كان يُكتب «(تعويض) (تعويض) (تعويض)» */
+        kindName: String(a.kindName || "").replace(/(\s*\(تعويض\))+\s*$/, "") + " (تعويض)",
         note: "تعويض عن " + a.date,
         ts: Date.now()
       });
@@ -37032,8 +37033,13 @@ function asgMergeByKind(saved, gen) {
   const out = (saved || []).map(function (a) {
     return byId[String(a.id)] || a;
   });
+  /* (٦٨٨) «أرى للطالب ثلاثةَ واجباتٍ ثمّ أخرج وأدخل فأجد اثنين»: التعويضُ يُكتب بنوع أصله
+     (rev لا rev_makeup — rollForward) وبمعرّفٍ آخر، فكان يحجز نوعَه هنا فيُسقط واجبَ اليوم من
+     الخطة: فإذا رُحّل لأمسِ تعويضُ مراجعةٍ إلى اليوم اختفت مراجعةُ اليوم. والتعويضُ واجبٌ زائدٌ
+     على واجب اليوم لا بديلٌ عنه — فلا يحجز النوعَ إلّا واجبُ اليوم المحفوظُ نفسُه. */
+  const isMk = function (a) { return !!(a && (a.makeupOf || /_makeup$/.test(String(a.id || "")))); };
   const have = {};
-  out.forEach(function (a) { have[String(a.kind || "")] = 1; });
+  out.forEach(function (a) { if (!isMk(a)) have[String(a.kind || "")] = 1; });
   const add = g.filter(function (a) {
     return !have[String(a.kind || "")] &&
            !out.some(function (x) { return String(x.id) === String(a.id); });
