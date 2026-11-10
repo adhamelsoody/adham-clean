@@ -22315,7 +22315,16 @@ function fixRangeFor(studentId, upTo, beforeDate) {
     /* (٦٨٣) «الواجباتُ ليس لها مقياس — يومٌ فيه تثبيتٌ ويومٌ بلا» — اختار (أ): التثبيتُ من اليوم
        الثاني على ما حُفظ حتى الآن، لا ينتظر اكتمالَ العدد؛ فكلُّ يومٍ بأركان خطته إلّا اليومَ الأوّل.
        (والعددُ المحدَّد يبقى سقفَ ما يُثبَّت: آخرُ N دروس.) */
-    if (_n < 1) return null;
+    /* (٦٨٩) «الواجباتُ الأساسيةُ حفظٌ ومراجعةٌ وتثبيت — ما عدا أوّلَ يومٍ في الخطة لا يكون له
+       تثبيت»: الحكمُ بيومِ بدء الخطة لا بعدد الدروس — كان من لم يُسمِّع في يومه الأوّل يبقى بلا
+       تثبيتٍ أيّاماً. يومُ البدء: دخولُه البرنامج (programSince) ثمّ إسنادُ الخطة (assignedAt) ثمّ
+       إنشاؤها (_o). وإن لم يُعرف يومُ البدء بقي الحكمُ القديم: لا تثبيتَ بلا درسٍ سابق. */
+    const _isoOf = ts => { const n = Number(ts) || 0; if (!n) return "";
+      const d = new Date(n); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+    const _start = _since || (_pl ? (_isoOf(_pl.assignedAt) || _isoOf(_pl._o)) : "");
+    const _day = String(beforeDate || (typeof todayISO === "function" ? todayISO() : ""));
+    if (_start && _day) { if (_day <= _start) return null; }
+    else if (_n < 1) return null;
   }
   const rank = (sv, av) => (Number(sv) || 0) * 1000 + (Number(av) || 0);
   const span = list => {
@@ -23100,8 +23109,9 @@ function planHasPillar(plan, kind) {
            Number(plan.amount) > 0;
   }
   if (k === "rev") {
-    return Number(plan.revFromS) > 0 || Number(plan.revQtyNum) > 0 ||
-           Number(plan.rAmount) > 0;
+    if (Number(plan.revFromS) > 0 || Number(plan.revQtyNum) > 0 || Number(plan.rAmount) > 0) return true;
+    /* (٦٨٩) المراجعةُ ركنٌ أساسيٌّ كالحفظ والتثبيت: من له حفظٌ له مراجعة — إلّا ما أُطفئ في بطاقته */
+    return planHasPillar(plan, "hifz");
   }
   if (k === "fix") {
     const r = (cur("planRules") || []).find(x => String(x.planId) === String(plan.id));
@@ -23239,7 +23249,8 @@ function generateAssignments(studentId, dateISO) {
        فيُقفل الحفظ بقيّة الأسبوع ولا تُتاح مراجعةٌ تُغلق الدَّين. */
     /* جدولة الخطة تُرجَّح: طالبٌ متقدّم يحفظ ستّة أيام وآخر ثلاثة */
     /* (٦٨٦) الحفظُ والتثبيتُ كلَّ يوم دوام (isDutyDay أعلاه) — والمراجعةُ وسائرُ الأنواع بأيامها في الخطة */
-    const myDays = (t.k === "hifz" || t.k === "fix") ? null : planPillarDays(t.k, plan, studentId);
+    /* (٦٨٩) والمراجعةُ كذلك: الأركانُ الثلاثةُ كلَّ يوم دوام */
+    const myDays = (t.k === "hifz" || t.k === "fix" || t.k === "rev") ? null : planPillarDays(t.k, plan, studentId);
     const offDay = myDays && myDays.length && day && myDays.indexOf(day) === -1;
     const owed = lock && t.critical;
     if (offDay && !owed) return;
@@ -23749,7 +23760,7 @@ function asgSkipWhy(studentId, dateISO) {
           : "لم يُضبط هذا الركنُ في خطة الطالب" });
         return;
       }
-      const myDays = (t.k === "hifz" || t.k === "fix") ? null : planPillarDays(t.k, plan, studentId);   /* (٦٨٦) */
+      const myDays = (t.k === "hifz" || t.k === "fix" || t.k === "rev") ? null : planPillarDays(t.k, plan, studentId);   /* (٦٨٦ · ٦٨٩) */
       const offDay = myDays && myDays.length && day && myDays.indexOf(day) === -1;
       if (offDay && !(lock && t.critical)) {
         out.push({ h: t.h, why: "ليس يومَه في جدولة هذا الطالب" }); return;
@@ -23765,7 +23776,7 @@ function asgSkipWhy(studentId, dateISO) {
           out.push({ h: t.h, why: "قاعدةُ «التثبيت يلحق الحفظ» مُطفأةٌ في خطته" }); return;
         }
         if (!fixRangeFor(studentId, fixUpTo(studentId, dateISO), dateISO)) {
-          out.push({ h: t.h, why: "لا دروسَ حفظٍ منجَزةٍ بعدُ يُشتقُّ منها مداه" }); return;
+          out.push({ h: t.h, why: "أوّلُ يومٍ في الخطة، أو لا محفوظَ قبل موضع الحفظ يُثبَّت" }); return;   /* (٦٨٩) */
         }
       }
     });
