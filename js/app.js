@@ -61763,6 +61763,52 @@ window.teacherLinkKeep = teacherLinkKeep;
    فتشمل كلَّ الشاشات.
    ========================================================================= */
 const TEACHER_PAST_COLLS = ["attendance", "recitations", "assignments"];
+/* =========================================================================
+   (٦٩١) المعلّمُ لا يتجاوز نهايةَ مستوى الطالب
+   -------------------------------------------------------------------------
+   «إذا كانت نهايةُ مستوى الطالب إلى الكهف: يُختبر، أو ينقله المشرفُ إلى المستوى
+   بعده — لكنّ المعلّمَ لا ينقله». المولِّدُ يقف عند النهاية (lvGuardRange)، لكنّ
+   المعلّمَ كان يستطيع تجاوزها بيده: يعدّل مدى واجب الحفظ إلى ما بعدها، أو يضيف
+   واجبَ حفظٍ بعدها، أو يغيّر بدايةَ الحفظ في الخطة إلى ما بعدها. فالحارسُ هنا في
+   بوابة الكتابة يشمل كلَّ الشاشات: كتابةُ المعلّم لحفظٍ (واجباً أو بدايةً في الخطة)
+   بعد نهاية المستوى تُرفض — وما كان على الخادم بمداه نفسِه لا يُمسّ.
+   ========================================================================= */
+function teacherLevelBlock(coll, obj, quiet) {
+  if (!obj || (((STATE && STATE.user) || {}).role || "") !== "teacher") return false;
+  if (coll !== "assignments" && coll !== "plans") return false;
+  if (coll === "assignments" && String(obj.kind || "").indexOf("hifz") !== 0) return false;
+  const sid = String(obj.studentId || "");
+  if (!sid) return false;
+  const st = (cur("students") || []).find(x => String(x.id) === sid) || { id: sid };
+  const plan = coll === "plans" ? obj :
+    ((typeof stuActivePlanOf === "function" ? stuActivePlanOf(st) : null) ||
+     (typeof planOfStudent === "function" ? planOfStudent(st) : null));
+  const rg = typeof lvGuardRange === "function" ? lvGuardRange(plan, st) : null;
+  if (!rg || !rg.end || !(Number(rg.end.s) > 0)) return false;
+  const endK = lvKey(rg.dir, rg.end.s, Number(rg.end.a) || 999);
+  const past = (S, A, full) => Number(S) > 0 && lvKey(rg.dir, S, Number(A) || (full ? 999 : 1)) > endK;
+  const srv = typeof liveServerDoc === "function" ? liveServerDoc(coll, obj.id) : null;
+  let over = false;
+  if (coll === "assignments") {
+    over = past(obj.fromS, obj.fromA, false) || past(obj.toS, obj.toA, true);
+    /* ما كان على الخادم بمداه نفسِه لا يُعدّ تجاوزاً من المعلّم (تسميعُه مثلاً) */
+    if (over && srv && ["fromS", "fromA", "toS", "toA"].every(k => String(srv[k] || "") === String(obj[k] || ""))) over = false;
+  } else {
+    over = past(obj.hifzFromS, obj.hifzFromA, false);
+    if (over && srv && String(srv.hifzFromS || "") === String(obj.hifzFromS || "") &&
+        String(srv.hifzFromA || "") === String(obj.hifzFromA || "")) over = false;
+  }
+  if (!over) return false;
+  if (!quiet) {
+    const lvName = (plan && plan.level) || st.level || "المستوى";
+    const nm = typeof surahName === "function" ? surahName(rg.end.s) : ("سورة " + rg.end.s);
+    showToast("نهايةُ «" + lvName + "» عند " + nm + (Number(rg.end.a) > 0 ? " " + toArabicDigits(rg.end.a) : "") +
+      " — لا يتجاوزها المعلّم: الانتقالُ باختبارٍ أو بنقل المشرف", "warn");
+  }
+  return true;
+}
+window.teacherLevelBlock = teacherLevelBlock;
+
 function teacherPastBlock(coll, obj, quiet) {
   if (TEACHER_PAST_COLLS.indexOf(coll) < 0 || !obj) return false;
   if ((((STATE && STATE.user) || {}).role || "") !== "teacher") return false;
@@ -61811,6 +61857,12 @@ function persistSet(coll, obj) {
 
   /* (٦٨١) «المعلّم لا يمكنه أن يعدّل على أيّ بياناتٍ خاصّةٍ بيوم أمس في أيّ شيء» */
   if (typeof teacherPastBlock === "function" && teacherPastBlock(coll, obj)) {
+    return Promise.resolve(false);
+  }
+
+  /* (٦٩١) «إذا حُدّد للطالب بدايةٌ ونهاية لا يمكن المعلّمَ تجاوزُ النهاية — إلّا باختبارٍ أو
+     بنقل المشرف إلى المستوى بعده» */
+  if (typeof teacherLevelBlock === "function" && teacherLevelBlock(coll, obj)) {
     return Promise.resolve(false);
   }
 
