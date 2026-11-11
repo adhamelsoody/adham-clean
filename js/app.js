@@ -37465,7 +37465,28 @@ function tcrcSubLine(s) {
      متبقٍ») رُفع من تحت الاسم، فيبقى المستوى وحدَه. وحالُ الواجبات باقيةٌ
      في علامات الصفّ (tcrcMarks) وفي صفحة الطالب.
      ولم تُحذف tcrcSummary: هي كما هي لمن ينادها. */
-  return `<small>${esc(stuLevelName(s) || s.circle || "—")}</small>`;
+  return `<small>${esc(stuLevelName(s) || s.circle || "—")}</small>` + stuLvDoneBadge(s);
+}
+
+/* (٦٩٢) «إذا وصل الطالبُ إلى نهاية المستوى لا يوجد له واجب — يكون هناك إشعارٌ بجانب اسمه:
+   انتهى من المستوى الحالي، في انتظار اختبار». الحالُ من الخطة: موسومةٌ بانتظار الترقية
+   (autoPromoteCheck)، أو بلغ حفظُه آخرَ مستواه (levelProgress) ولم يُوسَم بعد. عرضٌ فقط. */
+function stuLvDone(st) {
+  try {
+    const plan = (typeof stuActivePlanOf === "function" ? stuActivePlanOf(st) : null) ||
+                 (typeof planOfStudent === "function" ? planOfStudent(st) : null);
+    if (!plan || plan.superseded === true) return false;
+    if (plan.awaitingPromotion) return true;
+    if (!plan.levelId) return false;
+    const pr = typeof levelProgress === "function" ? levelProgress(plan) : null;
+    return !!(pr && pr.complete);
+  } catch (e) { return false; }
+}
+window.stuLvDone = stuLvDone;
+function stuLvDoneBadge(st) {
+  return stuLvDone(st)
+    ? ` <span class="lv-done-badge" title="انتهى من المستوى الحالي — في انتظار اختبار">${ic("flag", 11)} انتهى من المستوى · في انتظار اختبار</span>`
+    : "";
 }
 
 /* ليس يومَه: لا واجبَ مجدولٌ له في هذا اليوم — لا لأنّه أنجز، بل لأنّ
@@ -38735,7 +38756,9 @@ function tstuStatCards(st) {
   } catch (e) { console.warn("tsc juz:", e); }
 
   const three = [
-    ["المستوى",        esc(String(lvl)) + _jzLine,            "tsc-lvl"],
+    ["المستوى",        esc(String(lvl)) + _jzLine +
+      (stuLvDone(st) ? `<small class="tsc-sub lv-done-badge">انتهى من المستوى · في انتظار اختبار</small>` : ""),   /* (٦٩٢) */
+                                                             "tsc-lvl"],
     ["مؤشر الإنجاز",   toArabicDigits(prog) + "٪",            "tsc-ok"],
     ["مؤشر الالتزام",  toArabicDigits(att.pct) + "٪",
       att.pct >= 80 ? "tsc-ok" : "tsc-warn"]
