@@ -21651,7 +21651,11 @@ function hifzLimitFor(a) {
        التثبيتُ إذا غطّى المحفوظَ كلَّه يُترك حدُّه فتُعطى المراجعةُ المدى
        نفسَه («تثبيت: من الناس ١ إلى الفلق ٥» و«مراجعة: من الناس ١ إلى الفلق
        ٥»). فلا مراجعةَ حتى يتجاوز المحفوظُ مدى التثبيت. */
-    else if (nearer && !room) return { none: true, dir: dir, back: back };
+    /* (٦٩٠) «ثلاثةُ واجباتٍ أساسية لا أكثر ولا أقلّ» — وهو أحدثُ من (٤٦٩ب): فإن غطّى التثبيتُ
+       المحفوظَ كلَّه بقيت المراجعةُ على المحفوظ من أوّله بمقدارها، ولا تسقط. وكان سقوطُها هنا
+       هو ما يُري المعلّمَ ثلاثةَ واجباتٍ ثمّ اثنين: التثبيتُ بالمقدار يُحسب بعد لحظة، فإذا وصل
+       وغطّى المحفوظَ سقطت المراجعة. */
+    else if (nearer && !room) { /* يبقى الحدُّ منتهى الحفظ */ }
   }
   return { lim: lim, excl: excl, home: sp.lo, back: back, dir: dir };
 }
@@ -22396,8 +22400,13 @@ function fixRangeFor(studentId, upTo, beforeDate) {
   /* ٢) لا درسَ متّصلٌ بالحفظ: بالمقدار — الدروسُ × مقدارِ الحفظ، قبل الحفظ مباشرةً */
   const total = want * (Number(up.qty) || 1);
   const key = [start.s, start.a, total, back ? "b" : "f"].join("|");
+  /* (٦٩٠) «لا أكثر ولا أقلّ»: الحسابُ بالمقدار وعدٌ (جدولُ المصحف)، فكان التثبيتُ يغيب لحظةً ثمّ
+     يظهر — يرى المعلّمُ واجبين ثمّ ثلاثة. فقيدَ الحساب يُعرض مدًى مؤقّتٌ: السورةُ التي قبل
+     الحفظ — ثمّ يُستبدل بالمحسوب حين يصل (mount). ولا مؤقّتَ إن لم يكن قبل الحفظ شيء. */
+  const prov = start ? { fromS: start.s, fromA: 1, toS: start.s, toA: start.a, lessons: want, byAmount: true, provisional: true } : null;
   if (Object.prototype.hasOwnProperty.call(FIX_BY_AMOUNT, key)) {
     const c = FIX_BY_AMOUNT[key];
+    if (c === null) return prov ? Object.assign({}, prov) : null;
     return c ? Object.assign({}, c, { lessons: want, byAmount: true }) : null;
   }
   FIX_BY_AMOUNT[key] = null;                      /* قيدَ الحساب */
@@ -22412,6 +22421,7 @@ function fixRangeFor(studentId, upTo, beforeDate) {
         if (typeof mount === "function") mount();
       })
       .catch(function () { FIX_BY_AMOUNT[key] = 0; });
+    return prov ? Object.assign({}, prov) : null;
   }
   return null;
 }
@@ -24131,6 +24141,19 @@ function rollForward(studentId, fromDate, toDate) {
     ? attendedShare(stRec, att, fromDate) : null;
 
   pend.forEach(a => {
+    /* (٦٩٠) تعويضُ ركنٍ أساسيٍّ لا يُرحَّل ثانيةً إن سُمّع ركنُه في يومه (فقد حملته الخطة)،
+       ولا تعويضٌ من خطةٍ سابقة — وإلّا تراكم سلسلةً يوماً بعد يوم وهو لا يُعرض. */
+    const _bk = String(a.kind || "").replace("_makeup", "");
+    if (ASG_BASIC.indexOf(_bk) > -1 && asgIsMakeup(a)) {
+      const _sat = (cur("assignments") || []).some(x => x !== a && String(x.studentId) === String(studentId) &&
+        String(x.date) === String(fromDate) && String(x.kind || "").replace("_makeup", "") === _bk && x.status === "done");
+      if (_sat || asgMkStale(a, studentId)) {
+        a.status = "excused"; a.settled = true;
+        a.note = _sat ? "سُمّع ركنُه في يومه" : "تعويضٌ من خطةٍ سابقة";
+        persistSet("assignments", a);
+        return;
+      }
+    }
     if (leftShare && leftShare.exempt) {
       a.status = "excused"; a.settled = true;
       a.note = "غادر بعد " + toArabicDigits(leftShare.pct) + "٪ من الحلقة";
@@ -37032,7 +37055,14 @@ window.tchEnterCircle = function () {
    في المولَّد يبقى محفوظاً كما هو، وما لم يُثبَّت بعدُ يُكمَّل من
    المولّد. ولا كتابةَ هنا ألبتّة — عرضٌ محض.
    ========================================================================= */
+/* (٦٩٠) كلُّ قائمةِ واجباتٍ تمرّ من هنا (شاشةُ الحلقة، صفحةُ الطالب عند المعلّم والطالب، التقويم):
+   فيُطبَّق «ركنٌ واحدٌ لكلّ نوعٍ أساسيّ» عند المخرج — انظر asgBasicOne. */
 function asgMergeByKind(saved, gen) {
+  const r = asgMergeByKind0(saved, gen);
+  const any = (r || [])[0] || (saved || [])[0] || (gen || [])[0];
+  return (typeof asgBasicOne === "function" && any) ? asgBasicOne(r, any.studentId) : r;
+}
+function asgMergeByKind0(saved, gen) {
   /* واجبُ السرد قبل تسميعه بلا مدًى عمداً — مداه يُدخله المعلّم (٤٦٤) — فلا يُسقَط */
   const g = (gen || []).filter(function (a) { return a && (Number(a.fromS) > 0 ||
     String(a.kind || "").replace("_makeup", "") === "sard"); });
@@ -37082,12 +37112,57 @@ function asgDropOldPlan(sid, saved, gen) {
   } catch (e) { return saved; }
 }
 
+/* =========================================================================
+   (٦٩٠) «أريد ٣ واجباتٍ أساسيةً لكلّ الطلاب: حفظ جديد ومراجعة وتثبيت — لا أكثر ولا أقلّ»
+   -------------------------------------------------------------------------
+   كان التعويضُ يظهر بطاقةً زائدةً بجوار واجب اليوم من نوعه («حفظ جديد (تعويض)» ثمّ
+   «حفظ جديد»)، والخطةُ نفسُها تحمل ما فات: الحفظُ يبدأ من آخر ما سُمّع، فالتعويضُ تكرارٌ له.
+   فلكلّ ركنٍ بطاقةٌ واحدة في اليوم:
+     ١) ما سُمّع منه في يومه (المنجَز) — أصلاً كان أو تعويضاً؛
+     ٢) وإلّا تعويضُه من الخطة الجارية — يحلّ محلَّ واجب اليوم فيُسمَّع ما فات أوّلاً؛
+     ٣) وإلّا واجبُ اليوم من الخطة.
+   والتعويضُ من خطةٍ سابقة (اتّجاهُه غيرُ اتّجاه الخطة) لا يُعرض. وغيرُ الأركان الثلاثة
+   (السرد، التلاوة، واجباتُ البرنامج الأخرى) كما هو.
+   ========================================================================= */
+const ASG_BASIC = ["hifz", "rev", "fix"];
+function asgIsMakeup(a) { return !!(a && (a.makeupOf || /_makeup$/.test(String(a.id || "")))); }
+function asgMkStale(a, sid) {
+  if (!asgIsMakeup(a)) return false;
+  const pl = (cur("plans") || []).find(p => String(p.studentId) === String(sid));
+  if (!pl) return false;
+  const k = String(a.kind || "").replace("_makeup", "");
+  const pd = typeof dirOf === "function" ? dirOf(k === "rev" ? (pl.revDirection || pl.direction) : pl.direction) : "";
+  const ad = typeof dirOf === "function" ? dirOf(a.direction) : "";
+  return !!(pd && ad && pd !== ad);
+}
+function asgBasicOne(list, sid) {
+  if (!Array.isArray(list) || !list.length) return list;
+  const pick = {};
+  ASG_BASIC.forEach(function (k) {
+    const xs = list.filter(a => String(a.kind || "").replace("_makeup", "") === k);
+    if (xs.length < 2) { pick[k] = xs.filter(a => !(asgMkStale(a, sid) && a.status !== "done")); return; }
+    const done = xs.filter(a => a.status === "done");
+    const mks = xs.filter(a => asgIsMakeup(a) && !asgMkStale(a, sid) && a.status !== "done")
+      .sort((a, b) => String(a.note || "").localeCompare(String(b.note || "")) || (Number(a.ts) || 0) - (Number(b.ts) || 0));
+    const regs = xs.filter(a => !asgIsMakeup(a) && a.status !== "done");
+    pick[k] = [done[0] || mks[0] || regs[0]].filter(Boolean);
+  });
+  /* ترتيبٌ ثابت: حفظ ← تثبيت ← مراجعة (كـ asgFixBeforeRev)، ثمّ ما سواها بترتيبه */
+  const out = [];
+  ["hifz", "fix", "rev"].forEach(k => { if (pick[k][0]) out.push(pick[k][0]); });
+  list.forEach(function (a) {
+    if (ASG_BASIC.indexOf(String(a.kind || "").replace("_makeup", "")) < 0) out.push(a);
+  });
+  return out;
+}
+window.asgBasicOne = asgBasicOne;
+
 function dutiesOfDay(sid, d) {
   const day = d || (typeof attDate === "function" ? attDate() : todayISO());
   const saved = (cur("assignments") || []).filter(a => a &&
     String(a.studentId) === String(sid) && String(a.date) === String(day));
   /* ويومٌ مضى لا يُولَّد له شيءٌ جديد: سجلُّه ما كُتب فيه */
-  if (String(day) < String(todayISO())) return asgFixBeforeRev(saved);
+  if (String(day) < String(todayISO())) return asgFixBeforeRev(asgBasicOne(saved, sid));
   let gen = [];
   try { gen = generateAssignments(sid, day) || []; } catch (e) { gen = []; }
   const out = asgMergeByKind(asgDropOldPlan(sid, saved, gen), gen);
@@ -37095,7 +37170,7 @@ function dutiesOfDay(sid, d) {
      بينهما من أيّام ركنه — للعرض وحدَه، بلا كتابةٍ في السجلّ. */
   try { asgProjectStarts(out, sid, day, saved); } catch (e) { console.warn("asgProjectStarts:", e); }
   try { asgTilFollow(out); } catch (e) {}
-  return asgFixBeforeRev(out);
+  return asgFixBeforeRev(asgBasicOne(out, sid));
 }
 
 /* (٤٦٩ب) «التثبيتُ يسبق المراجعة»: في العرض يأتي التثبيتُ قبل المراجعة —
