@@ -39157,11 +39157,10 @@ window.tstuQuickDone = async function (id, ev) {
     rec.toS = Number(end.surah); rec.toA = Number(end.ayah) || 1;
     persistSet("assignments", rec);
   }
-  RECV.grade = "ممتاز";
-  RECV.full = true;
-  window.recvSave();
+  /* (٦٩٤) «بعضُ الواجبات عند النقر عليها يُسجَّل تسميعٌ مباشرة دون قائمة التفاصيل والتقييم —
+     لا يُعتمد الواجبُ إلّا أن يكون المعلّمُ قيّم الطالبَ وملأ التقييمَ كلَّه»: كانت علامةُ الصحّ
+     تحفظ «ممتاز» بلا تقييم. صارت تفتح نافذةَ التقييم وحدها، والاعتمادُ من زرّها بعد ملئها. */
   RECV.full = false;
-  /* وإن ردّه حارسٌ في الحفظ نفسِه (التحضير) بقيت النافذةُ مفتوحةً بسببه */
 };
 
 /* نتائجُ اليوم: التسميعُ وتقييمُه والأخطاءُ المسجَّلة — لليوم المختار */
@@ -41127,8 +41126,11 @@ window.recvOpen = function (asgId) {
       .catch(function () {});
   }
 
+  /* (٦٩٤) لا تقديرَ مختاراً سلفاً: يختاره المعلّمُ بنفسه. وإعادةُ رسم نافذة الواجب نفسِه
+     (أثناء حساب المدى) لا تمحو ما اختاره */
+  const _same = String(RECV.asgId) === String(a.id) && (RECV.endWait || RECV.saving);
   RECV.asgId = String(a.id);
-  RECV.grade = "ممتاز";
+  if (!_same) { RECV.grade = ""; RECV.evalSnap = null; RECV.noteSnap = null; RECV.gradeSnap = ""; }
   const st = (cur("students") || []).find(x => String(x.id) === String(a.studentId)) || {};
   const mk = recvMarks(a);
   const items = evalItemsOn();
@@ -41187,7 +41189,7 @@ window.recvOpen = function (asgId) {
           <button type="button" class="rcv-pm" aria-label="زيادة ${esc(x.h)}"
             onclick="window.rcvStep('${jsAttr(x.k)}', 1)">+</button>
           <input id="rcv_${esc(x.k)}" class="tsd-in tsd-qty rcv-num"
-            type="number" min="0" dir="ltr" value="0" aria-label="${esc(x.h)}">
+            type="number" min="0" dir="ltr" value="" placeholder="—" aria-label="${esc(x.h)}">
           <button type="button" class="rcv-pm" aria-label="إنقاص ${esc(x.h)}"
             onclick="window.rcvStep('${jsAttr(x.k)}', -1)">&minus;</button>
         </span></span>
@@ -41222,7 +41224,7 @@ window.rcvStep = function (k, d) {
 };
 
 window.recvGrade = function (g) {
-  RECV.grade = String(g || "ممتاز");
+  RECV.grade = String(g || "");
   /* الصنفُ هو ما تكتبه recvOpen أعلاه — واختلافُهما يُطفئ الإضاءةَ صامتاً */
   document.querySelectorAll("#rcvGrades .rcv-opt").forEach(b =>
     b.classList.toggle("on", b.textContent.trim() === RECV.grade));
@@ -41256,6 +41258,23 @@ window.recvSave = function () {
   if (typeof asgGateCheck === "function" && asgGateCheck(a)) return;
   /* (E8) منتهى المدى يُحسب قبل الكتابة: كان يُحسب في وعدٍ عند فتح التقييم، فالحفظُ قبل وصول
      جداول المصحف يكتب نطاقاً منهاراً إلى آيةٍ واحدة ولا تتقدّم الخطة */
+  /* (٦٩٤) لا اعتمادَ بلا تقييمٍ كامل: كلُّ بنود التقييم تُملأ (والصفرُ قيمةٌ تُكتب) والتقديرُ يُختار */
+  if (!RECV.endWait) {
+  const _miss = evalItemsOn().filter(x => { const el = document.getElementById("rcv_" + x.k);
+    return !el || String(el.value).trim() === ""; }).map(x => x.h);
+  if (_miss.length) {
+    showToast("أكمل التقييم قبل الاعتماد: " + _miss.join("، "), "warn");
+    const el0 = document.getElementById("rcv_" + (evalItemsOn().find(x => _miss.indexOf(x.h) > -1) || {}).k);
+    if (el0) try { el0.focus(); } catch (e) {}
+    RECV.saving = false; return;
+  }
+  if (!String(RECV.grade || "").trim()) { showToast("اختر التقدير قبل الاعتماد", "warn"); RECV.saving = false; return; }
+  /* ما ملأه المعلّمُ يُحفظ كما ملأه ولو أُعيد رسمُ النافذة أثناء حساب المدى */
+  RECV.evalSnap = {};
+  evalItemsOn().forEach(x => { RECV.evalSnap[x.k] = Number(val("#rcv_" + x.k) || 0); });
+  RECV.noteSnap = val("#rcv_note") || "";
+  RECV.gradeSnap = String(RECV.grade);
+  }
   if (!(Number(a.toS) > 0) && Number(a.fromS) > 0 && Number(a.qty) > 0 && !a.edited &&
       typeof rangeEnd === "function" && !RECV.endWait) {
     RECV.endWait = true;
@@ -41274,14 +41293,16 @@ window.recvSave = function () {
   const u = (STATE && STATE.user) || {};
   const mk = recvMarks(a);
   const vals = {};
-  evalItemsOn().forEach(x => { vals[x.k] = Number(val("#rcv_" + x.k) || 0); });
+  const _snap = RECV.evalSnap || null;
+  evalItemsOn().forEach(x => { vals[x.k] = _snap && x.k in _snap ? _snap[x.k] : Number(val("#rcv_" + x.k) || 0); });
   /* (٤٦٩ب) «النسبةُ دقيقةٌ على حسب ما سمّع: سمّع الحفظَ كلَّه فهي ١٠٠٪»:
      الاعتمادُ بعلامة الصحّ أو بتأكيد نهاية السرد اعتمادٌ للمدى كاملاً،
      فنسبتُه ١٠٠٪ لا ٩٠٪ «ممتاز». ونافذةُ التقييم كما كانت بتقديرها. */
   const fullDone = RECV.full === true;
   RECV.full = false;
+  const _grade = RECV.gradeSnap || RECV.grade;   /* (٦٩٤) التقديرُ الذي اختاره المعلّم */
   const score = fullDone ? 100
-    : (typeof reciteScore === "function" ? reciteScore({ grade: RECV.grade }) : null);
+    : (typeof reciteScore === "function" ? reciteScore({ grade: _grade }) : null);
   const c = (cur("circles") || []).find(x => String(x.id) === String(a.circleId || st.circleId));
 
   const rec = {
@@ -41302,12 +41323,12 @@ window.recvSave = function () {
     fromName: a.fromS ? surahName(a.fromS) : "", toName: a.toS ? surahName(a.toS) : "",
     /* المقدارُ المعتمد للواجب: هو ما سُمّع باعتماد المعلّم */
     faces: Number(a.qty) || 0, ayahs: 0,
-    grade: RECV.grade, score: score,
+    grade: _grade, score: score,
     errors: Number(mk["نسيان"]) || 0, tajweed: Number(mk["تجويد"]) || 0,
     errSource: "mushaf",
     /* عناصرُ التقييم كما ضبطتها الإدارة — تُحفظ بمفاتيحها */
     evalVals: vals,
-    note: val("#rcv_note") || "",
+    note: (RECV.noteSnap != null ? RECV.noteSnap : val("#rcv_note")) || "",
     asgId: String(a.id),
     /* نسبةُ التسميع لمعلّمه: التقاريرُ كانت تستنبطها من الحلقة وحدَها */
     staffId: typeof tchStaffId === "function" ? tchStaffId() : "",
