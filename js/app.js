@@ -23211,6 +23211,10 @@ function generateAssignments(studentId, dateISO) {
   /* «تحضير فقط»: يُحضَّر ولا يُسمَّع — ولو بقيت في سجلّه خطةٌ من قبل */
   if (st.attOnly) return [];
 
+  /* (٦٩٣) «من ينتهي من المستوى المحدَّد له لا يوضع له أيُّ واجب» — لا حفظ ولا تثبيت ولا
+     مراجعة حتى يُختبر أو ينقله المشرف (والإشعارُ بجانب اسمه — ٦٩٢) */
+  if (typeof stuLvDone === "function" && stuLvDone(st)) return [];
+
   /* (E13 · Q5) يومُ إجازة الحلقة لا يولّد واجبات — القاعدةُ المكتوبة. كان isHoliday لا يُسأل
      إلّا في الترحيل، فتُولَّد واجباتُ يومٍ أُعلن إجازة */
   if (typeof isHoliday === "function" && st.circleId != null && st.circleId !== "" &&
@@ -24007,6 +24011,11 @@ window.asgClose = (function (orig) {
 
 /* ترحيل واجبات يومٍ فات: يُنادى عند فتح يومٍ جديد */
 function rollForward(studentId, fromDate, toDate) {
+  /* (٦٩٣) من أنهى مستواه لا واجبَ له، فلا تعويضَ يُرحَّل إليه */
+  try {
+    const _st = (cur("students") || []).find(x => String(x.id) === String(studentId));
+    if (_st && typeof stuLvDone === "function" && stuLvDone(_st)) return 0;
+  } catch (e) {}
   /* لا ترحيلَ من يومٍ في فترةٍ مؤرشفة: حسابُها أُقفل */
   try {
     if (typeof termOfDate === "function" && termArchived(termOfDate(fromDate))) return 0;
@@ -37163,6 +37172,11 @@ function dutiesOfDay(sid, d) {
     String(a.studentId) === String(sid) && String(a.date) === String(day));
   /* ويومٌ مضى لا يُولَّد له شيءٌ جديد: سجلُّه ما كُتب فيه */
   if (String(day) < String(todayISO())) return asgFixBeforeRev(asgBasicOne(saved, sid));
+  /* (٦٩٣) من أنهى مستواه: لا واجبَ اليوم ولا بعده — يبقى ما سُمّع فقط (سجلٌّ لا يُمحى) */
+  try {
+    const _st = (cur("students") || []).find(x => String(x.id) === String(sid));
+    if (_st && typeof stuLvDone === "function" && stuLvDone(_st)) return saved.filter(a => a.status === "done");
+  } catch (e) {}
   let gen = [];
   try { gen = generateAssignments(sid, day) || []; } catch (e) { gen = []; }
   const out = asgMergeByKind(asgDropOldPlan(sid, saved, gen), gen);
