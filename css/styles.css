@@ -14456,3 +14456,10 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
   padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.7;
   background: rgba(217, 122, 23, .12); color: #b25f0c; white-space: nowrap; }
 .tsc-sub.lv-done-badge { display: inline-block; margin: 4px 0 0; }
+
+/* (٦٩٦) سطرُ «كلمة المرور» في بطاقات التعريف — لمدير النظام وحده */
+.pwv-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; margin-top: 6px;
+  border: 1px dashed rgba(0,0,0,.15); border-radius: 10px; }
+.pwv-lbl { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 13px; }
+.pwv-val { font-size: 14px; padding: 2px 8px; border-radius: 6px; background: rgba(0,0,0,.04); user-select: all; }
+.pwv-val.none { font-family: inherit; font-size: 12px; opacity: .7; user-select: none; }

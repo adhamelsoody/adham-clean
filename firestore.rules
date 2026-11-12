@@ -614,6 +614,17 @@ service cloud.firestore {
     }
 
     /* ---------------- ملفات المستخدمين ---------------- */
+    /* (٦٩٦) كلماتُ المرور — بطلبٍ صريحٍ من صاحب النظام: يقرؤها مدير النظام (admin · owner)
+       وحده. يكتبها مديرُ النظام ومن يُنشئ الحسابات (isManager) عند الإنشاء أو التعيين، وصاحبُ
+       الحساب لمستنده هو عند التسجيل الذاتي — كتابةً لا قراءة. لا سردَ ولا حذفَ لغير مدير النظام. */
+    match /pwVault/{uid} {
+      allow get, list: if isAdmin();
+      allow create, update: if signedIn() && (isAdmin() || isManager() || request.auth.uid == uid)
+                            && request.resource.data.keys().hasOnly(['pw', 'ts', 'by'])
+                            && request.resource.data.pw is string;
+      allow delete: if isAdmin();
+    }
+
     match /users/{uid} {
 
       /* قراءة مستند واحد: صاحبه أو الإدارة.

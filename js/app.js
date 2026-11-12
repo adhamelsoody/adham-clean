@@ -5248,6 +5248,7 @@ window.ptPwdSave = function () {
   if (btn) { btn.disabled = true; btn.textContent = "جارٍ التعيين.."; }
   spCallFn("updateUserLogin", { uid: uid, password: pw })
     .then(function () {
+      pwVaultPut(uid, pw);   /* (٦٩٦) */
       try { closeModal(); } catch (e) {}
       openModal("كلمة المرور الجديدة", esc(window.__ptPwdName || ""),
         noteCard("تُغيَّرت كلمةُ المرور وقُطعت الجلساتُ القائمة. " +
@@ -6042,6 +6043,60 @@ function syncAllTeachers() {
   return n;
 }
 
+/* =========================================================================
+   (٦٩٦) «أريد كلماتِ مرور كلِّ المستخدمين عند مدير النظام» — بطلبٍ صريحٍ من صاحب النظام
+   بعد بيان مخاطره. فايربيس لا يُرجع كلمةَ المرور لأحد، فتُحفظ نسخةٌ منها عند إنشائها أو
+   تعيينها في مجموعةٍ مستقلّة pwVault/<uid> لا يقرؤها إلّا مدير النظام (القاعدة في
+   firestore.rules). تُكتب مباشرةً لا عبر persistSet: سجلُّ التدقيق وطابورُ العمل دون اتصال
+   ومرايا DB تحفظ نسخاً من كلّ ما يمرّ بها — وكلمةُ المرور لا تُنسخ هناك. ولا تُحمَّل في DB.
+   كلماتُ المرور التي سبقت هذا الإصدار لا تُعرف: تظهر «غير محفوظة» ويُعيَّن بدلُها.
+   ========================================================================= */
+function pwVaultPut(uid, pw) {
+  try {
+    if (!uid || !pw || !window.__db) return Promise.resolve(false);
+    return window.__db.collection("pwVault").doc(String(uid)).set({
+      pw: String(pw), ts: Date.now(),
+      by: String((((typeof STATE !== "undefined" && STATE) || {}).user || {}).name || "")
+    }).then(() => true, e => { console.warn("pwVault:", e && (e.code || e.message)); return false; });
+  } catch (e) { return Promise.resolve(false); }
+}
+window.pwVaultPut = pwVaultPut;
+function pwVaultGet(uid) {
+  try {
+    if (!uid || !window.__db || typeof isTopAdmin !== "function" || !isTopAdmin()) return Promise.resolve(null);
+    return window.__db.collection("pwVault").doc(String(uid)).get()
+      .then(d => (d && d.exists ? (d.data() || {}) : null), () => null);
+  } catch (e) { return Promise.resolve(null); }
+}
+/* سطرُ «كلمة المرور» في بطاقات التعريف — لمدير النظام وحده؛ يُملأ بعد الرسم */
+function pwRowHtml(uid) {
+  if (!uid || typeof isTopAdmin !== "function" || !isTopAdmin()) return "";
+  setTimeout(pwRowsFill, 0);
+  return `<div class="pwv-row" data-uid="${esc(String(uid))}">
+    <span class="pwv-lbl">${ic("lock", 14)} كلمة المرور</span>
+    <code class="pwv-val" dir="ltr">…</code>
+    <button type="button" class="btn btn-ghost btn-sm pwv-copy" hidden
+      onclick="window.pwRowCopy(this)">نسخ</button>
+  </div>`;
+}
+function pwRowsFill() {
+  document.querySelectorAll(".pwv-row[data-uid]:not([data-done])").forEach(row => {
+    row.setAttribute("data-done", "1");
+    const uid = row.getAttribute("data-uid");
+    pwVaultGet(uid).then(d => {
+      const v = row.querySelector(".pwv-val"), b = row.querySelector(".pwv-copy");
+      if (d && d.pw) { v.textContent = d.pw; v.classList.add("on"); if (b) b.hidden = false; }
+      else { v.textContent = "غير محفوظة — عيّن كلمة جديدة من «تعيين كلمة مرور»"; v.classList.add("none"); }
+    });
+  });
+}
+window.pwRowCopy = function (btn) {
+  const v = btn && btn.parentNode && btn.parentNode.querySelector(".pwv-val");
+  const t = v ? v.textContent : "";
+  try { navigator.clipboard.writeText(t).then(() => showToast("نُسخت كلمة المرور", "success")); }
+  catch (e) { showToast("انسخها يدوياً", "info"); }
+};
+
 async function createAuthUser(opts) {
   opts = opts || {};
   if (typeof firebase === "undefined" || !firebase.initializeApp)
@@ -6075,6 +6130,7 @@ async function createAuthUser(opts) {
     /* كانت تُطرح كلمة المرور متى أُرسل رابط التعيين، فإن لم تصل الرسالة
        (تأخير · مجلد مهملات · بريد خاطئ) بقي الحساب بلا أي طريقة دخول.
        تُعاد الآن دائماً كخطة بديلة تُعرض للمدير مرة واحدة. */
+    await pwVaultPut(uid, password);   /* (٦٩٦) */
     return { uid, loginEmail, resetSent, tempPassword: password };
   } finally {
     try { await secondary.auth().signOut(); } catch (e) {}
@@ -6590,6 +6646,7 @@ window.userForm = function (id, presetRole) {
           <label class="switch"><input type="checkbox" id="usActive" ${!u || u.active !== false ? "checked" : ""}>
             <span class="slider"></span></label></div>
       </div>
+      ${u ? `<div class="field full">${pwRowHtml(u.uid || u.id)}</div>` : ""}
      </div>`,
     `<button class="btn btn-primary" data-action="user-save">${u ? "حفظ" : "إضافة"}</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
@@ -53272,6 +53329,7 @@ function modalEditTeacher(id) {
         <input id="et_idno" dir="ltr" inputmode="numeric" maxlength="10"
           value="${esc(t.idNo || "")}"
           oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      ${(function () { try { const _ta = ptAcctOf(t.id); return _ta ? `<div class="field full">${pwRowHtml(_ta.uid || _ta.id)}</div>` : ""; } catch (e) { return ""; } })()}   <!-- (٦٩٦) -->
     </div>`,
     `<button class="btn btn-primary" data-action="save-edit-teacher" data-id="${id}">${ic("check", 16)} حفظ التعديلات</button>
      <button class="btn btn-ghost" data-action="close-modal">إلغاء</button>`);
@@ -64614,6 +64672,7 @@ window.spPlacePanel = function (id) {
          ${row("اسم المستخدم", acc.username || acc.idNo || st.idNo || "—")}
          ${row("البريد", acc.email || "—")}
          ${row("الحالة", acc.active === false ? "موقوف" : "مفعَّل")}
+         ${pwRowHtml(acc.uid || acc.id)}
        </div>`
     : !(Array.isArray(DB.users) && DB.users.length)
       ? `<div class="sp-place-acc none">
