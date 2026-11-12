@@ -6464,8 +6464,10 @@ window.roleChanged = function (selEl) {
      مع النموذج. فتبديلُ الدور يستلزم إعادةَ بنائه — وإلا بقي الحقلُ
      الأوّل ظاهراً ولم يجد المستخدمُ موضعاً يربط به الأبناء. */
   const wasParent = !!document.getElementById("usKidBox");
-  const nowParent = selEl.value === "parent";
-  if (wasParent === nowParent) return;
+  /* (٦٩٥) والطالبُ كوليّ الأمر: حقلُ ملفّه يحلّ محلّ أماكن الإشراف — ويُعاد البناء إن تبدّل نوعُ الحقل */
+  const nowParent = selEl.value === "parent" || selEl.value === "student";
+  const kindSame = (selEl.value === "student") === !!document.getElementById("usKidOne");
+  if (wasParent === nowParent && (!nowParent || kindSame)) return;
 
   const id = val("#usId");
   const keep = {
@@ -6488,7 +6490,8 @@ window.roleChanged = function (selEl) {
 window.userForm = function (id, presetRole) {
   const u = id ? (cur("users") || []).find(x => String(x.id) === String(id)) : null;
   const facs = cur("complexes").concat(cur("mosques"));
-  const role = u ? u.role : (presetRole || "mosqueManager");
+  /* (٦٩٥) الدورُ المختار عند التبديل يحكم النموذج — ولو لحسابٍ قائم */
+  const role = presetRole || (u ? u.role : "mosqueManager");
 
   /* حالة منتقي الأبناء تُهيّأ من الحساب: المفتوحُ بعد آخرَ لا يرث اختياره.
      ويُبدأ بما رُبط فعلاً، فإن لم يُربط بعدُ فبما رُجّح من طلب تسجيله. */
@@ -6551,10 +6554,11 @@ window.userForm = function (id, presetRole) {
         <input id="usPay" type="number" min="0" step="50" dir="ltr"
           value="${u ? esc(u.salary || u.wage || u.hourRate || "") : ""}"></div>` : ""}
 
-      ${role === "parent" ? `
+      ${role === "parent" || role === "student" ? `
       <!-- وليُّ الأمر لا يشرف على منشأة: يتابع أبناءه. وحقلُ «أماكن الإشراف»
-           كان يظهر له بلا معنى، ولا يجد موضعاً يربط به أولاده. -->
-      <div class="field full"><label>الأبناء المتابَعون <span class="req">*</span></label>
+           كان يظهر له بلا معنى، ولا يجد موضعاً يربط به أولاده.
+           (٦٩٥) والطالبُ كذلك: حسابُه بلا ملفّ طالبٍ يفتح «لا يوجد طالب مرتبط بحسابك» -->
+      <div class="field full"><label>${role === "student" ? "ملفّ الطالب المرتبط بهذا الحساب" : "الأبناء المتابَعون"} <span class="req">*</span></label>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
           <select class="mig-dest" onchange="window.usKidFilter(this.value)" style="max-width:170px">
             <option value="">كلّ الحلقات</option>
@@ -6566,8 +6570,8 @@ window.userForm = function (id, presetRole) {
           <span id="usKidCount" class="muted"
             style="font-size:12px;align-self:center;margin-inline-start:auto"></span>
         </div>
-        <div class="pick-box" id="usKidBox"></div>
-        <div class="hint">اختر ابناً أو أكثر. ومن لم تختره لن يظهر لوليّه.</div>
+        <div class="pick-box" id="usKidBox"></div>${role === "student" ? `<span id="usKidOne" hidden></span>` : ""}
+        <div class="hint">${role === "student" ? "اختر ملفَّ الطالب نفسه — به يرى واجباته وتقاريره." : "اختر ابناً أو أكثر. ومن لم تختره لن يظهر لوليّه."}</div>
       </div>
 
       ${Array.isArray(u && u.kidsRequested) && u.kidsRequested.length ? `
@@ -6633,6 +6637,9 @@ window.userSave = function () {
   /* لا يُمنح دورٌ أعلى من دور المانح — وإلّا أنشأ مديرُ المجمّع مديرَ
      نظامٍ ودخل به. حارسٌ في الواجهة، ومثلُه في قواعد Firestore. */
   const wantRole = val("#usRole") || "mosqueManager";
+  if (wantRole === "student" && !USK.picked.length) {
+    showToast("اختر ملفَّ الطالب المرتبط بهذا الحساب — بدونه يرى «لا يوجد طالب مرتبط بحسابك»", "warn"); return;
+  }
   if (!canGrantRole(wantRole)) {
     showToast("لا تملك منح هذا الدور", "warn"); return;
   }
@@ -6648,6 +6655,8 @@ window.userSave = function () {
       studentIds: USK.picked.slice(),
       studentId: USK.picked.length === 1 ? USK.picked[0] : ""
     } : {}),
+    /* (٦٩٥) حسابُ الطالب يُربط بملفّه — studentId هو ما تقرأ به لوحةُ الطالب والقواعد */
+    ...((val("#usRole") || "") === "student" ? { studentId: USK.picked[0] || "", studentIds: [] } : {}),
     /* أجر المشرف — payFields تكتبه في حقله وحده */
     ...(document.getElementById("usPayType")
       ? payFields(val("#usPayType", "monthly"), val("#usPay")) : {}),
@@ -6686,7 +6695,7 @@ window.userSave = function () {
         Object.assign(u, _snap);
         mount(); return false;
       }
-      syncTeacherRecord(u); syncStudentRecord(u);
+      syncTeacherRecord(u); window.linkChange(() => syncStudentRecord(u));   /* (٦٩٥) */
       /* «تم تعديل بيانات حسابك» — لصاحب الحساب لا لمن عدّله */
       try {
         const meId = String(((STATE && STATE.user) || {}).id || "");
@@ -6731,7 +6740,11 @@ window.userSave = function () {
           mount(); return false;
         }
         syncTeacherRecord(u);   /* يظهر فوراً في صفحة المعلمين وقوائم الحلقات */
-        syncStudentRecord(u);   /* وكذلك الطالب في صفحة الطلاب */
+        /* (٦٩٥) «أضفتُ طالباً فرأى: لا يوجد طالب مرتبط بحسابك»: ربطُ الحساب بملفّه (studentId)
+           يُكتب بعد إنشاء حساب الدخول — وقد يتجاوز ذلك نافذةَ اللمسة (٨ ثوانٍ) على جوّالٍ بطيء،
+           فيردّه حارسُ الارتباط صامتاً: يبقى الملفُّ يحمل الحسابَ والحسابُ بلا ملف. وهو إجراءٌ
+           صريحٌ من الإدارة، فيُحاط بـ linkChange. */
+        window.linkChange(() => syncStudentRecord(u));   /* وكذلك الطالب في صفحة الطلاب */
         closeModal(); mount();
         showToast("أُضيف " + (USER_ROLES.find(r => r.k === data.role) || {}).h, "success");
         showCredentials(res, data.name);
@@ -6924,6 +6937,8 @@ window.usKidFilter = function (v) { USK.circle = String(v || ""); usKidRender();
 window.usKidSearch = function (v) { USK.q = String(v || ""); usKidRender(); };
 
 window.usKidPick = function (id, on) {
+  /* (٦٩٥) حسابُ الطالب لملفٍّ واحد: الاختيارُ يحلّ محلّ ما قبله */
+  if (on && (val("#usRole") || "") === "student") USK.picked = [];
   const i = USK.picked.indexOf(String(id));
   if (on && i === -1) USK.picked.push(String(id));
   if (!on && i > -1) USK.picked.splice(i, 1);
@@ -59086,7 +59101,7 @@ document.addEventListener("click", (e) => {
     case "recite-del":   reciteDelete(t.dataset.id); break;
     case "mus-go":    mushafGo(t.dataset.page); break;
     case "mus-clear": mushafClear(); break;
-    case "modal-user": window.userForm(t.dataset.id || "", t.dataset.role || "mosqueManager"); break;
+    case "modal-user": window.userForm(t.dataset.id || "", t.dataset.role || (t.dataset.id ? "" : "mosqueManager")); break;
     case "user-save":  window.userSave(); break;
     case "iface": setIface(t.dataset.iface); break;
     case "tab": {
