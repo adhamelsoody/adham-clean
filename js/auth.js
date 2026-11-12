@@ -979,7 +979,8 @@ window.SHELL_MODE = true;
     }, 15000);
 
     auth.onAuthStateChanged(async function (user) {
-      if (!user) { safeGo("/login.html", "لم يُسجَّل الدخول"); return; }
+      /* (٦٩٧) الزائرُ بلا دخول يرى الصفحةَ الترحيبية أوّلاً، ومنها «تسجيل الدخول» */
+      if (!user) { safeGo("/welcome.html", "لم يُسجَّل الدخول"); return; }
       try {
         const snap = await readProfile(user);
         /* لا ملف مستخدم = لا صلاحية.

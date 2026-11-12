@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ذات القرآنية — نظام إدارة الحلقات القرآنية</title>
+  <meta name="description" content="ذات القرآنية: نظامٌ إلكترونيٌّ لإدارة حلقات تحفيظ القرآن الكريم — الخطط والواجبات والحضور والتقارير في مكانٍ واحد.">
+  <meta name="theme-color" content="#0a1836">
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
+  <!-- (٦٩٧) الصفحةُ الترحيبيةُ للزائر قبل الدخول — مستقلّةٌ لا تحمّل styles.css ولا Firebase -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@700&family=Tajawal:wght@400;500;700;800;900&display=swap">
+  <link rel="preload" as="image" href="welcome-bg.webp?v=20261112-1930">
+  <style>
+    :root {
+      --navy: #0a1836; --navy-2: #0f2350; --ink: #e9eefb; --muted: #b8c3dc;
+      --gold: #e2b65c; --gold-2: #f3d38c; --teal: #0b7f83; --card: rgba(255,255,255,.06);
+      --line: rgba(226,182,92,.28);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; background: var(--navy); color: var(--ink);
+      font-family: "Tajawal", "Segoe UI", Tahoma, system-ui, sans-serif; line-height: 1.75;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    .wrap { width: min(1180px, 100% - 32px); margin-inline: auto; }
+
+    /* ---------- الهيدر ---------- */
+    .hdr { position: fixed; inset: 0 0 auto 0; z-index: 20; transition: background .3s, box-shadow .3s, padding .3s; padding: 18px 0; }
+    .hdr.solid { background: rgba(10,24,54,.92); backdrop-filter: blur(10px); box-shadow: 0 6px 24px rgba(0,0,0,.25); padding: 10px 0; }
+    .hdr .wrap { display: flex; align-items: center; gap: 28px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; }
+    .brand img { width: 44px; height: 44px; border-radius: 12px; box-shadow: 0 0 0 1px var(--line); }
+    .nav { display: flex; gap: 26px; margin-inline-start: 18px; }
+    .nav a { font-weight: 700; font-size: 15.5px; color: #fff; opacity: .88; position: relative; padding: 6px 0; transition: opacity .2s; }
+    .nav a:hover, .nav a.on { opacity: 1; }
+    .nav a::after { content: ""; position: absolute; inset: auto 0 -4px 0; height: 3px; border-radius: 3px;
+      background: var(--gold); transform: scaleX(0); transition: transform .25s; }
+    .nav a.on::after, .nav a:hover::after { transform: scaleX(1); }
+    .acts { margin-inline-start: auto; display: flex; gap: 10px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; font-size: 15px;
+      padding: 11px 22px; border-radius: 12px; border: 1.5px solid transparent; cursor: pointer; transition: transform .2s, background .2s, box-shadow .2s, color .2s; font-family: inherit; }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-gold { background: linear-gradient(135deg, var(--gold-2), var(--gold)); color: #1b1404; box-shadow: 0 10px 26px rgba(226,182,92,.28); }
+    .btn-line { border-color: rgba(255,255,255,.55); color: #fff; background: rgba(255,255,255,.04); }
+    .btn-line:hover { background: rgba(255,255,255,.12); }
+    .burger { display: none; margin-inline-start: auto; width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,.3);
+      background: rgba(255,255,255,.06); color: #fff; font-size: 22px; cursor: pointer; }
+
+    /* ---------- القسم الرئيسي ---------- */
+    .hero { position: relative; min-height: 100vh; min-height: 100svh; display: grid; place-items: center; text-align: center; overflow: hidden; }
+    .hero-bg { position: absolute; inset: 0; background: url("welcome-bg.webp?v=20261112-1930") center / cover no-repeat;
+      transform: scale(1.06); animation: kb 18s ease-out forwards; }
+    @keyframes kb { to { transform: scale(1); } }
+    .hero::after { content: ""; position: absolute; inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% 48%, rgba(10,24,54,.55), rgba(10,24,54,.82) 75%),
+                  linear-gradient(180deg, rgba(10,24,54,.35) 0%, rgba(10,24,54,0) 30%, rgba(10,24,54,.95) 100%); }
+    .hero-in { position: relative; z-index: 2; padding: 120px 0 90px; }
+    .hero h1 { font-family: "Amiri", serif; font-size: clamp(48px, 9vw, 104px); line-height: 1.15; margin: 0 0 14px;
+      color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,.45); }
+    .hero h1 span { color: var(--gold-2); }
+    .hero p { font-size: clamp(17px, 2.2vw, 23px); color: #e4e9f6; max-width: 760px; margin: 0 auto 34px; font-weight: 500; }
+    .hero .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .hero .cta .btn { padding: 14px 34px; font-size: 17px; }
+    .scroll-cue { position: absolute; z-index: 2; bottom: 24px; inset-inline: 0; margin: auto; width: 26px; height: 42px;
+      border: 2px solid rgba(255,255,255,.6); border-radius: 14px; }
+    .scroll-cue::before { content: ""; position: absolute; top: 8px; left: 50%; width: 4px; height: 8px; margin-left: -2px;
+      border-radius: 2px; background: #fff; animation: cue 1.6s infinite; }
+    @keyframes cue { 0% { opacity: 0; transform: translateY(0); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(12px); } }
+
+    /* ---------- الأقسام ---------- */
+    section.blk { padding: 96px 0; position: relative; }
+    .blk h2 { font-size: clamp(28px, 4vw, 40px); margin: 0 0 10px; text-align: center; font-weight: 900; }
+    .blk h2::after { content: ""; display: block; width: 64px; height: 4px; margin: 14px auto 0; border-radius: 4px;
+      background: linear-gradient(90deg, var(--gold), var(--gold-2)); }
+    .blk .lead { text-align: center; color: var(--muted); max-width: 720px; margin: 18px auto 46px; font-size: 18px; }
+    #about { background: linear-gradient(180deg, var(--navy) 0%, var(--navy-2) 100%); }
+    .about-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .stat { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 26px; text-align: center; }
+    .stat b { display: block; font-size: 20px; color: var(--gold-2); margin-bottom: 6px; }
+    .stat span { color: var(--muted); font-size: 15.5px; }
+    #features { background: var(--navy-2); }
+    .feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .feat { background: linear-gradient(160deg, rgba(255,255,255,.07), rgba(255,255,255,.025)); border: 1px solid rgba(255,255,255,.09);
+      border-radius: 20px; padding: 28px 24px; transition: transform .25s, border-color .25s, box-shadow .25s; }
+    .feat:hover { transform: translateY(-6px); border-color: var(--line); box-shadow: 0 18px 40px rgba(0,0,0,.25); }
+    .feat .ico { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; margin-bottom: 16px;
+      background: rgba(226,182,92,.12); color: var(--gold-2); }
+    .feat .ico svg { width: 28px; height: 28px; }
+    .feat h3 { margin: 0 0 8px; font-size: 19px; }
+    .feat p { margin: 0; color: var(--muted); font-size: 15.5px; }
+    .join { text-align: center; padding: 70px 0; background: radial-gradient(ellipse at center, rgba(226,182,92,.14), transparent 70%), var(--navy); }
+    .join h2::after { display: none; }
+    .join .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+
+    /* ---------- التذييل: الاسم ورقم الهاتف بخطٍّ واضح ---------- */
+    footer { background: #060f24; border-top: 1px solid var(--line); padding: 54px 0 28px; text-align: center; }
+    .dev-lbl { color: var(--muted); font-size: 16px; margin-bottom: 6px; }
+    .dev-name { font-size: clamp(32px, 5vw, 48px); font-weight: 900; color: #fff; margin: 0; letter-spacing: .5px; }
+    .dev-phone { display: inline-flex; align-items: center; gap: 12px; margin-top: 14px; font-size: clamp(28px, 4.6vw, 42px);
+      font-weight: 900; color: var(--gold-2); direction: ltr; padding: 10px 26px; border-radius: 16px; border: 2px solid var(--line);
+      background: rgba(226,182,92,.08); transition: background .2s, transform .2s; }
+    .dev-phone:hover { background: rgba(226,182,92,.16); transform: translateY(-2px); }
+    .dev-phone svg { width: 30px; height: 30px; }
+    .dev-wa { display: block; margin-top: 14px; color: #8fe3b0; font-weight: 700; font-size: 16px; }
+    .copy { margin-top: 34px; color: #7f8cab; font-size: 14px; }
+
+    /* ---------- الظهور عند التمرير ---------- */
+    .rv { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
+    .rv.in { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } .hero-bg { animation: none; transform: none; } html { scroll-behavior: auto; } }
+
+    /* ---------- الجوال ---------- */
+    @media (max-width: 980px) {
+      .nav, .acts { display: none; }
+      .burger { display: block; }
+      .hdr.open { background: rgba(10,24,54,.97); }
+      .hdr.open .wrap { flex-wrap: wrap; }
+      .hdr.open .nav, .hdr.open .acts { display: flex; flex-direction: column; width: 100%; margin: 6px 0 4px; gap: 4px; }
+      .hdr.open .nav a { padding: 12px 6px; border-bottom: 1px solid rgba(255,255,255,.07); }
+      .hdr.open .acts { flex-direction: row; } .hdr.open .acts .btn { flex: 1; }
+      .about-grid, .feats { grid-template-columns: 1fr 1fr; }
+      .hero-bg { background-image: url("welcome-bg-sm.webp?v=20261112-1930"); background-position: 32% center; }
+    }
+    @media (max-width: 600px) {
+      .about-grid, .feats { grid-template-columns: 1fr; }
+      section.blk { padding: 70px 0; }
+      .hero .cta .btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hdr" id="hdr">
+    <div class="wrap">
+      <a class="brand" href="#home"><img src="logo-mark.svg" alt="ذات القرآنية"> ذات القرآنية</a>
+      <nav class="nav" id="nav">
+        <a href="#home" class="on">الرئيسية</a>
+        <a href="#about">من نحن</a>
+        <a href="#features">مميزاتنا</a>
+        <a href="#contact">تواصل معنا</a>
+      </nav>
+      <div class="acts">
+        <a class="btn btn-line" href="/login.html">تسجيل الدخول</a>
+        <a class="btn btn-gold" href="/signup.html">فتح حساب جديد</a>
+      </div>
+      <button class="burger" id="burger" aria-label="القائمة" aria-expanded="false">☰</button>
+    </div>
+  </header>
+
+  <section class="hero" id="home">
+    <div class="hero-bg" role="img" aria-label="مصحفٌ على حامل وفانوسٌ أمام مسجدٍ مضاء ليلاً"></div>
+    <div class="hero-in wrap">
+      <h1>ذات <span>القرآنية</span></h1>
+      <p>نظامٌ إلكترونيٌّ لإدارة حلقات تحفيظ القرآن الكريم، يجمع المعلّمَ والطالبَ والمشرفَ في مكانٍ واحد، ويتابع الحفظَ والمراجعةَ والتثبيتَ يوماً بيوم.</p>
+      <div class="cta">
+        <a class="btn btn-gold" href="/login.html">تسجيل الدخول</a>
+        <a class="btn btn-line" href="/signup.html">انضم إلينا</a>
+      </div>
+    </div>
+    <a class="scroll-cue" href="#about" aria-label="انتقل إلى الأسفل"></a>
+  </section>
+
+  <section class="blk" id="about">
+    <div class="wrap">
+      <h2 class="rv">من نحن</h2>
+      <p class="lead rv">«ذات القرآنية» منصّةٌ تخدم حلقات القرآن الكريم في المساجد والمجمّعات: تنظّم الحلقات والطلاب والمعلّمين، وتبني لكلّ طالبٍ خطّته، وتُظهر لكلّ طرفٍ ما يخصّه بوضوح.</p>
+      <div class="about-grid">
+        <div class="stat rv"><b>للإدارة والمشرفين</b><span>متابعة المجمّعات والمساجد والحلقات والبرامج والمستويات من لوحةٍ واحدة.</span></div>
+        <div class="stat rv"><b>للمعلّم</b><span>حلقاته وطلابه، والتحضير، وتسميع الواجبات وتقييمها من الجوال.</span></div>
+        <div class="stat rv"><b>للطالب ووليّ الأمر</b><span>واجبات اليوم، والتقارير، والمصحف التفاعلي في حسابٍ خاص.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="blk" id="features">
+    <div class="wrap">
+      <h2 class="rv">مميزاتنا</h2>
+      <p class="lead rv">كلُّ ما تحتاجه الحلقة القرآنية، مرتّباً ومتّصلاً.</p>
+      <div class="feats">
+        <div class="feat rv"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20V3H6.5A2.5 2.5 0 004 5.5v14z"/><path d="M8 7h8M8 11h6"/></svg></div>
+          <h3>البرامج والمستويات</h3><p>برامج حفظٍ بمستوياتٍ محدّدة البداية والنهاية، ولا ينتقل الطالبُ إلّا باختبارٍ أو بنقل المشرف.</p></div>
+        <div class="feat rv"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+          <h3>الواجبات اليومية</h3><p>حفظٌ جديدٌ ومراجعةٌ وتثبيت لكلّ طالبٍ في كلّ يوم دوام، تتولّد من خطّته تلقائياً.</p></div>
+        <div class="feat rv"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg></div>
+          <h3>التسميع والتقييم</h3><p>لا يُعتمد واجبٌ إلّا بتقييمٍ كامل، وتُحفظ الأخطاءُ والتقديرُ في سجلّ الطالب.</p></div>
+        <div class="feat rv"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 15l2 2 4-4"/></svg></div>
+          <h3>الحضور والتحضير</h3><p>تحضيرٌ يوميٌّ للحلقة، يُعتمد ثمّ يُقفل، وأيّامُ الدوام لكلّ طالبٍ كما حُدّدت له.</p></div>
+        <div class="feat rv"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></div>
+          <h3>التقارير</h3><p>تقارير الحضور والأداء والإنجاز للطالب والحلقة والمسجد.</p></div>
+        <div class="feat rv"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h7a3 3 0 013 3v14a2 2 0 00-2-2H2zM22 4h-7a3 3 0 00-3 3v14a2 2 0 012-2h8z"/></svg></div>
+          <h3>المصحف التفاعلي</h3><p>مصحفٌ داخل النظام يُعلَّم فيه موضعُ الحفظ والأخطاء أثناء التسميع.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="join">
+    <div class="wrap rv">
+      <h2>ابدأ مع ذات القرآنية</h2>
+      <div class="cta">
+        <a class="btn btn-gold" href="/login.html">تسجيل الدخول</a>
+        <a class="btn btn-line" href="/signup.html">فتح حساب جديد</a>
+      </div>
+    </div>
+  </section>
+
+  <footer id="contact">
+    <div class="wrap rv">
+      <div class="dev-lbl">تصميم وتطوير وللتواصل</div>
+      <p class="dev-name">أدهم السعودي</p>
+      <a class="dev-phone" href="tel:+201027877569" aria-label="اتصال 01027877569">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.2 2 2 0 014.1 2h3a2 2 0 012 1.7c.1.9.4 1.8.7 2.7a2 2 0 01-.5 2.1L8 9.8a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.5c.9.3 1.8.6 2.7.7a2 2 0 011.7 2z"/></svg>
+        01027877569
+      </a>
+      <a class="dev-wa" href="https://wa.me/201027877569" target="_blank" rel="noopener">راسلني على واتساب</a>
+      <div class="copy">© <span id="yr"></span> ذات القرآنية — جميع الحقوق محفوظة</div>
+    </div>
+  </footer>
+
+  <script>
+  (function () {
+    "use strict";
+    try { document.getElementById("yr").textContent = new Date().getFullYear(); } catch (e) {}
+    var hdr = document.getElementById("hdr"), burger = document.getElementById("burger");
+    function onScroll() { hdr.classList.toggle("solid", window.scrollY > 40 || hdr.classList.contains("open")); }
+    window.addEventListener("scroll", onScroll, { passive: true }); onScroll();
+    burger.addEventListener("click", function () {
+      var o = hdr.classList.toggle("open"); burger.setAttribute("aria-expanded", o ? "true" : "false"); onScroll();
+    });
+    document.querySelectorAll(".nav a").forEach(function (a) {
+      a.addEventListener("click", function () { hdr.classList.remove("open"); burger.setAttribute("aria-expanded", "false"); });
+    });
+    /* إبرازُ القسم الظاهر في القائمة، وظهورُ العناصر عند التمرير */
+    var links = Array.prototype.slice.call(document.querySelectorAll(".nav a"));
+    if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+      }, { threshold: 0.12 });
+      document.querySelectorAll(".rv").forEach(function (el) { io.observe(el); });
+      var so = new IntersectionObserver(function (es) {
+        es.forEach(function (e) {
+          if (!e.isIntersecting) return;
+          links.forEach(function (a) { a.classList.toggle("on", a.getAttribute("href") === "#" + e.target.id); });
+        });
+      }, { rootMargin: "-45% 0px -50% 0px" });
+      ["home", "about", "features", "contact"].forEach(function (id) { var s = document.getElementById(id); if (s) so.observe(s); });
+    } else {
+      document.querySelectorAll(".rv").forEach(function (el) { el.classList.add("in"); });
+    }
+  })();
+  </script>
+</body>
+</html>
