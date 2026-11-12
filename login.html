@@ -27,6 +27,8 @@
     body::before {
       content: ""; position: fixed; inset: 0; z-index: 0;
       background-color: #01282e;
+      /* (٦٩٨) صورةُ الصفحة الترحيبية نفسُها خلفيةً لصفحة الدخول */
+      background-image: url("welcome-bg.webp?v=20261112-2030");
       background-size: cover;
       background-position: center center;
       background-repeat: no-repeat;
@@ -92,6 +94,7 @@
     .foot { margin-top: 14px; font-size: 11px; color: #8e9aa2; }
 
     @media (max-width: 900px) {
+      body::before { background-image: url("welcome-bg-sm.webp?v=20261112-2030"); background-position: 32% center; }
       body { justify-content: center; padding: 20px; }
       body::after {
         background:
@@ -109,6 +112,22 @@
 .keep-row input { width: 17px; height: 17px; accent-color: #0f6f72;
                   margin: 0; cursor: pointer; flex: 0 0 auto; }
 .keep-row span { font-size: 14px; }
+/* (٦٩٩) مقاساتُ الجوال: البطاقةُ لا تُقصّ في الشاشات القصيرة (كان overflow:hidden مع التوسيط
+   يُخفي أعلاها بلا تمرير)، والحقولُ 16px فلا يُكبّر iOS الصفحةَ عند الكتابة، والروابطُ لا
+   تنكسر الكلمةُ منها على سطرين. */
+.links a { white-space: nowrap; }
+@media (max-width: 600px), (max-height: 720px) {
+  body { overflow-y: auto; align-items: flex-start; padding: 24px 14px; }
+  .auth-card { margin: auto; }
+}
+@media (max-width: 600px) {
+  .auth-card { padding: 26px 20px 20px; border-radius: 18px; }
+  .field input { font-size: 16px; padding: 13px 14px; }
+  .btn { padding: 14px; font-size: 16px; }
+  .links { flex-wrap: wrap; gap: 6px 10px; font-size: 13px; }
+  .links span { display: none; }
+  .auth-logo { width: 64px; height: 64px; }
+}
 </style>
 </head>
 <body>
@@ -149,7 +168,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
-  <script src="js/firebase-config.js?v=20261112-1930"></script>
+  <script src="js/firebase-config.js?v=20261112-2030"></script>
   <script>
   (function () {
     "use strict";

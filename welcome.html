@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@700&family=Tajawal:wght@400;500;700;800;900&display=swap">
-  <link rel="preload" as="image" href="welcome-bg.webp?v=20261112-1930">
+  <link rel="preload" as="image" href="welcome-bg.webp?v=20261112-2030">
   <style>
     :root {
       --navy: #0a1836; --navy-2: #0f2350; --ink: #e9eefb; --muted: #b8c3dc;
@@ -52,7 +52,7 @@
 
     /* ---------- القسم الرئيسي ---------- */
     .hero { position: relative; min-height: 100vh; min-height: 100svh; display: grid; place-items: center; text-align: center; overflow: hidden; }
-    .hero-bg { position: absolute; inset: 0; background: url("welcome-bg.webp?v=20261112-1930") center / cover no-repeat;
+    .hero-bg { position: absolute; inset: 0; background: url("welcome-bg.webp?v=20261112-2030") center / cover no-repeat;
       transform: scale(1.06); animation: kb 18s ease-out forwards; }
     @keyframes kb { to { transform: scale(1); } }
     .hero::after { content: ""; position: absolute; inset: 0;
@@ -118,17 +118,29 @@
       .nav, .acts { display: none; }
       .burger { display: block; }
       .hdr.open { background: rgba(10,24,54,.97); }
-      .hdr.open .wrap { flex-wrap: wrap; }
+      .hdr.open .wrap { flex-wrap: wrap; row-gap: 4px; }
+      /* (٦٩٩) زرُّ القائمة يبقى في صفّ الشعار، والقائمةُ تحتهما */
+      .brand { order: 0; } .burger { order: 1; } .nav { order: 2; } .acts { order: 3; }
+      .hdr .wrap { gap: 12px; }
+      .brand { font-size: 17px; } .brand img { width: 40px; height: 40px; }
       .hdr.open .nav, .hdr.open .acts { display: flex; flex-direction: column; width: 100%; margin: 6px 0 4px; gap: 4px; }
       .hdr.open .nav a { padding: 12px 6px; border-bottom: 1px solid rgba(255,255,255,.07); }
+      .hdr.open .nav a::after { display: none; }
+      .hdr.open .nav a.on { color: var(--gold-2); }
       .hdr.open .acts { flex-direction: row; } .hdr.open .acts .btn { flex: 1; }
       .about-grid, .feats { grid-template-columns: 1fr 1fr; }
-      .hero-bg { background-image: url("welcome-bg-sm.webp?v=20261112-1930"); background-position: 32% center; }
+      .hero-bg { background-image: url("welcome-bg-sm.webp?v=20261112-2030"); background-position: 32% center; }
     }
     @media (max-width: 600px) {
       .about-grid, .feats { grid-template-columns: 1fr; }
       section.blk { padding: 70px 0; }
-      .hero .cta .btn { width: 100%; }
+      .hero .cta .btn { width: 100%; padding: 14px 20px; }
+      .hero-in { padding: 100px 0 80px; }
+      .hero p { font-size: 17px; }
+      .blk .lead { font-size: 16.5px; margin-bottom: 32px; }
+      .feat, .stat { padding: 22px 18px; }
+      .dev-phone { padding: 10px 18px; gap: 10px; }
+      .dev-phone svg { width: 24px; height: 24px; }
     }
   </style>
 </head>
@@ -227,10 +239,11 @@
     function onScroll() { hdr.classList.toggle("solid", window.scrollY > 40 || hdr.classList.contains("open")); }
     window.addEventListener("scroll", onScroll, { passive: true }); onScroll();
     burger.addEventListener("click", function () {
-      var o = hdr.classList.toggle("open"); burger.setAttribute("aria-expanded", o ? "true" : "false"); onScroll();
+      var o = hdr.classList.toggle("open"); burger.setAttribute("aria-expanded", o ? "true" : "false");
+      burger.textContent = o ? "✕" : "☰"; onScroll();
     });
     document.querySelectorAll(".nav a").forEach(function (a) {
-      a.addEventListener("click", function () { hdr.classList.remove("open"); burger.setAttribute("aria-expanded", "false"); });
+      a.addEventListener("click", function () { hdr.classList.remove("open"); burger.setAttribute("aria-expanded", "false"); burger.textContent = "☰"; });
     });
     /* إبرازُ القسم الظاهر في القائمة، وظهورُ العناصر عند التمرير */
     var links = Array.prototype.slice.call(document.querySelectorAll(".nav a"));
