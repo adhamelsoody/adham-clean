@@ -6065,16 +6065,21 @@ function pwVaultGet(uid) {
   try {
     if (!uid || !window.__db || typeof isTopAdmin !== "function" || !isTopAdmin()) return Promise.resolve(null);
     return window.__db.collection("pwVault").doc(String(uid)).get()
-      .then(d => (d && d.exists ? (d.data() || {}) : null), () => null);
+      .then(d => (d && d.exists ? (d.data() || {}) : { missing: true }), () => null);
   } catch (e) { return Promise.resolve(null); }
 }
-/* سطرُ «كلمة المرور» في بطاقات التعريف — لمدير النظام وحده؛ يُملأ بعد الرسم */
+/* سطرُ «كلمة المرور» في بطاقات التعريف — لمدير النظام وحده.
+   (٧٠١) مخفيّةٌ حتى يُطلب إظهارُها، والإظهارُ يطلب كلمةَ مرور المدير نفسِه (إعادةُ توثيق):
+   فلو تُركت جلستُه مفتوحةً لم يقرأها غيرُه. والقاعدةُ على الخادم تشترط توثيقاً خلال
+   عشر دقائق (auth_time في firestore.rules) — فلا تُقرأ بتجاوز الواجهة. */
+let PWV_UNTIL = 0;
 function pwRowHtml(uid) {
   if (!uid || typeof isTopAdmin !== "function" || !isTopAdmin()) return "";
-  setTimeout(pwRowsFill, 0);
+  if (Date.now() < PWV_UNTIL) setTimeout(pwRowsFill, 0);
   return `<div class="pwv-row" data-uid="${esc(String(uid))}">
     <span class="pwv-lbl">${ic("lock", 14)} كلمة المرور</span>
-    <code class="pwv-val" dir="ltr">…</code>
+    <code class="pwv-val" dir="ltr">••••••••</code>
+    <button type="button" class="btn btn-ghost btn-sm pwv-show" onclick="window.pwRowShow(this)">إظهار</button>
     <button type="button" class="btn btn-ghost btn-sm pwv-copy" hidden
       onclick="window.pwRowCopy(this)">نسخ</button>
   </div>`;
@@ -6083,13 +6088,92 @@ function pwRowsFill() {
   document.querySelectorAll(".pwv-row[data-uid]:not([data-done])").forEach(row => {
     row.setAttribute("data-done", "1");
     const uid = row.getAttribute("data-uid");
+    const sh = row.querySelector(".pwv-show"); if (sh) sh.hidden = true;
     pwVaultGet(uid).then(d => {
       const v = row.querySelector(".pwv-val"), b = row.querySelector(".pwv-copy");
       if (d && d.pw) { v.textContent = d.pw; v.classList.add("on"); if (b) b.hidden = false; }
+      else if (d === null) { v.textContent = "••••••••"; row.removeAttribute("data-done"); if (sh) sh.hidden = false; PWV_UNTIL = 0; }
       else { v.textContent = "غير محفوظة — عيّن كلمة جديدة من «تعيين كلمة مرور»"; v.classList.add("none"); }
     });
   });
 }
+/* إعادةُ التوثيق بكلمة مرور المدير ثمّ إظهارُ كلمات المرور عشرَ دقائق */
+window.pwRowShow = function () {
+  if (typeof isTopAdmin !== "function" || !isTopAdmin()) return;
+  if (Date.now() < PWV_UNTIL) { pwRowsFill(); return; }
+  const host = document.createElement("div");
+  host.className = "pwv-auth";
+  host.innerHTML = `<div class="pwv-auth-box" role="dialog" aria-modal="true">
+      <b>تأكيد هويّتك</b>
+      <p>لإظهار كلمات المرور اكتب كلمةَ مرورك أنت (مدير النظام). تبقى ظاهرةً عشرَ دقائق.</p>
+      <input type="password" class="pwv-auth-in" autocomplete="current-password" placeholder="كلمة مرورك">
+      <div class="pwv-auth-err" hidden></div>
+      <div class="pwv-auth-act">
+        <button type="button" class="btn btn-primary pwv-auth-ok">تأكيد</button>
+        <button type="button" class="btn btn-ghost pwv-auth-no">إلغاء</button>
+      </div></div>`;
+  document.body.appendChild(host);
+  const inp = host.querySelector(".pwv-auth-in"), err = host.querySelector(".pwv-auth-err"), ok = host.querySelector(".pwv-auth-ok");
+  const close = () => { try { host.remove(); } catch (e) {} };
+  host.querySelector(".pwv-auth-no").onclick = close;
+  host.addEventListener("click", e => { if (e.target === host) close(); });
+  const go = () => {
+    const pw = inp.value;
+    if (!pw) { inp.focus(); return; }
+    ok.disabled = true; err.hidden = true;
+    pwReauth(pw).then(() => {
+      PWV_UNTIL = Date.now() + 10 * 60 * 1000;
+      close();
+      document.querySelectorAll(".pwv-row[data-done]").forEach(r => r.removeAttribute("data-done"));
+      pwRowsFill();
+    }, e => {
+      ok.disabled = false; err.hidden = false;
+      err.textContent = /wrong-password|invalid-credential|invalid-login/.test(String((e && e.code) || "")) ? "كلمة المرور غير صحيحة." :
+        /too-many-requests/.test(String((e && e.code) || "")) ? "محاولات كثيرة — انتظر قليلاً." : "تعذّر التحقّق: " + ((e && (e.code || e.message)) || "");
+    });
+  };
+  ok.onclick = go;
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+  setTimeout(() => inp.focus(), 30);
+};
+function pwReauth(pw) {
+  const a = window.__auth, u = a && a.currentUser;
+  if (!u || !u.email) return Promise.reject({ code: "no-user" });
+  const P = (typeof firebase !== "undefined" && firebase.auth && firebase.auth.EmailAuthProvider) || null;
+  if (!P || !u.reauthenticateWithCredential) return Promise.reject({ code: "unsupported" });
+  return u.reauthenticateWithCredential(P.credential(u.email, pw)).then(() => u.getIdToken(true));
+}
+window.pwReauth = pwReauth;
+
+/* (٧٠١) خروجٌ تلقائيٌّ لجلسات الإدارة الخاملة: مديرُ النظام يرى كلماتِ المرور، والجلسةُ
+   المتروكةُ مفتوحةً على جهازٍ مشترك أخطرُ ثغرة. بعد ثلاثين دقيقةً بلا حركةٍ ولا نقرٍ ولا
+   كتابة يُنبَّه، وبعد دقيقةٍ يخرج. للأدوار الإدارية وحدها؛ المعلّمُ والطالبُ كما هما. */
+(function () {
+  const IDLE = 30 * 60 * 1000, WARN = 60 * 1000;
+  let last = Date.now(), warned = false;
+  const mark = () => { last = Date.now(); warned = false; };
+  ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "wheel"].forEach(ev =>
+    window.addEventListener(ev, mark, { passive: true, capture: true }));
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) idleTick(); });
+  function adminRole() {
+    const r = String((((typeof STATE !== "undefined" && STATE) || {}).user || {}).role || "");
+    return ["admin", "owner", "complexManager", "mosqueManager", "supervisor", "manager"].indexOf(r) > -1;
+  }
+  function idleTick() {
+    if (!adminRole() || !window.__auth || !window.__auth.currentUser) return;
+    const gone = Date.now() - last;
+    if (gone >= IDLE + WARN) {
+      PWV_UNTIL = 0;
+      try { sessionStorage.setItem("zat_idle_out", "1"); } catch (e) {}
+      window.__auth.signOut().finally(() => { location.href = "/login.html"; });
+    } else if (gone >= IDLE && !warned) {
+      warned = true;
+      try { showToast("خروجٌ تلقائيٌّ بعد دقيقة لعدم النشاط — حرّك الفأرة أو اضغط أيَّ زرّ للبقاء", "warn"); } catch (e) {}
+    }
+  }
+  setInterval(idleTick, 15000);
+  window.__zatIdle = { tick: idleTick, set: ms => { last = Date.now() - ms; } };
+})();
 window.pwRowCopy = function (btn) {
   const v = btn && btn.parentNode && btn.parentNode.querySelector(".pwv-val");
   const t = v ? v.textContent : "";

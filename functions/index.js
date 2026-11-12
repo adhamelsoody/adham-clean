@@ -221,19 +221,18 @@ exports.resetPasswordSMS = onCall(opts, async (req) => {
   if (!username) throw new HttpsError("invalid-argument", "رقم الهوية مطلوب.");
   if (password.length < 8) throw new HttpsError("invalid-argument", "كلمة المرور ثمانية أحرف على الأقل.");
 
+  /* (٧٠٠) رسالةٌ واحدةٌ لكلّ إخفاق: لا يُعرف منها هل الرقمُ مسجَّلٌ أم لا (منعُ تعداد الحسابات) */
+  const NOPE = "تعذّر التحقّق: تأكّد من رقم الهوية ومن أنّ الجوال هو المسجَّل للحساب، أو راجع الإدارة.";
   const q = await db.collection("users").where("username", "==", username).limit(1).get();
-  if (q.empty) throw new HttpsError("not-found", "لا حساب بهذا الرقم.");
+  if (q.empty) throw new HttpsError("permission-denied", NOPE);
 
   const doc = q.docs[0];
   const u = doc.data();
-  if (u.active === false) throw new HttpsError("permission-denied", "الحساب موقوف — راجع الإدارة.");
+  if (u.active === false) throw new HttpsError("permission-denied", NOPE);
 
   const cc = await countryCode();
   const stored = e164(u.phone, cc);
-  if (!stored) throw new HttpsError("failed-precondition", "لا جوال مسجَّل لهذا الحساب — راجع الإدارة.");
-  if (stored !== phoneVerified) {
-    throw new HttpsError("permission-denied", "الجوال لا يطابق المسجَّل لهذا الحساب.");
-  }
+  if (!stored || stored !== phoneVerified) throw new HttpsError("permission-denied", NOPE);
 
   const targetUid = String(u.uid || doc.id);
   await auth.updateUser(targetUid, { password });

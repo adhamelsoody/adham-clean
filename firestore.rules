@@ -618,7 +618,10 @@ service cloud.firestore {
        وحده. يكتبها مديرُ النظام ومن يُنشئ الحسابات (isManager) عند الإنشاء أو التعيين، وصاحبُ
        الحساب لمستنده هو عند التسجيل الذاتي — كتابةً لا قراءة. لا سردَ ولا حذفَ لغير مدير النظام. */
     match /pwVault/{uid} {
-      allow get, list: if isAdmin();
+      /* (٧٠١) والقراءةُ بتوثيقٍ حديث: كلمةُ مرور المدير أُدخلت خلال عشر دقائق (إعادةُ توثيق) —
+         فالجلسةُ المتروكةُ مفتوحةً لا تكفي لقراءتها */
+      allow get, list: if isAdmin()
+                       && request.auth.token.auth_time > request.time.toMillis() / 1000 - 600;
       allow create, update: if signedIn() && (isAdmin() || isManager() || request.auth.uid == uid)
                             && request.resource.data.keys().hasOnly(['pw', 'ts', 'by'])
                             && request.resource.data.pw is string;

@@ -14463,3 +14463,11 @@ html[data-theme="dark"] .pr-pro .pr-note { background: var(--surface-2); border-
 .pwv-lbl { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 13px; }
 .pwv-val { font-size: 14px; padding: 2px 8px; border-radius: 6px; background: rgba(0,0,0,.04); user-select: all; }
 .pwv-val.none { font-family: inherit; font-size: 12px; opacity: .7; user-select: none; }
+
+/* (٧٠١) نافذةُ تأكيد الهويّة قبل إظهار كلمات المرور */
+.pwv-auth { position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,.45); display: grid; place-items: center; padding: 16px; }
+.pwv-auth-box { background: var(--surface, #fff); color: inherit; width: min(380px, 100%); border-radius: 16px; padding: 20px; box-shadow: 0 20px 50px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 10px; }
+.pwv-auth-box p { margin: 0; font-size: 13.5px; opacity: .8; }
+.pwv-auth-in { width: 100%; padding: 12px; font-size: 16px; border: 1.5px solid rgba(0,0,0,.15); border-radius: 10px; }
+.pwv-auth-err { color: #c0392b; font-size: 13px; }
+.pwv-auth-act { display: flex; gap: 8px; }
